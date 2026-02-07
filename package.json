@@ -1,0 +1,52 @@
+{
+	"name": "slot-variants",
+	"version": "1.0.0",
+	"description": "Type-safe class name variants with slots",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"require": "./dist/index.cjs"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsup src/index.ts && rm dist/index.d.cts",
+		"test": "tap --show-full-coverage test/*.test.ts",
+		"bench": "jiti bench/cn.ts && jiti bench/cva.ts && jiti bench/tv.ts",
+		"lint": "eslint src",
+		"format": "prettier --write src",
+		"format:check": "prettier --check src",
+		"prepublishOnly": "npm run build"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "MIT",
+	"devDependencies": {
+		"@eslint/js": "9.39.2",
+		"@stylistic/eslint-plugin": "^5.7.1",
+		"class-variance-authority": "^0.7.1",
+		"classnames": "^2.5.1",
+		"eslint": "9.39.2",
+		"jiti": "2.6.1",
+		"prettier": "3.8.1",
+		"tailwind-merge": "^3.4.0",
+		"tailwind-variants": "^3.2.2",
+		"tap": "21.5.0",
+		"tinybench": "^6.0.0",
+		"tsup": "8.5.1",
+		"typescript": "5.9.3",
+		"typescript-eslint": "8.54.0"
+	},
+	"tsup": {
+		"dts": true,
+		"format": [
+			"cjs",
+			"esm"
+		],
+		"minify": true
+	}
+}
