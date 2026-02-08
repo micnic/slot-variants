@@ -320,9 +320,9 @@ export function sv<
 		}
 	}
 
-	const defaultVariantKeys = new Set(keys(defaultVariants));
 	const variantEntries = entries(normalizedVariants);
-	const variantKeysSet = new Set(keys(normalizedVariants));
+	const variantKeys = new Set(keys(normalizedVariants));
+	const defaultVariantKeys = new Set(keys(defaultVariants));
 
 	const applyPostProcess = (className: string) =>
 		postProcess?.(className) ?? className;
@@ -356,31 +356,11 @@ export function sv<
 		}
 	};
 
-	const getCacheKey = (
-		mergedProps: Record<
-			string,
-			ClassValue | Partial<Record<SVSlotKey<S>, ClassValue>>
-		>,
-		classProp:
-			| ClassValue
-			| Partial<Record<SVSlotKey<S>, ClassValue>>
-			| undefined
-	) => {
-		if (classProp) {
-			return null;
-		}
-
-		return variantEntries.reduce(
-			(key, [variantKey]) => key + mergedProps[variantKey] + ';',
-			''
-		);
-	};
-
 	// Validate required variants
 	for (const variant of requiredVariants) {
 
 		// Check if the required variant exists in variants
-		if (!variantKeysSet.has(variant)) {
+		if (!variantKeys.has(variant)) {
 			throw new Error(
 				`Required variant "${variant}" is not defined in variants`
 			);
@@ -396,57 +376,52 @@ export function sv<
 
 	const variantFn = (props: SVProps<S, V, RV> = {} as SVProps<S, V, RV>) => {
 
-		const filteredProps: Record<string, unknown> = {};
+		const classProp = props.class ?? props.className;
 
-		// Strip undefined props so they don't override defaults
-		for (const key of keys(props)) {
-
-			const value = (props as Record<string, unknown>)[key];
-
-			// Only include defined props
-			if (value !== undefined) {
-				filteredProps[key] = value;
-			}
-		}
-
-		const resolvedDefaults: Record<string, unknown> = {};
-
-		// Resolve default variants
-		for (const key of defaultVariantKeys) {
-			if (filteredProps[key] === undefined) {
-
-				const value = (defaultVariants as Record<string, unknown>)[key];
-
-				// Check for conditional default variant function
-				if (typeof value === 'function') {
-
-					const resolvedValue = value(
-						filteredProps as Partial<SVVariantProps<S, V>>
-					);
-
-					// Only include resolved default if it's defined
-					if (resolvedValue !== undefined) {
-						resolvedDefaults[key] = resolvedValue;
-					}
-				} else if (value !== undefined) {
-					resolvedDefaults[key] = value;
-				}
-			}
-		}
-
-		const mergedProps = {
-			...resolvedDefaults,
-			...filteredProps
-		} as Record<
+		const resolvedProps = {} as Record<
 			string,
 			ClassValue | Partial<Record<SVSlotKey<S>, ClassValue>>
 		>;
 
-		const classProp = mergedProps.class ?? mergedProps.className;
-		const cacheKey = getCacheKey(mergedProps, classProp);
+		let cacheKey = '';
 
-		// Skip caching if cacheKey is null
-		if (cacheKey !== null) {
+		// Resolve variant props, applying defaults where necessary
+		for (const variantKey of variantKeys) {
+
+			const propValue = (props as Record<string, unknown>)[variantKey];
+
+			if (propValue === undefined) {
+				if (defaultVariantKeys.has(variantKey)) {
+
+					const defaultValue = (
+						defaultVariants as Record<string, unknown>
+					)[variantKey];
+
+					if (typeof defaultValue === 'function') {
+						resolvedProps[variantKey] = defaultValue(props);
+					} else {
+						resolvedProps[variantKey] = defaultValue as
+							| ClassValue
+							| Partial<Record<SVSlotKey<S>, ClassValue>>;
+					}
+
+					if (!classProp) {
+						cacheKey += `${resolvedProps[variantKey]};`;
+					}
+				}
+			} else {
+				resolvedProps[variantKey] = propValue as
+					| ClassValue
+					| Partial<Record<SVSlotKey<S>, ClassValue>>;
+
+				if (!classProp) {
+					cacheKey += `${propValue};`;
+				}
+			}
+		}
+
+		// Skip caching if cacheKey is not available
+		if (!classProp) {
 
 			const cacheValue = cache.get(cacheKey);
 
@@ -458,7 +433,7 @@ export function sv<
 
 		// Validate required variants
 		for (const variant of requiredVariants) {
-			if (mergedProps[variant] === undefined) {
+			if (resolvedProps[variant] === undefined) {
 				throw new Error(`Missing required variant: "${variant}"`);
 			}
 		}
@@ -478,7 +453,7 @@ export function sv<
 		// Apply variant classes
 		for (const [variantKey, variantValues] of variantEntries) {
 
-			const variantProp = mergedProps[variantKey];
+			const variantProp = resolvedProps[variantKey];
 
 			// Skip if variant prop is not defined (undefined or not provided)
 			if (variantProp === undefined) {
@@ -502,14 +477,14 @@ export function sv<
 
 		// Apply compound variant classes
 		for (const compound of compoundVariants) {
-			if (matchesCompound(mergedProps, compound)) {
+			if (matchesCompound(resolvedProps, compound)) {
 				applyClasses(slotClasses, compound.class ?? compound.className);
 			}
 		}
 
 		// Apply compound slot classes
 		for (const compound of compoundSlots) {
-			if (matchesCompound(mergedProps, compound)) {
+			if (matchesCompound(resolvedProps, compound)) {
 
 				const compoundClass = compound.class ?? compound.className;
 
