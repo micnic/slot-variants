@@ -156,9 +156,12 @@ type SVReturnType<
 	getCacheSize: () => number;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type VariantProps<T extends (...args: any[]) => unknown> = Prettify<
-	Omit<Exclude<Parameters<T>[0], undefined>, 'class' | 'className'>
+export type VariantProps<
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	T extends (...args: any[]) => unknown,
+	E extends string = never
+> = Prettify<
+	Omit<Exclude<Parameters<T>[0], undefined>, 'class' | 'className' | E>
 >;
 
 const { isArray } = Array;
