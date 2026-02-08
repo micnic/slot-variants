@@ -1,6 +1,6 @@
 {
 	"name": "slot-variants",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Type-safe class name variants with slots",
 	"type": "module",
 	"exports": {
@@ -22,8 +22,9 @@
 		"format:check": "prettier --check src",
 		"prepublishOnly": "npm run build"
 	},
-	"keywords": [],
-	"author": "",
+	"repository": "github:micnic/slot-variants",
+	"keywords": ["classes", "classname", "classnames", "variants", "slots"],
+	"author": "Nicu Micleușanu",
 	"license": "MIT",
 	"devDependencies": {
 		"@eslint/js": "9.39.2",
