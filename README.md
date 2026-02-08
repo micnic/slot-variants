@@ -636,12 +636,45 @@ type ButtonProps = VariantProps<typeof button>;
 // { size?: 'sm' | 'lg' | undefined; intent: 'primary' | 'danger' }
 ```
 
+### Excluding Variants from Props
+
+`VariantProps` accepts an optional second type parameter to exclude specific variants from the extracted props. This is useful when some variants are controlled internally by a component and should not be exposed to consumers:
+
+```typescript
+const button = sv('btn', {
+  variants: {
+    size: {
+      sm: 'text-sm',
+      lg: 'text-lg'
+    },
+    intent: {
+      primary: 'bg-blue-500',
+      danger: 'bg-red-500'
+    },
+    internalState: {
+      active: 'ring-2',
+      idle: ''
+    }
+  }
+});
+
+type ButtonProps = VariantProps<typeof button, 'internalState'>;
+// { size?: 'sm' | 'lg' | undefined; intent?: 'primary' | 'danger' | undefined }
+```
+
+Multiple variants can be excluded using a union:
+
+```typescript
+type ButtonProps = VariantProps<typeof button, 'internalState' | 'intent'>;
+// { size?: 'sm' | 'lg' | undefined }
+```
+
 ### Exported Types
 
 | Type | Description |
 | --- | --- |
 | `ClassValue` | Valid input types for `cn()` |
-| `VariantProps<T>` | Extracts variant props from an `sv()` return type |
+| `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E` |
 
 ### Return Type
 

@@ -110,12 +110,29 @@ type AssertMultiVariant = MultiVariantProps extends {
 	: false;
 const _assertMultiVariant: AssertMultiVariant = true;
 
+// VariantProps with exclusion should omit specified variants
+type ExcludedVariantProps = VariantProps<typeof _multiVariantFn, 'intent'>;
+
+type AssertExcludedVariant = ExcludedVariantProps extends {
+	size?: 'sm' | 'lg' | undefined;
+}
+	? true
+	: false;
+const _assertExcludedVariant: AssertExcludedVariant = true;
+
+type AssertIntentExcluded = 'intent' extends keyof ExcludedVariantProps
+	? false
+	: true;
+const _assertIntentExcluded: AssertIntentExcluded = true;
+
 void _singleVariantFn;
 void _assertSingleVariant;
 void _assertNoClass;
 void _assertNoClassName;
 void _multiVariantFn;
 void _assertMultiVariant;
+void _assertExcludedVariant;
+void _assertIntentExcluded;
 
 t.test('single variant', (t) => {
 	const button = sv('rounded-lg font-medium', {
