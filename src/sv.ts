@@ -102,22 +102,38 @@ type SVDefaultVariants<
 		| undefined;
 };
 
+type SVPresets<
+	S extends SVSlots | undefined,
+	V extends SVVariants<S> | undefined
+> = Record<string, Partial<SVVariantProps<S, V>>>;
+
+type PresetProp<P extends Record<string, unknown> | undefined> =
+	P extends Record<string, unknown>
+		? { preset?: StringKeyof<P> | undefined }
+		: unknown;
+
 type SVProps<
 	S extends SVSlots | undefined,
 	V extends SVVariants<S> | undefined,
-	RV extends StringKeyof<V>[]
+	RV extends StringKeyof<V>[],
+	P extends SVPresets<S, V> | undefined
 > = V extends undefined
 	? ClassProp<S>
-	: Prettify<
-			Pick<SVVariantProps<S, V>, RV[number]> &
-				Omit<PartialUndefined<SVVariantProps<S, V>>, RV[number]>
-		> &
-			ClassProp<S>;
+	: P extends Record<string, unknown>
+		? Prettify<PartialUndefined<SVVariantProps<S, V>>> &
+				ClassProp<S> &
+				PresetProp<P>
+		: Prettify<
+				Pick<SVVariantProps<S, V>, RV[number]> &
+					Omit<PartialUndefined<SVVariantProps<S, V>>, RV[number]>
+			> &
+				ClassProp<S>;
 
 type SVConfig<
 	S extends SVSlots | undefined,
 	V extends SVVariants<S> | undefined,
-	RV extends StringKeyof<V>[]
+	RV extends StringKeyof<V>[],
+	P extends SVPresets<S, V> | undefined
 > = {
 	variants?: V | undefined;
 	slots?: S | undefined;
@@ -125,6 +141,7 @@ type SVConfig<
 	compoundSlots?: SVCompoundSlots<S, V> | undefined;
 	defaultVariants?: SVDefaultVariants<S, V, RV> | undefined;
 	requiredVariants?: RV | undefined;
+	presets?: P | undefined;
 	cacheSize?: number | undefined;
 	postProcess?: ((className: string) => string) | undefined;
 };
@@ -136,22 +153,26 @@ type SVReturnValue<S extends SVSlots | undefined> = S extends undefined
 type SVReturnFn<
 	S extends SVSlots | undefined,
 	V extends SVVariants<S> | undefined,
-	RV extends StringKeyof<V>[]
+	RV extends StringKeyof<V>[],
+	P extends SVPresets<S, V> | undefined
 > = RV extends []
-	? (props?: SVProps<S, V, RV> | undefined) => SVReturnValue<S>
-	: (props: SVProps<S, V, RV>) => SVReturnValue<S>;
+	? (props?: SVProps<S, V, RV, P> | undefined) => SVReturnValue<S>
+	: (props: SVProps<S, V, RV, P>) => SVReturnValue<S>;
 
 type SVReturnType<
 	S extends SVSlots | undefined,
 	V extends SVVariants<S> | undefined,
-	RV extends StringKeyof<V>[]
-> = SVReturnFn<S, V, RV> & {
+	RV extends StringKeyof<V>[],
+	P extends SVPresets<S, V> | undefined
+> = SVReturnFn<S, V, RV, P> & {
 	variants: V;
 	variantKeys: StringKeyof<V>[];
 	slots: S;
 	slotKeys: S extends SVSlots ? SVSlotKey<S>[] : ['base'];
 	defaultVariants: SVDefaultVariants<S, V, RV>;
 	requiredVariants: RV;
+	presets: P;
+	presetKeys: P extends Record<string, unknown> ? StringKeyof<P>[] : [];
 	clearCache: () => void;
 	getCacheSize: () => number;
 };
@@ -161,7 +182,10 @@ export type VariantProps<
 	T extends (...args: any[]) => unknown,
 	E extends string = never
 > = Prettify<
-	Omit<Exclude<Parameters<T>[0], undefined>, 'class' | 'className' | E>
+	Omit<
+		Exclude<Parameters<T>[0], undefined>,
+		'class' | 'className' | 'preset' | E
+	>
 >;
 
 const { isArray } = Array;
@@ -220,16 +244,18 @@ export function sv(base: ClassValue): string;
 export function sv<
 	S extends SVSlots | undefined = undefined,
 	V extends SVVariants<S> | undefined = undefined,
-	RV extends StringKeyof<V>[] | [] = []
->(base: ClassValue, config: SVConfig<S, V, RV>): SVReturnType<S, V, RV>;
+	RV extends StringKeyof<V>[] | [] = [],
+	P extends SVPresets<S, V> | undefined = undefined
+>(base: ClassValue, config: SVConfig<S, V, RV, P>): SVReturnType<S, V, RV, P>;
 export function sv<
 	S extends SVSlots | undefined = undefined,
 	V extends SVVariants<S> | undefined = undefined,
-	RV extends StringKeyof<V>[] | [] = []
+	RV extends StringKeyof<V>[] | [] = [],
+	P extends SVPresets<S, V> | undefined = undefined
 >(
 	base: ClassValue,
-	config?: SVConfig<S, V, RV> | undefined
-): string | SVReturnType<S, V, RV> {
+	config?: SVConfig<S, V, RV, P> | undefined
+): string | SVReturnType<S, V, RV, P> {
 
 	// If no config provided, just return the base
 	if (!config) {
@@ -243,6 +269,7 @@ export function sv<
 		compoundSlots = [],
 		defaultVariants = {} as SVDefaultVariants<S, V, RV>,
 		requiredVariants = [],
+		presets = {},
 		cacheSize = 256,
 		postProcess
 	} = config;
@@ -377,9 +404,28 @@ export function sv<
 		}
 	}
 
-	const variantFn = (props: SVProps<S, V, RV> = {} as SVProps<S, V, RV>) => {
+	const presetKeys = new Set(keys(presets));
 
+	const variantFn = (
+		props: SVProps<S, V, RV, P> = {} as SVProps<S, V, RV, P>
+	) => {
 		const classProp = props.class ?? props.className;
+		const presetName = (props as Record<string, unknown>).preset as
+			| string
+			| undefined;
+
+		// Resolve preset values
+		let presetValues: Record<string, unknown> | undefined;
+
+		if (presetName !== undefined) {
+			if (!presetKeys.has(presetName)) {
+				throw new Error(`Invalid preset "${presetName}"`);
+			}
+
+			presetValues = (presets as Record<string, Record<string, unknown>>)[
+				presetName
+			];
+		}
 
 		const resolvedProps = {} as Record<
 			string,
@@ -388,14 +434,23 @@ export function sv<
 
 		let cacheKey = '';
 
-		// Resolve variant props, applying defaults where necessary
+		// Resolve variant props: explicit prop > preset > default
 		for (const variantKey of variantKeys) {
 
 			const propValue = (props as Record<string, unknown>)[variantKey];
 
 			if (propValue === undefined) {
-				if (defaultVariantKeys.has(variantKey)) {
+				const presetValue = presetValues?.[variantKey];
 
+				if (presetValue !== undefined) {
+					resolvedProps[variantKey] = presetValue as
+						| ClassValue
+						| Partial<Record<SVSlotKey<S>, ClassValue>>;
+
+					if (!classProp) {
+						cacheKey += `${presetValue};`;
+					}
+				} else if (defaultVariantKeys.has(variantKey)) {
 					const defaultValue = (
 						defaultVariants as Record<string, unknown>
 					)[variantKey];
@@ -526,7 +581,9 @@ export function sv<
 		slotKeys: ['base', ...slotKeys],
 		defaultVariants,
 		requiredVariants,
+		presets,
+		presetKeys: keys(presets),
 		clearCache: () => cache.clear(),
 		getCacheSize: () => cache.size
-	}) as SVReturnType<S, V, RV>;
+	}) as SVReturnType<S, V, RV, P>;
 }
