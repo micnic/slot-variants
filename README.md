@@ -328,6 +328,58 @@ button({ intent: 'primary', size: 'lg' });  // OK
 button({ size: 'lg' });                     // Throws: Missing required variant: "intent"
 ```
 
+### Presets
+
+Presets are predefined named combinations of variant values. Use them to create reusable variant shortcuts:
+
+```typescript
+const button = sv('btn', {
+  variants: {
+    size: {
+      sm: 'text-sm',
+      lg: 'text-lg'
+    },
+    intent: {
+      primary: 'bg-blue-500',
+      danger: 'bg-red-500'
+    },
+    rounded: {
+      true: 'rounded-full',
+      false: 'rounded-md'
+    }
+  },
+  presets: {
+    cta: { size: 'lg', intent: 'primary', rounded: true },
+    subtle: { size: 'sm', intent: 'primary' }
+  },
+  defaultVariants: {
+    rounded: false
+  }
+});
+
+button({ preset: 'cta' });
+// 'btn text-lg bg-blue-500 rounded-full'
+
+button({ preset: 'subtle' });
+// 'btn text-sm bg-blue-500 rounded-md'
+```
+
+Explicit props override preset values, and presets override defaults. The priority order is: `defaultVariants` < `preset` < explicit props:
+
+```typescript
+button({ preset: 'cta', size: 'sm' });
+// 'btn text-sm bg-blue-500 rounded-full'
+// size overridden to 'sm', rest from preset
+```
+
+Presets can satisfy required variants at runtime — if a preset provides a required variant, it does not need to be passed explicitly.
+
+An invalid preset name throws an error:
+
+```typescript
+button({ preset: 'nonexistent' }); // Throws: Invalid preset "nonexistent"
+```
+
 ### Slots
 
 Slots allow you to define multiple named class targets for multi-element components. When slots are defined, the returned function produces an object with `base` and each named slot as keys:
@@ -599,7 +651,10 @@ const button = sv('btn', {
   defaultVariants: {
     size: 'sm'
   },
-  requiredVariants: ['intent']
+  requiredVariants: ['intent'],
+  presets: {
+    cta: { size: 'lg', intent: 'primary' }
+  }
 });
 
 button.variantKeys;      // ['size', 'intent']
@@ -608,6 +663,8 @@ button.slotKeys;         // ['base', 'icon']
 button.slots;            // { icon: 'w-4 h-4' }
 button.defaultVariants;  // { size: 'sm' }
 button.requiredVariants; // ['intent']
+button.presetKeys;       // ['cta']
+button.presets;          // { cta: { size: 'lg', intent: 'primary' } }
 ```
 
 ## TypeScript
@@ -691,5 +748,6 @@ type ButtonProps = VariantProps<typeof button, 'internalState' | 'intent'>;
 | `compoundSlots` | `Array` | Classes applied to multiple slots based on variant conditions |
 | `defaultVariants` | `Object` | Default values for variants (static values or functions) |
 | `requiredVariants` | `string[]` | Variant names that must be provided at call time |
+| `presets` | `Record<string, Partial<VariantProps>>` | Named combinations of variant values selectable via `preset` prop |
 | `postProcess` | `(className: string) => string` | Custom transformation applied to final class strings |
 | `cacheSize` | `number` | Maximum number of cached results (default: `256`) |

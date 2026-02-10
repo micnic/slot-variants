@@ -3401,3 +3401,346 @@ const _assertEmptyConfigProps: AssertEmptyConfigProps = true;
 void _typeEmptyConfigFn;
 void _assertEmptyConfigString;
 void _assertEmptyConfigProps;
+
+// =============================================================================
+// sv() - presets
+// =============================================================================
+
+// --- preset type tests ---
+
+const _presetFn = sv('btn', {
+	variants: {
+		size: {
+			sm: 'text-sm',
+			lg: 'text-lg'
+		},
+		intent: {
+			primary: 'bg-blue-500',
+			danger: 'bg-red-500'
+		}
+	},
+	presets: {
+		cta: { size: 'lg', intent: 'primary' },
+		warning: { size: 'sm', intent: 'danger' }
+	}
+});
+
+// VariantProps should NOT include 'preset'
+type PresetVariantProps = VariantProps<typeof _presetFn>;
+
+type AssertPresetExcluded = 'preset' extends keyof PresetVariantProps
+	? false
+	: true;
+const _assertPresetExcluded: AssertPresetExcluded = true;
+
+// preset should only accept defined preset names
+type AssertPresetProp = Parameters<typeof _presetFn>[0] extends
+	| { preset?: 'cta' | 'warning' | undefined }
+	| undefined
+	? true
+	: false;
+const _assertPresetProp: AssertPresetProp = true;
+
+void _presetFn;
+void _assertPresetExcluded;
+void _assertPresetProp;
+
+t.test('preset applies variant values', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		presets: {
+			cta: { size: 'lg', intent: 'primary' },
+			warning: { size: 'sm', intent: 'danger' }
+		}
+	});
+
+	t.equal(
+		button({ preset: 'cta' }),
+		'btn text-lg bg-blue-500',
+		'cta preset applies size and intent'
+	);
+	t.equal(
+		button({ preset: 'warning' }),
+		'btn text-sm bg-red-500',
+		'warning preset applies size and intent'
+	);
+
+	t.end();
+});
+
+t.test('explicit props override preset values', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		presets: {
+			cta: { size: 'lg', intent: 'primary' }
+		}
+	});
+
+	t.equal(
+		button({ preset: 'cta', size: 'sm' }),
+		'btn text-sm bg-blue-500',
+		'explicit size overrides preset size'
+	);
+	t.equal(
+		button({ preset: 'cta', intent: 'danger' }),
+		'btn text-lg bg-red-500',
+		'explicit intent overrides preset intent'
+	);
+	t.equal(
+		button({ preset: 'cta', size: 'sm', intent: 'danger' }),
+		'btn text-sm bg-red-500',
+		'all explicit props override preset'
+	);
+
+	t.end();
+});
+
+t.test('preset overrides default variants', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		defaultVariants: {
+			size: 'sm',
+			intent: 'primary'
+		},
+		presets: {
+			large: { size: 'lg' }
+		}
+	});
+
+	t.equal(
+		button(),
+		'btn text-sm bg-blue-500',
+		'defaults applied when no preset'
+	);
+	t.equal(
+		button({ preset: 'large' }),
+		'btn text-lg bg-blue-500',
+		'preset overrides size default, intent uses default'
+	);
+
+	t.end();
+});
+
+t.test('preset satisfies required variants', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		requiredVariants: ['intent'],
+		presets: {
+			cta: { size: 'lg', intent: 'primary' }
+		}
+	});
+
+	t.equal(
+		button({ preset: 'cta' }),
+		'btn text-lg bg-blue-500',
+		'preset provides required variant'
+	);
+
+	t.end();
+});
+
+t.test('throws for invalid preset name', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			}
+		},
+		presets: {
+			cta: { size: 'lg' }
+		}
+	});
+
+	t.throws(
+		// @ts-expect-error - intentionally passing invalid preset name
+		() => button({ preset: 'nonexistent' }),
+		{ message: 'Invalid preset "nonexistent"' },
+		'throws for unknown preset name'
+	);
+
+	t.end();
+});
+
+t.test('preset with slots', (t) => {
+	const card = sv('card border', {
+		slots: {
+			header: 'font-bold',
+			body: 'py-4'
+		},
+		variants: {
+			size: {
+				sm: { base: 'p-2', header: 'text-sm', body: 'text-sm' },
+				lg: { base: 'p-6', header: 'text-lg', body: 'text-lg' }
+			},
+			variant: {
+				outlined: { base: 'border-gray-200' },
+				filled: { base: 'bg-gray-100', header: 'bg-gray-200' }
+			}
+		},
+		presets: {
+			compact: { size: 'sm', variant: 'outlined' },
+			hero: { size: 'lg', variant: 'filled' }
+		}
+	});
+
+	t.strictSame(
+		card({ preset: 'compact' }),
+		{
+			base: 'card border p-2 border-gray-200',
+			header: 'font-bold text-sm',
+			body: 'py-4 text-sm'
+		},
+		'compact preset applied to slots'
+	);
+	t.strictSame(
+		card({ preset: 'hero' }),
+		{
+			base: 'card border p-6 bg-gray-100',
+			header: 'font-bold text-lg bg-gray-200',
+			body: 'py-4 text-lg'
+		},
+		'hero preset applied to slots'
+	);
+
+	t.end();
+});
+
+t.test('preset with compound variants', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		compoundVariants: [
+			{
+				size: 'lg',
+				intent: 'primary',
+				class: 'uppercase font-bold'
+			}
+		],
+		presets: {
+			cta: { size: 'lg', intent: 'primary' }
+		}
+	});
+
+	t.equal(
+		button({ preset: 'cta' }),
+		'btn text-lg bg-blue-500 uppercase font-bold',
+		'preset triggers compound variant match'
+	);
+
+	t.end();
+});
+
+t.test('cache works with presets', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			}
+		},
+		presets: {
+			small: { size: 'sm' },
+			large: { size: 'lg' }
+		}
+	});
+
+	t.equal(button.getCacheSize(), 0, 'cache initially empty');
+
+	button({ preset: 'small' });
+	t.equal(button.getCacheSize(), 1, 'cache has 1 entry after preset call');
+
+	button({ preset: 'small' });
+	t.equal(button.getCacheSize(), 1, 'cache hit for same preset');
+
+	button({ preset: 'large' });
+	t.equal(button.getCacheSize(), 2, 'cache has 2 entries for different presets');
+
+	// Same resolved values should hit the same cache entry
+	button({ size: 'sm' });
+	t.equal(button.getCacheSize(), 2, 'explicit props matching preset share cache');
+
+	t.end();
+});
+
+t.test('presets exposed via introspection', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			}
+		},
+		presets: {
+			small: { size: 'sm' },
+			large: { size: 'lg' }
+		}
+	});
+
+	t.strictSame(
+		button.presets,
+		{ small: { size: 'sm' }, large: { size: 'lg' } },
+		'presets config exposed'
+	);
+
+	t.end();
+});
+
+t.test('presets is empty object when none provided', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			}
+		}
+	});
+
+	t.strictSame(button.presets, {}, 'empty object');
+
+	t.end();
+});
