@@ -47,7 +47,6 @@
 		"format": [
 			"cjs",
 			"esm"
-		],
-		"minify": true
+		]
 	}
 }
