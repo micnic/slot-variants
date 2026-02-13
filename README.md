@@ -1,5 +1,7 @@
 # slot-variants
 
+<img src="logo.svg" alt="slot-variants logo" width="200" />
+
 A lightweight, zero-dependency, type-safe library for managing class name variants with slots support.
 
 ## Installation
