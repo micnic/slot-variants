@@ -1,6 +1,6 @@
 {
 	"name": "slot-variants",
-	"version": "1.0.1",
+	"version": "1.1.0",
 	"description": "Type-safe class name variants with slots",
 	"type": "module",
 	"exports": {
