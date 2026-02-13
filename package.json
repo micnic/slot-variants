@@ -11,7 +11,9 @@
 		}
 	},
 	"files": [
-		"dist"
+		"AGENTS.md",
+		"dist",
+		"logo.svg"
 	],
 	"scripts": {
 		"build": "tsup src/index.ts && rm dist/index.d.cts",
