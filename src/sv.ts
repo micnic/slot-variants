@@ -173,6 +173,9 @@ type SVReturnType<
 	requiredVariants: RV;
 	presets: P;
 	presetKeys: P extends Record<string, unknown> ? StringKeyof<P>[] : [];
+	getVariantValues: V extends SVVariants<S>
+		? <K extends StringKeyof<V>>(key: K) => SVVariantPropType<V[K], S>[]
+		: (key: never) => never[];
 	clearCache: () => void;
 	getCacheSize: () => number;
 };
@@ -574,6 +577,27 @@ export function sv<
 		return cacheReturn(cacheKey, result);
 	};
 
+	const getVariantValues = (key: string) =>
+		keys(normalizedVariants[key] ?? {}).map((value) => {
+
+			// Coerce 'true' string as boolean true
+			if (value === 'true') {
+				return true;
+			}
+
+			// Coerce 'false' string as boolean false
+			if (value === 'false') {
+				return false;
+			}
+
+			// Coerce numeric strings to numbers
+			if (value !== '' && !Number.isNaN(Number(value))) {
+				return Number(value);
+			}
+
+			return value;
+		});
+
 	return assign(variantFn, {
 		variants,
 		variantKeys: keys(variants),
@@ -583,6 +607,7 @@ export function sv<
 		requiredVariants,
 		presets,
 		presetKeys: keys(presets),
+		getVariantValues,
 		clearCache: () => cache.clear(),
 		getCacheSize: () => cache.size
 	}) as SVReturnType<S, V, RV, P>;

@@ -3135,6 +3135,158 @@ t.test('introspection with all properties combined', (t) => {
 	t.end();
 });
 
+t.test('getVariantValues returns empty array for unknown key (TS bypassed)', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' }
+		}
+	});
+
+	// @ts-expect-error - intentionally passing an invalid key to test the runtime fallback
+	t.same(button.getVariantValues('unknown'), [], 'returns empty array for key not in variants');
+
+	t.end();
+});
+
+t.test('getVariantValues returns string values for a string variant', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				md: 'text-md',
+				lg: 'text-lg'
+			}
+		}
+	});
+
+	t.same(button.getVariantValues('size'), ['sm', 'md', 'lg'], 'string values');
+
+	t.end();
+});
+
+t.test('getVariantValues returns booleans for boolean shorthand variant', (t) => {
+	const button = sv('btn', {
+		variants: {
+			disabled: 'opacity-50'
+		}
+	});
+
+	t.same(
+		button.getVariantValues('disabled'),
+		[false, true],
+		'boolean shorthand returns [false, true]'
+	);
+
+	t.end();
+});
+
+t.test('getVariantValues returns booleans for true/false record variant', (t) => {
+	const button = sv('btn', {
+		variants: {
+			disabled: {
+				true: 'opacity-50',
+				false: 'opacity-100'
+			}
+		}
+	});
+
+	t.same(
+		button.getVariantValues('disabled'),
+		[true, false],
+		'true/false record returns booleans in definition order'
+	);
+
+	t.end();
+});
+
+t.test('getVariantValues returns numbers for numeric variant', (t) => {
+	const grid = sv('grid', {
+		variants: {
+			cols: {
+				1: 'grid-cols-1',
+				2: 'grid-cols-2',
+				3: 'grid-cols-3'
+			}
+		}
+	});
+
+	t.same(grid.getVariantValues('cols'), [1, 2, 3], 'numeric values');
+
+	t.end();
+});
+
+t.test('getVariantValues works for each key in a multi-variant component', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+		}
+	});
+
+	t.same(button.getVariantValues('size'), ['sm', 'lg'], 'size values');
+	t.same(
+		button.getVariantValues('intent'),
+		['primary', 'danger'],
+		'intent values'
+	);
+
+	t.end();
+});
+
+t.test('getVariantValues works when slots are defined', (t) => {
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold'
+		},
+		variants: {
+			size: { sm: 'p-2', lg: 'p-6' }
+		}
+	});
+
+	t.same(card.getVariantValues('size'), ['sm', 'lg'], 'string values with slots');
+
+	t.end();
+});
+
+// --- getVariantValues type tests ---
+
+const _gvvFn = sv('btn', {
+	variants: {
+		size: { sm: 'text-sm', lg: 'text-lg' },
+		disabled: 'opacity-50',
+		cols: { 1: 'grid-cols-1', 2: 'grid-cols-2' }
+	}
+});
+
+// String variant → ('sm' | 'lg')[]
+const _gvvSizeValues = _gvvFn.getVariantValues('size');
+type AssertGvvSizeValues = typeof _gvvSizeValues extends ('sm' | 'lg')[]
+	? true
+	: false;
+const _assertGvvSizeValues: AssertGvvSizeValues = true;
+
+// Boolean shorthand variant → boolean[]
+const _gvvDisabledValues = _gvvFn.getVariantValues('disabled');
+type AssertGvvDisabledValues = typeof _gvvDisabledValues extends boolean[]
+	? true
+	: false;
+const _assertGvvDisabledValues: AssertGvvDisabledValues = true;
+
+// Numeric variant → (1 | 2)[]
+const _gvvColsValues = _gvvFn.getVariantValues('cols');
+type AssertGvvColsValues = typeof _gvvColsValues extends (1 | 2)[]
+	? true
+	: false;
+const _assertGvvColsValues: AssertGvvColsValues = true;
+
+void _gvvFn;
+void _gvvSizeValues;
+void _assertGvvSizeValues;
+void _gvvDisabledValues;
+void _assertGvvDisabledValues;
+void _gvvColsValues;
+void _assertGvvColsValues;
+
 // =============================================================================
 // sv() - additional type tests
 // =============================================================================

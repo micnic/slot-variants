@@ -659,14 +659,16 @@ const button = sv('btn', {
   }
 });
 
-button.variantKeys;      // ['size', 'intent']
-button.variants;         // { size: { sm: 'text-sm', lg: 'text-lg' }, intent: { ... } }
-button.slotKeys;         // ['base', 'icon']
-button.slots;            // { icon: 'w-4 h-4' }
-button.defaultVariants;  // { size: 'sm' }
-button.requiredVariants; // ['intent']
-button.presetKeys;       // ['cta']
-button.presets;          // { cta: { size: 'lg', intent: 'primary' } }
+button.variantKeys;                 // ['size', 'intent']
+button.variants;                    // { size: { sm: 'text-sm', lg: 'text-lg' }, intent: { ... } }
+button.slotKeys;                    // ['base', 'icon']
+button.slots;                       // { icon: 'w-4 h-4' }
+button.defaultVariants;             // { size: 'sm' }
+button.requiredVariants;            // ['intent']
+button.presetKeys;                  // ['cta']
+button.presets;                     // { cta: { size: 'lg', intent: 'primary' } }
+button.getVariantValues('size');    // ['sm', 'lg']
+button.getVariantValues('intent');  // ['primary', 'danger']
 ```
 
 ## TypeScript
