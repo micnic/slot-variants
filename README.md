@@ -730,12 +730,50 @@ type ButtonProps = VariantProps<typeof button, 'internalState' | 'intent'>;
 // { size?: 'sm' | 'lg' | undefined }
 ```
 
+### Extracting a Single Variant's Values
+
+`VariantValue` extracts the value union for a specific variant key. Unlike indexing into `VariantProps`, it always returns a clean union without `undefined`:
+
+```typescript
+import { sv, type VariantValue } from 'slot-variants';
+
+const button = sv('btn', {
+  variants: {
+    size: {
+      sm: 'text-sm',
+      md: 'text-base',
+      lg: 'text-lg'
+    },
+    intent: {
+      primary: 'bg-blue-500',
+      danger: 'bg-red-500'
+    }
+  },
+  requiredVariants: ['intent']
+});
+
+type SizeValue = VariantValue<typeof button, 'size'>;
+// 'sm' | 'md' | 'lg'  (no undefined, even though size is optional)
+
+type IntentValue = VariantValue<typeof button, 'intent'>;
+// 'primary' | 'danger'
+```
+
+This is useful when a component only needs to forward a single variant as a typed prop:
+
+```typescript
+interface ButtonGroupProps {
+  size?: VariantValue<typeof button, 'size'>;
+}
+```
+
 ### Exported Types
 
 | Type | Description |
 | --- | --- |
 | `ClassValue` | Valid input types for `cn()` |
 | `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E` |
+| `VariantValue<T, K>` | Extracts the value union for a single variant key `K`, without `undefined` |
 
 ### Return Type
 

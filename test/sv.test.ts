@@ -1,5 +1,5 @@
 import t from 'tap';
-import { sv, type VariantProps } from '../src/index.ts';
+import { sv, type VariantProps, type VariantValue } from '../src/index.ts';
 
 // =============================================================================
 // sv() - base only (no config)
@@ -3896,3 +3896,74 @@ t.test('presets is empty object when none provided', (t) => {
 
 	t.end();
 });
+
+// =============================================================================
+// VariantValue type
+// =============================================================================
+
+const _variantValueFn = sv('btn', {
+	variants: {
+		size: {
+			sm: 'text-sm',
+			md: 'text-base',
+			lg: 'text-lg'
+		},
+		intent: {
+			primary: 'bg-blue-500',
+			danger: 'bg-red-500'
+		},
+		disabled: 'opacity-50',
+		level: {
+			1: 'text-4xl',
+			2: 'text-3xl'
+		}
+	},
+	requiredVariants: ['intent']
+});
+
+// optional variant - should not include undefined
+type VVSize = VariantValue<typeof _variantValueFn, 'size'>;
+type AssertVVSize = VVSize extends 'sm' | 'md' | 'lg'
+	? ('sm' | 'md' | 'lg') extends VVSize
+		? true
+		: false
+	: false;
+const _assertVVSize: AssertVVSize = true;
+
+// undefined should be excluded even though size is optional
+type AssertVVSizeNoUndefined = undefined extends VVSize ? false : true;
+const _assertVVSizeNoUndefined: AssertVVSizeNoUndefined = true;
+
+// required variant - should give the plain union
+type VVIntent = VariantValue<typeof _variantValueFn, 'intent'>;
+type AssertVVIntent = VVIntent extends 'primary' | 'danger'
+	? ('primary' | 'danger') extends VVIntent
+		? true
+		: false
+	: false;
+const _assertVVIntent: AssertVVIntent = true;
+
+// boolean shorthand variant
+type VVDisabled = VariantValue<typeof _variantValueFn, 'disabled'>;
+type AssertVVDisabled = VVDisabled extends boolean
+	? boolean extends VVDisabled
+		? true
+		: false
+	: false;
+const _assertVVDisabled: AssertVVDisabled = true;
+
+// numeric variant keys
+type VVLevel = VariantValue<typeof _variantValueFn, 'level'>;
+type AssertVVLevel = VVLevel extends 1 | 2
+	? (1 | 2) extends VVLevel
+		? true
+		: false
+	: false;
+const _assertVVLevel: AssertVVLevel = true;
+
+void _variantValueFn;
+void _assertVVSize;
+void _assertVVSizeNoUndefined;
+void _assertVVIntent;
+void _assertVVDisabled;
+void _assertVVLevel;

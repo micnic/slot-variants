@@ -191,6 +191,12 @@ export type VariantProps<
 	>
 >;
 
+export type VariantValue<
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	T extends (...args: any[]) => unknown,
+	K extends keyof VariantProps<T>
+> = NonNullable<VariantProps<T>[K]>;
+
 const { isArray } = Array;
 const { assign, entries, keys } = Object;
 
