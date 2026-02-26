@@ -1,5 +1,5 @@
 import t from 'tap';
-import { sv, type VariantProps, type VariantValue } from '../src/index.ts';
+import { sv, type SlotClassProps, type VariantProps, type VariantValue } from '../src/index.ts';
 
 // =============================================================================
 // sv() - base only (no config)
@@ -3967,3 +3967,63 @@ void _assertVVSizeNoUndefined;
 void _assertVVIntent;
 void _assertVVDisabled;
 void _assertVVLevel;
+
+// =============================================================================
+// SlotClassProps type
+// =============================================================================
+
+// Without slots — resolves to { base?: ClassValue }
+const _scpNoSlotsFn = sv('btn', {
+	variants: {
+		size: { sm: 'text-sm', lg: 'text-lg' }
+	}
+});
+
+type SCPNoSlots = SlotClassProps<typeof _scpNoSlotsFn>;
+type AssertSCPNoSlotsHasBase = SCPNoSlots extends { base?: unknown }
+	? true
+	: false;
+type AssertSCPNoSlotsOnlyBase = keyof SCPNoSlots extends 'base' ? true : false;
+const _assertSCPNoSlotsHasBase: AssertSCPNoSlotsHasBase = true;
+const _assertSCPNoSlotsOnlyBase: AssertSCPNoSlotsOnlyBase = true;
+
+// With slots — resolves to Partial<Record<'base' | slotNames, ClassValue>>
+const _scpSlotsFn = sv('border', {
+	slots: {
+		header: 'font-bold',
+		body: 'py-4'
+	},
+	variants: {
+		size: { sm: 'text-sm', lg: 'text-lg' }
+	}
+});
+
+type SCPSlots = SlotClassProps<typeof _scpSlotsFn>;
+type AssertSCPSlotsHasBase = SCPSlots extends { base?: unknown } ? true : false;
+type AssertSCPSlotsHasHeader = SCPSlots extends { header?: unknown }
+	? true
+	: false;
+type AssertSCPSlotsHasBody = SCPSlots extends { body?: unknown } ? true : false;
+const _assertSCPSlotsHasBase: AssertSCPSlotsHasBase = true;
+const _assertSCPSlotsHasHeader: AssertSCPSlotsHasHeader = true;
+const _assertSCPSlotsHasBody: AssertSCPSlotsHasBody = true;
+
+// All keys are optional
+type AssertSCPAllOptional = Partial<SCPSlots> extends SCPSlots ? true : false;
+const _assertSCPAllOptional: AssertSCPAllOptional = true;
+
+// No extra keys beyond the slot names
+type AssertSCPNoExtraKeys = keyof SCPSlots extends 'base' | 'header' | 'body'
+	? true
+	: false;
+const _assertSCPNoExtraKeys: AssertSCPNoExtraKeys = true;
+
+void _scpNoSlotsFn;
+void _assertSCPNoSlotsHasBase;
+void _assertSCPNoSlotsOnlyBase;
+void _scpSlotsFn;
+void _assertSCPSlotsHasBase;
+void _assertSCPSlotsHasHeader;
+void _assertSCPSlotsHasBody;
+void _assertSCPAllOptional;
+void _assertSCPNoExtraKeys;

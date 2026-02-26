@@ -762,10 +762,43 @@ type IntentValue = VariantValue<typeof button, 'intent'>;
 This is useful when a component only needs to forward a single variant as a typed prop:
 
 ```typescript
-interface ButtonGroupProps {
+type ButtonGroupProps = {
   size?: VariantValue<typeof button, 'size'>;
+};
+```
+
+### Slot Class Injection Props
+
+`SlotClassProps<T>` extracts the per-slot class injection shape from an `sv()` return type. This is useful when building wrapper components that expose a typed prop for consumers to pass additional classes into specific slots:
+
+```typescript
+import { sv, type SlotClassProps, type VariantProps } from 'slot-variants';
+
+const card = sv('border rounded-lg', {
+  slots: {
+    header: 'font-bold',
+    body: 'py-4',
+    footer: 'border-t'
+  },
+  variants: {
+    size: { sm: 'text-sm', lg: 'text-lg' }
+  }
+});
+
+type CardClassProps = SlotClassProps<typeof card>;
+// { base?: ClassValue; header?: ClassValue; body?: ClassValue; footer?: ClassValue }
+
+type CardProps = VariantProps<typeof card> & {
+  classNames?: SlotClassProps<typeof card>;
+};
+
+function Card({ classNames, ...variants }: CardProps) {
+  const { base, header, body, footer } = card({ ...variants, class: classNames });
+  // ...
 }
 ```
+
+When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{ base?: ClassValue }`.
 
 ### Exported Types
 
@@ -774,6 +807,7 @@ interface ButtonGroupProps {
 | `ClassValue` | Valid input types for `cn()` |
 | `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E` |
 | `VariantValue<T, K>` | Extracts the value union for a single variant key `K`, without `undefined` |
+| `SlotClassProps<T>` | Extracts the per-slot class injection shape from an `sv()` return type |
 
 ### Return Type
 

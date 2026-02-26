@@ -197,6 +197,13 @@ export type VariantValue<
 	K extends keyof VariantProps<T>
 > = NonNullable<VariantProps<T>[K]>;
 
+export type SlotClassProps<
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	T extends (...args: any[]) => unknown
+> = ReturnType<T> extends string
+	? Partial<Record<'base', ClassValue>>
+	: Prettify<Partial<Record<Extract<keyof ReturnType<T>, string>, ClassValue>>>;
+
 const { isArray } = Array;
 const { assign, entries, keys } = Object;
 
