@@ -208,6 +208,28 @@ export type SlotClassProps<
 const { isArray } = Array;
 const { assign, entries, keys } = Object;
 
+const configKeys = new Set([
+	'base',
+	'variants',
+	'slots',
+	'compoundVariants',
+	'compoundSlots',
+	'defaultVariants',
+	'requiredVariants',
+	'presets',
+	'cacheSize',
+	'postProcess'
+]);
+
+/**
+ * Check if a value is an SVConfig object
+ */
+const isConfig = (value: unknown): boolean =>
+	!!value &&
+	typeof value === 'object' &&
+	!isArray(value) &&
+	keys(value).every((key) => configKeys.has(key));
+
 /**
  * Compare two values for equality, with string coercion fallback
  */
@@ -257,6 +279,12 @@ const matchesCompound = (
  * Creates variant-based class name generator with optional slots support.
  * Inspired by CVA and tailwind-variants.
  */
+export function sv<
+	S extends SVSlots | undefined = undefined,
+	V extends SVVariants<S> | undefined = undefined,
+	RV extends StringKeyof<V>[] | [] = [],
+	P extends SVPresets<S, V> | undefined = undefined
+>(config: SVConfig<S, V, RV, P>): SVReturnType<S, V, RV, P>;
 export function sv(base: ClassValue): string;
 export function sv<
 	S extends SVSlots | undefined = undefined,
@@ -270,9 +298,19 @@ export function sv<
 	RV extends StringKeyof<V>[] | [] = [],
 	P extends SVPresets<S, V> | undefined = undefined
 >(
-	base: ClassValue,
+	baseOrConfig: ClassValue | SVConfig<S, V, RV, P>,
 	config?: SVConfig<S, V, RV, P> | undefined
 ): string | SVReturnType<S, V, RV, P> {
+
+	let base: ClassValue;
+
+	// Detect config-only call: sv(config)
+	if (!config && isConfig(baseOrConfig)) {
+		base = undefined;
+		config = baseOrConfig as SVConfig<S, V, RV, P>;
+	} else {
+		base = baseOrConfig as ClassValue;
+	}
 
 	// If no config provided, just return the base
 	if (!config) {
