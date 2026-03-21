@@ -135,6 +135,7 @@ type SVConfig<
 	RV extends StringKeyof<V>[],
 	P extends SVPresets<S, V> | undefined
 > = {
+	base?: ClassValue | undefined;
 	variants?: V | undefined;
 	slots?: S | undefined;
 	compoundVariants?: SVCompoundVariants<S, V> | undefined;
@@ -279,6 +280,7 @@ export function sv<
 	}
 
 	const {
+		base: configBase,
 		variants = {},
 		slots = {},
 		compoundVariants = [],
@@ -319,7 +321,7 @@ export function sv<
 
 	const { base: baseSlot, ...otherSlots } = slots;
 
-	const baseClassValue = cn(base, baseSlot);
+	const baseClassValue = cn(base, configBase, baseSlot);
 	const slotKeys = new Set(keys(otherSlots));
 
 	const normalizedVariants: Record<string, Record<string, unknown>> = {};
