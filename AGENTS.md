@@ -10,6 +10,30 @@
 import { sv, cn, type VariantProps } from 'slot-variants';
 ```
 
+`sv()` is a drop-in replacement for CVA (`cva` → `sv`) and covers the core feature set of tailwind-variants (`tv`) with a simpler API. Slots return strings directly (not functions like in `tv`). Features not in CVA/TV: `requiredVariants`, `presets`, `cacheSize`, `postProcess`, function-based `defaultVariants`, and variadic base args.
+
+## Calling Conventions
+
+`sv()` supports three calling conventions:
+
+```typescript
+// 1. Config-only (like tailwind-variants' tv())
+const button = sv({
+	base: 'btn font-medium',
+	variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
+});
+
+// 2. Base + config (like CVA's cva())
+const button = sv('btn font-medium', {
+	variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
+});
+
+// 3. Class name merging (like cn())
+sv('flex', 'items-center', 'gap-2'); // 'flex items-center gap-2'
+```
+
+The `base` config field merges with base arguments and `slots.base`: `cn(baseArgs..., config.base, slots.base)`.
+
 ## Best Practices
 
 ### 1. Keep CSS Classes Mutually Exclusive
@@ -378,6 +402,7 @@ export const Card = (props: CardProps) => {
 
 | Option             | Type                             | Description                       |
 | ------------------ | -------------------------------- | --------------------------------- |
+| `base`             | `ClassValue`                     | Additional base classes            |
 | `variants`         | `Record<string, VariantConfig>`  | Variant definitions               |
 | `slots`            | `Record<string, ClassValue>`     | Named slot definitions            |
 | `compoundVariants` | `CompoundVariant[]`              | Conditional class combinations    |
@@ -392,6 +417,8 @@ export const Card = (props: CardProps) => {
 
 - `ClassValue` - Valid input for `cn()` (string, array, object, boolean, null, undefined)
 - `VariantProps<T, E>` - Extract variant props from an `sv()` return, optionally excluding keys
+- `VariantValue<T, K>` - Extract the value union for a single variant key, without `undefined`
+- `SlotClassProps<T>` - Extract the per-slot class injection shape from an `sv()` return type
 
 ## Imports
 
@@ -400,7 +427,7 @@ export const Card = (props: CardProps) => {
 import { sv, cn } from 'slot-variants';
 
 // Types only
-import type { VariantProps, ClassValue } from 'slot-variants';
+import type { VariantProps, VariantValue, SlotClassProps, ClassValue } from 'slot-variants';
 ```
 
 ## Performance Notes

@@ -17,6 +17,8 @@ npm install slot-variants
 - **`sv()`** - creates variant-based class name generators with optional slots
 - **`cn()`** - a utility for conditionally merging class names
 
+`sv()` is a drop-in replacement for [CVA](https://cva.style/) (just rename `cva` to `sv`) and covers the core feature set of [tailwind-variants](https://www.tailwind-variants.org/) (`tv`) with a simpler API. See [Migrating from CVA / tailwind-variants](#migrating-from-cva--tailwind-variants) for details.
+
 ## Quick Start
 
 ```typescript
@@ -84,14 +86,67 @@ cn('foo', null, undefined, false, 'bar');     // 'foo bar'
 
 ## `sv()` - Slot Variants
 
-### Base Only (No Config)
+`sv()` supports three calling conventions:
 
-When called without a config object, `sv()` processes the base classes through `cn()` and returns a string:
+### Class Name Merging (No Config)
+
+When called without a config object, `sv()` works like `cn()` — it accepts any number of `ClassValue` arguments and returns a merged class string:
 
 ```typescript
-sv('btn btn-primary');              // 'btn btn-primary'
-sv(['btn', 'btn-primary']);         // 'btn btn-primary'
-sv({ btn: true, disabled: false }); // 'btn'
+sv('btn btn-primary');                       // 'btn btn-primary'
+sv('flex', 'items-center', 'gap-2');         // 'flex items-center gap-2'
+sv(['btn', 'btn-primary']);                  // 'btn btn-primary'
+sv({ btn: true, disabled: false });          // 'btn'
+sv('flex', ['items-center'], { gap: true }); // 'flex items-center gap'
+```
+
+### Config-Only Call
+
+When called with a single config object (no separate base argument), `sv()` returns a variant function. Use the `base` field inside the config:
+
+```typescript
+const button = sv({
+  base: 'btn font-medium',
+  variants: {
+    size: {
+      sm: 'text-sm',
+      lg: 'text-lg'
+    }
+  }
+});
+
+button({ size: 'sm' }); // 'btn font-medium text-sm'
+```
+
+### Base + Config Call
+
+When the last argument is a config object preceded by one or more `ClassValue` arguments, the leading arguments are merged as the base:
+
+```typescript
+const button = sv('btn font-medium', {
+  variants: {
+    size: {
+      sm: 'text-sm',
+      lg: 'text-lg'
+    }
+  }
+});
+```
+
+The `base` field in the config is merged with the base arguments: `cn(baseArgs..., config.base, slots.base)`:
+
+```typescript
+const button = sv('btn', {
+  base: 'font-medium',
+  variants: {
+    size: {
+      sm: 'text-sm',
+      lg: 'text-lg'
+    }
+  }
+});
+
+button({ size: 'sm' }); // 'btn font-medium text-sm'
 ```
 
 ### Variants
@@ -818,6 +873,7 @@ When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{
 
 | Option | Type | Description |
 | --- | --- | --- |
+| `base` | `ClassValue` | Additional base classes merged with the base argument and `slots.base` |
 | `variants` | `SVVariants` | Variant definitions mapping variant names to their possible values |
 | `slots` | `SVSlots` | Named slot definitions for multi-element components |
 | `compoundVariants` | `Array` | Additional classes applied when multiple variant conditions match |
@@ -827,3 +883,79 @@ When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{
 | `presets` | `Record<string, Partial<VariantProps>>` | Named combinations of variant values selectable via `preset` prop |
 | `postProcess` | `(className: string) => string` | Custom transformation applied to final class strings |
 | `cacheSize` | `number` | Maximum number of cached results (default: `256`) |
+
+## Migrating from CVA / tailwind-variants
+
+### From CVA
+
+`sv()` is a drop-in replacement for CVA. Rename `cva` to `sv` and `VariantProps` import source:
+
+```diff
+- import { cva, type VariantProps } from 'class-variance-authority';
++ import { sv, type VariantProps } from 'slot-variants';
+
+- const button = cva('btn font-medium', {
++ const button = sv('btn font-medium', {
+    variants: {
+      size: { sm: 'text-sm', lg: 'text-lg' },
+      intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+    },
+    defaultVariants: { size: 'md' },
+    compoundVariants: [
+      { size: 'lg', intent: 'primary', class: 'uppercase' }
+    ]
+  });
+```
+
+Everything else works identically — the config shape, `class`/`className` override, `VariantProps` extraction, and variant prop handling are all compatible.
+
+### From tailwind-variants
+
+`sv()` covers the core feature set of tailwind-variants with a simpler API. The config-only calling convention matches `tv()`:
+
+```diff
+- import { tv, type VariantProps } from 'tailwind-variants';
++ import { sv, type VariantProps } from 'slot-variants';
+
+- const button = tv({
++ const button = sv({
+    base: 'btn font-medium',
+    variants: {
+      size: { sm: 'text-sm', lg: 'text-lg' }
+    },
+    defaultVariants: { size: 'md' }
+  });
+```
+
+Key differences to be aware of:
+
+| Feature | tailwind-variants | slot-variants |
+| --- | --- | --- |
+| Slot return type | Functions: `slot({ class: '...' })` | Strings: `slot` is already a `string` |
+| `extend` (composition) | Supported | Not supported |
+| Built-in `twMerge` | Enabled by default | Use `postProcess: twMerge` |
+
+**Slot return type** is the most significant difference. In `tv()`, each slot returns a function that can accept additional props. In `sv()`, slots resolve to strings directly — use the `class` prop with a slot object for per-slot overrides:
+
+```typescript
+// tailwind-variants
+const { base, icon } = component({ size: 'sm' });
+base({ class: 'extra' }); // slot is a function
+
+// slot-variants
+const { base, icon } = component({ size: 'sm', class: { base: 'extra' } });
+base; // slot is a string
+```
+
+**tailwind-merge** is not built-in but can be added via `postProcess`:
+
+```typescript
+import { sv } from 'slot-variants';
+import { twMerge } from 'tailwind-merge';
+
+const button = sv({
+  base: 'px-4 py-2',
+  variants: { size: { sm: 'px-2 py-1' } },
+  postProcess: twMerge
+});
+```
