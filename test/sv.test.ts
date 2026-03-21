@@ -52,6 +52,46 @@ t.test('base only with mixed ClassValue', (t) => {
 	t.end();
 });
 
+t.test('variadic args like cn()', (t) => {
+	t.equal(
+		sv('flex', 'items-center', 'gap-2'),
+		'flex items-center gap-2',
+		'multiple string args'
+	);
+	t.equal(
+		sv('flex', ['items-center', 'gap-2']),
+		'flex items-center gap-2',
+		'string and array args'
+	);
+	t.equal(
+		sv('flex', { hidden: false, 'items-center': true }, 'gap-2'),
+		'flex items-center gap-2',
+		'mixed variadic args'
+	);
+
+	t.end();
+});
+
+t.test('variadic args with config as last argument', (t) => {
+	const button = sv('flex', 'items-center', {
+		base: 'gap-2',
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			}
+		}
+	});
+
+	t.equal(
+		button({ size: 'sm' }),
+		'flex items-center gap-2 text-sm',
+		'multiple base args merged with config'
+	);
+
+	t.end();
+});
+
 // =============================================================================
 // sv() - config only (no base argument)
 // =============================================================================
@@ -2434,7 +2474,6 @@ t.test('required variant throws when not defined in variants', (t) => {
 						lg: 'text-lg'
 					}
 				},
-				// @ts-expect-error - intentionally referencing nonexistent variant
 				requiredVariants: ['color']
 			}),
 		{ message: 'Required variant "color" is not defined in variants' },

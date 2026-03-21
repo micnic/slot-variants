@@ -285,36 +285,43 @@ export function sv<
 	RV extends StringKeyof<V>[] | [] = [],
 	P extends SVPresets<S, V> | undefined = undefined
 >(config: SVConfig<S, V, RV, P>): SVReturnType<S, V, RV, P>;
-export function sv(base: ClassValue): string;
-export function sv<
-	S extends SVSlots | undefined = undefined,
-	V extends SVVariants<S> | undefined = undefined,
-	RV extends StringKeyof<V>[] | [] = [],
-	P extends SVPresets<S, V> | undefined = undefined
->(base: ClassValue, config: SVConfig<S, V, RV, P>): SVReturnType<S, V, RV, P>;
 export function sv<
 	S extends SVSlots | undefined = undefined,
 	V extends SVVariants<S> | undefined = undefined,
 	RV extends StringKeyof<V>[] | [] = [],
 	P extends SVPresets<S, V> | undefined = undefined
 >(
-	baseOrConfig: ClassValue | SVConfig<S, V, RV, P>,
-	config?: SVConfig<S, V, RV, P> | undefined
+	...args: [...ClassValue[], SVConfig<S, V, RV, P>]
+): SVReturnType<S, V, RV, P>;
+export function sv(...args: ClassValue[]): string;
+export function sv<
+	S extends SVSlots | undefined = undefined,
+	V extends SVVariants<S> | undefined = undefined,
+	RV extends StringKeyof<V>[] | [] = [],
+	P extends SVPresets<S, V> | undefined = undefined
+>(
+	...args: (ClassValue | SVConfig<S, V, RV, P>)[]
 ): string | SVReturnType<S, V, RV, P> {
 
-	let base: ClassValue;
+	const lastArg = args[args.length - 1];
 
-	// Detect config-only call: sv(config)
-	if (!config && isConfig(baseOrConfig)) {
+	let base: ClassValue;
+	let config: SVConfig<S, V, RV, P> | undefined;
+
+	// Detect config as last argument (only when 2+ args or single config arg)
+	if (args.length >= 2 && isConfig(lastArg)) {
+		config = lastArg as SVConfig<S, V, RV, P>;
+		base = args.length > 2 ? (args.slice(0, -1) as ClassValue[]) : (args[0] as ClassValue);
+	} else if (args.length === 1 && isConfig(lastArg)) {
+		config = lastArg as SVConfig<S, V, RV, P>;
 		base = undefined;
-		config = baseOrConfig as SVConfig<S, V, RV, P>;
 	} else {
-		base = baseOrConfig as ClassValue;
+		base = args as ClassValue[];
 	}
 
 	// If no config provided, just return the base
 	if (!config) {
-		return cn(base);
+		return cn(...(args as ClassValue[]));
 	}
 
 	const {
@@ -359,7 +366,8 @@ export function sv<
 
 	const { base: baseSlot, ...otherSlots } = slots;
 
-	const baseClassValue = cn(base, configBase, baseSlot);
+	const baseArgs = isArray(base) ? base : [base];
+	const baseClassValue = cn(...baseArgs, configBase, baseSlot);
 	const slotKeys = new Set(keys(otherSlots));
 
 	const normalizedVariants: Record<string, Record<string, unknown>> = {};
