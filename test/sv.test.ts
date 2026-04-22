@@ -457,30 +457,6 @@ t.test('variant with empty variants object', (t) => {
 	t.end();
 });
 
-t.test('variant with ClassRecord value', (t) => {
-	const button = sv('rounded-lg', {
-		variants: {
-			state: {
-				active: { 'bg-blue-500': true, 'font-bold': true },
-				disabled: { 'opacity-50': true, 'cursor-not-allowed': true }
-			}
-		}
-	});
-
-	t.equal(
-		button({ state: 'active' }),
-		'rounded-lg bg-blue-500 font-bold',
-		'active state ClassRecord'
-	);
-	t.equal(
-		button({ state: 'disabled' }),
-		'rounded-lg opacity-50 cursor-not-allowed',
-		'disabled state ClassRecord'
-	);
-
-	t.end();
-});
-
 t.test('variant with array value', (t) => {
 	const button = sv('rounded-lg', {
 		variants: {
@@ -500,30 +476,6 @@ t.test('variant with array value', (t) => {
 		button({ size: 'lg' }),
 		'rounded-lg px-6 py-3 text-lg',
 		'lg array variant'
-	);
-
-	t.end();
-});
-
-t.test('variant with nested array value', (t) => {
-	const button = sv('rounded-lg', {
-		variants: {
-			size: {
-				sm: ['px-2', 'py-1', ['text-sm', 'leading-tight']],
-				lg: ['px-6', 'py-3', ['text-lg', 'leading-loose']]
-			}
-		}
-	});
-
-	t.equal(
-		button({ size: 'sm' }),
-		'rounded-lg px-2 py-1 text-sm leading-tight',
-		'flattens nested arrays in sm variant'
-	);
-	t.equal(
-		button({ size: 'lg' }),
-		'rounded-lg px-6 py-3 text-lg leading-loose',
-		'flattens nested arrays in lg variant'
 	);
 
 	t.end();

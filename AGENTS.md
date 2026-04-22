@@ -400,11 +400,13 @@ export const Card = (props: CardProps) => {
 
 ## Configuration Reference
 
+Class values inside the config (`base`, `variants` values, `slots` values, and `compound*` `class`/`className`) accept only `string`, `string[]`, or `undefined`. Dynamic class values (objects, booleans, nested arrays) belong on the `class`/`className` runtime prop, not in the config.
+
 | Option             | Type                             | Description                       |
 | ------------------ | -------------------------------- | --------------------------------- |
-| `base`             | `ClassValue`                     | Additional base classes            |
+| `base`             | `string \| string[]`             | Additional base classes            |
 | `variants`         | `Record<string, VariantConfig>`  | Variant definitions               |
-| `slots`            | `Record<string, ClassValue>`     | Named slot definitions            |
+| `slots`            | `Record<string, string \| string[]>` | Named slot definitions        |
 | `compoundVariants` | `CompoundVariant[]`              | Conditional class combinations    |
 | `compoundSlots`    | `CompoundSlot[]`                 | Multi-slot conditional classes    |
 | `defaultVariants`  | `Record<string, Value>`          | Static or function-based defaults |

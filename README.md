@@ -172,15 +172,14 @@ badge({ color: 'green', size: 'sm' });
 // 'badge bg-green-100 text-green-800 text-xs px-2 py-0.5'
 ```
 
-Variant values can be strings, arrays, or objects:
+Variant values accept a string or an array of strings:
 
 ```typescript
 const button = sv('btn', {
   variants: {
     size: {
-      sm: ['px-2', 'py-1', 'text-sm'],                    // array
-      lg: 'px-6 py-3 text-lg',                            // string
-      xl: { 'px-8': true, 'py-4': true, 'text-xl': true } // object
+      sm: ['px-2', 'py-1', 'text-sm'], // array of strings
+      lg: 'px-6 py-3 text-lg'          // string
     }
   }
 });
@@ -871,11 +870,13 @@ When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{
 
 ## Config Reference
 
+Class values inside the config (`base`, `variants`, `slots`, and `compound*` `class`/`className`) accept `string`, `string[]`, or `undefined`. Dynamic class values (objects, booleans, nested arrays) are only accepted at call time via the `class`/`className` prop.
+
 | Option | Type | Description |
 | --- | --- | --- |
-| `base` | `ClassValue` | Additional base classes merged with the base argument and `slots.base` |
-| `variants` | `SVVariants` | Variant definitions mapping variant names to their possible values |
-| `slots` | `SVSlots` | Named slot definitions for multi-element components |
+| `base` | `string \| string[]` | Additional base classes merged with the base argument and `slots.base` |
+| `variants` | `Record<string, Record<string \| number, string \| string[]>>` | Variant definitions mapping variant names to their possible values |
+| `slots` | `Record<string, string \| string[]>` | Named slot definitions for multi-element components |
 | `compoundVariants` | `Array` | Additional classes applied when multiple variant conditions match |
 | `compoundSlots` | `Array` | Classes applied to multiple slots based on variant conditions |
 | `defaultVariants` | `Object` | Default values for variants (static values or functions) |

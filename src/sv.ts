@@ -10,57 +10,71 @@ type PartialUndefined<T> = {
 
 type StringKeyof<T> = Extract<keyof T, string>;
 
-type SVClassValue<S extends SVSlots | undefined> = S extends SVSlots
+type ConfigClassValue = string | string[] | undefined;
+
+type ConfigSlotClassValue<S extends Slots | undefined> = S extends Slots
+	? ConfigSlotsClassValue<S> | ConfigClassValue
+	: ConfigClassValue;
+
+type SlotClassValue<S extends Slots | undefined> = S extends Slots
 	? SlotsClassValue<S> | ClassValue
 	: ClassValue;
 
-type ClassProp<S extends SVSlots | undefined = undefined> =
-	| { class?: SVClassValue<S>; className?: never }
-	| { class?: never; className?: SVClassValue<S> };
+type ClassProp<S extends Slots | undefined = undefined> =
+	| { class?: SlotClassValue<S>; className?: never }
+	| { class?: never; className?: SlotClassValue<S> };
 
-type SVSlots = { base?: ClassValue } & Record<string, ClassValue>;
+type ConfigClassProp<S extends Slots | undefined = undefined> =
+	| { class?: ConfigSlotClassValue<S>; className?: never }
+	| { class?: never; className?: ConfigSlotClassValue<S> };
 
-type BooleanString<T> = T extends 'true' | 'false' ? boolean : T;
+type Slots = { base?: ConfigClassValue } & Record<string, ConfigClassValue>;
 
-type SVSlotKey<S> = 'base' | StringKeyof<S>;
+type BooleanString<T> = T extends `${boolean}` ? boolean : T;
 
-type SlotsClassValue<S extends SVSlots> = Partial<
-	Record<SVSlotKey<S>, ClassValue>
+type SlotKey<S extends Slots | undefined> = 'base' | StringKeyof<S>;
+
+type SlotsClassValue<S extends Slots> = Partial<
+	Record<SlotKey<S>, ClassValue>
 >;
 
-type SVVariants<S extends SVSlots | undefined> = Record<
+type ConfigSlotsClassValue<S extends Slots> = Partial<
+	Record<SlotKey<S>, ConfigClassValue>
+>;
+
+type Variants<S extends Slots | undefined> = Record<
 	string,
-	Record<string | number, SVClassValue<S>> | SVClassValue<S>
+	Record<string | number, ConfigSlotClassValue<S>> | ConfigSlotClassValue<S>
 >;
 
-type SVVariantConditions<
-	S extends SVSlots | undefined,
-	V extends SVVariants<S> | undefined
+type VariantConditions<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined
 > = {
 	[K in StringKeyof<V>]?:
-		| SVVariantPropType<V[K], S>
-		| SVVariantPropType<V[K], S>[]
+		| VariantPropType<V[K], S>
+		| VariantPropType<V[K], S>[]
 		| undefined;
 };
 
-type SVCompoundVariants<
-	S extends SVSlots | undefined,
-	V extends SVVariants<S> | undefined
-> = (SVVariantConditions<S, V> & ClassProp<S>)[];
+type CompoundVariants<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined
+> = (VariantConditions<S, V> & ConfigClassProp<S>)[];
 
-type SVCompoundSlots<
-	S extends SVSlots | undefined,
-	V extends SVVariants<S> | undefined
+type CompoundSlots<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined
 > = ({
-	slots: SVSlotKey<S>[];
-} & SVVariantConditions<S, V> &
-	ClassProp<S>)[];
+	slots: SlotKey<S>[];
+} & VariantConditions<S, V> &
+	ConfigClassProp<S>)[];
 
-type IsBooleanShorthand<T, S extends SVSlots | undefined> =
+type IsBooleanShorthand<T, S extends Slots | undefined> =
 	T extends Record<string, unknown>
 		? [Extract<keyof T, number>] extends [never]
-			? S extends SVSlots
-				? StringKeyof<T> extends SVSlotKey<S>
+			? S extends Slots
+				? StringKeyof<T> extends SlotKey<S>
 					? true
 					: StringKeyof<T> extends 'true' | 'false'
 						? true
@@ -71,111 +85,118 @@ type IsBooleanShorthand<T, S extends SVSlots | undefined> =
 			: false
 		: true;
 
-type SVVariantPropType<T, S extends SVSlots | undefined> =
+type VariantPropType<T, S extends Slots | undefined> =
 	IsBooleanShorthand<T, S> extends true
 		? boolean
 		: T extends Record<string | number, unknown>
 			? BooleanString<StringKeyof<T>> | Extract<keyof T, number>
 			: boolean;
 
-type SVVariantProps<
-	S extends SVSlots | undefined,
-	V extends SVVariants<S> | undefined
-> = { [K in StringKeyof<V>]: SVVariantPropType<V[K], S> };
+type VariantPropsInternal<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined
+> = { [K in StringKeyof<V>]: VariantPropType<V[K], S> };
 
-type SVDefaultVariantFn<
-	S extends SVSlots | undefined,
-	V extends SVVariants<S> | undefined,
+type DefaultVariantFn<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined,
 	K extends StringKeyof<V>
 > = (
-	props: Partial<SVVariantProps<S, V>>
-) => SVVariantPropType<V[K], S> | undefined;
+	props: Partial<VariantPropsInternal<S, V>>
+) => VariantPropType<V[K], S> | undefined;
 
-type SVDefaultVariants<
-	S extends SVSlots | undefined,
-	V extends SVVariants<S> | undefined,
+type DefaultVariants<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined,
 	RV extends StringKeyof<V>[]
 > = {
-	[K in StringKeyof<Omit<SVVariantProps<S, V>, RV[number]>>]?:
-		| SVVariantPropType<V[K], S>
-		| SVDefaultVariantFn<S, V, K>
+	[K in StringKeyof<Omit<VariantPropsInternal<S, V>, RV[number]>>]?:
+		| VariantPropType<V[K], S>
+		| DefaultVariantFn<S, V, K>
 		| undefined;
 };
 
-type SVPresets<
-	S extends SVSlots | undefined,
-	V extends SVVariants<S> | undefined
-> = Record<string, Partial<SVVariantProps<S, V>>>;
+type ResolvedVariantValue<S extends Slots | undefined> =
+	| ClassValue
+	| Partial<Record<SlotKey<S>, ClassValue>>;
+
+type Presets<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined
+> = Record<string, Partial<VariantPropsInternal<S, V>>>;
 
 type PresetProp<P extends Record<string, unknown> | undefined> =
 	P extends Record<string, unknown>
 		? { preset?: StringKeyof<P> | undefined }
 		: unknown;
 
-type SVProps<
-	S extends SVSlots | undefined,
-	V extends SVVariants<S> | undefined,
+type Props<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined,
 	RV extends StringKeyof<V>[],
-	P extends SVPresets<S, V> | undefined
+	P extends Presets<S, V> | undefined
 > = V extends undefined
 	? ClassProp<S>
 	: P extends Record<string, unknown>
-		? Prettify<PartialUndefined<SVVariantProps<S, V>>> &
+		? Prettify<PartialUndefined<VariantPropsInternal<S, V>>> &
 				ClassProp<S> &
 				PresetProp<P>
 		: Prettify<
-				Pick<SVVariantProps<S, V>, RV[number]> &
-					Omit<PartialUndefined<SVVariantProps<S, V>>, RV[number]>
+				Pick<VariantPropsInternal<S, V>, RV[number]> &
+					Omit<
+						PartialUndefined<VariantPropsInternal<S, V>>,
+						RV[number]
+					>
 			> &
 				ClassProp<S>;
 
-type SVConfig<
-	S extends SVSlots | undefined,
-	V extends SVVariants<S> | undefined,
+type Config<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined,
 	RV extends StringKeyof<V>[],
-	P extends SVPresets<S, V> | undefined
+	P extends Presets<S, V> | undefined
 > = {
-	base?: ClassValue | undefined;
+	base?: ConfigClassValue;
 	variants?: V | undefined;
 	slots?: S | undefined;
-	compoundVariants?: SVCompoundVariants<S, V> | undefined;
-	compoundSlots?: SVCompoundSlots<S, V> | undefined;
-	defaultVariants?: SVDefaultVariants<S, V, RV> | undefined;
+	compoundVariants?: CompoundVariants<S, V> | undefined;
+	compoundSlots?: CompoundSlots<S, V> | undefined;
+	defaultVariants?: DefaultVariants<S, V, RV> | undefined;
 	requiredVariants?: RV | undefined;
 	presets?: P | undefined;
 	cacheSize?: number | undefined;
 	postProcess?: ((className: string) => string) | undefined;
 };
 
-type SVReturnValue<S extends SVSlots | undefined> = S extends undefined
+type ReturnValue<S extends Slots | undefined> = S extends undefined
 	? string
-	: Prettify<Record<SVSlotKey<S>, string>>;
+	: Prettify<Record<SlotKey<S>, string>>;
 
-type SVReturnFn<
-	S extends SVSlots | undefined,
-	V extends SVVariants<S> | undefined,
+type ReturnFn<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined,
 	RV extends StringKeyof<V>[],
-	P extends SVPresets<S, V> | undefined
+	P extends Presets<S, V> | undefined
 > = RV extends []
-	? (props?: SVProps<S, V, RV, P> | undefined) => SVReturnValue<S>
-	: (props: SVProps<S, V, RV, P>) => SVReturnValue<S>;
+	? (props?: Props<S, V, RV, P> | undefined) => ReturnValue<S>
+	: (props: Props<S, V, RV, P>) => ReturnValue<S>;
 
-type SVReturnType<
-	S extends SVSlots | undefined,
-	V extends SVVariants<S> | undefined,
+type ResultType<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined,
 	RV extends StringKeyof<V>[],
-	P extends SVPresets<S, V> | undefined
-> = SVReturnFn<S, V, RV, P> & {
+	P extends Presets<S, V> | undefined
+> = ReturnFn<S, V, RV, P> & {
 	variants: V;
 	variantKeys: StringKeyof<V>[];
 	slots: S;
-	slotKeys: S extends SVSlots ? SVSlotKey<S>[] : ['base'];
-	defaultVariants: SVDefaultVariants<S, V, RV>;
+	slotKeys: S extends Slots ? SlotKey<S>[] : ['base'];
+	defaultVariants: DefaultVariants<S, V, RV>;
 	requiredVariants: RV;
 	presets: P;
 	presetKeys: P extends Record<string, unknown> ? StringKeyof<P>[] : [];
-	getVariantValues: V extends SVVariants<S>
-		? <K extends StringKeyof<V>>(key: K) => SVVariantPropType<V[K], S>[]
+	getVariantValues: V extends Variants<S>
+		? <K extends StringKeyof<V>>(key: K) => VariantPropType<V[K], S>[]
 		: (key: never) => never[];
 	clearCache: () => void;
 	getCacheSize: () => number;
@@ -201,9 +222,14 @@ export type VariantValue<
 export type SlotClassProps<
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	T extends (...args: any[]) => unknown
-> = ReturnType<T> extends string
-	? Partial<Record<'base', ClassValue>>
-	: Prettify<Partial<Record<Extract<keyof ReturnType<T>, string>, ClassValue>>>;
+> =
+	ReturnType<T> extends string
+		? Partial<Record<'base', ClassValue>>
+		: Prettify<
+				Partial<
+					Record<Extract<keyof ReturnType<T>, string>, ClassValue>
+				>
+			>;
 
 const { isArray } = Array;
 const { assign, entries, keys } = Object;
@@ -222,9 +248,16 @@ const configKeys = new Set([
 ]);
 
 /**
- * Check if a value is an SVConfig object
+ * Check if a value is a Config object
  */
-const isConfig = (value: unknown): boolean =>
+const isConfig = <
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined,
+	RV extends StringKeyof<V>[] | [],
+	P extends Presets<S, V> | undefined
+>(
+	value: ClassValue | Config<S, V, RV, P>
+): value is Config<S, V, RV, P> =>
 	!!value &&
 	typeof value === 'object' &&
 	!isArray(value) &&
@@ -280,48 +313,50 @@ const matchesCompound = (
  * Inspired by CVA and tailwind-variants.
  */
 export function sv<
-	S extends SVSlots | undefined = undefined,
-	V extends SVVariants<S> | undefined = undefined,
+	S extends Slots | undefined = undefined,
+	V extends Variants<S> | undefined = undefined,
 	RV extends StringKeyof<V>[] | [] = [],
-	P extends SVPresets<S, V> | undefined = undefined
->(config: SVConfig<S, V, RV, P>): SVReturnType<S, V, RV, P>;
+	P extends Presets<S, V> | undefined = undefined
+>(config: Config<S, V, RV, P>): ResultType<S, V, RV, P>;
 export function sv<
-	S extends SVSlots | undefined = undefined,
-	V extends SVVariants<S> | undefined = undefined,
+	S extends Slots | undefined = undefined,
+	V extends Variants<S> | undefined = undefined,
 	RV extends StringKeyof<V>[] | [] = [],
-	P extends SVPresets<S, V> | undefined = undefined
+	P extends Presets<S, V> | undefined = undefined
 >(
-	...args: [...ClassValue[], SVConfig<S, V, RV, P>]
-): SVReturnType<S, V, RV, P>;
+	...args: [...ClassValue[], Config<S, V, RV, P>]
+): ResultType<S, V, RV, P>;
 export function sv(...args: ClassValue[]): string;
 export function sv<
-	S extends SVSlots | undefined = undefined,
-	V extends SVVariants<S> | undefined = undefined,
+	S extends Slots | undefined = undefined,
+	V extends Variants<S> | undefined = undefined,
 	RV extends StringKeyof<V>[] | [] = [],
-	P extends SVPresets<S, V> | undefined = undefined
+	P extends Presets<S, V> | undefined = undefined
 >(
-	...args: (ClassValue | SVConfig<S, V, RV, P>)[]
-): string | SVReturnType<S, V, RV, P> {
+	...args: (ClassValue | Config<S, V, RV, P>)[]
+): string | ResultType<S, V, RV, P> {
 
 	const lastArg = args[args.length - 1];
 
 	let base: ClassValue;
-	let config: SVConfig<S, V, RV, P> | undefined;
+	let config: Config<S, V, RV, P> | undefined;
 
 	// Detect config as last argument (only when 2+ args or single config arg)
-	if (args.length >= 2 && isConfig(lastArg)) {
-		config = lastArg as SVConfig<S, V, RV, P>;
-		base = args.length > 2 ? (args.slice(0, -1) as ClassValue[]) : (args[0] as ClassValue);
-	} else if (args.length === 1 && isConfig(lastArg)) {
-		config = lastArg as SVConfig<S, V, RV, P>;
-		base = undefined;
+	if (args.length >= 2 && isConfig<S, V, RV, P>(lastArg)) {
+		base =
+			args.length > 2
+				? (args.slice(0, -1) as ClassValue[])
+				: (args[0] as ClassValue);
+		config = lastArg;
+	} else if (args.length === 1 && isConfig<S, V, RV, P>(lastArg)) {
+		config = lastArg;
 	} else {
 		base = args as ClassValue[];
 	}
 
 	// If no config provided, just return the base
 	if (!config) {
-		return cn(...(args as ClassValue[]));
+		return cn(base);
 	}
 
 	const {
@@ -330,7 +365,7 @@ export function sv<
 		slots = {},
 		compoundVariants = [],
 		compoundSlots = [],
-		defaultVariants = {} as SVDefaultVariants<S, V, RV>,
+		defaultVariants = {} as DefaultVariants<S, V, RV>,
 		requiredVariants = [],
 		presets = {},
 		cacheSize = 256,
@@ -370,7 +405,10 @@ export function sv<
 	const baseClassValue = cn(...baseArgs, configBase, baseSlot);
 	const slotKeys = new Set(keys(otherSlots));
 
-	const normalizedVariants: Record<string, Record<string, unknown>> = {};
+	type NormalizedVariantValue =
+		| ConfigClassValue
+		| Partial<Record<string, ConfigClassValue>>;
+
 
 	// Normalize variants to ensure consistent structure for processing
 	for (const [variantKey, variantValue] of entries(variants)) {
@@ -392,7 +430,9 @@ export function sv<
 				// It's a boolean shorthand with slot object value
 				normalizedVariants[variantKey] = {
 					false: '',
-					true: variantValue
+					true: variantValue as Partial<
+						Record<string, ConfigClassValue>
+					>
 				};
 			} else if (valueKeys.every((k) => k === 'true' || k === 'false')) {
 
@@ -422,8 +462,8 @@ export function sv<
 		postProcess?.(className) ?? className;
 
 	const isSlotObject = (
-		value: unknown
-	): value is Partial<Record<SVSlotKey<S>, ClassValue>> => {
+		value: ResolvedVariantValue<S>
+	): value is Partial<Record<SlotKey<S>, ClassValue>> => {
 		if (!value || typeof value !== 'object' || isArray(value)) {
 			return false;
 		}
@@ -439,14 +479,14 @@ export function sv<
 
 	const applyClasses = (
 		slotClasses: { base: ClassValue[] } & Record<string, ClassValue[]>,
-		value: unknown
+		value: ResolvedVariantValue<S>
 	) => {
 		if (isSlotObject(value)) {
 			for (const [slotKey, slotValue] of entries(value)) {
 				slotClasses[slotKey]?.push(slotValue);
 			}
 		} else {
-			slotClasses.base.push(value as ClassValue);
+			slotClasses.base.push(value);
 		}
 	};
 
@@ -471,60 +511,59 @@ export function sv<
 	const presetKeys = new Set(keys(presets));
 
 	const variantFn = (
-		props: SVProps<S, V, RV, P> = {} as SVProps<S, V, RV, P>
+		props: Props<S, V, RV, P> = {} as Props<S, V, RV, P>
 	) => {
 		const classProp = props.class ?? props.className;
-		const presetName = (props as Record<string, unknown>).preset as
-			| string
-			| undefined;
+		const presetName = (props as { preset?: string }).preset;
 
 		// Resolve preset values
-		let presetValues: Record<string, unknown> | undefined;
+		let presetValues: Record<string, ResolvedVariantValue<S>> | undefined;
 
 		if (presetName !== undefined) {
 			if (!presetKeys.has(presetName)) {
 				throw new Error(`Invalid preset "${presetName}"`);
 			}
 
-			presetValues = (presets as Record<string, Record<string, unknown>>)[
-				presetName
-			];
+			presetValues = (
+				presets as Record<string, Record<string, ResolvedVariantValue<S>>>
+			)[presetName];
 		}
 
-		const resolvedProps = {} as Record<
-			string,
-			ClassValue | Partial<Record<SVSlotKey<S>, ClassValue>>
-		>;
+		const resolvedProps: Record<string, ResolvedVariantValue<S>> = {};
 
 		let cacheKey = '';
 
 		// Resolve variant props: explicit prop > preset > default
 		for (const variantKey of variantKeys) {
 
-			const propValue = (props as Record<string, unknown>)[variantKey];
+			const propValue = (
+				props as Record<string, ResolvedVariantValue<S> | undefined>
+			)[variantKey];
 
 			if (propValue === undefined) {
 				const presetValue = presetValues?.[variantKey];
 
 				if (presetValue !== undefined) {
-					resolvedProps[variantKey] = presetValue as
-						| ClassValue
-						| Partial<Record<SVSlotKey<S>, ClassValue>>;
+					resolvedProps[variantKey] = presetValue;
 
 					if (!classProp) {
 						cacheKey += `${presetValue};`;
 					}
 				} else if (defaultVariantKeys.has(variantKey)) {
 					const defaultValue = (
-						defaultVariants as Record<string, unknown>
+						defaultVariants as Record<
+							string,
+							| ResolvedVariantValue<S>
+							| ((
+									props: Props<S, V, RV, P>
+							  ) => ResolvedVariantValue<S> | undefined)
+						>
 					)[variantKey];
 
 					if (typeof defaultValue === 'function') {
 						resolvedProps[variantKey] = defaultValue(props);
 					} else {
-						resolvedProps[variantKey] = defaultValue as
-							| ClassValue
-							| Partial<Record<SVSlotKey<S>, ClassValue>>;
+						resolvedProps[variantKey] = defaultValue;
 					}
 
 					if (!classProp) {
@@ -532,9 +571,7 @@ export function sv<
 					}
 				}
 			} else {
-				resolvedProps[variantKey] = propValue as
-					| ClassValue
-					| Partial<Record<SVSlotKey<S>, ClassValue>>;
+				resolvedProps[variantKey] = propValue;
 
 				if (!classProp) {
 					cacheKey += `${propValue};`;
@@ -671,5 +708,5 @@ export function sv<
 		getVariantValues,
 		clearCache: () => cache.clear(),
 		getCacheSize: () => cache.size
-	}) as SVReturnType<S, V, RV, P>;
+	}) as ResultType<S, V, RV, P>;
 }
