@@ -678,16 +678,15 @@ const button = sv('btn', {
       lg: 'text-lg'
     }
   },
-  cacheSize: 512        // customize the cache size
+  cacheSize: 512  // customize the cache size
 });
-
-button.getCacheSize();  // current number of cached entries
-button.clearCache();    // clear all cached entries
 ```
+
+Cache inspection and control methods (`getCacheSize`, `clearCache`) are exposed on the returned function only when `introspection: true` is set — see [Introspection](#introspection).
 
 ### Introspection
 
-The returned function exposes configuration properties for runtime introspection:
+Set `introspection: true` in the config to expose configuration properties and cache controls on the returned function for runtime inspection. Introspection is **disabled by default** to keep the returned function lean; opt in only when you need it:
 
 ```typescript
 const button = sv('btn', {
@@ -710,7 +709,8 @@ const button = sv('btn', {
   requiredVariants: ['intent'],
   presets: {
     cta: { size: 'lg', intent: 'primary' }
-  }
+  },
+  introspection: true
 });
 
 button.variantKeys;                 // ['size', 'intent']
@@ -723,7 +723,11 @@ button.presetKeys;                  // ['cta']
 button.presets;                     // { cta: { size: 'lg', intent: 'primary' } }
 button.getVariantValues('size');    // ['sm', 'lg']
 button.getVariantValues('intent');  // ['primary', 'danger']
+button.getCacheSize();              // current number of cached entries
+button.clearCache();                // clear all cached entries
 ```
+
+Without `introspection: true`, only the variant function itself is returned — accessing introspection or cache properties is a type error.
 
 ## TypeScript
 
@@ -884,6 +888,7 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 | `presets` | `Record<string, Partial<VariantProps>>` | Named combinations of variant values selectable via `preset` prop |
 | `postProcess` | `(className: string) => string` | Custom transformation applied to final class strings |
 | `cacheSize` | `number` | Maximum number of cached results (default: `256`) |
+| `introspection` | `boolean` | When `true`, exposes variant/slot/preset introspection and cache methods on the returned function (default: `false`) |
 
 ## Migrating from CVA / tailwind-variants
 

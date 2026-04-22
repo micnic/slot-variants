@@ -2730,7 +2730,8 @@ t.test('getCacheSize returns current cache size', (t) => {
 				sm: 'text-sm',
 				lg: 'text-lg'
 			}
-		}
+		},
+		introspection: true
 	});
 
 	t.equal(button.getCacheSize(), 0, 'cache initially empty');
@@ -2754,7 +2755,8 @@ t.test('clearCache empties the cache', (t) => {
 				sm: 'text-sm',
 				lg: 'text-lg'
 			}
-		}
+		},
+		introspection: true
 	});
 
 	button({ size: 'sm' });
@@ -2782,7 +2784,8 @@ t.test('cacheSize config limits cache entries', (t) => {
 					xl: 'text-xl'
 				}
 			},
-			cacheSize: 2
+			cacheSize: 2,
+			introspection: true
 		}
 	);
 
@@ -2807,7 +2810,8 @@ t.test('cacheSize 0 still produces correct results', (t) => {
 					lg: 'text-lg'
 				}
 			},
-			cacheSize: 0
+			cacheSize: 0,
+			introspection: true
 		}
 	);
 
@@ -2842,7 +2846,8 @@ t.test('cache works with slots', (t) => {
 				default: { base: 'bg-white', header: 'text-gray-900' },
 				dark: { base: 'bg-gray-900', header: 'text-white' }
 			}
-		}
+		},
+		introspection: true
 	});
 
 	t.equal(card.getCacheSize(), 0, 'cache empty initially');
@@ -2866,7 +2871,8 @@ t.test('cache skips entries when class prop is provided', (t) => {
 				sm: 'text-sm',
 				lg: 'text-lg'
 			}
-		}
+		},
+		introspection: true
 	});
 
 	button({ size: 'sm' });
@@ -3060,7 +3066,8 @@ t.test('variantKeys exposes variant key names', (t) => {
 				primary: 'bg-blue-500',
 				danger: 'bg-red-500'
 			}
-		}
+		},
+		introspection: true
 	});
 
 	t.same(button.variantKeys, ['size', 'intent'], 'variant keys array');
@@ -3069,7 +3076,7 @@ t.test('variantKeys exposes variant key names', (t) => {
 });
 
 t.test('variantKeys is empty array when no variants', (t) => {
-	const box = sv('flex items-center', {});
+	const box = sv('flex items-center', { introspection: true });
 
 	t.same(box.variantKeys, [], 'empty array for no variants');
 
@@ -3083,7 +3090,8 @@ t.test('variants exposes the normalized variants config', (t) => {
 				sm: 'text-sm',
 				lg: 'text-lg'
 			}
-		}
+		},
+		introspection: true
 	});
 
 	t.same(
@@ -3106,7 +3114,8 @@ t.test('slotKeys exposes slot key names', (t) => {
 			header: 'font-bold',
 			body: 'text-base',
 			footer: 'text-sm'
-		}
+		},
+		introspection: true
 	});
 
 	t.same(
@@ -3125,7 +3134,8 @@ t.test('slotKeys contains only base when no slots', (t) => {
 				sm: 'text-sm',
 				lg: 'text-lg'
 			}
-		}
+		},
+		introspection: true
 	});
 
 	t.same(button.slotKeys, ['base'], 'only base when no slots');
@@ -3138,7 +3148,8 @@ t.test('slots exposes the slots config', (t) => {
 		slots: {
 			header: 'font-bold',
 			body: 'text-base'
-		}
+		},
+		introspection: true
 	});
 
 	t.same(
@@ -3168,7 +3179,8 @@ t.test('defaultVariants exposes default values', (t) => {
 		defaultVariants: {
 			size: 'sm',
 			intent: 'primary'
-		}
+		},
+		introspection: true
 	});
 
 	t.same(
@@ -3190,7 +3202,8 @@ t.test('defaultVariants is empty object when none provided', (t) => {
 				sm: 'text-sm',
 				lg: 'text-lg'
 			}
-		}
+		},
+		introspection: true
 	});
 
 	t.same(button.defaultVariants, {}, 'empty object');
@@ -3210,7 +3223,8 @@ t.test('requiredVariants exposes required keys', (t) => {
 				danger: 'bg-red-500'
 			}
 		},
-		requiredVariants: ['size']
+		requiredVariants: ['size'],
+		introspection: true
 	});
 
 	t.same(button.requiredVariants, ['size'], 'required variants array');
@@ -3225,7 +3239,8 @@ t.test('requiredVariants is empty array when none required', (t) => {
 				sm: 'text-sm',
 				lg: 'text-lg'
 			}
-		}
+		},
+		introspection: true
 	});
 
 	t.same(button.requiredVariants, [], 'empty array');
@@ -3252,7 +3267,8 @@ t.test('introspection with all properties combined', (t) => {
 		defaultVariants: {
 			variant: 'default',
 			size: 'sm'
-		}
+		},
+		introspection: true
 	});
 
 	t.same(card.variantKeys, ['variant', 'size'], 'has variant keys');
@@ -3300,7 +3316,8 @@ t.test('getVariantValues returns empty array for unknown key (TS bypassed)', (t)
 	const button = sv('btn', {
 		variants: {
 			size: { sm: 'text-sm', lg: 'text-lg' }
-		}
+		},
+		introspection: true
 	});
 
 	// @ts-expect-error - intentionally passing an invalid key to test the runtime fallback
@@ -3317,7 +3334,8 @@ t.test('getVariantValues returns string values for a string variant', (t) => {
 				md: 'text-md',
 				lg: 'text-lg'
 			}
-		}
+		},
+		introspection: true
 	});
 
 	t.same(button.getVariantValues('size'), ['sm', 'md', 'lg'], 'string values');
@@ -3329,7 +3347,8 @@ t.test('getVariantValues returns booleans for boolean shorthand variant', (t) =>
 	const button = sv('btn', {
 		variants: {
 			disabled: 'opacity-50'
-		}
+		},
+		introspection: true
 	});
 
 	t.same(
@@ -3348,7 +3367,8 @@ t.test('getVariantValues returns booleans for true/false record variant', (t) =>
 				true: 'opacity-50',
 				false: 'opacity-100'
 			}
-		}
+		},
+		introspection: true
 	});
 
 	t.same(
@@ -3368,7 +3388,8 @@ t.test('getVariantValues returns numbers for numeric variant', (t) => {
 				2: 'grid-cols-2',
 				3: 'grid-cols-3'
 			}
-		}
+		},
+		introspection: true
 	});
 
 	t.same(grid.getVariantValues('cols'), [1, 2, 3], 'numeric values');
@@ -3381,7 +3402,8 @@ t.test('getVariantValues works for each key in a multi-variant component', (t) =
 		variants: {
 			size: { sm: 'text-sm', lg: 'text-lg' },
 			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
-		}
+		},
+		introspection: true
 	});
 
 	t.same(button.getVariantValues('size'), ['sm', 'lg'], 'size values');
@@ -3401,7 +3423,8 @@ t.test('getVariantValues works when slots are defined', (t) => {
 		},
 		variants: {
 			size: { sm: 'p-2', lg: 'p-6' }
-		}
+		},
+		introspection: true
 	});
 
 	t.same(card.getVariantValues('size'), ['sm', 'lg'], 'string values with slots');
@@ -3416,7 +3439,8 @@ const _gvvFn = sv('btn', {
 		size: { sm: 'text-sm', lg: 'text-lg' },
 		disabled: 'opacity-50',
 		cols: { 1: 'grid-cols-1', 2: 'grid-cols-2' }
-	}
+	},
+	introspection: true
 });
 
 // String variant → ('sm' | 'lg')[]
@@ -3999,7 +4023,8 @@ t.test('cache works with presets', (t) => {
 		presets: {
 			small: { size: 'sm' },
 			large: { size: 'lg' }
-		}
+		},
+		introspection: true
 	});
 
 	t.equal(button.getCacheSize(), 0, 'cache initially empty');
@@ -4031,7 +4056,8 @@ t.test('presets exposed via introspection', (t) => {
 		presets: {
 			small: { size: 'sm' },
 			large: { size: 'lg' }
-		}
+		},
+		introspection: true
 	});
 
 	t.strictSame(
@@ -4050,7 +4076,8 @@ t.test('presets is empty object when none provided', (t) => {
 				sm: 'text-sm',
 				lg: 'text-lg'
 			}
-		}
+		},
+		introspection: true
 	});
 
 	t.strictSame(button.presets, {}, 'empty object');

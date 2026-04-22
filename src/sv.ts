@@ -120,6 +120,10 @@ type ResolvedVariantValue<S extends Slots | undefined> =
 	| ClassValue
 	| Partial<Record<SlotKey<S>, ClassValue>>;
 
+type NormalizedVariantValue =
+	| ConfigClassValue
+	| Partial<Record<string, ConfigClassValue>>;
+
 type Presets<
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined
@@ -154,7 +158,8 @@ type Config<
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined,
 	RV extends StringKeyof<V>[],
-	P extends Presets<S, V> | undefined
+	P extends Presets<S, V> | undefined,
+	I extends boolean = false
 > = {
 	base?: ConfigClassValue;
 	variants?: V | undefined;
@@ -166,6 +171,7 @@ type Config<
 	presets?: P | undefined;
 	cacheSize?: number | undefined;
 	postProcess?: ((className: string) => string) | undefined;
+	introspection?: I | undefined;
 };
 
 type ReturnValue<S extends Slots | undefined> = S extends undefined
@@ -181,12 +187,12 @@ type ReturnFn<
 	? (props?: Props<S, V, RV, P> | undefined) => ReturnValue<S>
 	: (props: Props<S, V, RV, P>) => ReturnValue<S>;
 
-type ResultType<
+type IntrospectionValues<
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined,
 	RV extends StringKeyof<V>[],
 	P extends Presets<S, V> | undefined
-> = ReturnFn<S, V, RV, P> & {
+> = {
 	variants: V;
 	variantKeys: StringKeyof<V>[];
 	slots: S;
@@ -201,6 +207,15 @@ type ResultType<
 	clearCache: () => void;
 	getCacheSize: () => number;
 };
+
+type ResultType<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined,
+	RV extends StringKeyof<V>[],
+	P extends Presets<S, V> | undefined,
+	I extends boolean
+> = ReturnFn<S, V, RV, P> &
+	(I extends true ? IntrospectionValues<S, V, RV, P> : object);
 
 export type VariantProps<
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -244,7 +259,8 @@ const configKeys = new Set([
 	'requiredVariants',
 	'presets',
 	'cacheSize',
-	'postProcess'
+	'postProcess',
+	'introspection'
 ]);
 
 /**
@@ -254,10 +270,11 @@ const isConfig = <
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined,
 	RV extends StringKeyof<V>[] | [],
-	P extends Presets<S, V> | undefined
+	P extends Presets<S, V> | undefined,
+	I extends boolean
 >(
-	value: ClassValue | Config<S, V, RV, P>
-): value is Config<S, V, RV, P> =>
+	value: ClassValue | Config<S, V, RV, P, I>
+): value is Config<S, V, RV, P, I> =>
 	!!value &&
 	typeof value === 'object' &&
 	!isArray(value) &&
@@ -316,39 +333,42 @@ export function sv<
 	S extends Slots | undefined = undefined,
 	V extends Variants<S> | undefined = undefined,
 	RV extends StringKeyof<V>[] | [] = [],
-	P extends Presets<S, V> | undefined = undefined
->(config: Config<S, V, RV, P>): ResultType<S, V, RV, P>;
+	P extends Presets<S, V> | undefined = undefined,
+	I extends boolean = false
+>(config: Config<S, V, RV, P, I>): ResultType<S, V, RV, P, I>;
 export function sv<
 	S extends Slots | undefined = undefined,
 	V extends Variants<S> | undefined = undefined,
 	RV extends StringKeyof<V>[] | [] = [],
-	P extends Presets<S, V> | undefined = undefined
+	P extends Presets<S, V> | undefined = undefined,
+	I extends boolean = false
 >(
-	...args: [...ClassValue[], Config<S, V, RV, P>]
-): ResultType<S, V, RV, P>;
+	...args: [...ClassValue[], Config<S, V, RV, P, I>]
+): ResultType<S, V, RV, P, I>;
 export function sv(...args: ClassValue[]): string;
 export function sv<
 	S extends Slots | undefined = undefined,
 	V extends Variants<S> | undefined = undefined,
 	RV extends StringKeyof<V>[] | [] = [],
-	P extends Presets<S, V> | undefined = undefined
+	P extends Presets<S, V> | undefined = undefined,
+	I extends boolean = false
 >(
-	...args: (ClassValue | Config<S, V, RV, P>)[]
-): string | ResultType<S, V, RV, P> {
+	...args: (ClassValue | Config<S, V, RV, P, I>)[]
+): string | ResultType<S, V, RV, P, I> {
 
 	const lastArg = args[args.length - 1];
 
 	let base: ClassValue;
-	let config: Config<S, V, RV, P> | undefined;
+	let config: Config<S, V, RV, P, I> | undefined;
 
 	// Detect config as last argument (only when 2+ args or single config arg)
-	if (args.length >= 2 && isConfig<S, V, RV, P>(lastArg)) {
+	if (args.length >= 2 && isConfig<S, V, RV, P, I>(lastArg)) {
 		base =
 			args.length > 2
 				? (args.slice(0, -1) as ClassValue[])
 				: (args[0] as ClassValue);
 		config = lastArg;
-	} else if (args.length === 1 && isConfig<S, V, RV, P>(lastArg)) {
+	} else if (args.length === 1 && isConfig<S, V, RV, P, I>(lastArg)) {
 		config = lastArg;
 	} else {
 		base = args as ClassValue[];
@@ -369,6 +389,7 @@ export function sv<
 		requiredVariants = [],
 		presets = {},
 		cacheSize = 256,
+		introspection = false,
 		postProcess
 	} = config;
 
@@ -405,10 +426,10 @@ export function sv<
 	const baseClassValue = cn(...baseArgs, configBase, baseSlot);
 	const slotKeys = new Set(keys(otherSlots));
 
-	type NormalizedVariantValue =
-		| ConfigClassValue
-		| Partial<Record<string, ConfigClassValue>>;
-
+	const normalizedVariants: Record<
+		string,
+		Record<string, NormalizedVariantValue>
+	> = {};
 
 	// Normalize variants to ensure consistent structure for processing
 	for (const [variantKey, variantValue] of entries(variants)) {
@@ -696,6 +717,11 @@ export function sv<
 			return value;
 		});
 
+	// Skip introspection properties when disabled
+	if (!introspection) {
+		return variantFn as ResultType<S, V, RV, P, I>;
+	}
+
 	return assign(variantFn, {
 		variants,
 		variantKeys: keys(variants),
@@ -708,5 +734,5 @@ export function sv<
 		getVariantValues,
 		clearCache: () => cache.clear(),
 		getCacheSize: () => cache.size
-	}) as ResultType<S, V, RV, P>;
+	}) as unknown as ResultType<S, V, RV, P, I>;
 }

@@ -211,11 +211,9 @@ const button = sv('btn', {
 	},
 	cacheSize: 512 // increase cache for complex components
 });
-
-// Access cache methods
-button.getCacheSize();
-button.clearCache();
 ```
+
+Cache inspection methods (`getCacheSize`, `clearCache`) are only exposed when `introspection: true` is set — see rule 11.
 
 Note: Using `class` or `className` prop bypasses caching.
 
@@ -241,7 +239,7 @@ button({ preset: 'cta' });
 
 ### 11. Use Introspection for Single Source of Truth
 
-The returned function exposes configuration properties for runtime introspection. Use these to access variant/slot definitions and reuse them elsewhere, avoiding duplication:
+Set `introspection: true` in the config to expose configuration properties and cache methods on the returned function. Introspection is **off by default** — opt in only when you need runtime access to variant/slot definitions or cache controls:
 
 ```typescript
 const button = sv('btn', {
@@ -264,7 +262,8 @@ const button = sv('btn', {
 	requiredVariants: ['intent'],
 	presets: {
 		cta: { size: 'lg', intent: 'primary' }
-	}
+	},
+	introspection: true
 });
 
 button.variantKeys;                // ['size', 'intent']
@@ -277,7 +276,11 @@ button.presetKeys;                 // ['cta']
 button.presets;                    // { cta: { size: 'lg', intent: 'primary' } }
 button.getVariantValues('size');   // ['sm', 'lg']
 button.getVariantValues('intent'); // ['primary', 'danger']
+button.getCacheSize();             // current cache size
+button.clearCache();               // clear the cache
 ```
+
+Without `introspection: true`, only the variant function itself is returned — accessing these properties is a type error.
 
 Use introspection to share variant/slot definitions with other parts of your codebase:
 
@@ -299,7 +302,8 @@ export const button = sv('btn font-medium rounded-lg', {
   defaultVariants: {
     size: 'md',
     intent: 'primary'
-  }
+  },
+  introspection: true
 });
 
 // Reuse variant keys for form validation
@@ -313,7 +317,8 @@ const card = sv('card', {
   slots: {
     header: 'font-bold',
     body: 'py-4'
-  }
+  },
+  introspection: true
 });
 
 // Dynamically render all slots
@@ -414,6 +419,7 @@ Class values inside the config (`base`, `variants` values, `slots` values, and `
 | `presets`          | `Record<string, Partial<Props>>` | Named preset combinations         |
 | `postProcess`      | `(className: string) => string`  | Class transformation              |
 | `cacheSize`        | `number`                         | Cache size (default: 256)         |
+| `introspection`    | `boolean`                        | Expose introspection and cache methods (default: false) |
 
 ## Exported Types
 
