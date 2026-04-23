@@ -217,6 +217,27 @@ type ResultType<
 > = ReturnFn<S, V, RV, P> &
 	(I extends true ? IntrospectionValues<S, V, RV, P> : object);
 
+/**
+ * Extracts the variant props object from an `sv()` return type
+ *
+ * Omits `class`, `className`, and `preset`. Pass a string literal union as `E`
+ * (for Exclude) to additionally exclude specific variant keys, this is useful
+ * for hiding component-internal variants from public props.
+ *
+ * @example
+ * ```ts
+ * const button = sv('btn', {
+ *   variants: {
+ *     size: { sm: 'text-sm', lg: 'text-lg' },
+ *     intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+ *   },
+ *   requiredVariants: ['intent']
+ * });
+ *
+ * type ButtonProps = VariantProps<typeof button>;
+ * // { size?: 'sm' | 'lg' | undefined; intent: 'primary' | 'danger' }
+ * ```
+ */
 export type VariantProps<
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	T extends (...args: any[]) => unknown,
@@ -228,12 +249,49 @@ export type VariantProps<
 	>
 >;
 
+/**
+ * Extracts the value union for a single variant key `K` from an `sv()` return
+ * type. Unlike indexing into `VariantProps`, the result never includes
+ * `undefined` even when the variant is optional.
+ *
+ * @example
+ * ```ts
+ * const button = sv('btn', {
+ *   variants: {
+ *     size: { sm: 'text-sm', md: 'text-base', lg: 'text-lg' }
+ *   }
+ * });
+ *
+ * type Size = VariantValue<typeof button, 'size'>;
+ * // 'sm' | 'md' | 'lg'
+ * ```
+ */
 export type VariantValue<
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	T extends (...args: any[]) => unknown,
 	K extends keyof VariantProps<T>
 > = NonNullable<VariantProps<T>[K]>;
 
+/**
+ * Extracts the per-slot class injection shape from an `sv()` return type.
+ * Resolves to `{ base?: ClassValue }` when the definition has no slots, or to
+ * a partial record of `base` plus each slot key when slots are defined. Useful
+ * for wrapper components that forward class overrides into specific slots.
+ *
+ * @example
+ * ```ts
+ * const card = sv('border', {
+ *   slots: { header: 'font-bold', body: 'py-4' }
+ * });
+ *
+ * type CardClassProps = SlotClassProps<typeof card>;
+ * // { base?: ClassValue; header?: ClassValue; body?: ClassValue }
+ *
+ * const classNames: CardClassProps = { header: 'text-blue-700' };
+ *
+ * card({ class: classNames });
+ * ```
+ */
 export type SlotClassProps<
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	T extends (...args: any[]) => unknown
@@ -326,8 +384,50 @@ const matchesCompound = (
 };
 
 /**
- * Creates variant-based class name generator with optional slots support.
- * Inspired by CVA and tailwind-variants.
+ * Builds a class name string or a variant-based class name generator.
+ *
+ * Called with only `ClassValue` arguments, it merges them like `cn()` and
+ * returns a string. Called with a single config object, or with one or more
+ * `ClassValue` arguments followed by a trailing config, it returns a variant
+ * function driven by that config (with optional slots support).
+ *
+ * @example
+ * ```ts
+ * // Class name merging (no config)
+ * sv('flex', 'items-center', { gap: true }); // 'flex items-center gap'
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Config-only call
+ * const button = sv({
+ *   base: 'btn',
+ *   variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
+ * });
+ *
+ * button({ size: 'lg' }); // 'btn text-lg'
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Base + config call
+ * const button = sv('btn font-medium', {
+ *   variants: { intent: { primary: 'bg-blue-500', danger: 'bg-red-500' } },
+ *   defaultVariants: { intent: 'primary' }
+ * });
+ *
+ * button(); // 'btn font-medium bg-blue-500'
+ * ```
+ *
+ * @example
+ * ```ts
+ * // With slots
+ * const card = sv('border rounded-lg', {
+ *   slots: { header: 'font-bold', body: 'py-4' }
+ * });
+ *
+ * const { base, header, body } = card();
+ * ```
  */
 export function sv<
 	S extends Slots | undefined = undefined,

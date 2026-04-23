@@ -1,5 +1,5 @@
 /**
- * Represents valid class name input types
+ * Valid input type accepted to generate class names
  */
 export type ClassValue =
 	| string
@@ -19,6 +19,9 @@ const { keys } = Object;
 
 /**
  * Constructs a class name string from various input types
+ *
+ * Strings are included directly, arrays are flattened, object keys are included
+ * if their values are truthy, other value types are ignored.
  */
 export function cn(...args: ClassValue[]): string {
 
