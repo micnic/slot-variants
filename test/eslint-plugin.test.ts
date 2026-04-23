@@ -1,0 +1,305 @@
+import t from 'tap';
+import { RuleTester } from 'eslint';
+import plugin, { rules } from '../src/eslint-plugin.ts';
+
+RuleTester.describe = (_text, fn) => (fn as () => void)();
+RuleTester.it = (_text, fn) => (fn as () => void)();
+
+const tester = new RuleTester({
+	languageOptions: {
+		ecmaVersion: 'latest',
+		sourceType: 'module'
+	}
+});
+
+const rule = rules['no-duplicate-classes'];
+const IMPORT = "import { sv } from 'slot-variants';\n";
+
+t.test('plugin shape (ESLint + oxlint compat)', (t) => {
+	t.equal(plugin.meta.name, 'slot-variants', 'meta.name is set');
+	t.ok(plugin.rules, 'rules object present');
+	for (const [name, r] of Object.entries(plugin.rules)) {
+		t.ok(r.meta, `${name}: has meta`);
+		t.ok(r.meta?.messages, `${name}: has messages`);
+		t.ok(r.meta?.schema !== undefined, `${name}: has schema`);
+		t.equal(typeof r.create, 'function', `${name}: has create()`);
+	}
+	t.end();
+});
+
+t.test('no-duplicate-classes', (t) => {
+	t.doesNotThrow(() => {
+		tester.run('no-duplicate-classes', rule, {
+			valid: [
+				IMPORT +
+					"sv({ base: 'flex items-center', variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });",
+				IMPORT +
+					"sv({ variants: { size: { sm: 'text-sm', lg: 'text-lg' }, intent: { primary: 'bg-blue-500', danger: 'bg-red-500' } } });",
+				IMPORT + "sv('flex', 'items-center');",
+				IMPORT + 'sv({});',
+				// Same token across values of the same variant — mutually exclusive.
+				IMPORT +
+					"sv({ variants: { state: { on: 'highlight', off: 'highlight' } } });",
+				// Dynamic base — can't analyze, don't false-flag.
+				IMPORT +
+					"sv({ base: dynamic, variants: { size: { sm: 'text-sm' } } });",
+				// Without the import the rule stays quiet.
+				"sv({ base: 'flex flex' });",
+				// Boolean shorthand distinct from base.
+				IMPORT +
+					"sv({ base: 'btn', variants: { disabled: 'opacity-50' } });",
+				// Spread in a variant record — can't fully enumerate keys.
+				IMPORT +
+					"sv({ variants: { size: { ...extra, sm: 'text-sm' } } });",
+				// Computed key in a variant record — key is dynamic.
+				IMPORT +
+					"sv({ variants: { size: { [dyn]: 'x', sm: 'text-sm' } } });",
+				// Variant value is a slot-keyed object (boolean shorthand w/ slots).
+				IMPORT +
+					`sv({
+						slots: { body: 'p-4' },
+						variants: { disabled: { body: 'opacity-50' } }
+					});`,
+				// compoundSlots adds distinct classes — no dup.
+				IMPORT +
+					`sv({
+						slots: { body: 'p-4' },
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+						compoundSlots: [
+							{ slots: ['body'], size: 'lg', class: 'font-bold' }
+						]
+					});`,
+				// compoundSlots with non-analyzable or incomplete entries.
+				IMPORT +
+					`sv({
+						slots: { body: 'p-4' },
+						compoundSlots: [
+							42,
+							{ slots: ['body'] },
+							{ class: 'x' },
+							{ slots: 'body', class: 'x' },
+							{ slots: [dyn, 42, 'body'], className: 'font-bold' }
+						]
+					});`,
+				// compoundVariants with non-object entries — skipped.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+						compoundVariants: [42, { size: 'lg', class: 'font-bold' }]
+					});`,
+				// Non-sv call after the import still has to be visited.
+				IMPORT + "console.log('hi'); foo(); sv({ base: 'btn' });",
+				// Non-string literal and dynamic inputs are safely ignored.
+				IMPORT + 'sv({ base: 42, variants: { size: 123 } });',
+				// Spread arg in a plain call — analyzer skips it.
+				IMPORT + "sv(...extra, { base: 'flex' });",
+				// Non-object elements inside a base array are skipped.
+				IMPORT + "sv({ base: ['flex', ...extra, 'gap-2'] });",
+				// String-literal property keys — config, variant keys, value keys.
+				IMPORT +
+					"sv({ 'base': 'flex items-center', 'variants': { 'size': { 'sm': 'text-sm', 'lg': 'text-lg' } } });",
+				// Numeric-literal variant value keys.
+				IMPORT +
+					"sv({ variants: { size: { 1: 'text-sm', 2: 'text-lg' } } });",
+				// Zero-arg sv() call.
+				IMPORT + 'sv();',
+				// Non-object `slots` value.
+				IMPORT + "sv({ base: 'flex', slots: 42 });",
+				// Spread in the config argument — not analyzable.
+				IMPORT + "sv({ ...rest, base: 'flex flex' });",
+				// Computed top-level config key — not analyzable.
+				IMPORT + "sv({ [key]: 'x', base: 'flex flex' });",
+				// Unknown top-level key — not treated as config.
+				IMPORT + "sv({ unknown: 'x', base: 'flex flex' });",
+				// Empty object as base (cn-style record) with no slots.
+				IMPORT + 'sv({ base: {} });',
+				// Empty object as base with slots — still opaque.
+				IMPORT + "sv({ slots: { body: 'x' }, base: {} });",
+				// cn-style record as base, no slots — not analyzed.
+				IMPORT + "sv({ base: { 'some-class': true } });",
+				// cn-style record with a non-slot key — bails out.
+				IMPORT +
+					"sv({ slots: { body: 'x' }, base: { foo: true } });",
+				// Slot-keyed object as base with a spread — bails out.
+				IMPORT +
+					"sv({ slots: { body: 'p-4' }, base: { ...rest, body: 'z' } });",
+				// Slot-keyed object as base with a computed key — bails out.
+				IMPORT +
+					"sv({ slots: { body: 'p-4' }, base: { [k]: 'z' } });",
+				// Template literal with an interpolation — skipped.
+				IMPORT + 'sv({ base: `foo ${dynamic} bar` });',
+				// Import from a different module is ignored by the rule.
+				IMPORT +
+					"import path from 'node:path'; sv({ base: 'flex' });",
+				// Default and namespace imports aren't tracked as `sv`.
+				"import sv from 'slot-variants'; sv({ base: 'flex flex' });",
+				"import * as mod from 'slot-variants'; mod.sv({ base: 'flex flex' });",
+				// Side-effect import of slot-variants — no specifiers.
+				"import 'slot-variants'; sv({ base: 'flex flex' });",
+				// Unrelated named import from slot-variants.
+				"import { cn } from 'slot-variants'; cn('flex', 'flex');",
+				// Sparse null element in compoundVariants.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+						compoundVariants: [, { size: 'lg', class: 'font-bold' }]
+					});`,
+				// Spread in the slots object — iteration continues past it.
+				IMPORT +
+					"sv({ slots: { ...rest, body: 'p-4' } });",
+				// compoundVariants entry with `className` and one with neither.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+						compoundVariants: [
+							{ size: 'lg' },
+							{ size: 'lg', className: 'font-bold' }
+						]
+					});`
+			],
+			invalid: [
+				{
+					code:
+						IMPORT +
+						`sv({
+							base: 'flex items-center',
+							variants: {
+								size: { sm: 'text-sm', lg: 'text-lg' },
+								orientation: {
+									row: ['flex', 'flex-row'],
+									col: ['flex', 'flex-col']
+								}
+							},
+							defaultVariants: { orientation: 'row' }
+						});`,
+					errors: [
+						{
+							messageId: 'duplicate',
+							data: { token: 'flex', slot: 'base' }
+						},
+						{
+							messageId: 'duplicate',
+							data: { token: 'flex', slot: 'base' }
+						},
+						{
+							messageId: 'duplicate',
+							data: { token: 'flex', slot: 'base' }
+						}
+					]
+				},
+				{
+					// Duplicate within a single literal.
+					code: IMPORT + "sv({ base: 'flex flex' });",
+					errors: 1
+				},
+				{
+					// Duplicate across different variant keys.
+					code:
+						IMPORT +
+						"sv({ variants: { size: { sm: 'p-2' }, intent: { primary: 'p-2' } } });",
+					errors: 2
+				},
+				{
+					// Duplicate between base and a variant value.
+					code:
+						IMPORT +
+						"sv({ base: 'p-2', variants: { size: { sm: 'p-2' } } });",
+					errors: 2
+				},
+				{
+					// Duplicate between base and a compound variant.
+					code:
+						IMPORT +
+						`sv({
+							base: 'font-bold',
+							variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+							compoundVariants: [{ size: 'lg', class: 'font-bold' }]
+						});`,
+					errors: 2
+				},
+				{
+					// Boolean shorthand with a token already in base.
+					code:
+						IMPORT +
+						"sv({ base: 'opacity-50', variants: { disabled: 'opacity-50' } });",
+					errors: 2
+				},
+				{
+					// Slot-keyed variant value duplicates the slot's base class.
+					code:
+						IMPORT +
+						`sv({
+							slots: { body: 'flex' },
+							variants: { disabled: { body: 'flex' } }
+						});`,
+					errors: [
+						{
+							messageId: 'duplicate',
+							data: { token: 'flex', slot: 'body' }
+						},
+						{
+							messageId: 'duplicate',
+							data: { token: 'flex', slot: 'body' }
+						}
+					]
+				},
+				{
+					// compoundSlots duplicates a class that's already on the slot.
+					code:
+						IMPORT +
+						`sv({
+							slots: { body: 'font-bold' },
+							variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+							compoundSlots: [
+								{ slots: ['body'], size: 'lg', class: 'font-bold' }
+							]
+						});`,
+					errors: 2
+				},
+				{
+					// Template literal tokens participate in duplicate detection.
+					code:
+						IMPORT +
+						'sv({ base: `flex items-center`, variants: { size: { sm: `flex` } } });',
+					errors: 2
+				},
+				{
+					// Same token emitted twice within a single compound entry.
+					code:
+						IMPORT +
+						`sv({
+							variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+							compoundVariants: [
+								{ size: 'lg', class: 'font-bold font-bold' }
+							]
+						});`,
+					errors: 1
+				},
+				{
+					// Token shared across two distinct compound entries.
+					code:
+						IMPORT +
+						`sv({
+							variants: {
+								size: { sm: 'text-sm', lg: 'text-lg' },
+								intent: { primary: 'p', danger: 'd' }
+							},
+							compoundVariants: [
+								{ size: 'lg', class: 'font-bold' },
+								{ intent: 'primary', class: 'font-bold' }
+							]
+						});`,
+					errors: 2
+				},
+				{
+					// Same variant value literal contains a token twice.
+					code:
+						IMPORT +
+						"sv({ variants: { size: { sm: 'flex flex' } } });",
+					errors: 1
+				}
+			]
+		});
+	}, 'rule tester passes');
+	t.end();
+});

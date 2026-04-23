@@ -890,6 +890,56 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 | `cacheSize` | `number` | Maximum number of cached results (default: `256`) |
 | `introspection` | `boolean` | When `true`, exposes variant/slot/preset introspection and cache methods on the returned function (default: `false`) |
 
+## ESLint / oxlint Plugin
+
+`slot-variants` ships an ESLint-compatible plugin at the `slot-variants/eslint-plugin` subpath. It runs under ESLint v9+ (flat config) and under [oxlint](https://oxc.rs/docs/guide/usage/linter/js-plugins) via its `jsPlugins` API. The plugin is a separate entry point with no runtime imports — consuming it doesn't pull any library code into your bundle.
+
+### Rules
+
+- **`slot-variants/no-duplicate-classes`** — flags class name tokens that will appear more than once in the output of an `sv()` call. Detects duplicates within `base`, across different variant keys, inside compound variants and compound slots, between `base` and a variant value, and within a single literal.
+
+Only calls where `sv` is a named import from `'slot-variants'` are analyzed. Dynamic inputs (identifiers, spreads, computed keys, template literals with expressions) are skipped silently rather than flagged.
+
+### ESLint (flat config)
+
+```js
+import svPlugin from 'slot-variants/eslint-plugin';
+
+export default [
+  {
+    plugins: { 'slot-variants': svPlugin },
+    rules: { 'slot-variants/no-duplicate-classes': 'error' }
+  }
+];
+```
+
+### oxlint
+
+```json
+{
+  "jsPlugins": ["slot-variants/eslint-plugin"],
+  "rules": { "slot-variants/no-duplicate-classes": "error" }
+}
+```
+
+### Example
+
+```typescript
+import { sv } from 'slot-variants';
+
+const button = sv({
+  base: 'flex items-center',
+  variants: {
+    orientation: {
+      row: ['flex', 'flex-row'], // 'flex' duplicates base
+      col: ['flex', 'flex-col']  // 'flex' duplicates base
+    }
+  }
+});
+```
+
+The rule reports `flex` on the `base` literal and on both variant values. Move the shared class into `base` — or use compound variants — so each class has a single source.
+
 ## Migrating from CVA / tailwind-variants
 
 ### From CVA

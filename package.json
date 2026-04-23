@@ -8,15 +8,21 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js",
 			"require": "./dist/index.cjs"
+		},
+		"./eslint-plugin": {
+			"types": "./dist/eslint-plugin.d.ts",
+			"import": "./dist/eslint-plugin.js",
+			"require": "./dist/eslint-plugin.cjs"
 		}
 	},
+	"sideEffects": false,
 	"files": [
 		"AGENTS.md",
 		"dist",
 		"logo.svg"
 	],
 	"scripts": {
-		"build": "tsup src/index.ts && rm dist/index.d.cts",
+		"build": "tsup src/index.ts src/eslint-plugin.ts && rm dist/index.d.cts dist/eslint-plugin.d.cts",
 		"test": "tap --show-full-coverage test/*.test.ts",
 		"bench": "jiti bench/cn.ts && jiti bench/cva.ts && jiti bench/tv.ts",
 		"lint": "eslint src",
@@ -25,7 +31,13 @@
 		"prepublishOnly": "npm run build"
 	},
 	"repository": "github:micnic/slot-variants",
-	"keywords": ["classes", "classname", "classnames", "variants", "slots"],
+	"keywords": [
+		"classes",
+		"classname",
+		"classnames",
+		"variants",
+		"slots"
+	],
 	"author": "Nicu Micleușanu",
 	"license": "MIT",
 	"devDependencies": {
@@ -35,6 +47,7 @@
 		"classnames": "^2.5.1",
 		"eslint": "9.39.2",
 		"jiti": "2.6.1",
+		"oxlint": "1.61.0",
 		"prettier": "3.8.1",
 		"tailwind-merge": "^3.4.0",
 		"tailwind-variants": "^3.2.2",

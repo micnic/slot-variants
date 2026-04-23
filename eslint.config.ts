@@ -1,19 +1,19 @@
-import eslint from '@eslint/js'
-import stylistic from '@stylistic/eslint-plugin'
-import tseslint from 'typescript-eslint'
+import eslint from '@eslint/js';
+import stylistic from '@stylistic/eslint-plugin';
+import tseslint from 'typescript-eslint';
 
 export default [
 	eslint.configs.recommended,
 	...tseslint.configs.recommended,
 	{
-		ignores: ['dist'],
+		ignores: ['dist']
 	},
 	{
 		plugins: {
-			'@stylistic': stylistic,
+			'@stylistic': stylistic
 		},
 		rules: {
-			'@stylistic/eol-last': ['error', 'never'],
+			'@stylistic/eol-last': ['error', 'never']
 		}
 	}
-]
+];
