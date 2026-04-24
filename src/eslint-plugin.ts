@@ -288,11 +288,10 @@ const analyzeConfig = (
 	const compoundSlots = config.get('compoundSlots');
 
 	const slotsMap = getProperties(slots);
-	const slotNames = new Set<string>();
+	const slotNames = new Set(slotsMap.keys());
 
-	for (const key of slotsMap.keys()) {
-		if (key !== 'base') slotNames.add(key);
-	}
+	// 'base' is a reserved key meaning "default slot", not a slot name.
+	slotNames.delete('base');
 
 	const entries: Entry[] = [];
 	const extract = (node: Node, slot: string, source: Source): void => {
