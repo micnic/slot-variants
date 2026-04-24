@@ -22,24 +22,6 @@ const CONFIG_KEYS = new Set([
 	'introspection'
 ]);
 
-// Tokenize the raw inner text of a string/template literal into tokens paired
-// with their offset within that inner text. Using raw (not cooked) keeps offsets
-// aligned with source positions, which is what we need for precise reporting.
-const tokenizeWithOffsets = (
-	text: string
-): Array<{ token: string; offset: number }> => {
-	const tokens: Array<{ token: string; offset: number }> = [];
-	const regex = /\S+/g;
-
-	let match: RegExpExecArray | null;
-
-	while ((match = regex.exec(text)) !== null) {
-		tokens.push({ token: match[0], offset: match.index });
-	}
-
-	return tokens;
-};
-
 // Returns the statically-known key name of a Property node, or null when it
 // can't be determined (computed key). For non-computed keys the parser only
 // emits Identifier or Literal(string|number), so those are the two cases we
@@ -198,8 +180,9 @@ const pushStringLiteralTokens = (
 	const inner = raw.slice(1, -1);
 	const base = range[0] + 1;
 
-	for (const { token, offset } of tokenizeWithOffsets(inner)) {
-		const start = base + offset;
+	for (const match of inner.matchAll(/\S+/g)) {
+		const token = match[0];
+		const start = base + match.index;
 		const end = start + token.length;
 
 		entries.push({
