@@ -80,6 +80,37 @@ const getProperties = (obj: Node | undefined): Map<string, Node> => {
 	return map;
 };
 
+// Returns true when every property of `node` has a statically-known key that
+// names a slot (or 'base'). This is the shape a variant uses when written as
+// boolean shorthand — `{ rounded: { root: '...', icon: '...' } }` — as opposed
+// to a value-keyed variant like `{ size: { sm: '...', md: '...' } }`.
+const isSlotKeyedShorthand = (
+	node: Node,
+	slotNames: Set<string>
+): boolean => {
+	if (
+		node.type !== 'ObjectExpression' ||
+		node.properties.length === 0 ||
+		slotNames.size === 0
+	) {
+		return false;
+	}
+
+	for (const prop of node.properties) {
+		if (prop.type !== 'Property') {
+			return false;
+		}
+
+		const key = getKeyName(prop);
+
+		if (key === null || (key !== 'base' && !slotNames.has(key))) {
+			return false;
+		}
+	}
+
+	return true;
+};
+
 const isConfigLike = (node: Node | undefined): boolean => {
 	if (!node || node.type !== 'ObjectExpression') {
 		return false;
@@ -113,6 +144,36 @@ type Entry = {
 	slot: string;
 	token: string;
 	loc: SourceLocation;
+};
+
+// Returns true when the entries in `list` cannot collide at runtime: they all
+// come from different values of a single variant key, so slot-variants will
+// only ever pick one of them on any given render. Any other shape — a base
+// class, a compound, or tokens from two different variant keys — means they
+// *will* co-occur, and the token is a real duplicate.
+const isMutuallyExclusiveVariants = (list: Entry[]): boolean => {
+	const seenValues = new Set<string>();
+	let sharedKey: string | null = null;
+
+	for (const entry of list) {
+		if (entry.source.kind !== 'variant') {
+			return false;
+		}
+
+		if (sharedKey === null) {
+			sharedKey = entry.source.key;
+		} else if (sharedKey !== entry.source.key) {
+			return false;
+		}
+
+		if (seenValues.has(entry.source.value)) {
+			return false;
+		}
+
+		seenValues.add(entry.source.value);
+	}
+
+	return true;
 };
 
 const pushStringLiteralTokens = (
@@ -290,70 +351,37 @@ const analyzeConfig = (
 	const variantsMap = getProperties(variants);
 
 	for (const [variantKey, variantValue] of variantsMap.entries()) {
-		if (variantValue.type === 'ObjectExpression') {
-			// Boolean shorthand w/ slot-keyed object: every property has a
-			// statically-known key naming a slot (or 'base').
-			let allKeysAreSlots = variantValue.properties.length > 0;
+		const isValueKeyed =
+			variantValue.type === 'ObjectExpression' &&
+			!isSlotKeyedShorthand(variantValue, slotNames);
 
-			for (const prop of variantValue.properties) {
-				if (prop.type !== 'Property') {
-					allKeysAreSlots = false;
-					break;
-				}
-
-				const key = getKeyName(prop);
-
-				if (
-					key === null ||
-					(key !== 'base' && !slotNames.has(key))
-				) {
-					allKeysAreSlots = false;
-					break;
-				}
-			}
-
-			const isSlotShorthand = allKeysAreSlots && slotNames.size > 0;
-
-			if (isSlotShorthand) {
-				extractTokens(
-					variantValue,
-					'base',
-					{ kind: 'variant', key: variantKey, value: 'true' },
-					slotNames,
-					entries,
-					sourceCode
-				);
-			} else {
-				for (const prop of variantValue.properties) {
-					if (prop.type !== 'Property') {
-						continue;
-					}
-
-					const valueKey = getKeyName(prop);
-
-					if (valueKey === null) {
-						continue;
-					}
-
-					extractTokens(
-						prop.value,
-						'base',
-						{
-							kind: 'variant',
-							key: variantKey,
-							value: valueKey
-						},
-						slotNames,
-						entries,
-						sourceCode
-					);
-				}
-			}
-		} else {
+		if (!isValueKeyed) {
 			extractTokens(
 				variantValue,
 				'base',
 				{ kind: 'variant', key: variantKey, value: 'true' },
+				slotNames,
+				entries,
+				sourceCode
+			);
+			continue;
+		}
+
+		for (const prop of variantValue.properties) {
+			if (prop.type !== 'Property') {
+				continue;
+			}
+
+			const valueKey = getKeyName(prop);
+
+			if (valueKey === null) {
+				continue;
+			}
+
+			extractTokens(
+				prop.value,
+				'base',
+				{ kind: 'variant', key: variantKey, value: valueKey },
 				slotNames,
 				entries,
 				sourceCode
@@ -444,37 +472,7 @@ const analyzeConfig = (
 
 	for (const [slotKey, tokenMap] of bySlot.entries()) {
 		for (const [token, list] of tokenMap.entries()) {
-			if (list.length < 2) {
-				continue;
-			}
-
-			const seenValues = new Set<string>();
-
-			let duplicated = false;
-			let sharedKey: string | null = null;
-
-			for (const entry of list) {
-				if (entry.source.kind !== 'variant') {
-					duplicated = true;
-					break;
-				}
-
-				if (sharedKey === null) {
-					sharedKey = entry.source.key;
-				} else if (sharedKey !== entry.source.key) {
-					duplicated = true;
-					break;
-				}
-
-				if (seenValues.has(entry.source.value)) {
-					duplicated = true;
-					break;
-				}
-
-				seenValues.add(entry.source.value);
-			}
-
-			if (!duplicated) {
+			if (list.length < 2 || isMutuallyExclusiveVariants(list)) {
 				continue;
 			}
 

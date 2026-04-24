@@ -52,6 +52,11 @@ t.test('no-duplicate-classes', (t) => {
 				// Spread in a variant record — can't fully enumerate keys.
 				IMPORT +
 					"sv({ variants: { size: { ...extra, sm: 'text-sm' } } });",
+				// Spread inside a variant value when slots are present — the
+				// shorthand check bails on the spread, so it's analyzed as
+				// value-keyed (with the spread skipped).
+				IMPORT +
+					"sv({ slots: { body: 'p-4' }, variants: { size: { ...extra, sm: 'text-sm' } } });",
 				// Computed key in a variant record — key is dynamic.
 				IMPORT +
 					"sv({ variants: { size: { [dyn]: 'x', sm: 'text-sm' } } });",
