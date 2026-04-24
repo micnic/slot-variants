@@ -170,35 +170,6 @@ const extractTokens = (
 	}
 };
 
-const sameSource = (a: Source, b: Source): boolean => {
-	if (a.kind !== b.kind) {
-		return false;
-	}
-
-	if (a.kind === 'base') {
-		return true;
-	}
-
-	if (a.kind === 'variant') {
-		const bv = b as typeof a;
-		return a.key === bv.key && a.value === bv.value;
-	}
-
-	const bc = b as typeof a;
-
-	return a.index === bc.index;
-};
-
-// Precondition: callers check `sameSource` first, so two variant sources with
-// the same key here are guaranteed to have different values.
-const canCoexist = (a: Source, b: Source): boolean => {
-	if (a.kind !== 'variant' || b.kind !== 'variant') {
-		return true;
-	}
-
-	return a.key !== b.key;
-};
-
 const analyzeConfig = (
 	context: Rule.RuleContext,
 	configNode: any,
@@ -394,20 +365,30 @@ const analyzeConfig = (
 				continue;
 			}
 
+			const seenValues = new Set<string>();
+
 			let duplicated = false;
+			let sharedKey: string | null = null;
 
-			for (let i = 0; i < list.length && !duplicated; i++) {
-				for (let j = i + 1; j < list.length && !duplicated; j++) {
-					const a = list[i] as Entry;
-					const b = list[j] as Entry;
-
-					if (
-						sameSource(a.source, b.source) ||
-						canCoexist(a.source, b.source)
-					) {
-						duplicated = true;
-					}
+			for (const entry of list) {
+				if (entry.source.kind !== 'variant') {
+					duplicated = true;
+					break;
 				}
+
+				if (sharedKey === null) {
+					sharedKey = entry.source.key;
+				} else if (sharedKey !== entry.source.key) {
+					duplicated = true;
+					break;
+				}
+
+				if (seenValues.has(entry.source.value)) {
+					duplicated = true;
+					break;
+				}
+
+				seenValues.add(entry.source.value);
 			}
 
 			if (!duplicated) {
