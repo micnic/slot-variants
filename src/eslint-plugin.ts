@@ -5,7 +5,6 @@ import type {
 	Node,
 	ObjectExpression,
 	Property,
-	SourceLocation,
 	SpreadElement
 } from 'estree';
 
@@ -143,7 +142,8 @@ type Entry = {
 	source: Source;
 	slot: string;
 	token: string;
-	loc: SourceLocation;
+	start: number;
+	end: number;
 };
 
 // Returns true when the entries in `list` cannot collide at runtime: they all
@@ -207,10 +207,8 @@ const pushStringLiteralTokens = (
 			source,
 			slot,
 			token,
-			loc: {
-				start: sourceCode.getLocFromIndex(start),
-				end: sourceCode.getLocFromIndex(end)
-			}
+			start,
+			end
 		});
 	}
 };
@@ -403,7 +401,10 @@ const analyzeConfig = (
 
 			for (const entry of list) {
 				context.report({
-					loc: entry.loc,
+					loc: {
+						start: sourceCode.getLocFromIndex(entry.start),
+						end: sourceCode.getLocFromIndex(entry.end)
+					},
 					messageId: 'duplicate',
 					data: { token, slot: slotKey }
 				});
@@ -439,7 +440,10 @@ const analyzeCnCall = (
 
 		for (const entry of list) {
 			context.report({
-				loc: entry.loc,
+				loc: {
+					start: sourceCode.getLocFromIndex(entry.start),
+					end: sourceCode.getLocFromIndex(entry.end)
+				},
 				messageId: 'duplicateCn',
 				data: { token }
 			});
