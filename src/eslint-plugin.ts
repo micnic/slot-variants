@@ -269,20 +269,8 @@ const extractTokens = (
 		return;
 	}
 
-	for (const prop of node.properties) {
-		/* c8 ignore next 3 -- isSlotKeyedShorthand verified every prop is a Property */
-		if (prop.type !== 'Property') {
-			continue;
-		}
-
-		const key = getKeyName(prop);
-
-		/* c8 ignore next 3 -- isSlotKeyedShorthand verified every key is statically known */
-		if (key === null) {
-			continue;
-		}
-
-		extractTokens(prop.value, key, source, slotNames, entries, sourceCode);
+	for (const [key, value] of getProperties(node)) {
+		extractTokens(value, key, source, slotNames, entries, sourceCode);
 	}
 };
 
