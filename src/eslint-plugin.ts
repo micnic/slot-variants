@@ -247,32 +247,24 @@ const extractTokens = (
 	// Only analyze as slot-keyed object when every key matches a slot name.
 	// Otherwise it's a cn-style record and we can't statically determine
 	// which keys are active, so skip.
-	if (slotNames.size === 0) {
+	if (!isSlotKeyedShorthand(node, slotNames)) {
 		return;
 	}
 
-	const collected: [key: string, value: Node][] = [];
-
 	for (const prop of node.properties) {
+		/* c8 ignore next 3 -- isSlotKeyedShorthand verified every prop is a Property */
 		if (prop.type !== 'Property') {
-			return;
+			continue;
 		}
 
 		const key = getKeyName(prop);
 
+		/* c8 ignore next 3 -- isSlotKeyedShorthand verified every key is statically known */
 		if (key === null) {
-			return;
+			continue;
 		}
 
-		if (key !== 'base' && !slotNames.has(key)) {
-			return;
-		}
-
-		collected.push([key, prop.value]);
-	}
-
-	for (const [key, value] of collected) {
-		extractTokens(value, key, source, slotNames, entries, sourceCode);
+		extractTokens(prop.value, key, source, slotNames, entries, sourceCode);
 	}
 };
 
