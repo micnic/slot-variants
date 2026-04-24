@@ -3,6 +3,7 @@ import type {
 	Expression,
 	Literal,
 	Node,
+	ObjectExpression,
 	Property,
 	SourceLocation,
 	SpreadElement
@@ -40,6 +41,20 @@ const getKeyName = (prop: Property): string | null => {
 	return String((key as Literal).value);
 };
 
+const getOrCreate = <K, V>(map: Map<K, V>, key: K, make: () => V): V => {
+	const existing = map.get(key);
+
+	if (existing !== undefined) {
+		return existing;
+	}
+
+	const created = make();
+
+	map.set(key, created);
+
+	return created;
+};
+
 const getProperties = (obj: Node | undefined): Map<string, Node> => {
 	const map = new Map<string, Node>();
 
@@ -66,10 +81,7 @@ const getProperties = (obj: Node | undefined): Map<string, Node> => {
 // names a slot (or 'base'). This is the shape a variant uses when written as
 // boolean shorthand — `{ rounded: { root: '...', icon: '...' } }` — as opposed
 // to a value-keyed variant like `{ size: { sm: '...', md: '...' } }`.
-const isSlotKeyedShorthand = (
-	node: Node,
-	slotNames: Set<string>
-): boolean => {
+const isSlotKeyedShorthand = (node: Node, slotNames: Set<string>): boolean => {
 	if (
 		node.type !== 'ObjectExpression' ||
 		node.properties.length === 0 ||
@@ -93,7 +105,7 @@ const isSlotKeyedShorthand = (
 	return true;
 };
 
-const isConfigLike = (node: Node | undefined): boolean => {
+const isConfigLike = (node: Node | undefined): node is ObjectExpression => {
 	if (!node || node.type !== 'ObjectExpression') {
 		return false;
 	}
@@ -120,6 +132,12 @@ type Source =
 	| { kind: 'base' }
 	| { kind: 'variant'; key: string; value: string }
 	| { kind: 'compound' };
+
+// Shared instances for the parameterless source kinds. Nothing mutates Source
+// values, so all call sites that emit a 'base' or 'compound' entry can point
+// at the same object instead of allocating a fresh literal per token.
+const baseSource: Source = { kind: 'base' };
+const compoundSource: Source = { kind: 'compound' };
 
 type Entry = {
 	source: Source;
@@ -294,15 +312,15 @@ const analyzeConfig = (
 	};
 
 	for (const [slotKey, slotValue] of slotsMap.entries()) {
-		extract(slotValue, slotKey, { kind: 'base' });
+		extract(slotValue, slotKey, baseSource);
 	}
 
 	for (const arg of baseArgs) {
-		extract(arg, 'base', { kind: 'base' });
+		extract(arg, 'base', baseSource);
 	}
 
 	if (base) {
-		extract(base, 'base', { kind: 'base' });
+		extract(base, 'base', baseSource);
 	}
 
 	const variantsMap = getProperties(variants);
@@ -321,18 +339,8 @@ const analyzeConfig = (
 			continue;
 		}
 
-		for (const prop of variantValue.properties) {
-			if (prop.type !== 'Property') {
-				continue;
-			}
-
-			const valueKey = getKeyName(prop);
-
-			if (valueKey === null) {
-				continue;
-			}
-
-			extract(prop.value, 'base', {
+		for (const [valueKey, valueNode] of getProperties(variantValue)) {
+			extract(valueNode, 'base', {
 				kind: 'variant',
 				key: variantKey,
 				value: valueKey
@@ -350,7 +358,7 @@ const analyzeConfig = (
 			const cls = compound.get('class') ?? compound.get('className');
 
 			if (cls) {
-				extract(cls, 'base', { kind: 'compound' });
+				extract(cls, 'base', compoundSource);
 			}
 		}
 	}
@@ -382,7 +390,7 @@ const analyzeConfig = (
 					continue;
 				}
 
-				extract(cls, slotEl.value, { kind: 'compound' });
+				extract(cls, slotEl.value, compoundSource);
 			}
 		}
 	}
@@ -390,19 +398,12 @@ const analyzeConfig = (
 	const bySlot = new Map<string, Map<string, Entry[]>>();
 
 	for (const entry of entries) {
-		let tokenMap = bySlot.get(entry.slot);
-
-		if (!tokenMap) {
-			tokenMap = new Map();
-			bySlot.set(entry.slot, tokenMap);
-		}
-
-		let list = tokenMap.get(entry.token);
-
-		if (!list) {
-			list = [];
-			tokenMap.set(entry.token, list);
-		}
+		const tokenMap = getOrCreate(
+			bySlot,
+			entry.slot,
+			() => new Map<string, Entry[]>()
+		);
+		const list = getOrCreate(tokenMap, entry.token, () => []);
 
 		list.push(entry);
 	}
@@ -433,25 +434,13 @@ const analyzeCnCall = (
 	const slotNames = new Set<string>();
 
 	for (const arg of args) {
-		extractTokens(
-			arg,
-			'base',
-			{ kind: 'base' },
-			slotNames,
-			entries,
-			sourceCode
-		);
+		extractTokens(arg, 'base', baseSource, slotNames, entries, sourceCode);
 	}
 
 	const tokenMap = new Map<string, Entry[]>();
 
 	for (const entry of entries) {
-		let list = tokenMap.get(entry.token);
-
-		if (!list) {
-			list = [];
-			tokenMap.set(entry.token, list);
-		}
+		const list = getOrCreate(tokenMap, entry.token, () => []);
 
 		list.push(entry);
 	}
@@ -537,7 +526,7 @@ export const noDuplicateClasses: Rule.RuleModule = {
 
 					if (isConfigLike(last)) {
 						const baseArgs = args.slice(0, -1);
-						analyzeConfig(context, last as Node, baseArgs);
+						analyzeConfig(context, last, baseArgs);
 					} else {
 						analyzeCnCall(context, args);
 					}
