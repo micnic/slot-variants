@@ -314,38 +314,20 @@ const analyzeConfig = (
 	}
 
 	const entries: Entry[] = [];
+	const extract = (node: Node, slot: string, source: Source): void => {
+		extractTokens(node, slot, source, slotNames, entries, sourceCode);
+	};
 
 	for (const [slotKey, slotValue] of slotsMap.entries()) {
-		extractTokens(
-			slotValue,
-			slotKey,
-			{ kind: 'base' },
-			slotNames,
-			entries,
-			sourceCode
-		);
+		extract(slotValue, slotKey, { kind: 'base' });
 	}
 
 	for (const arg of baseArgs) {
-		extractTokens(
-			arg,
-			'base',
-			{ kind: 'base' },
-			slotNames,
-			entries,
-			sourceCode
-		);
+		extract(arg, 'base', { kind: 'base' });
 	}
 
 	if (base) {
-		extractTokens(
-			base,
-			'base',
-			{ kind: 'base' },
-			slotNames,
-			entries,
-			sourceCode
-		);
+		extract(base, 'base', { kind: 'base' });
 	}
 
 	const variantsMap = getProperties(variants);
@@ -356,14 +338,11 @@ const analyzeConfig = (
 			!isSlotKeyedShorthand(variantValue, slotNames);
 
 		if (!isValueKeyed) {
-			extractTokens(
-				variantValue,
-				'base',
-				{ kind: 'variant', key: variantKey, value: 'true' },
-				slotNames,
-				entries,
-				sourceCode
-			);
+			extract(variantValue, 'base', {
+				kind: 'variant',
+				key: variantKey,
+				value: 'true'
+			});
 			continue;
 		}
 
@@ -378,14 +357,11 @@ const analyzeConfig = (
 				continue;
 			}
 
-			extractTokens(
-				prop.value,
-				'base',
-				{ kind: 'variant', key: variantKey, value: valueKey },
-				slotNames,
-				entries,
-				sourceCode
-			);
+			extract(prop.value, 'base', {
+				kind: 'variant',
+				key: variantKey,
+				value: valueKey
+			});
 		}
 	}
 
@@ -399,14 +375,7 @@ const analyzeConfig = (
 			const cls = compound.get('class') ?? compound.get('className');
 
 			if (cls) {
-				extractTokens(
-					cls,
-					'base',
-					{ kind: 'compound' },
-					slotNames,
-					entries,
-					sourceCode
-				);
+				extract(cls, 'base', { kind: 'compound' });
 			}
 		}
 	}
@@ -438,14 +407,7 @@ const analyzeConfig = (
 					continue;
 				}
 
-				extractTokens(
-					cls,
-					slotEl.value,
-					{ kind: 'compound' },
-					slotNames,
-					entries,
-					sourceCode
-				);
+				extract(cls, slotEl.value, { kind: 'compound' });
 			}
 		}
 	}
