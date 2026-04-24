@@ -1,6 +1,11 @@
 import type { Rule } from 'eslint';
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import type {
+	Expression,
+	Literal,
+	Node,
+	Property,
+	SpreadElement
+} from 'estree';
 
 const CONFIG_KEYS = new Set([
 	'base',
@@ -20,25 +25,25 @@ const tokenize = (value: string): string[] =>
 	value.split(/\s+/).filter(Boolean);
 
 // Returns the statically-known key name of a Property node, or null when it
-// can't be determined (computed key, spread, or missing key). For non-computed
-// keys the parser only emits Identifier or Literal(string|number), so those
-// are the two cases we handle.
-const getKeyName = (prop: any): string | null => {
-	if (!prop || prop.computed || !prop.key) {
+// can't be determined (computed key). For non-computed keys the parser only
+// emits Identifier or Literal(string|number), so those are the two cases we
+// handle.
+const getKeyName = (prop: Property): string | null => {
+	if (prop.computed) {
 		return null;
 	}
 
 	const { key } = prop;
 
 	if (key.type === 'Identifier') {
-		return key.name as string;
+		return key.name;
 	}
 
-	return String(key.value);
+	return String((key as Literal).value);
 };
 
-const getProperties = (obj: any): Map<string, any> => {
-	const map = new Map<string, any>();
+const getProperties = (obj: Node | undefined): Map<string, Node> => {
+	const map = new Map<string, Node>();
 
 	if (!obj || obj.type !== 'ObjectExpression') {
 		return map;
@@ -59,7 +64,7 @@ const getProperties = (obj: any): Map<string, any> => {
 	return map;
 };
 
-const isConfigLike = (node: any): boolean => {
+const isConfigLike = (node: Node | undefined): boolean => {
 	if (!node || node.type !== 'ObjectExpression') {
 		return false;
 	}
@@ -85,17 +90,17 @@ const isConfigLike = (node: any): boolean => {
 type Source =
 	| { kind: 'base' }
 	| { kind: 'variant'; key: string; value: string }
-	| { kind: 'compound'; index: number };
+	| { kind: 'compound' };
 
 type Entry = {
 	source: Source;
 	slot: string;
 	token: string;
-	node: any;
+	node: Node;
 };
 
 const extractTokens = (
-	node: any,
+	node: Node,
 	slot: string,
 	source: Source,
 	slotNames: Set<string>,
@@ -113,7 +118,7 @@ const extractTokens = (
 
 	if (node.type === 'TemplateLiteral') {
 		if (node.expressions.length === 0) {
-			const text = node.quasis.map((q: any) => q.value.cooked).join('');
+			const text = node.quasis.map((q) => q.value.cooked).join('');
 
 			for (const token of tokenize(text)) {
 				entries.push({ source, slot, token, node });
@@ -146,7 +151,8 @@ const extractTokens = (
 		return;
 	}
 
-	const collected: Array<{ key: string; value: any }> = [];
+	const collected: [key: string, value: Node][] = [];
+
 	for (const prop of node.properties) {
 		if (prop.type !== 'Property') {
 			return;
@@ -162,18 +168,18 @@ const extractTokens = (
 			return;
 		}
 
-		collected.push({ key, value: prop.value });
+		collected.push([key, prop.value]);
 	}
 
-	for (const { key, value } of collected) {
+	for (const [key, value] of collected) {
 		extractTokens(value, key, source, slotNames, entries);
 	}
 };
 
 const analyzeConfig = (
 	context: Rule.RuleContext,
-	configNode: any,
-	baseArgs: any[]
+	configNode: Node,
+	baseArgs: Array<Expression | SpreadElement>
 ): void => {
 	const config = getProperties(configNode);
 	const base = config.get('base');
@@ -207,32 +213,28 @@ const analyzeConfig = (
 
 	for (const [variantKey, variantValue] of variantsMap.entries()) {
 		if (variantValue.type === 'ObjectExpression') {
-			const propKeys: string[] = [];
-
-			let allPropKeysKnown = true;
+			// Boolean shorthand w/ slot-keyed object: every property has a
+			// statically-known key naming a slot (or 'base').
+			let allKeysAreSlots = variantValue.properties.length > 0;
 
 			for (const prop of variantValue.properties) {
 				if (prop.type !== 'Property') {
-					allPropKeysKnown = false;
+					allKeysAreSlots = false;
 					break;
 				}
 
 				const key = getKeyName(prop);
 
-				if (key === null) {
-					allPropKeysKnown = false;
+				if (
+					key === null ||
+					(key !== 'base' && !slotNames.has(key))
+				) {
+					allKeysAreSlots = false;
 					break;
 				}
-
-				propKeys.push(key);
 			}
 
-			// Boolean shorthand w/ slot-keyed object: every key matches a slot.
-			const isSlotShorthand =
-				allPropKeysKnown &&
-				slotNames.size > 0 &&
-				propKeys.length > 0 &&
-				propKeys.every((k) => k === 'base' || slotNames.has(k));
+			const isSlotShorthand = allKeysAreSlots && slotNames.size > 0;
 
 			if (isSlotShorthand) {
 				extractTokens(
@@ -279,9 +281,9 @@ const analyzeConfig = (
 	}
 
 	if (compoundVariants && compoundVariants.type === 'ArrayExpression') {
-		compoundVariants.elements.forEach((element: any, index: number) => {
+		for (const element of compoundVariants.elements) {
 			if (!element || element.type !== 'ObjectExpression') {
-				return;
+				continue;
 			}
 
 			const compound = getProperties(element);
@@ -291,18 +293,18 @@ const analyzeConfig = (
 				extractTokens(
 					cls,
 					'base',
-					{ kind: 'compound', index },
+					{ kind: 'compound' },
 					slotNames,
 					entries
 				);
 			}
-		});
+		}
 	}
 
 	if (compoundSlots && compoundSlots.type === 'ArrayExpression') {
-		compoundSlots.elements.forEach((element: any, index: number) => {
+		for (const element of compoundSlots.elements) {
 			if (!element || element.type !== 'ObjectExpression') {
-				return;
+				continue;
 			}
 
 			const compound = getProperties(element);
@@ -314,7 +316,7 @@ const analyzeConfig = (
 				!targetSlots ||
 				targetSlots.type !== 'ArrayExpression'
 			) {
-				return;
+				continue;
 			}
 
 			for (const slotEl of targetSlots.elements) {
@@ -329,12 +331,12 @@ const analyzeConfig = (
 				extractTokens(
 					cls,
 					slotEl.value,
-					{ kind: 'compound', index: 100000 + index },
+					{ kind: 'compound' },
 					slotNames,
 					entries
 				);
 			}
-		});
+		}
 	}
 
 	const bySlot = new Map<string, Map<string, Entry[]>>();
@@ -357,7 +359,7 @@ const analyzeConfig = (
 		list.push(entry);
 	}
 
-	const reported = new Set<any>();
+	const reported = new Set<Node>();
 
 	for (const [slotKey, tokenMap] of bySlot.entries()) {
 		for (const [token, list] of tokenMap.entries()) {
@@ -412,7 +414,10 @@ const analyzeConfig = (
 	}
 };
 
-const analyzeCnCall = (context: Rule.RuleContext, args: any[]): void => {
+const analyzeCnCall = (
+	context: Rule.RuleContext,
+	args: ReadonlyArray<Expression | SpreadElement>
+): void => {
 	const entries: Entry[] = [];
 	const slotNames = new Set<string>();
 
@@ -433,7 +438,7 @@ const analyzeCnCall = (context: Rule.RuleContext, args: any[]): void => {
 		list.push(entry);
 	}
 
-	const reported = new Set<any>();
+	const reported = new Set<Node>();
 
 	for (const [token, list] of tokenMap.entries()) {
 		if (list.length < 2) {
@@ -487,16 +492,15 @@ export const noDuplicateClasses: Rule.RuleModule = {
 
 				for (const spec of node.specifiers) {
 					if (
-						spec.type === 'ImportSpecifier' &&
-						spec.imported.type === 'Identifier' &&
-						spec.imported.name === 'sv'
+						spec.type !== 'ImportSpecifier' ||
+						spec.imported.type !== 'Identifier'
 					) {
+						continue;
+					}
+
+					if (spec.imported.name === 'sv') {
 						svNames.add(spec.local.name);
-					} else if (
-						spec.type === 'ImportSpecifier' &&
-						spec.imported.type === 'Identifier' &&
-						spec.imported.name === 'cn'
-					) {
+					} else if (spec.imported.name === 'cn') {
 						cnNames.add(spec.local.name);
 					}
 				}
@@ -523,7 +527,7 @@ export const noDuplicateClasses: Rule.RuleModule = {
 
 					if (isConfigLike(last)) {
 						const baseArgs = args.slice(0, -1);
-						analyzeConfig(context, last, baseArgs);
+						analyzeConfig(context, last as Node, baseArgs);
 					} else {
 						analyzeCnCall(context, args);
 					}
