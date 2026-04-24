@@ -440,7 +440,7 @@ import type { VariantProps, VariantValue, SlotClassProps, ClassValue } from 'slo
 
 ## ESLint / oxlint Plugin
 
-Subpath export `slot-variants/eslint-plugin` ships one rule, `slot-variants/no-duplicate-classes`, that statically analyzes `sv()` calls and reports class tokens that will appear more than once in the output. Works under ESLint v9+ (flat config) and under oxlint via its `jsPlugins` config. The plugin is a separate entry point — it adds no runtime code to the library bundle.
+Subpath export `slot-variants/eslint-plugin` ships one rule, `slot-variants/no-duplicate-classes`, that statically analyzes `sv()` and `cn()` calls and reports class tokens that will appear more than once in the output. Works under ESLint v9+ (flat config) and under oxlint via its `jsPlugins` config. The plugin is a separate entry point — it adds no runtime code to the library bundle.
 
 ```js
 // eslint.config.js
@@ -462,9 +462,10 @@ export default [{
 
 The rule:
 
-- Only analyzes calls where `sv` is a **named import** from `'slot-variants'`. Default, namespace, and aliased-to-other-identifier imports are ignored.
-- Flags a token as duplicated when two of its sources can both be active at runtime: base + any variant, base + compound, two variants with different keys, two compound entries, or the same literal token repeated inside a single source.
+- Only analyzes calls where `sv` or `cn` is a **named import** from `'slot-variants'`. Default, namespace, and aliased-to-other-identifier imports are ignored.
+- For `sv()` with a config, flags a token as duplicated when two of its sources can both be active at runtime: base + any variant, base + compound, two variants with different keys, two compound entries, or the same literal token repeated inside a single source.
 - Does **not** flag the same token appearing in different values of the **same** variant key (those are mutually exclusive).
+- For `cn()` (and `sv()` called without a config — the cn-style calling convention), flags any token that appears in more than one always-present source: across args, inside arrays, template literals without expressions, or within a single literal.
 - Bails out silently on dynamic inputs (identifiers, spreads, computed keys, template literals with expressions, cn-style `{ cls: condition }` records) — no false positives for code it can't statically resolve.
 
 ## Performance Notes

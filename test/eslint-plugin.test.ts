@@ -14,6 +14,7 @@ const tester = new RuleTester({
 
 const rule = rules['no-duplicate-classes'];
 const IMPORT = "import { sv } from 'slot-variants';\n";
+const IMPORT_CN = "import { cn } from 'slot-variants';\n";
 
 t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 	t.equal(plugin.meta.name, 'slot-variants', 'meta.name is set');
@@ -136,8 +137,34 @@ t.test('no-duplicate-classes', (t) => {
 				"import * as mod from 'slot-variants'; mod.sv({ base: 'flex flex' });",
 				// Side-effect import of slot-variants — no specifiers.
 				"import 'slot-variants'; sv({ base: 'flex flex' });",
-				// Unrelated named import from slot-variants.
-				"import { cn } from 'slot-variants'; cn('flex', 'flex');",
+				// Named import that is neither `sv` nor `cn` is ignored.
+				"import { VariantProps } from 'slot-variants'; sv('flex flex');",
+				// cn from a different module is ignored.
+				"import { cn } from 'other'; cn('flex', 'flex');",
+				// Default-imported cn is not tracked.
+				"import cn from 'slot-variants'; cn('flex', 'flex');",
+				// Namespace-imported cn is not tracked.
+				"import * as mod from 'slot-variants'; mod.cn('flex', 'flex');",
+				// cn with no duplicates.
+				IMPORT_CN + "cn('flex', 'items-center');",
+				// cn with only an array — no duplicates.
+				IMPORT_CN + "cn(['flex', 'items-center']);",
+				// Zero-arg cn() call.
+				IMPORT_CN + 'cn();',
+				// cn with a dynamic identifier argument — skipped.
+				IMPORT_CN + "cn(dynamic, 'flex');",
+				// cn with a spread argument — skipped.
+				IMPORT_CN + "cn(...extra, 'flex');",
+				// cn with a number literal — non-string literal ignored.
+				IMPORT_CN + "cn(42, 'flex');",
+				// cn with a cn-style record — opaque, skipped.
+				IMPORT_CN + "cn({ foo: true }, 'bar');",
+				// cn with a template literal containing an expression — skipped.
+				IMPORT_CN + 'cn(`flex ${x}`, `items-center`);',
+				// Unrelated call under a cn-only import is a no-op.
+				IMPORT_CN + "foo(); cn('flex');",
+				// Importing both sv and cn together works.
+				"import { sv, cn } from 'slot-variants'; sv('a'); cn('b');",
 				// Sparse null element in compoundVariants.
 				IMPORT +
 					`sv({
@@ -297,6 +324,70 @@ t.test('no-duplicate-classes', (t) => {
 						IMPORT +
 						"sv({ variants: { size: { sm: 'flex flex' } } });",
 					errors: 1
+				},
+				{
+					// sv without config, duplicate across args.
+					code: IMPORT + "sv('flex', 'flex');",
+					errors: [
+						{
+							messageId: 'duplicateCn',
+							data: { token: 'flex' }
+						},
+						{
+							messageId: 'duplicateCn',
+							data: { token: 'flex' }
+						}
+					]
+				},
+				{
+					// cn() duplicate across args.
+					code: IMPORT_CN + "cn('flex', 'flex');",
+					errors: [
+						{
+							messageId: 'duplicateCn',
+							data: { token: 'flex' }
+						},
+						{
+							messageId: 'duplicateCn',
+							data: { token: 'flex' }
+						}
+					]
+				},
+				{
+					// cn() duplicate within a single literal.
+					code: IMPORT_CN + "cn('flex flex');",
+					errors: [
+						{
+							messageId: 'duplicateCn',
+							data: { token: 'flex' }
+						}
+					]
+				},
+				{
+					// cn() duplicate inside an array.
+					code: IMPORT_CN + "cn(['flex', 'flex']);",
+					errors: 2
+				},
+				{
+					// cn() duplicate across an array and a string arg.
+					code: IMPORT_CN + "cn(['flex'], 'flex');",
+					errors: 2
+				},
+				{
+					// cn() duplicate across template and string.
+					code: IMPORT_CN + "cn(`flex`, 'flex');",
+					errors: 2
+				},
+				{
+					// cn() with a dup plus a non-dup token.
+					code: IMPORT_CN + "cn('flex', 'flex', 'items-center');",
+					errors: 2
+				},
+				{
+					// Both sv and cn imported — cn call flagged independently.
+					code:
+						"import { sv, cn } from 'slot-variants'; sv('a'); cn('b', 'b');",
+					errors: 2
 				}
 			]
 		});

@@ -896,9 +896,9 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 ### Rules
 
-- **`slot-variants/no-duplicate-classes`** — flags class name tokens that will appear more than once in the output of an `sv()` call. Detects duplicates within `base`, across different variant keys, inside compound variants and compound slots, between `base` and a variant value, and within a single literal.
+- **`slot-variants/no-duplicate-classes`** — flags class name tokens that will appear more than once in the output of an `sv()` or `cn()` call. For `sv()`, detects duplicates within `base`, across different variant keys, inside compound variants and compound slots, between `base` and a variant value, and within a single literal. For `cn()` (and the cn-style calling convention of `sv()` without a config), flags any token that appears in more than one always-present source — across args, inside arrays, template literals, or within a single literal.
 
-Only calls where `sv` is a named import from `'slot-variants'` are analyzed. Dynamic inputs (identifiers, spreads, computed keys, template literals with expressions) are skipped silently rather than flagged.
+Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analyzed. Dynamic inputs (identifiers, spreads, computed keys, template literals with expressions, and cn-style `{ class: condition }` records) are skipped silently rather than flagged.
 
 ### ESLint (flat config)
 
@@ -925,7 +925,7 @@ export default [
 ### Example
 
 ```typescript
-import { sv } from 'slot-variants';
+import { sv, cn } from 'slot-variants';
 
 const button = sv({
   base: 'flex items-center',
@@ -936,9 +936,11 @@ const button = sv({
     }
   }
 });
+
+cn('flex items-center', 'flex'); // 'flex' duplicated across args
 ```
 
-The rule reports `flex` on the `base` literal and on both variant values. Move the shared class into `base` — or use compound variants — so each class has a single source.
+The rule reports `flex` on the `base` literal and on both variant values. For the `cn()` call, both occurrences of `'flex'` are flagged. Move the shared class into `base` — or use compound variants — so each class has a single source.
 
 ## Migrating from CVA / tailwind-variants
 

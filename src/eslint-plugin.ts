@@ -24,30 +24,60 @@ const tokenize = (value: string): string[] =>
 // keys the parser only emits Identifier or Literal(string|number), so those
 // are the two cases we handle.
 const getKeyName = (prop: any): string | null => {
-	if (!prop || prop.computed || !prop.key) return null;
+	if (!prop || prop.computed || !prop.key) {
+		return null;
+	}
+
 	const { key } = prop;
-	if (key.type === 'Identifier') return key.name as string;
+
+	if (key.type === 'Identifier') {
+		return key.name as string;
+	}
+
 	return String(key.value);
 };
 
 const getProperties = (obj: any): Map<string, any> => {
 	const map = new Map<string, any>();
-	if (!obj || obj.type !== 'ObjectExpression') return map;
-	for (const prop of obj.properties) {
-		if (prop.type !== 'Property') continue;
-		const key = getKeyName(prop);
-		if (key !== null) map.set(key, prop.value);
+
+	if (!obj || obj.type !== 'ObjectExpression') {
+		return map;
 	}
+
+	for (const prop of obj.properties) {
+		if (prop.type !== 'Property') {
+			continue;
+		}
+
+		const key = getKeyName(prop);
+
+		if (key !== null) {
+			map.set(key, prop.value);
+		}
+	}
+
 	return map;
 };
 
 const isConfigLike = (node: any): boolean => {
-	if (!node || node.type !== 'ObjectExpression') return false;
-	if (node.properties.length === 0) return false;
+	if (!node || node.type !== 'ObjectExpression') {
+		return false;
+	}
+
+	if (node.properties.length === 0) {
+		return false;
+	}
+
 	for (const prop of node.properties) {
-		if (prop.type !== 'Property') return false;
+		if (prop.type !== 'Property') {
+			return false;
+		}
+
 		const key = getKeyName(prop);
-		if (key === null || !CONFIG_KEYS.has(key)) return false;
+
+		if (key === null || !CONFIG_KEYS.has(key)) {
+			return false;
+		}
 	}
 	return true;
 };
@@ -57,12 +87,12 @@ type Source =
 	| { kind: 'variant'; key: string; value: string }
 	| { kind: 'compound'; index: number };
 
-interface Entry {
+type Entry = {
 	source: Source;
 	slot: string;
 	token: string;
 	node: any;
-}
+};
 
 const extractTokens = (
 	node: any,
@@ -77,64 +107,95 @@ const extractTokens = (
 				entries.push({ source, slot, token, node });
 			}
 		}
+
 		return;
 	}
 
 	if (node.type === 'TemplateLiteral') {
 		if (node.expressions.length === 0) {
-			const text = node.quasis
-				.map((q: any) => q.value.cooked)
-				.join('');
+			const text = node.quasis.map((q: any) => q.value.cooked).join('');
+
 			for (const token of tokenize(text)) {
 				entries.push({ source, slot, token, node });
 			}
 		}
+
 		return;
 	}
 
 	if (node.type === 'ArrayExpression') {
 		for (const element of node.elements) {
-			if (!element || element.type === 'SpreadElement') continue;
+			if (!element || element.type === 'SpreadElement') {
+				continue;
+			}
+
 			extractTokens(element, slot, source, slotNames, entries);
 		}
+
 		return;
 	}
 
-	if (node.type !== 'ObjectExpression') return;
+	if (node.type !== 'ObjectExpression') {
+		return;
+	}
 
 	// Only analyze as slot-keyed object when every key matches a slot name.
 	// Otherwise it's a cn-style record and we can't statically determine
 	// which keys are active, so skip.
-	if (slotNames.size === 0) return;
+	if (slotNames.size === 0) {
+		return;
+	}
 
 	const collected: Array<{ key: string; value: any }> = [];
 	for (const prop of node.properties) {
-		if (prop.type !== 'Property') return;
+		if (prop.type !== 'Property') {
+			return;
+		}
+
 		const key = getKeyName(prop);
-		if (key === null) return;
-		if (key !== 'base' && !slotNames.has(key)) return;
+
+		if (key === null) {
+			return;
+		}
+
+		if (key !== 'base' && !slotNames.has(key)) {
+			return;
+		}
+
 		collected.push({ key, value: prop.value });
 	}
+
 	for (const { key, value } of collected) {
 		extractTokens(value, key, source, slotNames, entries);
 	}
 };
 
 const sameSource = (a: Source, b: Source): boolean => {
-	if (a.kind !== b.kind) return false;
-	if (a.kind === 'base') return true;
+	if (a.kind !== b.kind) {
+		return false;
+	}
+
+	if (a.kind === 'base') {
+		return true;
+	}
+
 	if (a.kind === 'variant') {
 		const bv = b as typeof a;
 		return a.key === bv.key && a.value === bv.value;
 	}
+
 	const bc = b as typeof a;
+
 	return a.index === bc.index;
 };
 
 // Precondition: callers check `sameSource` first, so two variant sources with
 // the same key here are guaranteed to have different values.
 const canCoexist = (a: Source, b: Source): boolean => {
-	if (a.kind !== 'variant' || b.kind !== 'variant') return true;
+	if (a.kind !== 'variant' || b.kind !== 'variant') {
+		return true;
+	}
+
 	return a.key !== b.key;
 };
 
@@ -152,6 +213,7 @@ const analyzeConfig = (
 
 	const slotsMap = getProperties(slots);
 	const slotNames = new Set<string>();
+
 	for (const key of slotsMap.keys()) {
 		if (key !== 'base') slotNames.add(key);
 	}
@@ -171,20 +233,26 @@ const analyzeConfig = (
 	}
 
 	const variantsMap = getProperties(variants);
+
 	for (const [variantKey, variantValue] of variantsMap.entries()) {
 		if (variantValue.type === 'ObjectExpression') {
 			const propKeys: string[] = [];
+
 			let allPropKeysKnown = true;
+
 			for (const prop of variantValue.properties) {
 				if (prop.type !== 'Property') {
 					allPropKeysKnown = false;
 					break;
 				}
+
 				const key = getKeyName(prop);
+
 				if (key === null) {
 					allPropKeysKnown = false;
 					break;
 				}
+
 				propKeys.push(key);
 			}
 
@@ -205,9 +273,16 @@ const analyzeConfig = (
 				);
 			} else {
 				for (const prop of variantValue.properties) {
-					if (prop.type !== 'Property') continue;
+					if (prop.type !== 'Property') {
+						continue;
+					}
+
 					const valueKey = getKeyName(prop);
-					if (valueKey === null) continue;
+
+					if (valueKey === null) {
+						continue;
+					}
+
 					extractTokens(
 						prop.value,
 						'base',
@@ -234,9 +309,13 @@ const analyzeConfig = (
 
 	if (compoundVariants && compoundVariants.type === 'ArrayExpression') {
 		compoundVariants.elements.forEach((element: any, index: number) => {
-			if (!element || element.type !== 'ObjectExpression') return;
+			if (!element || element.type !== 'ObjectExpression') {
+				return;
+			}
+
 			const compound = getProperties(element);
 			const cls = compound.get('class') ?? compound.get('className');
+
 			if (cls) {
 				extractTokens(
 					cls,
@@ -251,10 +330,14 @@ const analyzeConfig = (
 
 	if (compoundSlots && compoundSlots.type === 'ArrayExpression') {
 		compoundSlots.elements.forEach((element: any, index: number) => {
-			if (!element || element.type !== 'ObjectExpression') return;
+			if (!element || element.type !== 'ObjectExpression') {
+				return;
+			}
+
 			const compound = getProperties(element);
 			const cls = compound.get('class') ?? compound.get('className');
 			const targetSlots = compound.get('slots');
+
 			if (
 				!cls ||
 				!targetSlots ||
@@ -262,9 +345,16 @@ const analyzeConfig = (
 			) {
 				return;
 			}
+
 			for (const slotEl of targetSlots.elements) {
-				if (!slotEl || slotEl.type !== 'Literal') continue;
-				if (typeof slotEl.value !== 'string') continue;
+				if (!slotEl || slotEl.type !== 'Literal') {
+					continue;
+				}
+
+				if (typeof slotEl.value !== 'string') {
+					continue;
+				}
+
 				extractTokens(
 					cls,
 					slotEl.value,
@@ -277,17 +367,22 @@ const analyzeConfig = (
 	}
 
 	const bySlot = new Map<string, Map<string, Entry[]>>();
+
 	for (const entry of entries) {
 		let tokenMap = bySlot.get(entry.slot);
+
 		if (!tokenMap) {
 			tokenMap = new Map();
 			bySlot.set(entry.slot, tokenMap);
 		}
+
 		let list = tokenMap.get(entry.token);
+
 		if (!list) {
 			list = [];
 			tokenMap.set(entry.token, list);
 		}
+
 		list.push(entry);
 	}
 
@@ -295,13 +390,17 @@ const analyzeConfig = (
 
 	for (const [slotKey, tokenMap] of bySlot.entries()) {
 		for (const [token, list] of tokenMap.entries()) {
-			if (list.length < 2) continue;
+			if (list.length < 2) {
+				continue;
+			}
 
 			let duplicated = false;
+
 			for (let i = 0; i < list.length && !duplicated; i++) {
 				for (let j = i + 1; j < list.length && !duplicated; j++) {
 					const a = list[i] as Entry;
 					const b = list[j] as Entry;
+
 					if (
 						sameSource(a.source, b.source) ||
 						canCoexist(a.source, b.source)
@@ -310,11 +409,18 @@ const analyzeConfig = (
 					}
 				}
 			}
-			if (!duplicated) continue;
+
+			if (!duplicated) {
+				continue;
+			}
 
 			for (const entry of list) {
-				if (reported.has(entry.node)) continue;
+				if (reported.has(entry.node)) {
+					continue;
+				}
+
 				reported.add(entry.node);
+
 				context.report({
 					node: entry.node,
 					messageId: 'duplicate',
@@ -325,29 +431,79 @@ const analyzeConfig = (
 	}
 };
 
+const analyzeCnCall = (context: Rule.RuleContext, args: any[]): void => {
+	const entries: Entry[] = [];
+	const slotNames = new Set<string>();
+
+	for (const arg of args) {
+		extractTokens(arg, 'base', { kind: 'base' }, slotNames, entries);
+	}
+
+	const tokenMap = new Map<string, Entry[]>();
+
+	for (const entry of entries) {
+		let list = tokenMap.get(entry.token);
+
+		if (!list) {
+			list = [];
+			tokenMap.set(entry.token, list);
+		}
+
+		list.push(entry);
+	}
+
+	const reported = new Set<any>();
+
+	for (const [token, list] of tokenMap.entries()) {
+		if (list.length < 2) {
+			continue;
+		}
+
+		for (const entry of list) {
+			if (reported.has(entry.node)) {
+				continue;
+			}
+
+			reported.add(entry.node);
+
+			context.report({
+				node: entry.node,
+				messageId: 'duplicateCn',
+				data: { token }
+			});
+		}
+	}
+};
+
 /**
  * Flags class name tokens that are guaranteed (or guaranteed-on-some-path) to
- * appear more than once in the output of an `sv()` call.
+ * appear more than once in the output of an `sv()` or `cn()` call.
  */
 export const noDuplicateClasses: Rule.RuleModule = {
 	meta: {
 		type: 'problem',
 		docs: {
 			description:
-				'Disallow duplicate class names in sv() outputs across base, variants, and compounds'
+				'Disallow duplicate class names in sv() and cn() outputs across slots, variants, and compounds'
 		},
 		schema: [],
 		messages: {
 			duplicate:
-				'Class "{{token}}" will appear more than once in the "{{slot}}" slot output.'
+				'Class "{{token}}" will appear more than once in the "{{slot}}" slot output.',
+			duplicateCn:
+				'Class "{{token}}" will appear more than once in the cn() output.'
 		}
 	},
 	create(context) {
 		const svNames = new Set<string>();
+		const cnNames = new Set<string>();
 
 		return {
 			ImportDeclaration(node) {
-				if (node.source.value !== 'slot-variants') return;
+				if (node.source.value !== 'slot-variants') {
+					return;
+				}
+
 				for (const spec of node.specifiers) {
 					if (
 						spec.type === 'ImportSpecifier' &&
@@ -355,40 +511,58 @@ export const noDuplicateClasses: Rule.RuleModule = {
 						spec.imported.name === 'sv'
 					) {
 						svNames.add(spec.local.name);
+					} else if (
+						spec.type === 'ImportSpecifier' &&
+						spec.imported.type === 'Identifier' &&
+						spec.imported.name === 'cn'
+					) {
+						cnNames.add(spec.local.name);
 					}
 				}
 			},
 			CallExpression(node) {
-				if (svNames.size === 0) return;
-				const callee = node.callee;
-				if (callee.type !== 'Identifier' || !svNames.has(callee.name)) {
+				if (svNames.size === 0 && cnNames.size === 0) {
 					return;
 				}
 
-				const args = node.arguments;
-				if (args.length === 0) return;
+				const callee = node.callee;
 
-				const last = args[args.length - 1];
-				if (!isConfigLike(last)) return;
+				if (callee.type !== 'Identifier') {
+					return;
+				}
 
-				const baseArgs = args.slice(0, -1);
-				analyzeConfig(context, last, baseArgs);
+				if (svNames.has(callee.name)) {
+					const args = node.arguments;
+
+					if (args.length === 0) {
+						return;
+					}
+
+					const last = args[args.length - 1];
+
+					if (isConfigLike(last)) {
+						const baseArgs = args.slice(0, -1);
+						analyzeConfig(context, last, baseArgs);
+					} else {
+						analyzeCnCall(context, args);
+					}
+				} else if (cnNames.has(callee.name)) {
+					analyzeCnCall(context, node.arguments);
+				}
 			}
 		};
 	}
 };
 
 /**
- * ESLint rules exported by the slot-variants plugin. Keyed by rule name so the
- * whole set can be registered at once or pulled individually for tree-shaking.
+ * Rules exported by the plugin.
  */
 export const rules = {
 	'no-duplicate-classes': noDuplicateClasses
 };
 
 /**
- * Plugin metadata. Exposed as a named export so it can be tree-shaken away
- * when only individual rules are imported.
+ * Plugin metadata.
  */
 export const meta = { name: 'slot-variants' };
 
