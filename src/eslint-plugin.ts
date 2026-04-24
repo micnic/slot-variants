@@ -1,9 +1,10 @@
-import type { Rule } from 'eslint';
+import type { Rule, SourceCode } from 'eslint';
 import type {
 	Expression,
 	Literal,
 	Node,
 	Property,
+	SourceLocation,
 	SpreadElement
 } from 'estree';
 
@@ -21,8 +22,23 @@ const CONFIG_KEYS = new Set([
 	'introspection'
 ]);
 
-const tokenize = (value: string): string[] =>
-	value.split(/\s+/).filter(Boolean);
+// Tokenize the raw inner text of a string/template literal into tokens paired
+// with their offset within that inner text. Using raw (not cooked) keeps offsets
+// aligned with source positions, which is what we need for precise reporting.
+const tokenizeWithOffsets = (
+	text: string
+): Array<{ token: string; offset: number }> => {
+	const tokens: Array<{ token: string; offset: number }> = [];
+	const regex = /\S+/g;
+
+	let match: RegExpExecArray | null;
+
+	while ((match = regex.exec(text)) !== null) {
+		tokens.push({ token: match[0], offset: match.index });
+	}
+
+	return tokens;
+};
 
 // Returns the statically-known key name of a Property node, or null when it
 // can't be determined (computed key). For non-computed keys the parser only
@@ -96,7 +112,45 @@ type Entry = {
 	source: Source;
 	slot: string;
 	token: string;
-	node: Node;
+	loc: SourceLocation;
+};
+
+const pushStringLiteralTokens = (
+	node: Node,
+	slot: string,
+	source: Source,
+	entries: Entry[],
+	sourceCode: SourceCode
+): void => {
+	const { range } = node;
+
+	/* c8 ignore next 3 -- ESLint always populates range on parsed nodes */
+	if (!range) {
+		return;
+	}
+
+	// Both string literals and template literals (without expressions) use a
+	// single-character opening delimiter (', ", or `), so range[0] + 1 is the
+	// absolute index of the first inner character, and slicing the delimiters
+	// off the raw text yields the token-bearing content.
+	const raw = sourceCode.getText(node);
+	const inner = raw.slice(1, -1);
+	const base = range[0] + 1;
+
+	for (const { token, offset } of tokenizeWithOffsets(inner)) {
+		const start = base + offset;
+		const end = start + token.length;
+
+		entries.push({
+			source,
+			slot,
+			token,
+			loc: {
+				start: sourceCode.getLocFromIndex(start),
+				end: sourceCode.getLocFromIndex(end)
+			}
+		});
+	}
 };
 
 const extractTokens = (
@@ -104,13 +158,12 @@ const extractTokens = (
 	slot: string,
 	source: Source,
 	slotNames: Set<string>,
-	entries: Entry[]
+	entries: Entry[],
+	sourceCode: SourceCode
 ): void => {
 	if (node.type === 'Literal') {
 		if (typeof node.value === 'string') {
-			for (const token of tokenize(node.value)) {
-				entries.push({ source, slot, token, node });
-			}
+			pushStringLiteralTokens(node, slot, source, entries, sourceCode);
 		}
 
 		return;
@@ -118,11 +171,7 @@ const extractTokens = (
 
 	if (node.type === 'TemplateLiteral') {
 		if (node.expressions.length === 0) {
-			const text = node.quasis.map((q) => q.value.cooked).join('');
-
-			for (const token of tokenize(text)) {
-				entries.push({ source, slot, token, node });
-			}
+			pushStringLiteralTokens(node, slot, source, entries, sourceCode);
 		}
 
 		return;
@@ -134,7 +183,14 @@ const extractTokens = (
 				continue;
 			}
 
-			extractTokens(element, slot, source, slotNames, entries);
+			extractTokens(
+				element,
+				slot,
+				source,
+				slotNames,
+				entries,
+				sourceCode
+			);
 		}
 
 		return;
@@ -172,7 +228,7 @@ const extractTokens = (
 	}
 
 	for (const [key, value] of collected) {
-		extractTokens(value, key, source, slotNames, entries);
+		extractTokens(value, key, source, slotNames, entries, sourceCode);
 	}
 };
 
@@ -181,6 +237,7 @@ const analyzeConfig = (
 	configNode: Node,
 	baseArgs: Array<Expression | SpreadElement>
 ): void => {
+	const { sourceCode } = context;
 	const config = getProperties(configNode);
 	const base = config.get('base');
 	const variants = config.get('variants');
@@ -198,15 +255,36 @@ const analyzeConfig = (
 	const entries: Entry[] = [];
 
 	for (const [slotKey, slotValue] of slotsMap.entries()) {
-		extractTokens(slotValue, slotKey, { kind: 'base' }, slotNames, entries);
+		extractTokens(
+			slotValue,
+			slotKey,
+			{ kind: 'base' },
+			slotNames,
+			entries,
+			sourceCode
+		);
 	}
 
 	for (const arg of baseArgs) {
-		extractTokens(arg, 'base', { kind: 'base' }, slotNames, entries);
+		extractTokens(
+			arg,
+			'base',
+			{ kind: 'base' },
+			slotNames,
+			entries,
+			sourceCode
+		);
 	}
 
 	if (base) {
-		extractTokens(base, 'base', { kind: 'base' }, slotNames, entries);
+		extractTokens(
+			base,
+			'base',
+			{ kind: 'base' },
+			slotNames,
+			entries,
+			sourceCode
+		);
 	}
 
 	const variantsMap = getProperties(variants);
@@ -242,7 +320,8 @@ const analyzeConfig = (
 					'base',
 					{ kind: 'variant', key: variantKey, value: 'true' },
 					slotNames,
-					entries
+					entries,
+					sourceCode
 				);
 			} else {
 				for (const prop of variantValue.properties) {
@@ -265,7 +344,8 @@ const analyzeConfig = (
 							value: valueKey
 						},
 						slotNames,
-						entries
+						entries,
+						sourceCode
 					);
 				}
 			}
@@ -275,7 +355,8 @@ const analyzeConfig = (
 				'base',
 				{ kind: 'variant', key: variantKey, value: 'true' },
 				slotNames,
-				entries
+				entries,
+				sourceCode
 			);
 		}
 	}
@@ -295,7 +376,8 @@ const analyzeConfig = (
 					'base',
 					{ kind: 'compound' },
 					slotNames,
-					entries
+					entries,
+					sourceCode
 				);
 			}
 		}
@@ -333,7 +415,8 @@ const analyzeConfig = (
 					slotEl.value,
 					{ kind: 'compound' },
 					slotNames,
-					entries
+					entries,
+					sourceCode
 				);
 			}
 		}
@@ -358,8 +441,6 @@ const analyzeConfig = (
 
 		list.push(entry);
 	}
-
-	const reported = new Set<Node>();
 
 	for (const [slotKey, tokenMap] of bySlot.entries()) {
 		for (const [token, list] of tokenMap.entries()) {
@@ -398,14 +479,8 @@ const analyzeConfig = (
 			}
 
 			for (const entry of list) {
-				if (reported.has(entry.node)) {
-					continue;
-				}
-
-				reported.add(entry.node);
-
 				context.report({
-					node: entry.node,
+					loc: entry.loc,
 					messageId: 'duplicate',
 					data: { token, slot: slotKey }
 				});
@@ -418,11 +493,19 @@ const analyzeCnCall = (
 	context: Rule.RuleContext,
 	args: ReadonlyArray<Expression | SpreadElement>
 ): void => {
+	const { sourceCode } = context;
 	const entries: Entry[] = [];
 	const slotNames = new Set<string>();
 
 	for (const arg of args) {
-		extractTokens(arg, 'base', { kind: 'base' }, slotNames, entries);
+		extractTokens(
+			arg,
+			'base',
+			{ kind: 'base' },
+			slotNames,
+			entries,
+			sourceCode
+		);
 	}
 
 	const tokenMap = new Map<string, Entry[]>();
@@ -438,22 +521,14 @@ const analyzeCnCall = (
 		list.push(entry);
 	}
 
-	const reported = new Set<Node>();
-
 	for (const [token, list] of tokenMap.entries()) {
 		if (list.length < 2) {
 			continue;
 		}
 
 		for (const entry of list) {
-			if (reported.has(entry.node)) {
-				continue;
-			}
-
-			reported.add(entry.node);
-
 			context.report({
-				node: entry.node,
+				loc: entry.loc,
 				messageId: 'duplicateCn',
 				data: { token }
 			});

@@ -13,7 +13,8 @@ export default [
 			'@stylistic': stylistic
 		},
 		rules: {
-			'@stylistic/eol-last': ['error', 'never']
+			'@stylistic/eol-last': ['error', 'never'],
+			'@typescript-eslint/no-non-null-assertion': 'error'
 		}
 	}
 ];

@@ -215,9 +215,10 @@ t.test('no-duplicate-classes', (t) => {
 					]
 				},
 				{
-					// Duplicate within a single literal.
+					// Duplicate within a single literal — each occurrence
+					// gets its own report pointing at the token.
 					code: IMPORT + "sv({ base: 'flex flex' });",
-					errors: 1
+					errors: 2
 				},
 				{
 					// Duplicate across different variant keys.
@@ -300,7 +301,7 @@ t.test('no-duplicate-classes', (t) => {
 								{ size: 'lg', class: 'font-bold font-bold' }
 							]
 						});`,
-					errors: 1
+					errors: 2
 				},
 				{
 					// Token shared across two distinct compound entries.
@@ -323,7 +324,7 @@ t.test('no-duplicate-classes', (t) => {
 					code:
 						IMPORT +
 						"sv({ variants: { size: { sm: 'flex flex' } } });",
-					errors: 1
+					errors: 2
 				},
 				{
 					// sv without config, duplicate across args.
@@ -357,6 +358,10 @@ t.test('no-duplicate-classes', (t) => {
 					// cn() duplicate within a single literal.
 					code: IMPORT_CN + "cn('flex flex');",
 					errors: [
+						{
+							messageId: 'duplicateCn',
+							data: { token: 'flex' }
+						},
 						{
 							messageId: 'duplicateCn',
 							data: { token: 'flex' }
