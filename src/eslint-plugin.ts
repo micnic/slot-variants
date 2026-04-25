@@ -756,6 +756,153 @@ export const noDynamicClasses: Rule.RuleModule = {
 	}
 };
 
+// Returns true when `value` contains whitespace that wouldn't survive a round
+// trip through `value.split(/\s+/).filter(Boolean).join(' ')` — i.e. leading
+// or trailing whitespace, repeated runs, or non-space whitespace characters
+// like tabs and newlines.
+const hasRedundantSpaces = (value: string): boolean =>
+	value !== value.split(/\s+/).filter(Boolean).join(' ');
+
+// Reports the node when its string value contains redundant whitespace.
+// Highlights the entire literal — the cheapest message the user can act on,
+// and avoids the raw-text/escape-sequence mismatch a span-level report would
+// have to chase.
+const reportRedundantSpaces = (
+	context: Rule.RuleContext,
+	node: Node,
+	value: string
+): void => {
+	if (hasRedundantSpaces(value)) {
+		context.report({ node, messageId: 'redundant' });
+	}
+};
+
+// Recursively walks a node and reports redundant whitespace in any string or
+// expressionless template literals it contains. Bails silently on dynamic
+// expressions and other non-class values rather than flagging them.
+const visitForRedundantSpaces = (
+	context: Rule.RuleContext,
+	node: Node
+): void => {
+	if (node.type === 'Literal') {
+		if (typeof node.value === 'string') {
+			reportRedundantSpaces(context, node, node.value);
+		}
+
+		return;
+	}
+
+	if (node.type === 'TemplateLiteral') {
+		const [quasi] = node.quasis;
+
+		if (node.expressions.length === 0 && quasi) {
+			reportRedundantSpaces(
+				context,
+				node,
+				/* c8 ignore next -- cooked is always defined on untagged templates */
+				quasi.value.cooked ?? quasi.value.raw
+			);
+		}
+
+		return;
+	}
+
+	if (node.type === 'ArrayExpression') {
+		for (const element of node.elements) {
+			if (!element || element.type === 'SpreadElement') {
+				continue;
+			}
+
+			visitForRedundantSpaces(context, element);
+		}
+
+		return;
+	}
+
+	if (node.type === 'ObjectExpression') {
+		for (const prop of node.properties) {
+			if (prop.type !== 'Property' || prop.computed) {
+				continue;
+			}
+
+			visitForRedundantSpaces(context, prop.value);
+		}
+	}
+};
+
+/**
+ * Flags redundant whitespace inside class strings passed to `sv()` and `cn()`
+ * calls. A class string's whitespace is canonical only as a single ASCII space
+ * between non-whitespace tokens; leading, trailing, repeated, or non-space
+ * whitespace runs are reported. Dynamic expressions are skipped silently.
+ */
+export const noRedundantSpaces: Rule.RuleModule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Disallow redundant whitespace inside class strings passed to sv() and cn() calls'
+		},
+		schema: [],
+		messages: {
+			redundant: 'Redundant whitespace in class string.'
+		}
+	},
+	create(context) {
+		const svNames = new Set<string>();
+		const cnNames = new Set<string>();
+
+		return {
+			ImportDeclaration(node) {
+				if (node.source.value !== 'slot-variants') {
+					return;
+				}
+
+				for (const spec of node.specifiers) {
+					if (
+						spec.type !== 'ImportSpecifier' ||
+						spec.imported.type !== 'Identifier'
+					) {
+						continue;
+					}
+
+					if (spec.imported.name === 'sv') {
+						svNames.add(spec.local.name);
+					} else if (spec.imported.name === 'cn') {
+						cnNames.add(spec.local.name);
+					}
+				}
+			},
+			CallExpression(node) {
+				if (svNames.size === 0 && cnNames.size === 0) {
+					return;
+				}
+
+				const callee = node.callee;
+
+				if (callee.type !== 'Identifier') {
+					return;
+				}
+
+				if (
+					!svNames.has(callee.name) &&
+					!cnNames.has(callee.name)
+				) {
+					return;
+				}
+
+				for (const arg of node.arguments) {
+					if (arg.type === 'SpreadElement') {
+						continue;
+					}
+
+					visitForRedundantSpaces(context, arg);
+				}
+			}
+		};
+	}
+};
+
 /**
  * Flags class name tokens that are guaranteed (or guaranteed-on-some-path) to
  * appear more than once in the output of an `sv()` or `cn()` call.
@@ -839,7 +986,8 @@ export const noDuplicateClasses: Rule.RuleModule = {
  */
 export const rules = {
 	'no-duplicate-classes': noDuplicateClasses,
-	'no-dynamic-classes': noDynamicClasses
+	'no-dynamic-classes': noDynamicClasses,
+	'no-redundant-spaces': noRedundantSpaces
 };
 
 /**

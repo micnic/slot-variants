@@ -900,7 +900,9 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 - **`slot-variants/no-dynamic-classes`** — flags class-bearing positions in `sv()` and `cn()` calls that aren't statically inferrable. Only string literals, template literals without expressions, and arrays of those are accepted as class values, and config objects must use static keys (no spreads, no computed keys). Identifiers, member access, calls, spreads, non-string literals, templates with expressions, and runtime conditional records are reported. Non-class-bearing config keys (`defaultVariants`, `presets`, `requiredVariants`, `cacheSize`, `postProcess`, `introspection`) are not validated, and runtime variant matchers inside compound entries are left alone — only the `class`/`className` value (and the `slots` array of `compoundSlots`) is checked.
 
-Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analyzed. `no-duplicate-classes` skips dynamic inputs silently to avoid false positives; `no-dynamic-classes` is the opposite — it flags exactly those positions so the static analyzer can fully reason about every call.
+- **`slot-variants/no-redundant-spaces`** — flags class strings whose whitespace isn't canonical. Inside a class string, whitespace is canonical only as a single ASCII space between two non-whitespace tokens, so leading or trailing whitespace, repeated spaces, and non-space whitespace (tabs, newlines, etc.) are reported. The rule walks every string and expressionless template literal reachable from a call's arguments — including values nested inside arrays and objects — and bails silently on dynamic expressions.
+
+Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analyzed. `no-duplicate-classes` skips dynamic inputs silently to avoid false positives; `no-dynamic-classes` is the opposite — it flags exactly those positions so the static analyzer can fully reason about every call. `no-redundant-spaces` is independent and complements both: it cares about whitespace shape inside any literal class string it can see, regardless of whether the surrounding call is fully static.
 
 ### ESLint (flat config)
 
@@ -912,7 +914,8 @@ export default [
     plugins: { 'slot-variants': svPlugin },
     rules: {
       'slot-variants/no-duplicate-classes': 'error',
-      'slot-variants/no-dynamic-classes': 'error'
+      'slot-variants/no-dynamic-classes': 'error',
+      'slot-variants/no-redundant-spaces': 'error'
     }
   }
 ];
@@ -925,7 +928,8 @@ export default [
   "jsPlugins": ["slot-variants/eslint-plugin"],
   "rules": {
     "slot-variants/no-duplicate-classes": "error",
-    "slot-variants/no-dynamic-classes": "error"
+    "slot-variants/no-dynamic-classes": "error",
+    "slot-variants/no-redundant-spaces": "error"
   }
 }
 ```
@@ -964,6 +968,17 @@ cn(extra, 'flex');                     // identifier argument
 ```
 
 `no-dynamic-classes` reports each of the dynamic positions above. Replace dynamic class strings with static ones (or move them to the runtime `class` / `className` prop on the returned function, which is intentionally outside the analyzer's scope) so every call can be statically verified.
+
+```typescript
+import { sv, cn } from 'slot-variants';
+
+sv({ base: ' flex items-center' });            // leading space
+sv({ base: 'flex  items-center' });            // double space
+sv({ slots: { body: 'p-4 ' } });               // trailing space
+cn(`flex\titems-center`);                      // tab between tokens
+```
+
+`no-redundant-spaces` reports each literal whose whitespace deviates from the canonical "tokens separated by exactly one space" form. Trim and collapse the strings — or split them into array entries — so the stored class output is byte-stable and easy to scan in diffs.
 
 ## Migrating from CVA / tailwind-variants
 

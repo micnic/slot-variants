@@ -440,7 +440,7 @@ import type { VariantProps, VariantValue, SlotClassProps, ClassValue } from 'slo
 
 ## ESLint / oxlint Plugin
 
-Subpath export `slot-variants/eslint-plugin` ships two rules that statically analyze `sv()` and `cn()` calls. Works under ESLint v9+ (flat config) and under oxlint via its `jsPlugins` config. The plugin is a separate entry point — it adds no runtime code to the library bundle.
+Subpath export `slot-variants/eslint-plugin` ships three rules that statically analyze `sv()` and `cn()` calls. Works under ESLint v9+ (flat config) and under oxlint via its `jsPlugins` config. The plugin is a separate entry point — it adds no runtime code to the library bundle.
 
 ```js
 // eslint.config.js
@@ -450,7 +450,8 @@ export default [{
   plugins: { 'slot-variants': svPlugin },
   rules: {
     'slot-variants/no-duplicate-classes': 'error',
-    'slot-variants/no-dynamic-classes': 'error'
+    'slot-variants/no-dynamic-classes': 'error',
+    'slot-variants/no-redundant-spaces': 'error'
   }
 }];
 ```
@@ -461,7 +462,8 @@ export default [{
   "jsPlugins": ["slot-variants/eslint-plugin"],
   "rules": {
     "slot-variants/no-duplicate-classes": "error",
-    "slot-variants/no-dynamic-classes": "error"
+    "slot-variants/no-dynamic-classes": "error",
+    "slot-variants/no-redundant-spaces": "error"
   }
 }
 ```
@@ -486,6 +488,15 @@ Reports class-bearing positions in `sv()` and `cn()` calls that aren't staticall
 - Top-level config keys must be statically known — spreads and computed keys cause the call to fall through to the cn-style path, which then reports the entire object as dynamic.
 - Non-class-bearing config keys (`defaultVariants`, `presets`, `requiredVariants`, `cacheSize`, `postProcess`, `introspection`) are not validated. Runtime variant matchers inside compound entries are also left alone — only the class value (and `compoundSlots`' `slots` array) is checked.
 - Move dynamic class strings to the runtime `class` / `className` prop on the function returned by `sv()` — that call site is intentionally outside the analyzer's scope.
+
+### `slot-variants/no-redundant-spaces`
+
+Reports class strings whose whitespace isn't canonical — that is, whose value differs from `value.split(/\s+/).filter(Boolean).join(' ')`.
+
+- Flags leading or trailing whitespace, repeated spaces, and non-space whitespace (tabs, newlines, etc.) inside any string literal or expressionless template literal reachable from the call's arguments.
+- Walks recursively into arrays and objects, so values nested inside `slots`, `variants` records, `compoundVariants`, `compoundSlots`, `defaultVariants`, `presets`, etc. are all inspected.
+- Bails silently on dynamic expressions and non-string literals — false positives are impossible by construction.
+- Reports once per offending literal at the whole-node location. Fix by trimming and collapsing the string, or by splitting it into array entries.
 
 ## Performance Notes
 

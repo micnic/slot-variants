@@ -25,6 +25,213 @@ t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 	t.end();
 });
 
+t.test('no-redundant-spaces', (t) => {
+	const spacesRule = rules['no-redundant-spaces'];
+
+	t.doesNotThrow(() => {
+		tester.run('no-redundant-spaces', spacesRule, {
+			valid: [
+				// Single token, no whitespace.
+				IMPORT + "sv({ base: 'flex' });",
+				// Multiple tokens separated by single spaces.
+				IMPORT + "sv({ base: 'flex items-center gap-2' });",
+				// Empty string is allowed (no-op).
+				IMPORT + "sv({ base: '' });",
+				// Static template literal without expressions.
+				IMPORT + 'sv({ base: `flex items-center` });',
+				// Array of clean strings.
+				IMPORT + "sv({ base: ['flex', 'items-center'] });",
+				// Sparse hole in array — skipped.
+				IMPORT + "sv({ base: ['flex', , 'gap-2'] });",
+				// Spread element inside a class array — bailed out.
+				IMPORT + "sv({ base: ['flex', ...rest] });",
+				// Slots and variants with clean strings.
+				IMPORT +
+					`sv({
+						slots: { body: 'p-4', header: 'font-bold' },
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
+					});`,
+				// Boolean shorthand variant with a clean class value.
+				IMPORT + "sv({ variants: { disabled: 'opacity-50' } });",
+				// compoundVariants and compoundSlots with clean values.
+				IMPORT +
+					`sv({
+						slots: { body: 'p-4' },
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+						compoundVariants: [
+							{ size: 'lg', class: 'font-bold' },
+							{ size: 'sm', className: 'font-light' }
+						],
+						compoundSlots: [{ slots: ['body'], class: 'font-bold' }]
+					});`,
+				// Non-class-bearing keys are walked but contain no offending strings.
+				IMPORT +
+					`sv({
+						base: 'flex',
+						defaultVariants: { size: 'sm' },
+						requiredVariants: ['intent'],
+						presets: { cta: { size: 'lg' } },
+						cacheSize: 256,
+						introspection: true
+					});`,
+				// Dynamic identifier — walker skips silently.
+				IMPORT + 'sv({ base: dynamic });',
+				// Non-string literal — walker skips.
+				IMPORT + 'sv({ base: 42 });',
+				// Template with expression — walker skips.
+				IMPORT + 'sv({ base: `flex ${dynamic}` });',
+				// Spread inside the config object — that property skipped, others walked.
+				IMPORT + "sv({ ...rest, base: 'flex' });",
+				// Computed key — that property skipped, others walked.
+				IMPORT + "sv({ [k]: 'x', base: 'flex' });",
+				// Non-string literal as cn() argument — skipped.
+				IMPORT_CN + "cn(42, 'flex');",
+				// Spread argument to cn() — skipped.
+				IMPORT_CN + "cn(...rest, 'flex');",
+				// Spread argument to sv() — skipped.
+				IMPORT + "sv(...rest, 'flex');",
+				// Zero-arg calls.
+				IMPORT + 'sv();',
+				IMPORT_CN + 'cn();',
+				// Without import — silent.
+				"sv({ base: ' flex  ' });",
+				// Default-imported sv is not tracked.
+				"import sv from 'slot-variants'; sv({ base: ' flex  ' });",
+				// Namespace-imported sv is not tracked.
+				"import * as mod from 'slot-variants'; mod.sv({ base: ' flex  ' });",
+				// Side-effect import — no specifiers tracked.
+				"import 'slot-variants'; sv({ base: ' flex  ' });",
+				// Other named import is ignored.
+				"import { VariantProps } from 'slot-variants'; sv({ base: ' flex  ' });",
+				// Import from a different module is ignored.
+				"import { sv } from 'other'; sv({ base: ' flex  ' });",
+				// Member-expression callee is not tracked.
+				IMPORT + "obj.sv({ base: ' flex  ' });",
+				// Unrelated function call mixed with valid sv call.
+				IMPORT + "console.log(' x  '); sv('flex');",
+				// Bare identifier call that isn't sv or cn.
+				IMPORT + "foo(' x  '); sv('flex');",
+				// Both sv and cn in one import.
+				"import { sv, cn } from 'slot-variants'; sv('flex'); cn('items-center');"
+			],
+			invalid: [
+				{
+					// Leading whitespace.
+					code: IMPORT + "sv({ base: ' flex' });",
+					errors: 1
+				},
+				{
+					// Trailing whitespace.
+					code: IMPORT + "sv({ base: 'flex ' });",
+					errors: 1
+				},
+				{
+					// Multiple consecutive spaces.
+					code: IMPORT + "sv({ base: 'flex  items-center' });",
+					errors: 1
+				},
+				{
+					// Tab character between tokens.
+					code: IMPORT + "sv({ base: 'flex\\titems-center' });",
+					errors: 1
+				},
+				{
+					// Newline whitespace inside template literal.
+					code: IMPORT + 'sv({ base: `flex\nitems-center` });',
+					errors: 1
+				},
+				{
+					// Leading + middle + trailing — single report on the literal.
+					code: IMPORT + "sv({ base: ' flex  items ' });",
+					errors: 1
+				},
+				{
+					// Redundant whitespace inside an array element.
+					code: IMPORT + "sv({ base: ['flex ', 'gap-2'] });",
+					errors: 1
+				},
+				{
+					// Redundant whitespace inside a static template literal.
+					code: IMPORT + 'sv({ base: `flex  items-center` });',
+					errors: 1
+				},
+				{
+					// Redundant whitespace in a slots value.
+					code:
+						IMPORT +
+						"sv({ slots: { body: 'p-4 ', header: 'font-bold' } });",
+					errors: 1
+				},
+				{
+					// Redundant whitespace in a variant record value.
+					code:
+						IMPORT +
+						"sv({ variants: { size: { sm: ' text-sm', lg: 'text-lg' } } });",
+					errors: 1
+				},
+				{
+					// Redundant whitespace in a boolean-shorthand variant value.
+					code:
+						IMPORT +
+						"sv({ variants: { disabled: 'opacity-50  cursor-not-allowed' } });",
+					errors: 1
+				},
+				{
+					// Redundant whitespace in a compoundVariants class.
+					code:
+						IMPORT +
+						`sv({
+							variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+							compoundVariants: [{ size: 'lg', class: 'font-bold ' }]
+						});`,
+					errors: 1
+				},
+				{
+					// Redundant whitespace in a compoundVariants className.
+					code:
+						IMPORT +
+						`sv({
+							variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+							compoundVariants: [{ size: 'lg', className: ' font-bold' }]
+						});`,
+					errors: 1
+				},
+				{
+					// Redundant whitespace in a compoundSlots class.
+					code:
+						IMPORT +
+						`sv({
+							slots: { body: 'p-4' },
+							compoundSlots: [{ slots: ['body'], class: 'font-bold  uppercase' }]
+						});`,
+					errors: 1
+				},
+				{
+					// cn() positional with trailing whitespace.
+					code: IMPORT_CN + "cn('flex ', 'items-center');",
+					errors: 1
+				},
+				{
+					// cn() with redundant whitespace inside template literal.
+					code: IMPORT_CN + 'cn(`flex  items-center`);',
+					errors: 1
+				},
+				{
+					// cn() with redundant whitespace inside an array argument.
+					code: IMPORT_CN + "cn(['flex  items-center']);",
+					errors: 1
+				},
+				{
+					// sv() called cn-style with redundant whitespace.
+					code: IMPORT + "sv('flex  items-center');",
+					errors: 1
+				}
+			]
+		});
+	}, 'rule tester passes');
+	t.end();
+});
+
 t.test('no-dynamic-classes', (t) => {
 	const dynamicRule = rules['no-dynamic-classes'];
 
