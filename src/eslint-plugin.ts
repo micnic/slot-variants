@@ -1,6 +1,7 @@
 import type { Rule, SourceCode } from 'eslint';
 import type {
 	Expression,
+	ImportDeclaration,
 	Literal,
 	Node,
 	ObjectExpression,
@@ -132,9 +133,6 @@ type Source =
 	| { kind: 'variant'; key: string; value: string }
 	| { kind: 'compound' };
 
-// Shared instances for the parameterless source kinds. Nothing mutates Source
-// values, so all call sites that emit a 'base' or 'compound' entry can point
-// at the same object instead of allocating a fresh literal per token.
 const baseSource: Source = { kind: 'base' };
 const compoundSource: Source = { kind: 'compound' };
 
@@ -678,6 +676,34 @@ const checkCnArguments = (
 	}
 };
 
+const createImportsTracker = () => {
+	const cnNames = new Set<string>();
+	const svNames = new Set<string>();
+
+	const importsTracker = (node: ImportDeclaration): void => {
+		if (node.source.value !== 'slot-variants') {
+			return;
+		}
+
+		for (const specifier of node.specifiers) {
+			if (
+				specifier.type !== 'ImportSpecifier' ||
+				specifier.imported.type !== 'Identifier'
+			) {
+				continue;
+			}
+
+			if (specifier.imported.name === 'cn') {
+				cnNames.add(specifier.local.name);
+			} else if (specifier.imported.name === 'sv') {
+				svNames.add(specifier.local.name);
+			}
+		}
+	};
+
+	return { cnNames, svNames, importsTracker };
+};
+
 /**
  * Flags dynamic values in `sv()` and `cn()` calls. Only statically inferrable
  * values — string literals, template literals without expressions, arrays of
@@ -698,29 +724,11 @@ export const noDynamicClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const svNames = new Set<string>();
-		const cnNames = new Set<string>();
+		const { cnNames, svNames, importsTracker } = createImportsTracker();
 
 		return {
 			ImportDeclaration(node) {
-				if (node.source.value !== 'slot-variants') {
-					return;
-				}
-
-				for (const spec of node.specifiers) {
-					if (
-						spec.type !== 'ImportSpecifier' ||
-						spec.imported.type !== 'Identifier'
-					) {
-						continue;
-					}
-
-					if (spec.imported.name === 'sv') {
-						svNames.add(spec.local.name);
-					} else if (spec.imported.name === 'cn') {
-						cnNames.add(spec.local.name);
-					}
-				}
+				importsTracker(node);
 			},
 			CallExpression(node) {
 				if (svNames.size === 0 && cnNames.size === 0) {
@@ -849,29 +857,11 @@ export const noRedundantSpaces: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const svNames = new Set<string>();
-		const cnNames = new Set<string>();
+		const { svNames, cnNames, importsTracker } = createImportsTracker();
 
 		return {
 			ImportDeclaration(node) {
-				if (node.source.value !== 'slot-variants') {
-					return;
-				}
-
-				for (const spec of node.specifiers) {
-					if (
-						spec.type !== 'ImportSpecifier' ||
-						spec.imported.type !== 'Identifier'
-					) {
-						continue;
-					}
-
-					if (spec.imported.name === 'sv') {
-						svNames.add(spec.local.name);
-					} else if (spec.imported.name === 'cn') {
-						cnNames.add(spec.local.name);
-					}
-				}
+				importsTracker(node);
 			},
 			CallExpression(node) {
 				if (svNames.size === 0 && cnNames.size === 0) {
@@ -923,29 +913,11 @@ export const noDuplicateClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const svNames = new Set<string>();
-		const cnNames = new Set<string>();
+		const { svNames, cnNames, importsTracker } = createImportsTracker();
 
 		return {
 			ImportDeclaration(node) {
-				if (node.source.value !== 'slot-variants') {
-					return;
-				}
-
-				for (const spec of node.specifiers) {
-					if (
-						spec.type !== 'ImportSpecifier' ||
-						spec.imported.type !== 'Identifier'
-					) {
-						continue;
-					}
-
-					if (spec.imported.name === 'sv') {
-						svNames.add(spec.local.name);
-					} else if (spec.imported.name === 'cn') {
-						cnNames.add(spec.local.name);
-					}
-				}
+				importsTracker(node);
 			},
 			CallExpression(node) {
 				if (svNames.size === 0 && cnNames.size === 0) {
