@@ -2,9 +2,6 @@ import t from 'tap';
 import { RuleTester } from 'eslint';
 import plugin, { rules } from '../src/eslint-plugin.ts';
 
-RuleTester.describe = (_text, fn) => (fn as () => void)();
-RuleTester.it = (_text, fn) => (fn as () => void)();
-
 const tester = new RuleTester({
 	languageOptions: {
 		ecmaVersion: 'latest',
@@ -25,6 +22,358 @@ t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 		t.ok(r.meta?.schema !== undefined, `${name}: has schema`);
 		t.equal(typeof r.create, 'function', `${name}: has create()`);
 	}
+	t.end();
+});
+
+t.test('no-dynamic-classes', (t) => {
+	const dynamicRule = rules['no-dynamic-classes'];
+
+	t.doesNotThrow(() => {
+		tester.run('no-dynamic-classes', dynamicRule, {
+			valid: [
+				// Static class strings in cn-style call.
+				IMPORT + "sv('flex', 'items-center');",
+				// Static base in config.
+				IMPORT + "sv({ base: 'flex' });",
+				// Array of static class values.
+				IMPORT + "sv({ base: ['flex', 'gap-2'] });",
+				// Sparse hole in array — allowed.
+				IMPORT + "sv({ base: ['flex', , 'gap-2'] });",
+				// Template literal without expressions.
+				IMPORT + 'sv({ base: `flex gap-2` });',
+				// Static slots record.
+				IMPORT + "sv({ slots: { body: 'p-4', header: 'font-bold' } });",
+				// Static value-keyed variants.
+				IMPORT +
+					"sv({ variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });",
+				// Boolean shorthand variant — value is a class value.
+				IMPORT + "sv({ variants: { disabled: 'opacity-50' } });",
+				// Variant value is an array.
+				IMPORT +
+					"sv({ variants: { disabled: ['opacity-50', 'cursor-not-allowed'] } });",
+				// String-literal property keys throughout.
+				IMPORT +
+					"sv({ 'base': 'flex', 'variants': { 'size': { 'sm': 'text-sm' } } });",
+				// Numeric variant value keys.
+				IMPORT + "sv({ variants: { size: { 1: 'text-sm' } } });",
+				// compoundVariants with static class.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+						compoundVariants: [{ size: 'lg', class: 'font-bold' }]
+					});`,
+				// compoundVariants entry with className instead of class.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+						compoundVariants: [{ size: 'lg', className: 'font-bold' }]
+					});`,
+				// compoundVariants entry without class/className.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+						compoundVariants: [{ size: 'lg' }]
+					});`,
+				// Sparse hole in compoundVariants array.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+						compoundVariants: [, { size: 'lg', class: 'font-bold' }]
+					});`,
+				// compoundSlots with static slots and class.
+				IMPORT +
+					`sv({
+						slots: { body: 'p-4' },
+						compoundSlots: [{ slots: ['body'], class: 'font-bold' }]
+					});`,
+				// compoundSlots with sparse hole inside slots array.
+				IMPORT +
+					`sv({
+						slots: { body: 'p-4' },
+						compoundSlots: [{ slots: [, 'body'], class: 'font-bold' }]
+					});`,
+				// Non-class config keys with dynamic values are not validated.
+				IMPORT +
+					`sv({
+						base: 'flex',
+						defaultVariants: dynamic,
+						cacheSize: someNumber,
+						postProcess: twMerge,
+						introspection: flag,
+						requiredVariants: keys,
+						presets: anything
+					});`,
+				// Zero-arg sv() call.
+				IMPORT + 'sv();',
+				// Zero-arg cn() call.
+				IMPORT_CN + 'cn();',
+				// Static cn arguments.
+				IMPORT_CN + "cn('flex', 'items-center');",
+				IMPORT_CN + "cn(['flex', 'items-center']);",
+				IMPORT_CN + 'cn(`flex`);',
+				// Without an import, the rule is silent.
+				"sv({ base: dynamic });",
+				// Default-imported sv is not tracked.
+				"import sv from 'slot-variants'; sv(dynamic);",
+				// Namespace-imported sv is not tracked.
+				"import * as mod from 'slot-variants'; mod.sv(dynamic);",
+				// Side-effect import — no specifiers tracked.
+				"import 'slot-variants'; sv(dynamic);",
+				// Named import that is neither sv nor cn is ignored.
+				"import { VariantProps } from 'slot-variants'; sv(dynamic);",
+				// Import from a different module is ignored.
+				"import { sv } from 'other'; sv(dynamic);",
+				// Importing both sv and cn.
+				"import { sv, cn } from 'slot-variants'; sv('a'); cn('b');",
+				// Member-expression callee is not tracked.
+				IMPORT + "obj.sv(dynamic);",
+				// Unrelated function call when imports are tracked.
+				IMPORT + "console.log('hi'); sv('flex');"
+			],
+			invalid: [
+				{
+					// Identifier as cn-style argument.
+					code: IMPORT + 'sv(dynamic);',
+					errors: 1
+				},
+				{
+					// Spread argument in cn-style call.
+					code: IMPORT + "sv(...rest, 'flex');",
+					errors: 1
+				},
+				{
+					// Non-string literal as cn-style argument.
+					code: IMPORT + 'sv(42);',
+					errors: 1
+				},
+				{
+					// Template with expression as cn-style argument.
+					code: IMPORT + 'sv(`flex ${x}`);',
+					errors: 1
+				},
+				{
+					// Spread inside array argument.
+					code: IMPORT + "sv(['flex', ...rest]);",
+					errors: 1
+				},
+				{
+					// Identifier as base value.
+					code: IMPORT + 'sv({ base: dynamic });',
+					errors: 1
+				},
+				{
+					// Non-string literal as base.
+					code: IMPORT + 'sv({ base: 42 });',
+					errors: 1
+				},
+				{
+					// Template literal with expression as base.
+					code: IMPORT + 'sv({ base: `flex ${x}` });',
+					errors: 1
+				},
+				{
+					// Identifier element inside base array.
+					code: IMPORT + "sv({ base: ['flex', dynamic] });",
+					errors: 1
+				},
+				{
+					// Spread element inside base array.
+					code: IMPORT + "sv({ base: ['flex', ...rest] });",
+					errors: 1
+				},
+				{
+					// Spread at the top of the config object.
+					code: IMPORT + "sv({ ...rest, base: 'flex' });",
+					errors: 1
+				},
+				{
+					// Computed key in the config object.
+					code: IMPORT + "sv({ [k]: 'flex' });",
+					errors: 1
+				},
+				{
+					// slots is not an object.
+					code: IMPORT + "sv({ base: 'flex', slots: dynamic });",
+					errors: 1
+				},
+				{
+					// Spread inside slots.
+					code: IMPORT + "sv({ slots: { ...rest, body: 'p-4' } });",
+					errors: 1
+				},
+				{
+					// Computed key inside slots.
+					code: IMPORT + "sv({ slots: { [k]: 'p-4' } });",
+					errors: 1
+				},
+				{
+					// Dynamic slot value.
+					code: IMPORT + 'sv({ slots: { body: dynamic } });',
+					errors: 1
+				},
+				{
+					// variants is not an object.
+					code: IMPORT + 'sv({ variants: dynamic });',
+					errors: 1
+				},
+				{
+					// Spread inside variants.
+					code:
+						IMPORT +
+						"sv({ variants: { ...rest, size: { sm: 'text-sm' } } });",
+					errors: 1
+				},
+				{
+					// Computed key inside variants.
+					code: IMPORT + "sv({ variants: { [k]: { sm: 'text-sm' } } });",
+					errors: 1
+				},
+				{
+					// Dynamic variant shorthand value.
+					code: IMPORT + 'sv({ variants: { disabled: dynamic } });',
+					errors: 1
+				},
+				{
+					// Spread inside a variant value record.
+					code:
+						IMPORT +
+						"sv({ variants: { size: { ...rest, sm: 'text-sm' } } });",
+					errors: 1
+				},
+				{
+					// Computed key inside a variant value record.
+					code: IMPORT + "sv({ variants: { size: { [v]: 'text-sm' } } });",
+					errors: 1
+				},
+				{
+					// Dynamic value inside a variant value record.
+					code: IMPORT + 'sv({ variants: { size: { sm: dynamic } } });',
+					errors: 1
+				},
+				{
+					// compoundVariants is not an array.
+					code:
+						IMPORT +
+						"sv({ variants: { size: { sm: 'text-sm' } }, compoundVariants: dynamic });",
+					errors: 1
+				},
+				{
+					// Non-object element inside compoundVariants.
+					code:
+						IMPORT +
+						"sv({ variants: { size: { sm: 'text-sm' } }, compoundVariants: [42] });",
+					errors: 1
+				},
+				{
+					// Spread element inside compoundVariants.
+					code:
+						IMPORT +
+						"sv({ variants: { size: { sm: 'text-sm' } }, compoundVariants: [...rest] });",
+					errors: 1
+				},
+				{
+					// Spread inside a compoundVariants entry.
+					code:
+						IMPORT +
+						`sv({
+							variants: { size: { sm: 'text-sm' } },
+							compoundVariants: [{ ...rest, class: 'font-bold' }]
+						});`,
+					errors: 1
+				},
+				{
+					// Computed key inside a compoundVariants entry.
+					code:
+						IMPORT +
+						`sv({
+							variants: { size: { sm: 'text-sm' } },
+							compoundVariants: [{ [k]: 'lg', class: 'font-bold' }]
+						});`,
+					errors: 1
+				},
+				{
+					// Dynamic class in a compoundVariants entry.
+					code:
+						IMPORT +
+						`sv({
+							variants: { size: { sm: 'text-sm' } },
+							compoundVariants: [{ size: 'sm', class: dynamic }]
+						});`,
+					errors: 1
+				},
+				{
+					// Dynamic className in a compoundVariants entry.
+					code:
+						IMPORT +
+						`sv({
+							variants: { size: { sm: 'text-sm' } },
+							compoundVariants: [{ size: 'sm', className: dynamic }]
+						});`,
+					errors: 1
+				},
+				{
+					// compoundSlots slots field is not an array.
+					code:
+						IMPORT +
+						`sv({
+							slots: { body: 'p-4' },
+							compoundSlots: [{ slots: dynamic, class: 'font-bold' }]
+						});`,
+					errors: 1
+				},
+				{
+					// Non-string element inside compoundSlots slots array.
+					code:
+						IMPORT +
+						`sv({
+							slots: { body: 'p-4' },
+							compoundSlots: [{ slots: [42], class: 'font-bold' }]
+						});`,
+					errors: 1
+				},
+				{
+					// Identifier inside compoundSlots slots array.
+					code:
+						IMPORT +
+						`sv({
+							slots: { body: 'p-4' },
+							compoundSlots: [{ slots: [body], class: 'font-bold' }]
+						});`,
+					errors: 1
+				},
+				{
+					// Dynamic class in a compoundSlots entry.
+					code:
+						IMPORT +
+						`sv({
+							slots: { body: 'p-4' },
+							compoundSlots: [{ slots: ['body'], class: dynamic }]
+						});`,
+					errors: 1
+				},
+				{
+					// cn() with a dynamic identifier.
+					code: IMPORT_CN + 'cn(dynamic);',
+					errors: 1
+				},
+				{
+					// cn() with a spread argument.
+					code: IMPORT_CN + "cn(...rest, 'flex');",
+					errors: 1
+				},
+				{
+					// cn() with an object record (not statically inferrable).
+					code: IMPORT_CN + "cn({ foo: true });",
+					errors: 1
+				},
+				{
+					// cn() with a template literal containing an expression.
+					code: IMPORT_CN + 'cn(`flex ${x}`);',
+					errors: 1
+				}
+			]
+		});
+	}, 'rule tester passes');
 	t.end();
 });
 

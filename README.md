@@ -898,7 +898,9 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 - **`slot-variants/no-duplicate-classes`** — flags class name tokens that will appear more than once in the output of an `sv()` or `cn()` call. For `sv()`, detects duplicates within `base`, across different variant keys, inside compound variants and compound slots, between `base` and a variant value, and within a single literal. For `cn()` (and the cn-style calling convention of `sv()` without a config), flags any token that appears in more than one always-present source — across args, inside arrays, template literals, or within a single literal.
 
-Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analyzed. Dynamic inputs (identifiers, spreads, computed keys, template literals with expressions, and cn-style `{ class: condition }` records) are skipped silently rather than flagged.
+- **`slot-variants/no-dynamic-classes`** — flags class-bearing positions in `sv()` and `cn()` calls that aren't statically inferrable. Only string literals, template literals without expressions, and arrays of those are accepted as class values, and config objects must use static keys (no spreads, no computed keys). Identifiers, member access, calls, spreads, non-string literals, templates with expressions, and runtime conditional records are reported. Non-class-bearing config keys (`defaultVariants`, `presets`, `requiredVariants`, `cacheSize`, `postProcess`, `introspection`) are not validated, and runtime variant matchers inside compound entries are left alone — only the `class`/`className` value (and the `slots` array of `compoundSlots`) is checked.
+
+Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analyzed. `no-duplicate-classes` skips dynamic inputs silently to avoid false positives; `no-dynamic-classes` is the opposite — it flags exactly those positions so the static analyzer can fully reason about every call.
 
 ### ESLint (flat config)
 
@@ -908,7 +910,10 @@ import svPlugin from 'slot-variants/eslint-plugin';
 export default [
   {
     plugins: { 'slot-variants': svPlugin },
-    rules: { 'slot-variants/no-duplicate-classes': 'error' }
+    rules: {
+      'slot-variants/no-duplicate-classes': 'error',
+      'slot-variants/no-dynamic-classes': 'error'
+    }
   }
 ];
 ```
@@ -918,7 +923,10 @@ export default [
 ```json
 {
   "jsPlugins": ["slot-variants/eslint-plugin"],
-  "rules": { "slot-variants/no-duplicate-classes": "error" }
+  "rules": {
+    "slot-variants/no-duplicate-classes": "error",
+    "slot-variants/no-dynamic-classes": "error"
+  }
 }
 ```
 
@@ -940,7 +948,22 @@ const button = sv({
 cn('flex items-center', 'flex'); // 'flex' duplicated across args
 ```
 
-The rule reports `flex` on the `base` literal and on both variant values. For the `cn()` call, both occurrences of `'flex'` are flagged. Move the shared class into `base` — or use compound variants — so each class has a single source.
+`no-duplicate-classes` reports `flex` on the `base` literal and on both variant values; for the `cn()` call, both occurrences of `'flex'` are flagged. Move the shared class into `base` — or use compound variants — so each class has a single source.
+
+```typescript
+import { sv, cn } from 'slot-variants';
+
+const extra = getDynamicClass();
+
+sv({ base: extra });                   // dynamic base
+sv({ base: `text-sm ${size}` });       // template with expression
+sv({ ...rest, variants: {} });         // spread inside config
+sv({ variants: { [key]: 'x' } });      // computed variant key
+sv({ slots: { body: ['p-4', ...rest] } }); // spread inside slot array
+cn(extra, 'flex');                     // identifier argument
+```
+
+`no-dynamic-classes` reports each of the dynamic positions above. Replace dynamic class strings with static ones (or move them to the runtime `class` / `className` prop on the returned function, which is intentionally outside the analyzer's scope) so every call can be statically verified.
 
 ## Migrating from CVA / tailwind-variants
 

@@ -451,6 +451,311 @@ const analyzeCnCall = (
 	}
 };
 
+// Reports `node` as a dynamic value the static analyzer cannot infer.
+const reportDynamic = (context: Rule.RuleContext, node: Node): void => {
+	context.report({ node, messageId: 'dynamic' });
+};
+
+// Validates that `node` is a string-only class value: a string Literal, a
+// TemplateLiteral with no expressions, or an ArrayExpression of those (with
+// sparse holes allowed). Anything else — identifiers, member access, calls,
+// spreads, non-string literals, templates with expressions, object records —
+// is reported.
+const checkClassValueIsStatic = (
+	context: Rule.RuleContext,
+	node: Node
+): void => {
+	if (node.type === 'Literal') {
+		if (typeof node.value !== 'string') {
+			reportDynamic(context, node);
+		}
+
+		return;
+	}
+
+	if (node.type === 'TemplateLiteral') {
+		if (node.expressions.length > 0) {
+			reportDynamic(context, node);
+		}
+
+		return;
+	}
+
+	if (node.type === 'ArrayExpression') {
+		for (const element of node.elements) {
+			if (!element) {
+				continue;
+			}
+
+			if (element.type === 'SpreadElement') {
+				reportDynamic(context, element);
+				continue;
+			}
+
+			checkClassValueIsStatic(context, element);
+		}
+
+		return;
+	}
+
+	reportDynamic(context, node);
+};
+
+// Validates that `node` is an ObjectExpression where every property has a
+// statically-known key (no spreads, no computed keys) and every value is a
+// static class value. Used for `slots` and for variant value records.
+const checkClassValueRecord = (
+	context: Rule.RuleContext,
+	node: Node
+): void => {
+	if (node.type !== 'ObjectExpression') {
+		reportDynamic(context, node);
+		return;
+	}
+
+	for (const prop of node.properties) {
+		if (prop.type === 'SpreadElement') {
+			reportDynamic(context, prop);
+			continue;
+		}
+
+		if (prop.computed) {
+			reportDynamic(context, prop.key);
+			continue;
+		}
+
+		checkClassValueIsStatic(context, prop.value);
+	}
+};
+
+// Validates the `variants` config field — an ObjectExpression where each
+// variant value is either a record of value-keyed class strings or a class
+// value (boolean shorthand).
+const checkVariants = (context: Rule.RuleContext, node: Node): void => {
+	if (node.type !== 'ObjectExpression') {
+		reportDynamic(context, node);
+		return;
+	}
+
+	for (const prop of node.properties) {
+		if (prop.type === 'SpreadElement') {
+			reportDynamic(context, prop);
+			continue;
+		}
+
+		if (prop.computed) {
+			reportDynamic(context, prop.key);
+			continue;
+		}
+
+		const { value } = prop;
+
+		if (value.type === 'ObjectExpression') {
+			checkClassValueRecord(context, value);
+		} else {
+			checkClassValueIsStatic(context, value);
+		}
+	}
+};
+
+// Validates a `compoundVariants` or `compoundSlots` array — every entry must
+// be a static ObjectExpression. Within each entry the `class`/`className`
+// field must be a static class value, and (for compoundSlots) the `slots`
+// field must be a static array of string literals. Other keys are runtime
+// matchers and are not validated by this rule.
+const checkCompoundEntries = (
+	context: Rule.RuleContext,
+	node: Node,
+	hasSlotsKey: boolean
+): void => {
+	if (node.type !== 'ArrayExpression') {
+		reportDynamic(context, node);
+		return;
+	}
+
+	for (const element of node.elements) {
+		if (!element) {
+			continue;
+		}
+
+		if (element.type !== 'ObjectExpression') {
+			reportDynamic(context, element);
+			continue;
+		}
+
+		for (const prop of element.properties) {
+			if (prop.type === 'SpreadElement') {
+				reportDynamic(context, prop);
+				continue;
+			}
+
+			if (prop.computed) {
+				reportDynamic(context, prop.key);
+				continue;
+			}
+
+			const key = getKeyName(prop);
+
+			if (key === 'class' || key === 'className') {
+				checkClassValueIsStatic(context, prop.value);
+				continue;
+			}
+
+			if (hasSlotsKey && key === 'slots') {
+				if (prop.value.type !== 'ArrayExpression') {
+					reportDynamic(context, prop.value);
+					continue;
+				}
+
+				for (const slotEl of prop.value.elements) {
+					if (!slotEl) {
+						continue;
+					}
+
+					if (
+						slotEl.type !== 'Literal' ||
+						typeof slotEl.value !== 'string'
+					) {
+						reportDynamic(context, slotEl);
+					}
+				}
+			}
+		}
+	}
+};
+
+// Validates a config ObjectExpression — every known class-bearing field must
+// be statically inferrable. Top-level spreads and computed keys are already
+// filtered out upstream by `isConfigLike`, so this only iterates regular
+// Property entries with statically-known keys. Non-class-bearing keys
+// (defaultVariants, presets, requiredVariants, cacheSize, postProcess,
+// introspection) are not validated here.
+const checkSvConfig = (
+	context: Rule.RuleContext,
+	configNode: ObjectExpression
+): void => {
+	for (const prop of configNode.properties) {
+		/* c8 ignore next 3 -- isConfigLike filters out spreads upstream */
+		if (prop.type !== 'Property') {
+			continue;
+		}
+
+		switch (getKeyName(prop)) {
+			case 'base':
+				checkClassValueIsStatic(context, prop.value);
+				break;
+			case 'slots':
+				checkClassValueRecord(context, prop.value);
+				break;
+			case 'variants':
+				checkVariants(context, prop.value);
+				break;
+			case 'compoundVariants':
+				checkCompoundEntries(context, prop.value, false);
+				break;
+			case 'compoundSlots':
+				checkCompoundEntries(context, prop.value, true);
+				break;
+			default:
+				break;
+		}
+	}
+};
+
+// Validates a list of cn-style arguments — each must be a static class value;
+// SpreadElement arguments are reported.
+const checkCnArguments = (
+	context: Rule.RuleContext,
+	args: ReadonlyArray<Expression | SpreadElement>
+): void => {
+	for (const arg of args) {
+		if (arg.type === 'SpreadElement') {
+			reportDynamic(context, arg);
+			continue;
+		}
+
+		checkClassValueIsStatic(context, arg);
+	}
+};
+
+/**
+ * Flags dynamic values in `sv()` and `cn()` calls. Only statically inferrable
+ * values — string literals, template literals without expressions, arrays of
+ * those, and ObjectExpressions whose keys/values are themselves inferrable —
+ * are allowed in class-bearing positions.
+ */
+export const noDynamicClasses: Rule.RuleModule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Disallow dynamic values in sv() and cn() calls — only statically inferrable class values are allowed'
+		},
+		schema: [],
+		messages: {
+			dynamic:
+				'Dynamic value in sv()/cn() call. Only statically inferrable class values are allowed.'
+		}
+	},
+	create(context) {
+		const svNames = new Set<string>();
+		const cnNames = new Set<string>();
+
+		return {
+			ImportDeclaration(node) {
+				if (node.source.value !== 'slot-variants') {
+					return;
+				}
+
+				for (const spec of node.specifiers) {
+					if (
+						spec.type !== 'ImportSpecifier' ||
+						spec.imported.type !== 'Identifier'
+					) {
+						continue;
+					}
+
+					if (spec.imported.name === 'sv') {
+						svNames.add(spec.local.name);
+					} else if (spec.imported.name === 'cn') {
+						cnNames.add(spec.local.name);
+					}
+				}
+			},
+			CallExpression(node) {
+				if (svNames.size === 0 && cnNames.size === 0) {
+					return;
+				}
+
+				const callee = node.callee;
+
+				if (callee.type !== 'Identifier') {
+					return;
+				}
+
+				if (svNames.has(callee.name)) {
+					const args = node.arguments;
+
+					if (args.length === 0) {
+						return;
+					}
+
+					const last = args[args.length - 1];
+
+					if (isConfigLike(last)) {
+						checkCnArguments(context, args.slice(0, -1));
+						checkSvConfig(context, last);
+					} else {
+						checkCnArguments(context, args);
+					}
+				} else if (cnNames.has(callee.name)) {
+					checkCnArguments(context, node.arguments);
+				}
+			}
+		};
+	}
+};
+
 /**
  * Flags class name tokens that are guaranteed (or guaranteed-on-some-path) to
  * appear more than once in the output of an `sv()` or `cn()` call.
@@ -533,7 +838,8 @@ export const noDuplicateClasses: Rule.RuleModule = {
  * Rules exported by the plugin.
  */
 export const rules = {
-	'no-duplicate-classes': noDuplicateClasses
+	'no-duplicate-classes': noDuplicateClasses,
+	'no-dynamic-classes': noDynamicClasses
 };
 
 /**
