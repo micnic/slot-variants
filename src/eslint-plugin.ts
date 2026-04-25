@@ -764,12 +764,8 @@ export const noDynamicClasses: Rule.RuleModule = {
 	}
 };
 
-// Returns true when `value` contains whitespace that wouldn't survive a round
-// trip through `value.split(/\s+/).filter(Boolean).join(' ')` — i.e. leading
-// or trailing whitespace, repeated runs, or non-space whitespace characters
-// like tabs and newlines.
 const hasRedundantSpaces = (value: string): boolean =>
-	value !== value.split(/\s+/).filter(Boolean).join(' ');
+	!/^(?:[^\s]+(?: [^\s]+)*)?$/.test(value);
 
 // Reports the node when its string value contains redundant whitespace.
 // Highlights the entire literal — the cheapest message the user can act on,
