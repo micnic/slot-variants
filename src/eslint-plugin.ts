@@ -1,5 +1,6 @@
 import type { Rule, SourceCode } from 'eslint';
 import type {
+	CallExpression,
 	Expression,
 	ImportDeclaration,
 	Literal,
@@ -77,32 +78,75 @@ const getProperties = (obj: Node | undefined): Map<string, Node> => {
 	return map;
 };
 
-// Returns true when every property of `node` has a statically-known key that
-// names a slot (or 'base'). This is the shape a variant uses when written as
-// boolean shorthand — `{ rounded: { root: '...', icon: '...' } }` — as opposed
-// to a value-keyed variant like `{ size: { sm: '...', md: '...' } }`.
-const isSlotKeyedShorthand = (node: Node, slotNames: Set<string>): boolean => {
+const collectSlotKeyedProperties = (
+	node: Node,
+	slotNames: Set<string>
+): Map<string, Node> | null => {
 	if (
 		node.type !== 'ObjectExpression' ||
 		node.properties.length === 0 ||
 		slotNames.size === 0
 	) {
-		return false;
+		return null;
 	}
+
+	const result = new Map<string, Node>();
 
 	for (const prop of node.properties) {
 		if (prop.type !== 'Property') {
-			return false;
+			return null;
 		}
 
 		const key = getKeyName(prop);
 
 		if (key === null || (key !== 'base' && !slotNames.has(key))) {
-			return false;
+			return null;
 		}
+
+		result.set(key, prop.value);
 	}
 
-	return true;
+	return result;
+};
+
+// Matches a CallExpression against the tracked `sv`/`cn` import names. Returns
+// the sv config (when the trailing argument looks like one) plus the remaining
+// cn-style arguments, or null when the call isn't an sv/cn call we recognize.
+const matchSvCnCall = (
+	node: CallExpression,
+	svNames: Set<string>,
+	cnNames: Set<string>
+): {
+	config: ObjectExpression | null;
+	args: ReadonlyArray<Expression | SpreadElement>;
+} | null => {
+	const { callee } = node;
+
+	if (callee.type !== 'Identifier') {
+		return null;
+	}
+
+	if (svNames.has(callee.name)) {
+		const args = node.arguments;
+
+		if (args.length === 0) {
+			return null;
+		}
+
+		const last = args[args.length - 1];
+
+		if (isConfigLike(last)) {
+			return { config: last, args: args.slice(0, -1) };
+		}
+
+		return { config: null, args };
+	}
+
+	if (cnNames.has(callee.name)) {
+		return { config: null, args: node.arguments };
+	}
+
+	return null;
 };
 
 const isConfigLike = (node: Node | undefined): node is ObjectExpression => {
@@ -258,14 +302,13 @@ const extractTokens = (
 		return;
 	}
 
-	// Only analyze as slot-keyed object when every key matches a slot name.
-	// Otherwise it's a cn-style record and we can't statically determine
-	// which keys are active, so skip.
-	if (!isSlotKeyedShorthand(node, slotNames)) {
+	const slotKeyedProps = collectSlotKeyedProperties(node, slotNames);
+
+	if (!slotKeyedProps) {
 		return;
 	}
 
-	for (const [key, value] of getProperties(node)) {
+	for (const [key, value] of slotKeyedProps) {
 		extractTokens(value, key, source, slotNames, entries, sourceCode);
 	}
 };
@@ -273,7 +316,7 @@ const extractTokens = (
 const analyzeConfig = (
 	context: Rule.RuleContext,
 	configNode: Node,
-	baseArgs: Array<Expression | SpreadElement>
+	baseArgs: ReadonlyArray<Expression | SpreadElement>
 ): void => {
 	const { sourceCode } = context;
 	const config = getProperties(configNode);
@@ -309,11 +352,10 @@ const analyzeConfig = (
 	const variantsMap = getProperties(variants);
 
 	for (const [variantKey, variantValue] of variantsMap.entries()) {
-		const isValueKeyed =
-			variantValue.type === 'ObjectExpression' &&
-			!isSlotKeyedShorthand(variantValue, slotNames);
-
-		if (!isValueKeyed) {
+		if (
+			variantValue.type !== 'ObjectExpression' ||
+			collectSlotKeyedProperties(variantValue, slotNames) !== null
+		) {
 			extract(variantValue, 'base', {
 				kind: 'variant',
 				key: variantKey,
@@ -502,10 +544,7 @@ const checkClassValueIsStatic = (
 // Validates that `node` is an ObjectExpression where every property has a
 // statically-known key (no spreads, no computed keys) and every value is a
 // static class value. Used for `slots` and for variant value records.
-const checkClassValueRecord = (
-	context: Rule.RuleContext,
-	node: Node
-): void => {
+const checkClassValueRecord = (context: Rule.RuleContext, node: Node): void => {
 	if (node.type !== 'ObjectExpression') {
 		reportDynamic(context, node);
 		return;
@@ -731,33 +770,16 @@ export const noDynamicClasses: Rule.RuleModule = {
 				importsTracker(node);
 			},
 			CallExpression(node) {
-				if (svNames.size === 0 && cnNames.size === 0) {
+				const call = matchSvCnCall(node, svNames, cnNames);
+
+				if (!call) {
 					return;
 				}
 
-				const callee = node.callee;
+				checkCnArguments(context, call.args);
 
-				if (callee.type !== 'Identifier') {
-					return;
-				}
-
-				if (svNames.has(callee.name)) {
-					const args = node.arguments;
-
-					if (args.length === 0) {
-						return;
-					}
-
-					const last = args[args.length - 1];
-
-					if (isConfigLike(last)) {
-						checkCnArguments(context, args.slice(0, -1));
-						checkSvConfig(context, last);
-					} else {
-						checkCnArguments(context, args);
-					}
-				} else if (cnNames.has(callee.name)) {
-					checkCnArguments(context, node.arguments);
+				if (call.config) {
+					checkSvConfig(context, call.config);
 				}
 			}
 		};
@@ -870,10 +892,7 @@ export const noRedundantSpaces: Rule.RuleModule = {
 					return;
 				}
 
-				if (
-					!svNames.has(callee.name) &&
-					!cnNames.has(callee.name)
-				) {
+				if (!svNames.has(callee.name) && !cnNames.has(callee.name)) {
 					return;
 				}
 
@@ -916,33 +935,16 @@ export const noDuplicateClasses: Rule.RuleModule = {
 				importsTracker(node);
 			},
 			CallExpression(node) {
-				if (svNames.size === 0 && cnNames.size === 0) {
+				const call = matchSvCnCall(node, svNames, cnNames);
+
+				if (!call) {
 					return;
 				}
 
-				const callee = node.callee;
-
-				if (callee.type !== 'Identifier') {
-					return;
-				}
-
-				if (svNames.has(callee.name)) {
-					const args = node.arguments;
-
-					if (args.length === 0) {
-						return;
-					}
-
-					const last = args[args.length - 1];
-
-					if (isConfigLike(last)) {
-						const baseArgs = args.slice(0, -1);
-						analyzeConfig(context, last, baseArgs);
-					} else {
-						analyzeCnCall(context, args);
-					}
-				} else if (cnNames.has(callee.name)) {
-					analyzeCnCall(context, node.arguments);
+				if (call.config) {
+					analyzeConfig(context, call.config, call.args);
+				} else {
+					analyzeCnCall(context, call.args);
 				}
 			}
 		};
