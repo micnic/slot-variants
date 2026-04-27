@@ -584,6 +584,338 @@ t.test('no-dynamic-classes', (t) => {
 	t.end();
 });
 
+t.test('no-empty-classes', (t) => {
+	const emptyRule = rules['no-empty-classes'];
+
+	t.doesNotThrow(() => {
+		tester.run('no-empty-classes', emptyRule, {
+			valid: [
+				// Non-empty cn-style call.
+				IMPORT + "sv('flex', 'items-center');",
+				// Non-empty config.
+				IMPORT + "sv({ base: 'flex' });",
+				// Non-empty array, no empty elements.
+				IMPORT + "sv({ base: ['flex', 'gap-2'] });",
+				// Sparse hole in array — skipped.
+				IMPORT + "sv({ base: ['flex', , 'gap-2'] });",
+				// Spread element inside array — skipped.
+				IMPORT + "sv({ base: ['flex', ...rest] });",
+				// Non-empty template literal.
+				IMPORT + 'sv({ base: `flex` });',
+				// Empty string as a direct slot value — allowed.
+				IMPORT + "sv({ slots: { body: '' } });",
+				// Empty template literal as a direct slot value — allowed.
+				IMPORT + 'sv({ slots: { body: `` } });',
+				// Mix of empty and non-empty slot values — both allowed.
+				IMPORT +
+					"sv({ slots: { body: '', header: 'font-bold' } });",
+				// Spread in slots — bailed.
+				IMPORT + "sv({ slots: { ...rest, body: 'p-4' } });",
+				// Computed key in slots — bailed.
+				IMPORT + "sv({ slots: { [k]: '' } });",
+				// Slots with non-object value — not analyzed.
+				IMPORT + "sv({ base: 'flex', slots: dynamic });",
+				// Variants with non-object value — not analyzed.
+				IMPORT + 'sv({ variants: dynamic });',
+				// Compounds with non-array value — not analyzed.
+				IMPORT + 'sv({ compoundVariants: dynamic });',
+				// Non-empty variants record.
+				IMPORT +
+					"sv({ variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });",
+				// Boolean shorthand variant with non-empty class.
+				IMPORT + "sv({ variants: { disabled: 'opacity-50' } });",
+				// Slot-keyed boolean shorthand variant with non-empty class.
+				IMPORT +
+					"sv({ slots: { body: 'p-4' }, variants: { disabled: { body: 'opacity-50' } } });",
+				// compoundVariants with non-empty class.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+						compoundVariants: [{ size: 'lg', class: 'font-bold' }]
+					});`,
+				// compoundVariants entry without class — not flagged.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm' } },
+						compoundVariants: [{ size: 'sm' }]
+					});`,
+				// compoundSlots with non-empty class.
+				IMPORT +
+					`sv({
+						slots: { body: 'p-4' },
+						compoundSlots: [{ slots: ['body'], class: 'font-bold' }]
+					});`,
+				// cn-style record with non-empty keys.
+				IMPORT_CN + "cn({ foo: true, bar: false });",
+				// Non-string literal as cn argument — not an empty class.
+				IMPORT_CN + "cn(0, false, null, undefined);",
+				// Non-empty values in nested arrays.
+				IMPORT_CN + "cn([['flex', 'gap-2']]);",
+				// Template literal with an interpolation — not empty, skipped.
+				IMPORT_CN + 'cn(`flex ${x}`);',
+				// Spread argument — skipped.
+				IMPORT_CN + "cn(...rest, 'flex');",
+				// Without an import, the rule is silent.
+				"sv();",
+				"cn();",
+				"sv('');",
+				"cn({});",
+				// Default-imported sv is not tracked.
+				"import sv from 'slot-variants'; sv('');",
+				// Namespace-imported sv is not tracked.
+				"import * as mod from 'slot-variants'; mod.sv('');",
+				// Side-effect import — no specifiers tracked.
+				"import 'slot-variants'; sv('');",
+				// Named import that is neither sv nor cn is ignored.
+				"import { VariantProps } from 'slot-variants'; sv('');",
+				// Import from a different module is ignored.
+				"import { sv } from 'other'; sv('');",
+				// Member-expression callee is not tracked.
+				IMPORT + "obj.sv('');",
+				// Non-class config keys — not validated.
+				IMPORT +
+					`sv({
+						base: 'flex',
+						defaultVariants: {},
+						requiredVariants: [],
+						presets: {},
+						postProcess: noop
+					});`,
+				// Spread inside variants — that property is bailed.
+				IMPORT +
+					"sv({ variants: { ...rest, size: { sm: 'text-sm' } } });",
+				// Computed key inside variants — that property is bailed.
+				IMPORT + "sv({ variants: { [k]: { sm: 'text-sm' } } });",
+				// Spread inside a variant value record — that property is bailed.
+				IMPORT +
+					"sv({ variants: { size: { ...rest, sm: 'text-sm' } } });",
+				// Computed key inside a variant value record — that property is bailed.
+				IMPORT + "sv({ variants: { size: { [v]: 'text-sm' } } });",
+				// Sparse hole inside compoundVariants — skipped.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+						compoundVariants: [, { size: 'lg', class: 'font-bold' }]
+					});`,
+				// Non-object compoundVariants element — skipped.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm' } },
+						compoundVariants: [42, { size: 'sm', class: 'font-bold' }]
+					});`,
+				// Spread inside a compoundVariants entry — that property is bailed.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm' } },
+						compoundVariants: [{ ...rest, class: 'font-bold' }]
+					});`,
+				// Computed key inside a compoundVariants entry — that property is bailed.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm' } },
+						compoundVariants: [{ [k]: 'lg', class: 'font-bold' }]
+					});`,
+				// String-literal property keys throughout.
+				IMPORT +
+					"sv({ 'base': 'flex', 'slots': { 'body': 'p-4' } });"
+			],
+			invalid: [
+				{
+					// Empty string as cn-style sv argument.
+					code: IMPORT + "sv('');",
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Empty array as cn-style sv argument.
+					code: IMPORT + 'sv([]);',
+					errors: [{ messageId: 'emptyArray' }]
+				},
+				{
+					// Empty object as cn-style sv argument.
+					code: IMPORT + 'sv({});',
+					errors: [{ messageId: 'emptyObject' }]
+				},
+				{
+					// Empty template literal as cn-style sv argument.
+					code: IMPORT + 'sv(``);',
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Empty string inside an array argument.
+					code: IMPORT + "sv(['', 'flex']);",
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Nested empty array.
+					code: IMPORT + 'sv([[]]);',
+					errors: [{ messageId: 'emptyArray' }]
+				},
+				{
+					// Empty string inside a nested array.
+					code: IMPORT + "sv([['', 'flex']]);",
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Empty string as base.
+					code: IMPORT + "sv({ base: '' });",
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Empty array as base.
+					code: IMPORT + 'sv({ base: [] });',
+					errors: [{ messageId: 'emptyArray' }]
+				},
+				{
+					// Empty object as base.
+					code: IMPORT + 'sv({ base: {} });',
+					errors: [{ messageId: 'emptyObject' }]
+				},
+				{
+					// Empty string inside a base array.
+					code: IMPORT + "sv({ base: ['', 'flex'] });",
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Empty slots object.
+					code: IMPORT + "sv({ base: 'flex', slots: {} });",
+					errors: [{ messageId: 'emptyObject' }]
+				},
+				{
+					// Empty array as slot value — empty-string exception
+					// applies only to a direct empty string.
+					code: IMPORT + 'sv({ slots: { body: [] } });',
+					errors: [{ messageId: 'emptyArray' }]
+				},
+				{
+					// Empty object as slot value.
+					code: IMPORT + 'sv({ slots: { body: {} } });',
+					errors: [{ messageId: 'emptyObject' }]
+				},
+				{
+					// Empty string inside a slot-value array — exception
+					// only covers the top-level slot value.
+					code: IMPORT + "sv({ slots: { body: [''] } });",
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Empty variants object.
+					code: IMPORT + 'sv({ variants: {} });',
+					errors: [{ messageId: 'emptyObject' }]
+				},
+				{
+					// Empty boolean-shorthand variant value.
+					code: IMPORT + "sv({ variants: { disabled: '' } });",
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Empty variant value record.
+					code: IMPORT + 'sv({ variants: { size: {} } });',
+					errors: [{ messageId: 'emptyObject' }]
+				},
+				{
+					// Empty string inside a variant value record.
+					code: IMPORT + "sv({ variants: { size: { sm: '' } } });",
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Empty array inside a variant value record.
+					code: IMPORT + 'sv({ variants: { size: { sm: [] } } });',
+					errors: [{ messageId: 'emptyArray' }]
+				},
+				{
+					// Empty array as compoundVariants.
+					code:
+						IMPORT +
+						"sv({ variants: { size: { sm: 'text-sm' } }, compoundVariants: [] });",
+					errors: [{ messageId: 'emptyArray' }]
+				},
+				{
+					// Empty class in a compoundVariants entry.
+					code:
+						IMPORT +
+						`sv({
+							variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+							compoundVariants: [{ size: 'lg', class: '' }]
+						});`,
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Empty className in a compoundVariants entry.
+					code:
+						IMPORT +
+						`sv({
+							variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+							compoundVariants: [{ size: 'lg', className: '' }]
+						});`,
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Empty array as compoundSlots.
+					code:
+						IMPORT +
+						"sv({ slots: { body: 'p-4' }, compoundSlots: [] });",
+					errors: [{ messageId: 'emptyArray' }]
+				},
+				{
+					// Empty class in a compoundSlots entry.
+					code:
+						IMPORT +
+						`sv({
+							slots: { body: 'p-4' },
+							compoundSlots: [{ slots: ['body'], class: '' }]
+						});`,
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// cn() with empty string.
+					code: IMPORT_CN + "cn('');",
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// cn() with empty array.
+					code: IMPORT_CN + 'cn([]);',
+					errors: [{ messageId: 'emptyArray' }]
+				},
+				{
+					// cn() with empty object.
+					code: IMPORT_CN + 'cn({});',
+					errors: [{ messageId: 'emptyObject' }]
+				},
+				{
+					// cn() with empty string mixed with non-empty.
+					code: IMPORT_CN + "cn('flex', '');",
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Multiple empties reported in a single call.
+					code: IMPORT_CN + "cn('', [], {});",
+					errors: [
+						{ messageId: 'emptyString' },
+						{ messageId: 'emptyArray' },
+						{ messageId: 'emptyObject' }
+					]
+				},
+				{
+					// Empty string as a base arg with config.
+					code: IMPORT + "sv('', { base: 'flex' });",
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
+					// Zero-arg sv() — produces an empty class string.
+					code: IMPORT + 'sv();',
+					errors: [{ messageId: 'emptyCall' }]
+				},
+				{
+					// Zero-arg cn() — produces an empty class string.
+					code: IMPORT_CN + 'cn();',
+					errors: [{ messageId: 'emptyCall' }]
+				}
+			]
+		});
+	}, 'rule tester passes');
+	t.end();
+});
+
 t.test('no-duplicate-classes', (t) => {
 	t.doesNotThrow(() => {
 		tester.run('no-duplicate-classes', rule, {

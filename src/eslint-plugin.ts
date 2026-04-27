@@ -951,12 +951,265 @@ export const noDuplicateClasses: Rule.RuleModule = {
 	}
 };
 
+// Returns true when the node represents an empty string — either an empty
+// string Literal or a TemplateLiteral with no expressions and an empty quasi.
+const isEmptyStringNode = (node: Node): boolean => {
+	if (node.type === 'Literal') {
+		return node.value === '';
+	}
+
+	if (node.type === 'TemplateLiteral' && node.expressions.length === 0) {
+		const [quasi] = node.quasis;
+
+		/* c8 ignore next 3 -- a TemplateLiteral always has at least one quasi */
+		if (!quasi) {
+			return false;
+		}
+
+		/* c8 ignore next -- cooked is always defined on untagged templates */
+		return (quasi.value.cooked ?? quasi.value.raw) === '';
+	}
+
+	return false;
+};
+
+// Walks a class-value position and reports empty strings, empty arrays, and
+// empty objects. Recurses into arrays but not objects — an object's values are
+// either truthy/falsy conditions (cn-style records) or unrelated to class
+// content. The `allowEmptyString` flag suppresses the empty-string report at
+// the top of an `slots[key]` value, where `''` is a meaningful slot
+// declaration.
+const visitForEmptyClasses = (
+	context: Rule.RuleContext,
+	node: Node,
+	allowEmptyString: boolean
+): void => {
+	if (node.type === 'Literal' || node.type === 'TemplateLiteral') {
+		if (!allowEmptyString && isEmptyStringNode(node)) {
+			context.report({ node, messageId: 'emptyString' });
+		}
+
+		return;
+	}
+
+	if (node.type === 'ArrayExpression') {
+		if (node.elements.length === 0) {
+			context.report({ node, messageId: 'emptyArray' });
+			return;
+		}
+
+		for (const element of node.elements) {
+			if (!element || element.type === 'SpreadElement') {
+				continue;
+			}
+
+			visitForEmptyClasses(context, element, false);
+		}
+
+		return;
+	}
+
+	if (node.type === 'ObjectExpression' && node.properties.length === 0) {
+		context.report({ node, messageId: 'emptyObject' });
+	}
+};
+
+// Iterates the entries of an ObjectExpression value (used for variant value
+// records and slot-keyed boolean shorthand records). Reports an empty record
+// outright; otherwise visits each property's value as a class-value position.
+const visitRecordEntriesForEmpty = (
+	context: Rule.RuleContext,
+	node: ObjectExpression
+): void => {
+	if (node.properties.length === 0) {
+		context.report({ node, messageId: 'emptyObject' });
+		return;
+	}
+
+	for (const prop of node.properties) {
+		if (prop.type !== 'Property' || prop.computed) {
+			continue;
+		}
+
+		visitForEmptyClasses(context, prop.value, false);
+	}
+};
+
+const checkSvConfigForEmpty = (
+	context: Rule.RuleContext,
+	configNode: ObjectExpression
+): void => {
+	for (const prop of configNode.properties) {
+		/* c8 ignore next 3 -- isConfigLike filters out spreads upstream */
+		if (prop.type !== 'Property') {
+			continue;
+		}
+
+		const key = getKeyName(prop);
+		const { value } = prop;
+
+		if (key === 'base') {
+			visitForEmptyClasses(context, value, false);
+			continue;
+		}
+
+		if (key === 'slots') {
+			if (value.type !== 'ObjectExpression') {
+				continue;
+			}
+
+			if (value.properties.length === 0) {
+				context.report({ node: value, messageId: 'emptyObject' });
+				continue;
+			}
+
+			for (const slotProp of value.properties) {
+				if (slotProp.type !== 'Property' || slotProp.computed) {
+					continue;
+				}
+
+				visitForEmptyClasses(context, slotProp.value, true);
+			}
+
+			continue;
+		}
+
+		if (key === 'variants') {
+			if (value.type !== 'ObjectExpression') {
+				continue;
+			}
+
+			if (value.properties.length === 0) {
+				context.report({ node: value, messageId: 'emptyObject' });
+				continue;
+			}
+
+			for (const variantProp of value.properties) {
+				if (variantProp.type !== 'Property' || variantProp.computed) {
+					continue;
+				}
+
+				const variantValue = variantProp.value;
+
+				if (variantValue.type === 'ObjectExpression') {
+					visitRecordEntriesForEmpty(context, variantValue);
+				} else {
+					visitForEmptyClasses(context, variantValue, false);
+				}
+			}
+
+			continue;
+		}
+
+		if (key === 'compoundVariants' || key === 'compoundSlots') {
+			if (value.type !== 'ArrayExpression') {
+				continue;
+			}
+
+			if (value.elements.length === 0) {
+				context.report({ node: value, messageId: 'emptyArray' });
+				continue;
+			}
+
+			for (const element of value.elements) {
+				if (!element || element.type !== 'ObjectExpression') {
+					continue;
+				}
+
+				for (const innerProp of element.properties) {
+					if (innerProp.type !== 'Property' || innerProp.computed) {
+						continue;
+					}
+
+					const innerKey = getKeyName(innerProp);
+
+					if (innerKey === 'class' || innerKey === 'className') {
+						visitForEmptyClasses(context, innerProp.value, false);
+					}
+				}
+			}
+		}
+	}
+};
+
+/**
+ * Flags empty class values — empty strings, empty arrays, and empty objects —
+ * in `sv()` and `cn()` calls, plus zero-argument `sv()` / `cn()` calls (which
+ * always produce an empty class string). Inside an `sv()` config, an empty
+ * string is still allowed as a direct `slots[key]` value, since declaring a
+ * slot with no default classes is a meaningful use case.
+ */
+export const noEmptyClasses: Rule.RuleModule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Disallow empty class values (empty strings, arrays, or objects) and zero-argument calls in sv() and cn()'
+		},
+		schema: [],
+		messages: {
+			emptyString: 'Empty class string is not allowed.',
+			emptyArray: 'Empty class array is not allowed.',
+			emptyObject: 'Empty class object is not allowed.',
+			emptyCall: 'Empty sv()/cn() call is not allowed.'
+		}
+	},
+	create(context) {
+		const { svNames, cnNames, importsTracker } = createImportsTracker();
+
+		return {
+			ImportDeclaration(node) {
+				importsTracker(node);
+			},
+			CallExpression(node) {
+				const { callee } = node;
+
+				if (callee.type !== 'Identifier') {
+					return;
+				}
+
+				if (
+					!svNames.has(callee.name) &&
+					!cnNames.has(callee.name)
+				) {
+					return;
+				}
+
+				if (node.arguments.length === 0) {
+					context.report({ node, messageId: 'emptyCall' });
+					return;
+				}
+
+				const call = matchSvCnCall(node, svNames, cnNames);
+
+				/* c8 ignore next 3 -- callee + arg-count guards above match matchSvCnCall */
+				if (!call) {
+					return;
+				}
+
+				for (const arg of call.args) {
+					if (arg.type === 'SpreadElement') {
+						continue;
+					}
+
+					visitForEmptyClasses(context, arg, false);
+				}
+
+				if (call.config) {
+					checkSvConfigForEmpty(context, call.config);
+				}
+			}
+		};
+	}
+};
+
 /**
  * Rules exported by the plugin.
  */
 export const rules = {
 	'no-duplicate-classes': noDuplicateClasses,
 	'no-dynamic-classes': noDynamicClasses,
+	'no-empty-classes': noEmptyClasses,
 	'no-redundant-spaces': noRedundantSpaces
 };
 

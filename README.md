@@ -900,9 +900,11 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 - **`slot-variants/no-dynamic-classes`** — flags class-bearing positions in `sv()` and `cn()` calls that aren't statically inferrable. Only string literals, template literals without expressions, and arrays of those are accepted as class values, and config objects must use static keys (no spreads, no computed keys). Identifiers, member access, calls, spreads, non-string literals, templates with expressions, and runtime conditional records are reported. Non-class-bearing config keys (`defaultVariants`, `presets`, `requiredVariants`, `cacheSize`, `postProcess`, `introspection`) are not validated, and runtime variant matchers inside compound entries are left alone — only the `class`/`className` value (and the `slots` array of `compoundSlots`) is checked.
 
+- **`slot-variants/no-empty-classes`** — flags empty class values — empty strings, empty arrays, and empty objects — at any class-bearing position reachable from an `sv()` or `cn()` call, plus zero-argument `sv()` / `cn()` calls themselves (which always produce an empty class string). Reports empties in positional arguments (and inside arrays nested in those), in `base`, in `variants` value records and boolean-shorthand values, in the `class`/`className` of `compoundVariants` and `compoundSlots` entries, and in the top-level `slots`, `variants`, `compoundVariants`, and `compoundSlots` containers themselves. Inside an `sv()` config, an empty string is still allowed as a direct `slots[key]` value — declaring a slot with no default classes is a valid use case.
+
 - **`slot-variants/no-redundant-spaces`** — flags class strings whose whitespace isn't canonical. Inside a class string, whitespace is canonical only as a single ASCII space between two non-whitespace tokens, so leading or trailing whitespace, repeated spaces, and non-space whitespace (tabs, newlines, etc.) are reported. The rule walks every string and expressionless template literal reachable from a call's arguments — including values nested inside arrays and objects — and bails silently on dynamic expressions.
 
-Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analyzed. `no-duplicate-classes` skips dynamic inputs silently to avoid false positives; `no-dynamic-classes` is the opposite — it flags exactly those positions so the static analyzer can fully reason about every call. `no-redundant-spaces` is independent and complements both: it cares about whitespace shape inside any literal class string it can see, regardless of whether the surrounding call is fully static.
+Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analyzed. `no-duplicate-classes` skips dynamic inputs silently to avoid false positives; `no-dynamic-classes` is the opposite — it flags exactly those positions so the static analyzer can fully reason about every call. `no-empty-classes` and `no-redundant-spaces` are independent and complement both: they cover empty and badly-shaped literals reachable from a call's arguments, regardless of whether the surrounding call is fully static.
 
 ### ESLint (flat config)
 
@@ -915,6 +917,7 @@ export default [
     rules: {
       'slot-variants/no-duplicate-classes': 'error',
       'slot-variants/no-dynamic-classes': 'error',
+      'slot-variants/no-empty-classes': 'error',
       'slot-variants/no-redundant-spaces': 'error'
     }
   }
@@ -929,6 +932,7 @@ export default [
   "rules": {
     "slot-variants/no-duplicate-classes": "error",
     "slot-variants/no-dynamic-classes": "error",
+    "slot-variants/no-empty-classes": "error",
     "slot-variants/no-redundant-spaces": "error"
   }
 }
@@ -968,6 +972,20 @@ cn(extra, 'flex');                     // identifier argument
 ```
 
 `no-dynamic-classes` reports each of the dynamic positions above. Replace dynamic class strings with static ones (or move them to the runtime `class` / `className` prop on the returned function, which is intentionally outside the analyzer's scope) so every call can be statically verified.
+
+```typescript
+import { sv, cn } from 'slot-variants';
+
+sv({ base: '' });                              // empty base
+sv({ base: [] });                              // empty array
+sv({ variants: { size: { sm: '' } } });        // empty variant value
+sv({ compoundVariants: [{ size: 'lg', class: '' }] }); // empty compound class
+cn('flex', '');                                // empty cn arg
+sv();                                          // zero-arg call
+cn();                                          // zero-arg call
+```
+
+`no-empty-classes` reports each empty class value — strings, arrays, or objects — plus zero-argument `sv()` / `cn()` calls (they always produce an empty string). The one exception is a direct empty string at `slots[key]`, which is allowed because declaring a slot with no default classes is a real use case (`sv({ slots: { extra: '' } })`). Either remove the empty value or replace it with a meaningful class string.
 
 ```typescript
 import { sv, cn } from 'slot-variants';

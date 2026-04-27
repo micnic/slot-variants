@@ -440,7 +440,7 @@ import type { VariantProps, VariantValue, SlotClassProps, ClassValue } from 'slo
 
 ## ESLint / oxlint Plugin
 
-Subpath export `slot-variants/eslint-plugin` ships three rules that statically analyze `sv()` and `cn()` calls. Works under ESLint v9+ (flat config) and under oxlint via its `jsPlugins` config. The plugin is a separate entry point — it adds no runtime code to the library bundle.
+Subpath export `slot-variants/eslint-plugin` ships four rules that statically analyze `sv()` and `cn()` calls. Works under ESLint v9+ (flat config) and under oxlint via its `jsPlugins` config. The plugin is a separate entry point — it adds no runtime code to the library bundle.
 
 ```js
 // eslint.config.js
@@ -451,6 +451,7 @@ export default [{
   rules: {
     'slot-variants/no-duplicate-classes': 'error',
     'slot-variants/no-dynamic-classes': 'error',
+    'slot-variants/no-empty-classes': 'error',
     'slot-variants/no-redundant-spaces': 'error'
   }
 }];
@@ -463,12 +464,13 @@ export default [{
   "rules": {
     "slot-variants/no-duplicate-classes": "error",
     "slot-variants/no-dynamic-classes": "error",
+    "slot-variants/no-empty-classes": "error",
     "slot-variants/no-redundant-spaces": "error"
   }
 }
 ```
 
-Both rules only analyze calls where `sv` or `cn` is a **named import** from `'slot-variants'`. Default, namespace, and aliased-to-other-identifier imports are ignored.
+All rules only analyze calls where `sv` or `cn` is a **named import** from `'slot-variants'`. Default, namespace, and aliased-to-other-identifier imports are ignored.
 
 ### `slot-variants/no-duplicate-classes`
 
@@ -488,6 +490,16 @@ Reports class-bearing positions in `sv()` and `cn()` calls that aren't staticall
 - Top-level config keys must be statically known — spreads and computed keys cause the call to fall through to the cn-style path, which then reports the entire object as dynamic.
 - Non-class-bearing config keys (`defaultVariants`, `presets`, `requiredVariants`, `cacheSize`, `postProcess`, `introspection`) are not validated. Runtime variant matchers inside compound entries are also left alone — only the class value (and `compoundSlots`' `slots` array) is checked.
 - Move dynamic class strings to the runtime `class` / `className` prop on the function returned by `sv()` — that call site is intentionally outside the analyzer's scope.
+
+### `slot-variants/no-empty-classes`
+
+Reports empty class values — empty strings, empty arrays, and empty objects — at any class-bearing position reachable from an `sv()` or `cn()` call, plus zero-argument `sv()` / `cn()` calls (which always produce an empty class string).
+
+- Reports empty literals as positional arguments to `cn()` and `sv()` (cn-style or as base args alongside a config), as well as empty literals nested inside class arrays.
+- Inside an `sv()` config, reports empty values at `base`, in `variants` value records and boolean-shorthand values, and in the `class`/`className` of `compoundVariants` / `compoundSlots` entries. Also reports empty top-level `slots`, `variants`, `compoundVariants`, and `compoundSlots` containers.
+- A direct empty string at `slots[key]` is allowed — declaring a slot with no default classes is a real use case (`sv({ slots: { extra: '' } })`). Empty strings inside slot-value arrays are still reported.
+- Reports `sv()` / `cn()` invocations with zero arguments — they always return an empty string and have no effect.
+- Recurses into arrays but not into objects: values inside cn-style `{ cls: condition }` records are conditions, not class values, so they are left alone.
 
 ### `slot-variants/no-redundant-spaces`
 
