@@ -1292,3 +1292,361 @@ t.test('no-duplicate-classes', (t) => {
 	}, 'rule tester passes');
 	t.end();
 });
+
+t.test('no-shared-tokens', (t) => {
+	const sharedRule = rules['no-shared-tokens'];
+
+	t.doesNotThrow(() => {
+		tester.run('no-shared-tokens', sharedRule, {
+			valid: [
+				// Non-object variants field bails out immediately.
+				IMPORT + 'sv({ variants: dynamic });',
+				// No defaultVariants and no requiredVariants — variant prop
+				// can be undefined at runtime, no value branch is guaranteed.
+				IMPORT +
+					"sv({ variants: { size: { sm: 'rounded text-sm', lg: 'rounded text-lg' } } });",
+				// defaultVariants targets a different variant — `size` still
+				// not exhaustive.
+				IMPORT +
+					`sv({
+						variants: {
+							size: { sm: 'rounded text-sm', lg: 'rounded text-lg' },
+							intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+						},
+						defaultVariants: { intent: 'primary' }
+					});`,
+				// Single-value variant — nothing to compare against.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'rounded text-sm' } },
+						defaultVariants: { size: 'sm' }
+					});`,
+				// Token in only some values, not all.
+				IMPORT +
+					`sv({
+						variants: {
+							size: {
+								sm: 'rounded text-sm',
+								md: 'text-md',
+								lg: 'rounded text-lg'
+							}
+						},
+						defaultVariants: { size: 'md' }
+					});`,
+				// Boolean shorthand — only one branch fires.
+				IMPORT +
+					`sv({
+						variants: { disabled: 'opacity-50 cursor-not-allowed' },
+						defaultVariants: { disabled: false }
+					});`,
+				// Slot-keyed boolean shorthand — also a single branch.
+				IMPORT +
+					`sv({
+						slots: { body: 'p-4' },
+						variants: { disabled: { body: 'opacity-50' } },
+						defaultVariants: { disabled: false }
+					});`,
+				// Spread inside variant value record — can't enumerate values.
+				IMPORT +
+					`sv({
+						variants: {
+							size: { ...extra, sm: 'rounded text-sm', lg: 'rounded text-lg' }
+						},
+						defaultVariants: { size: 'sm' }
+					});`,
+				// Computed key inside variant value record — same reason.
+				IMPORT +
+					`sv({
+						variants: {
+							size: { [k]: 'x', sm: 'rounded text-sm', lg: 'rounded text-lg' }
+						},
+						defaultVariants: { size: 'sm' }
+					});`,
+				// Spread in defaultVariants is ignored while static keys still
+				// make the variant exhaustive.
+				IMPORT +
+					`sv({
+						variants: {
+							size: { sm: 'rounded text-sm', lg: 'text-lg' }
+						},
+						defaultVariants: { ...defaults, size: 'sm' }
+					});`,
+				// Non-string requiredVariants entries are ignored, and computed
+				// top-level variant keys are skipped before analysis continues.
+				IMPORT +
+					`sv({
+						variants: {
+							[k]: { sm: 'rounded text-sm', lg: 'rounded text-lg' },
+							size: { sm: 'text-sm', lg: 'text-lg' }
+						},
+						requiredVariants: [42, 'size']
+					});`,
+				// Shared token only in one slot for one value, missing in another.
+				IMPORT +
+					`sv({
+						slots: { root: 'flex', body: 'p-4' },
+						variants: {
+							size: {
+								sm: { root: 'rounded text-sm', body: 'p-1' },
+								lg: { root: 'text-lg', body: 'rounded p-2' }
+							}
+						},
+						defaultVariants: { size: 'sm' }
+					});`,
+				// Token in every value but in different slots — not shared
+				// per-slot.
+				IMPORT +
+					`sv({
+						slots: { root: 'flex', body: 'p-4' },
+						variants: {
+							size: {
+								sm: { root: 'rounded' },
+								lg: { body: 'rounded' }
+							}
+						},
+						defaultVariants: { size: 'sm' }
+					});`,
+				// cn() call — never analyzed.
+				IMPORT_CN + "cn('flex', 'flex-row');",
+				// sv() with no config — never analyzed.
+				IMPORT + "sv('flex', 'rounded');",
+				// Without the import the rule stays quiet.
+				"sv({ variants: { size: { sm: 'rounded', lg: 'rounded' } }, defaultVariants: { size: 'sm' } });",
+				// Dynamic variant value — opaque, no tokens collected.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: dynamic, lg: 'rounded' } },
+						defaultVariants: { size: 'sm' }
+					});`,
+				// Empty config — no variants.
+				IMPORT + 'sv({});'
+			],
+			invalid: [
+				{
+					// Token shared across all values of an exhaustive variant
+					// (via defaultVariants) — flag every occurrence.
+					code:
+						IMPORT +
+						`sv({
+							variants: {
+								size: {
+									sm: 'rounded text-sm',
+									md: 'rounded text-md',
+									lg: 'rounded text-lg'
+								}
+							},
+							defaultVariants: { size: 'md' }
+						});`,
+					errors: [
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'size',
+								slot: 'base'
+							}
+						},
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'size',
+								slot: 'base'
+							}
+						},
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'size',
+								slot: 'base'
+							}
+						}
+					]
+				},
+				{
+					// Two-value variant, exhaustive via requiredVariants.
+					code:
+						IMPORT +
+						`sv({
+							variants: {
+								intent: {
+									primary: 'rounded font-bold bg-blue-500',
+									danger: 'rounded font-bold bg-red-500'
+								}
+							},
+							requiredVariants: ['intent']
+						});`,
+					errors: [
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'intent',
+								slot: 'base'
+							}
+						},
+						{
+							messageId: 'shared',
+							data: {
+								token: 'font-bold',
+								variant: 'intent',
+								slot: 'base'
+							}
+						},
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'intent',
+								slot: 'base'
+							}
+						},
+						{
+							messageId: 'shared',
+							data: {
+								token: 'font-bold',
+								variant: 'intent',
+								slot: 'base'
+							}
+						}
+					]
+				},
+				{
+					// Shared token in a non-base slot — must be flagged for
+					// the actual slot, not base.
+					code:
+						IMPORT +
+						`sv({
+							slots: { root: 'flex', body: 'p-4' },
+							variants: {
+								size: {
+									sm: { root: 'rounded text-sm', body: 'p-1' },
+									lg: { root: 'rounded text-lg', body: 'p-2' }
+								}
+							},
+							defaultVariants: { size: 'sm' }
+						});`,
+					errors: [
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'size',
+								slot: 'root'
+							}
+						},
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'size',
+								slot: 'root'
+							}
+						}
+					]
+				},
+				{
+					// Variant value as an array of strings — extractor walks
+					// the array; the shared token is still detected.
+					code:
+						IMPORT +
+						`sv({
+							variants: {
+								size: {
+									sm: ['rounded', 'text-sm'],
+									lg: ['rounded', 'text-lg']
+								}
+							},
+							defaultVariants: { size: 'sm' }
+						});`,
+					errors: [
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'size',
+								slot: 'base'
+							}
+						},
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'size',
+								slot: 'base'
+							}
+						}
+					]
+				},
+				{
+					// Boolean record (true/false keys) with a shared token,
+					// exhaustive via defaultVariants.
+					code:
+						IMPORT +
+						`sv({
+							variants: {
+								on: {
+									true: 'highlight bg-blue-500',
+									false: 'highlight bg-gray-200'
+								}
+							},
+							defaultVariants: { on: false }
+						});`,
+					errors: [
+						{
+							messageId: 'shared',
+							data: {
+								token: 'highlight',
+								variant: 'on',
+								slot: 'base'
+							}
+						},
+						{
+							messageId: 'shared',
+							data: {
+								token: 'highlight',
+								variant: 'on',
+								slot: 'base'
+							}
+						}
+					]
+				},
+				{
+					// Numeric variant value keys are parsed as literal property keys
+					// and should still participate in shared-token detection.
+					code:
+						IMPORT +
+						`sv({
+							variants: {
+								size: {
+									1: 'rounded text-sm',
+									2: 'rounded text-lg'
+								}
+							},
+							defaultVariants: { size: 1 }
+						});`,
+					errors: [
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'size',
+								slot: 'base'
+							}
+						},
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'size',
+								slot: 'base'
+							}
+						}
+					]
+				}
+			]
+		});
+	}, 'rule tester passes');
+	t.end();
+});

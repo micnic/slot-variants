@@ -904,7 +904,9 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 - **`slot-variants/no-redundant-spaces`** — flags class strings whose whitespace isn't canonical. Inside a class string, whitespace is canonical only as a single ASCII space between two non-whitespace tokens, so leading or trailing whitespace, repeated spaces, and non-space whitespace (tabs, newlines, etc.) are reported. The rule walks every string and expressionless template literal reachable from a call's arguments — including values nested inside arrays and objects — and bails silently on dynamic expressions.
 
-Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analyzed. `no-duplicate-classes` skips dynamic inputs silently to avoid false positives; `no-dynamic-classes` is the opposite — it flags exactly those positions so the static analyzer can fully reason about every call. `no-empty-classes` and `no-redundant-spaces` are independent and complement both: they cover empty and badly-shaped literals reachable from a call's arguments, regardless of whether the surrounding call is fully static.
+- **`slot-variants/no-shared-tokens`** — flags class tokens that appear in every value of an exhaustively-covered variant, where “exhaustive” means the variant has a `defaultVariants` entry or is listed in `requiredVariants`. Those tokens are constant in the rendered output, so they belong in `base` or the corresponding `slots[slot]` entry rather than being repeated in every variant value. The rule only analyzes `sv()` calls with a config, compares tokens per-slot, skips non-exhaustive variants, single-value variants, boolean shorthand, and dynamic or partially-analyzable variant value records, and reports every repeated occurrence that should be lifted out.
+
+Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analyzed. `no-duplicate-classes` skips dynamic inputs silently to avoid false positives; `no-dynamic-classes` is the opposite — it flags exactly those positions so the static analyzer can fully reason about every call. `no-shared-tokens` sits between them: it needs a fully statically analyzable, exhaustive variant before it can prove a token is constant across every value. `no-empty-classes` and `no-redundant-spaces` are independent and complement the structural rules: they cover empty and badly-shaped literals reachable from a call's arguments, regardless of whether the surrounding call is fully static.
 
 ### ESLint (flat config)
 
@@ -918,7 +920,8 @@ export default [
       'slot-variants/no-duplicate-classes': 'error',
       'slot-variants/no-dynamic-classes': 'error',
       'slot-variants/no-empty-classes': 'error',
-      'slot-variants/no-redundant-spaces': 'error'
+      'slot-variants/no-redundant-spaces': 'error',
+      'slot-variants/no-shared-tokens': 'error'
     }
   }
 ];
@@ -933,7 +936,8 @@ export default [
     "slot-variants/no-duplicate-classes": "error",
     "slot-variants/no-dynamic-classes": "error",
     "slot-variants/no-empty-classes": "error",
-    "slot-variants/no-redundant-spaces": "error"
+    "slot-variants/no-redundant-spaces": "error",
+    "slot-variants/no-shared-tokens": "error"
   }
 }
 ```
@@ -997,6 +1001,33 @@ cn(`flex\titems-center`);                      // tab between tokens
 ```
 
 `no-redundant-spaces` reports each literal whose whitespace deviates from the canonical "tokens separated by exactly one space" form. Trim and collapse the strings — or split them into array entries — so the stored class output is byte-stable and easy to scan in diffs.
+
+```typescript
+import { sv } from 'slot-variants';
+
+const button = sv({
+  variants: {
+    size: {
+      sm: 'rounded text-sm',
+      lg: 'rounded text-lg'
+    }
+  },
+  defaultVariants: { size: 'sm' }
+});
+
+const card = sv({
+  slots: { root: 'flex', body: 'p-4' },
+  variants: {
+    size: {
+      sm: { root: 'rounded text-sm', body: 'p-1' },
+      lg: { root: 'rounded text-lg', body: 'p-2' }
+    }
+  },
+  requiredVariants: ['size']
+});
+```
+
+`no-shared-tokens` reports `rounded` in both `button` variant values and in both `card` `root` slot values, because the token is present in every value of an exhaustive variant. Lift that class into `base` — or into `slots.root` for slot-based variants — so each variant value contains only the classes that actually vary.
 
 ## IntelliSense Setup (Optional)
 

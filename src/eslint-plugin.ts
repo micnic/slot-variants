@@ -3,7 +3,6 @@ import type {
 	CallExpression,
 	Expression,
 	ImportDeclaration,
-	Literal,
 	Node,
 	ObjectExpression,
 	Property,
@@ -39,7 +38,11 @@ const getKeyName = (prop: Property): string | null => {
 		return key.name;
 	}
 
-	return String((key as Literal).value);
+	if (key.type === 'Literal') {
+		return String(key.value);
+	}
+	/* c8 ignore next 2 -- non-computed object keys are parser-emitted as Identifier or Literal */
+	return null;
 };
 
 const getOrCreate = <K, V>(map: Map<K, V>, key: K, make: () => V): V => {
@@ -951,6 +954,241 @@ export const noDuplicateClasses: Rule.RuleModule = {
 	}
 };
 
+// Walks an `sv()` config and reports class tokens that appear in every value
+// of an exhaustively-covered variant. "Exhaustively covered" means the
+// variant has a `defaultVariants` entry or is listed in `requiredVariants` —
+// without that, the prop can be `undefined` at call time and no value branch
+// fires, so the token isn't truly always present.
+const analyzeSharedTokens = (
+	context: Rule.RuleContext,
+	configNode: Node
+): void => {
+	const { sourceCode } = context;
+	const config = getProperties(configNode);
+	const variants = config.get('variants');
+
+	if (!variants || variants.type !== 'ObjectExpression') {
+		return;
+	}
+
+	const slotsMap = getProperties(config.get('slots'));
+	const slotNames = new Set(slotsMap.keys());
+
+	slotNames.delete('base');
+
+	const exhaustive = new Set<string>();
+	const defaultVariants = config.get('defaultVariants');
+
+	if (defaultVariants && defaultVariants.type === 'ObjectExpression') {
+		for (const prop of defaultVariants.properties) {
+			if (prop.type !== 'Property') {
+				continue;
+			}
+
+			const key = getKeyName(prop);
+
+			if (key !== null) {
+				exhaustive.add(key);
+			}
+		}
+	}
+
+	const requiredVariants = config.get('requiredVariants');
+
+	if (requiredVariants && requiredVariants.type === 'ArrayExpression') {
+		for (const element of requiredVariants.elements) {
+			if (
+				element &&
+				element.type === 'Literal' &&
+				typeof element.value === 'string'
+			) {
+				exhaustive.add(element.value);
+			}
+		}
+	}
+
+	for (const variantProp of variants.properties) {
+		if (variantProp.type !== 'Property' || variantProp.computed) {
+			continue;
+		}
+
+		const variantKey = getKeyName(variantProp);
+
+		if (variantKey === null || !exhaustive.has(variantKey)) {
+			continue;
+		}
+
+		const variantValue = variantProp.value;
+
+		// Boolean shorthand (and slot-keyed boolean shorthand) has only a
+		// single class branch — there is no cross-value comparison to do.
+		if (
+			variantValue.type !== 'ObjectExpression' ||
+			collectSlotKeyedProperties(variantValue, slotNames) !== null
+		) {
+			continue;
+		}
+
+		const valueKeys: string[] = [];
+		let bail = false;
+
+		for (const valueProp of variantValue.properties) {
+			if (valueProp.type !== 'Property' || valueProp.computed) {
+				bail = true;
+				break;
+			}
+
+			const { key } = valueProp;
+
+			if (key.type === 'Identifier') {
+				valueKeys.push(key.name);
+				continue;
+			}
+
+			if (key.type === 'Literal') {
+				valueKeys.push(String(key.value));
+				continue;
+			}
+			/* c8 ignore next 3 -- non-computed object keys here are parser-emitted as Identifier or Literal */
+			bail = true;
+			break;
+		}
+
+		// A spread or computed key means we can't see every value; we'd
+		// over-flag tokens that may differ in the unseen branches.
+		if (bail || valueKeys.length < 2) {
+			continue;
+		}
+
+		const tokensByValue = new Map<
+			string,
+			Map<string, Map<string, Entry[]>>
+		>();
+
+		for (const [valueKey, valueNode] of getProperties(variantValue)) {
+			const entries: Entry[] = [];
+
+			extractTokens(
+				valueNode,
+				'base',
+				{ kind: 'variant', key: variantKey, value: valueKey },
+				slotNames,
+				entries,
+				sourceCode
+			);
+
+			const slotMap = new Map<string, Map<string, Entry[]>>();
+
+			for (const entry of entries) {
+				const tokenMap = getOrCreate(
+					slotMap,
+					entry.slot,
+					() => new Map<string, Entry[]>()
+				);
+				const list = getOrCreate(tokenMap, entry.token, () => []);
+
+				list.push(entry);
+			}
+
+			tokensByValue.set(valueKey, slotMap);
+		}
+
+		const presence = new Map<string, Map<string, Set<string>>>();
+
+		for (const [valueKey, slotMap] of tokensByValue) {
+			for (const [slot, tokenMap] of slotMap) {
+				const tokenPresence = getOrCreate(
+					presence,
+					slot,
+					() => new Map<string, Set<string>>()
+				);
+
+				for (const token of tokenMap.keys()) {
+					const seen = getOrCreate(
+						tokenPresence,
+						token,
+						() => new Set<string>()
+					);
+
+					seen.add(valueKey);
+				}
+			}
+		}
+
+		for (const [slot, tokenPresence] of presence) {
+			for (const [token, seen] of tokenPresence) {
+				if (seen.size !== valueKeys.length) {
+					continue;
+				}
+
+				for (const valueKey of valueKeys) {
+					// `presence` only contains tokens seen for every `valueKey`, so
+					// this lookup is guaranteed by construction.
+					const entryList = tokensByValue
+						.get(valueKey)
+						?.get(slot)
+						?.get(token);
+
+					/* c8 ignore next 3 -- `presence` proves the shared token exists in the slot map for every valueKey */
+					if (!entryList) {
+						continue;
+					}
+
+					for (const entry of entryList) {
+						context.report({
+							loc: {
+								start: sourceCode.getLocFromIndex(entry.start),
+								end: sourceCode.getLocFromIndex(entry.end)
+							},
+							messageId: 'shared',
+							data: { token, variant: variantKey, slot }
+						});
+					}
+				}
+			}
+		}
+	}
+};
+
+/**
+ * Flags class name tokens that appear in every value of an exhaustively-covered
+ * variant — the token is constant in the rendered output and belongs in `base`
+ * (or the corresponding `slots[slot]` entry) rather than being repeated across
+ * each variant value. Coverage is treated as exhaustive when the variant has a
+ * `defaultVariants` entry or is listed in `requiredVariants`.
+ */
+export const noSharedTokens: Rule.RuleModule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Disallow class tokens that appear in every value of an exhaustively-covered variant — lift them out of the variant'
+		},
+		schema: [],
+		messages: {
+			shared: 'Class "{{token}}" appears in every value of variant "{{variant}}" for slot "{{slot}}" — lift it out of the variant.'
+		}
+	},
+	create(context) {
+		const { svNames, cnNames, importsTracker } = createImportsTracker();
+
+		return {
+			ImportDeclaration(node) {
+				importsTracker(node);
+			},
+			CallExpression(node) {
+				const call = matchSvCnCall(node, svNames, cnNames);
+
+				if (!call || !call.config) {
+					return;
+				}
+
+				analyzeSharedTokens(context, call.config);
+			}
+		};
+	}
+};
+
 // Returns true when the node represents an empty string — either an empty
 // string Literal or a TemplateLiteral with no expressions and an empty quasi.
 const isEmptyStringNode = (node: Node): boolean => {
@@ -1168,10 +1406,7 @@ export const noEmptyClasses: Rule.RuleModule = {
 					return;
 				}
 
-				if (
-					!svNames.has(callee.name) &&
-					!cnNames.has(callee.name)
-				) {
+				if (!svNames.has(callee.name) && !cnNames.has(callee.name)) {
 					return;
 				}
 
@@ -1210,7 +1445,8 @@ export const rules = {
 	'no-duplicate-classes': noDuplicateClasses,
 	'no-dynamic-classes': noDynamicClasses,
 	'no-empty-classes': noEmptyClasses,
-	'no-redundant-spaces': noRedundantSpaces
+	'no-redundant-spaces': noRedundantSpaces,
+	'no-shared-tokens': noSharedTokens
 };
 
 /**
