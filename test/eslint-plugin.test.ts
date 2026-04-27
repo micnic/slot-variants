@@ -1,6 +1,9 @@
+import { createRequire } from 'node:module';
 import t from 'tap';
-import { RuleTester } from 'eslint';
+import { Linter, RuleTester, SourceCode } from 'eslint';
 import plugin, { rules } from '../src/eslint-plugin.ts';
+
+const require = createRequire(import.meta.url);
 
 const tester = new RuleTester({
 	languageOptions: {
@@ -12,6 +15,91 @@ const tester = new RuleTester({
 const rule = rules['no-duplicate-classes'];
 const IMPORT = "import { sv } from 'slot-variants';\n";
 const IMPORT_CN = "import { cn } from 'slot-variants';\n";
+
+t.test('shared plugin run reuses cached property analysis', (t) => {
+	const linter = new Linter({ configType: 'flat' });
+	const espree = require('espree') as {
+		parse: (code: string, options: Record<string, unknown>) => unknown;
+	};
+	const code = `${IMPORT}const rest = { body: 'ignored' };
+		sv({ ...rest, base: 'flex' });
+		sv({
+			base: [''],
+			variants: {
+				size: {
+					sm: 'rounded rounded',
+					lg: 'rounded rounded'
+				}
+			},
+			defaultVariants: { size: 'sm' }
+		});`;
+
+	const sourceCode = new SourceCode({
+		text: code,
+		// espree is ESLint's parser, but its exported types don't line up exactly
+		// with SourceCode's AST type alias in this repo's dependency graph.
+		ast: espree.parse(code, {
+			ecmaVersion: 'latest',
+			sourceType: 'module',
+			range: true,
+			loc: true,
+			tokens: true,
+			comment: true
+		}) as ConstructorParameters<typeof SourceCode>[0]['ast']
+	});
+	const config: Linter.Config[] = [
+		{
+			files: ['**/*.ts'],
+			plugins: { 'slot-variants': plugin },
+			rules: {
+				'slot-variants/no-empty-classes': 2,
+				'slot-variants/no-duplicate-classes': 2,
+				'slot-variants/no-shared-tokens': 2
+			},
+			languageOptions: {
+				ecmaVersion: 'latest',
+				sourceType: 'module'
+			}
+		}
+	];
+	const summarizeByRuleId = (
+		messages: Array<{ ruleId: string | null }>
+	): Record<string, number> => {
+		const counts: Record<string, number> = {};
+
+		for (const message of messages) {
+			if (!message.ruleId) {
+				continue;
+			}
+
+			counts[message.ruleId] = (counts[message.ruleId] ?? 0) + 1;
+		}
+
+		return counts;
+	};
+	const firstMessages = linter.verify(sourceCode, config, { filename: 'test.ts' });
+	const secondMessages = linter.verify(sourceCode, config, {
+		filename: 'test.ts'
+	});
+
+	t.equal(firstMessages.length, 9, 'first pass reports expected number of violations');
+	t.equal(secondMessages.length, 9, 'second pass reports expected number of violations');
+	t.same(
+		summarizeByRuleId(secondMessages),
+		{
+			'slot-variants/no-empty-classes': 1,
+			'slot-variants/no-duplicate-classes': 4,
+			'slot-variants/no-shared-tokens': 4
+		},
+		'second pass keeps the expected rule counts while exercising cached valid and invalid object analysis'
+	);
+	t.same(
+		summarizeByRuleId(secondMessages),
+		summarizeByRuleId(firstMessages),
+		'cached pass reports the same rule distribution as the initial pass'
+	);
+	t.end();
+});
 
 t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 	t.equal(plugin.meta.name, 'slot-variants', 'meta.name is set');

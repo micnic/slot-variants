@@ -59,12 +59,21 @@ const getOrCreate = <K, V>(map: Map<K, V>, key: K, make: () => V): V => {
 	return created;
 };
 
-const getProperties = (obj: Node | undefined): Map<string, Node> => {
-	const map = new Map<string, Node>();
+const propertiesCache = new WeakMap<ObjectExpression, Map<string, Node>>();
+const strictPropertiesCache = new WeakMap<ObjectExpression, Map<string, Node> | null>();
 
+const getProperties = (obj: Node | undefined): Map<string, Node> => {
 	if (!obj || obj.type !== 'ObjectExpression') {
-		return map;
+		return new Map<string, Node>();
 	}
+
+	const cached = propertiesCache.get(obj);
+
+	if (cached) {
+		return cached;
+	}
+
+	const map = new Map<string, Node>();
 
 	for (const prop of obj.properties) {
 		if (prop.type !== 'Property') {
@@ -77,6 +86,40 @@ const getProperties = (obj: Node | undefined): Map<string, Node> => {
 			map.set(key, prop.value);
 		}
 	}
+
+	propertiesCache.set(obj, map);
+
+	return map;
+};
+
+const getStrictProperties = (obj: Node | undefined): Map<string, Node> | null => {
+	if (!obj || obj.type !== 'ObjectExpression') {
+		return null;
+	}
+
+	if (strictPropertiesCache.has(obj)) {
+		return strictPropertiesCache.get(obj) ?? null;
+	}
+
+	const map = new Map<string, Node>();
+
+	for (const prop of obj.properties) {
+		if (prop.type !== 'Property') {
+			strictPropertiesCache.set(obj, null);
+			return null;
+		}
+
+		const key = getKeyName(prop);
+
+		if (key === null) {
+			strictPropertiesCache.set(obj, null);
+			return null;
+		}
+
+		map.set(key, prop.value);
+	}
+
+	strictPropertiesCache.set(obj, map);
 
 	return map;
 };
@@ -112,6 +155,11 @@ const collectSlotKeyedProperties = (
 	return result;
 };
 
+type CallMatch = {
+	config: ObjectExpression | null;
+	args: ReadonlyArray<Expression | SpreadElement>;
+};
+
 // Matches a CallExpression against the tracked `sv`/`cn` import names. Returns
 // the sv config (when the trailing argument looks like one) plus the remaining
 // cn-style arguments, or null when the call isn't an sv/cn call we recognize.
@@ -119,10 +167,7 @@ const matchSvCnCall = (
 	node: CallExpression,
 	svNames: Set<string>,
 	cnNames: Set<string>
-): {
-	config: ObjectExpression | null;
-	args: ReadonlyArray<Expression | SpreadElement>;
-} | null => {
+): CallMatch | null => {
 	const { callee } = node;
 
 	if (callee.type !== 'Identifier') {
@@ -133,7 +178,7 @@ const matchSvCnCall = (
 		const args = node.arguments;
 
 		if (args.length === 0) {
-			return null;
+			return { config: null, args };
 		}
 
 		const last = args[args.length - 1];
@@ -153,25 +198,18 @@ const matchSvCnCall = (
 };
 
 const isConfigLike = (node: Node | undefined): node is ObjectExpression => {
-	if (!node || node.type !== 'ObjectExpression') {
+	const properties = getStrictProperties(node);
+
+	if (!properties || properties.size === 0) {
 		return false;
 	}
 
-	if (node.properties.length === 0) {
-		return false;
-	}
-
-	for (const prop of node.properties) {
-		if (prop.type !== 'Property') {
-			return false;
-		}
-
-		const key = getKeyName(prop);
-
-		if (key === null || !CONFIG_KEYS.has(key)) {
+	for (const key of properties.keys()) {
+		if (!CONFIG_KEYS.has(key)) {
 			return false;
 		}
 	}
+
 	return true;
 };
 
@@ -190,6 +228,8 @@ type Entry = {
 	start: number;
 	end: number;
 };
+
+type TokenEntriesBySlot = Map<string, Map<string, Entry[]>>;
 
 // Returns true when the entries in `list` cannot collide at runtime: they all
 // come from different values of a single variant key, so slot-variants will
@@ -219,6 +259,47 @@ const isMutuallyExclusiveVariants = (list: Entry[]): boolean => {
 	}
 
 	return true;
+};
+
+const EMPTY_SLOT_NAMES = new Set<string>();
+
+const indexEntriesBySlotAndToken = (
+	entries: Iterable<Entry>
+): TokenEntriesBySlot => {
+	const bySlot = new Map<string, Map<string, Entry[]>>();
+
+	for (const entry of entries) {
+		const tokenMap = getOrCreate(
+			bySlot,
+			entry.slot,
+			() => new Map<string, Entry[]>()
+		);
+		const list = getOrCreate(tokenMap, entry.token, () => []);
+
+		list.push(entry);
+	}
+
+	return bySlot;
+};
+
+const reportEntryList = (
+	context: Rule.RuleContext,
+	entries: ReadonlyArray<Entry>,
+	messageId: string,
+	data: Record<string, string>
+): void => {
+	const { sourceCode } = context;
+
+	for (const entry of entries) {
+		context.report({
+			loc: {
+				start: sourceCode.getLocFromIndex(entry.start),
+				end: sourceCode.getLocFromIndex(entry.end)
+			},
+			messageId,
+			data
+		});
+	}
 };
 
 const pushStringLiteralTokens = (
@@ -423,18 +504,7 @@ const analyzeConfig = (
 		}
 	}
 
-	const bySlot = new Map<string, Map<string, Entry[]>>();
-
-	for (const entry of entries) {
-		const tokenMap = getOrCreate(
-			bySlot,
-			entry.slot,
-			() => new Map<string, Entry[]>()
-		);
-		const list = getOrCreate(tokenMap, entry.token, () => []);
-
-		list.push(entry);
-	}
+	const bySlot = indexEntriesBySlotAndToken(entries);
 
 	for (const [slotKey, tokenMap] of bySlot.entries()) {
 		for (const [token, list] of tokenMap.entries()) {
@@ -442,16 +512,10 @@ const analyzeConfig = (
 				continue;
 			}
 
-			for (const entry of list) {
-				context.report({
-					loc: {
-						start: sourceCode.getLocFromIndex(entry.start),
-						end: sourceCode.getLocFromIndex(entry.end)
-					},
-					messageId: 'duplicate',
-					data: { token, slot: slotKey }
-				});
-			}
+			reportEntryList(context, list, 'duplicate', {
+				token,
+				slot: slotKey
+			});
 		}
 	}
 };
@@ -460,20 +524,23 @@ const analyzeCnCall = (
 	context: Rule.RuleContext,
 	args: ReadonlyArray<Expression | SpreadElement>
 ): void => {
-	const { sourceCode } = context;
 	const entries: Entry[] = [];
-	const slotNames = new Set<string>();
 
 	for (const arg of args) {
-		extractTokens(arg, 'base', baseSource, slotNames, entries, sourceCode);
+		extractTokens(
+			arg,
+			'base',
+			baseSource,
+			EMPTY_SLOT_NAMES,
+			entries,
+			context.sourceCode
+		);
 	}
 
-	const tokenMap = new Map<string, Entry[]>();
+	const tokenMap = indexEntriesBySlotAndToken(entries).get('base');
 
-	for (const entry of entries) {
-		const list = getOrCreate(tokenMap, entry.token, () => []);
-
-		list.push(entry);
+	if (!tokenMap) {
+		return;
 	}
 
 	for (const [token, list] of tokenMap.entries()) {
@@ -481,16 +548,7 @@ const analyzeCnCall = (
 			continue;
 		}
 
-		for (const entry of list) {
-			context.report({
-				loc: {
-					start: sourceCode.getLocFromIndex(entry.start),
-					end: sourceCode.getLocFromIndex(entry.end)
-				},
-				messageId: 'duplicateCn',
-				data: { token }
-			});
-		}
+		reportEntryList(context, list, 'duplicateCn', { token });
 	}
 };
 
@@ -746,6 +804,29 @@ const createImportsTracker = () => {
 	return { cnNames, svNames, importsTracker };
 };
 
+const createTrackedCallListeners = (
+	onCall: (node: CallExpression, call: CallMatch) => void
+) => {
+	const { cnNames, svNames, importsTracker } = createImportsTracker();
+
+	return {
+		ImportDeclaration(node: ImportDeclaration) {
+			importsTracker(node);
+		},
+		CallExpression(node: CallExpression) {
+			if (svNames.size === 0 && cnNames.size === 0) {
+				return;
+			}
+
+			const call = matchSvCnCall(node, svNames, cnNames);
+
+			if (call) {
+				onCall(node, call);
+			}
+		}
+	};
+};
+
 /**
  * Flags dynamic values in `sv()` and `cn()` calls. Only statically inferrable
  * values — string literals, template literals without expressions, arrays of
@@ -766,26 +847,13 @@ export const noDynamicClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const { cnNames, svNames, importsTracker } = createImportsTracker();
-
-		return {
-			ImportDeclaration(node) {
-				importsTracker(node);
-			},
-			CallExpression(node) {
-				const call = matchSvCnCall(node, svNames, cnNames);
-
-				if (!call) {
-					return;
-				}
-
+		return createTrackedCallListeners((_node, call) => {
 				checkCnArguments(context, call.args);
 
 				if (call.config) {
 					checkSvConfig(context, call.config);
 				}
-			}
-		};
+		});
 	}
 };
 
@@ -878,36 +946,19 @@ export const noRedundantSpaces: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const { svNames, cnNames, importsTracker } = createImportsTracker();
-
-		return {
-			ImportDeclaration(node) {
-				importsTracker(node);
-			},
-			CallExpression(node) {
-				if (svNames.size === 0 && cnNames.size === 0) {
-					return;
-				}
-
-				const callee = node.callee;
-
-				if (callee.type !== 'Identifier') {
-					return;
-				}
-
-				if (!svNames.has(callee.name) && !cnNames.has(callee.name)) {
-					return;
-				}
-
-				for (const arg of node.arguments) {
+		return createTrackedCallListeners((_node, call) => {
+				for (const arg of call.args) {
 					if (arg.type === 'SpreadElement') {
 						continue;
 					}
 
 					visitForRedundantSpaces(context, arg);
 				}
-			}
-		};
+
+				if (call.config) {
+					visitForRedundantSpaces(context, call.config);
+				}
+		});
 	}
 };
 
@@ -931,26 +982,13 @@ export const noDuplicateClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const { svNames, cnNames, importsTracker } = createImportsTracker();
-
-		return {
-			ImportDeclaration(node) {
-				importsTracker(node);
-			},
-			CallExpression(node) {
-				const call = matchSvCnCall(node, svNames, cnNames);
-
-				if (!call) {
-					return;
-				}
-
+		return createTrackedCallListeners((_node, call) => {
 				if (call.config) {
 					analyzeConfig(context, call.config, call.args);
 				} else {
 					analyzeCnCall(context, call.args);
 				}
-			}
-		};
+		});
 	}
 };
 
@@ -1029,43 +1067,17 @@ const analyzeSharedTokens = (
 			continue;
 		}
 
-		const valueKeys: string[] = [];
-		let bail = false;
-
-		for (const valueProp of variantValue.properties) {
-			if (valueProp.type !== 'Property' || valueProp.computed) {
-				bail = true;
-				break;
-			}
-
-			const { key } = valueProp;
-
-			if (key.type === 'Identifier') {
-				valueKeys.push(key.name);
-				continue;
-			}
-
-			if (key.type === 'Literal') {
-				valueKeys.push(String(key.value));
-				continue;
-			}
-			/* c8 ignore next 3 -- non-computed object keys here are parser-emitted as Identifier or Literal */
-			bail = true;
-			break;
-		}
+		const valueEntries = getStrictProperties(variantValue);
 
 		// A spread or computed key means we can't see every value; we'd
 		// over-flag tokens that may differ in the unseen branches.
-		if (bail || valueKeys.length < 2) {
+		if (!valueEntries || valueEntries.size < 2) {
 			continue;
 		}
 
-		const tokensByValue = new Map<
-			string,
-			Map<string, Map<string, Entry[]>>
-		>();
+		const tokensByValue: TokenEntriesBySlot[] = [];
 
-		for (const [valueKey, valueNode] of getProperties(variantValue)) {
+		for (const [valueKey, valueNode] of valueEntries) {
 			const entries: Entry[] = [];
 
 			extractTokens(
@@ -1077,73 +1089,68 @@ const analyzeSharedTokens = (
 				sourceCode
 			);
 
-			const slotMap = new Map<string, Map<string, Entry[]>>();
-
-			for (const entry of entries) {
-				const tokenMap = getOrCreate(
-					slotMap,
-					entry.slot,
-					() => new Map<string, Entry[]>()
-				);
-				const list = getOrCreate(tokenMap, entry.token, () => []);
-
-				list.push(entry);
-			}
-
-			tokensByValue.set(valueKey, slotMap);
+			tokensByValue.push(indexEntriesBySlotAndToken(entries));
 		}
 
-		const presence = new Map<string, Map<string, Set<string>>>();
+		const firstValueMap = tokensByValue[0];
 
-		for (const [valueKey, slotMap] of tokensByValue) {
-			for (const [slot, tokenMap] of slotMap) {
-				const tokenPresence = getOrCreate(
-					presence,
-					slot,
-					() => new Map<string, Set<string>>()
-				);
-
-				for (const token of tokenMap.keys()) {
-					const seen = getOrCreate(
-						tokenPresence,
-						token,
-						() => new Set<string>()
-					);
-
-					seen.add(valueKey);
-				}
-			}
+		/* c8 ignore next 3 -- valueEntries.size >= 2 guarantees at least one extracted value map */
+		if (!firstValueMap) {
+			continue;
 		}
 
-		for (const [slot, tokenPresence] of presence) {
-			for (const [token, seen] of tokenPresence) {
-				if (seen.size !== valueKeys.length) {
+		const sharedTokens = new Map<string, Set<string>>();
+
+		for (const [slot, tokenMap] of firstValueMap) {
+			sharedTokens.set(slot, new Set(tokenMap.keys()));
+		}
+
+		for (const valueMap of tokensByValue.slice(1)) {
+			const emptySlots: string[] = [];
+
+			for (const [slot, tokens] of sharedTokens) {
+				const tokenMap = valueMap.get(slot);
+
+				if (!tokenMap) {
+					emptySlots.push(slot);
 					continue;
 				}
 
-				for (const valueKey of valueKeys) {
-					// `presence` only contains tokens seen for every `valueKey`, so
-					// this lookup is guaranteed by construction.
-					const entryList = tokensByValue
-						.get(valueKey)
-						?.get(slot)
-						?.get(token);
+				for (const token of tokens) {
+					if (!tokenMap.has(token)) {
+						tokens.delete(token);
+					}
+				}
 
-					/* c8 ignore next 3 -- `presence` proves the shared token exists in the slot map for every valueKey */
+				if (tokens.size === 0) {
+					emptySlots.push(slot);
+				}
+			}
+
+			for (const slot of emptySlots) {
+				sharedTokens.delete(slot);
+			}
+
+			if (sharedTokens.size === 0) {
+				break;
+			}
+		}
+
+		for (const [slot, tokens] of sharedTokens) {
+			for (const token of tokens) {
+				for (const valueMap of tokensByValue) {
+					const entryList = valueMap.get(slot)?.get(token);
+
+					/* c8 ignore next 3 -- `sharedTokens` only retains tokens present in every value map */
 					if (!entryList) {
 						continue;
 					}
 
-					for (const entry of entryList) {
-						context.report({
-							loc: {
-								start: sourceCode.getLocFromIndex(entry.start),
-								end: sourceCode.getLocFromIndex(entry.end)
-							},
-							messageId: 'shared',
-							data: { token, variant: variantKey, slot }
-						});
-					}
+					reportEntryList(context, entryList, 'shared', {
+						token,
+						variant: variantKey,
+						slot
+					});
 				}
 			}
 		}
@@ -1170,22 +1177,13 @@ export const noSharedTokens: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const { svNames, cnNames, importsTracker } = createImportsTracker();
-
-		return {
-			ImportDeclaration(node) {
-				importsTracker(node);
-			},
-			CallExpression(node) {
-				const call = matchSvCnCall(node, svNames, cnNames);
-
-				if (!call || !call.config) {
+		return createTrackedCallListeners((_node, call) => {
+				if (!call.config) {
 					return;
 				}
 
 				analyzeSharedTokens(context, call.config);
-			}
-		};
+		});
 	}
 };
 
@@ -1277,14 +1275,7 @@ const checkSvConfigForEmpty = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
 ): void => {
-	for (const prop of configNode.properties) {
-		/* c8 ignore next 3 -- isConfigLike filters out spreads upstream */
-		if (prop.type !== 'Property') {
-			continue;
-		}
-
-		const key = getKeyName(prop);
-		const { value } = prop;
+	for (const [key, value] of getProperties(configNode)) {
 
 		if (key === 'base') {
 			visitForEmptyClasses(context, value, false);
@@ -1393,32 +1384,9 @@ export const noEmptyClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const { svNames, cnNames, importsTracker } = createImportsTracker();
-
-		return {
-			ImportDeclaration(node) {
-				importsTracker(node);
-			},
-			CallExpression(node) {
-				const { callee } = node;
-
-				if (callee.type !== 'Identifier') {
-					return;
-				}
-
-				if (!svNames.has(callee.name) && !cnNames.has(callee.name)) {
-					return;
-				}
-
+		return createTrackedCallListeners((node, call) => {
 				if (node.arguments.length === 0) {
 					context.report({ node, messageId: 'emptyCall' });
-					return;
-				}
-
-				const call = matchSvCnCall(node, svNames, cnNames);
-
-				/* c8 ignore next 3 -- callee + arg-count guards above match matchSvCnCall */
-				if (!call) {
 					return;
 				}
 
@@ -1433,8 +1401,7 @@ export const noEmptyClasses: Rule.RuleModule = {
 				if (call.config) {
 					checkSvConfigForEmpty(context, call.config);
 				}
-			}
-		};
+		});
 	}
 };
 
