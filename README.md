@@ -998,6 +998,31 @@ cn(`flex\titems-center`);                      // tab between tokens
 
 `no-redundant-spaces` reports each literal whose whitespace deviates from the canonical "tokens separated by exactly one space" form. Trim and collapse the strings — or split them into array entries — so the stored class output is byte-stable and easy to scan in diffs.
 
+## IntelliSense Setup (Optional)
+
+If you're using Tailwind CSS, you can opt into class autocompletion and automatic class sorting inside `sv()` and `cn()` calls.
+
+### VSCode
+
+The [Tailwind CSS IntelliSense](https://marketplace.visualstudio.com/items?itemName=bradlc.vscode-tailwindcss) extension recognizes calls listed in `tailwindCSS.classFunctions`. Add `cn` and `sv` to your workspace or user settings:
+
+```json
+{
+  "tailwindCSS.classFunctions": ["cn", "sv"]
+}
+```
+
+### Prettier
+
+The [`prettier-plugin-tailwindcss`](https://github.com/tailwindlabs/prettier-plugin-tailwindcss) plugin sorts Tailwind classes inside the functions listed in `tailwindFunctions`:
+
+```js
+module.exports = {
+  plugins: [require('prettier-plugin-tailwindcss')],
+  tailwindFunctions: ['cn', 'sv']
+};
+```
+
 ## Migrating from CVA / tailwind-variants
 
 ### From CVA
