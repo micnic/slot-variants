@@ -23,7 +23,6 @@ const CONFIG_KEYS = new Set([
 	'introspection'
 ]);
 
-// Statically-known key name of a Property node, or null for computed keys.
 const getKeyName = (prop: Property): string | null => {
 	if (prop.computed) {
 		return null;
@@ -162,8 +161,6 @@ type CallMatch = {
 	args: ReadonlyArray<Expression | SpreadElement>;
 };
 
-// Matches a CallExpression against tracked sv/cn imports; splits the trailing
-// config argument off when present.
 const matchSvCnCall = (
 	node: CallExpression,
 	svNames: Set<string>,
@@ -232,8 +229,8 @@ type Entry = {
 
 type TokenEntriesBySlot = Map<string, Map<string, Entry[]>>;
 
-// True when the entries can never co-occur: all come from different values of
-// a single variant key, so only one branch fires on any given render.
+// Entries can't co-occur when they all come from different values of a single
+// variant key — only one branch fires per render.
 const isMutuallyExclusiveVariants = (list: Entry[]): boolean => {
 	const seenValues = new Set<string>();
 	let sharedKey: string | null = null;
@@ -300,6 +297,23 @@ const reportEntryList = (
 	}
 };
 
+// Safe for cn() callers too: isMutuallyExclusiveVariants short-circuits to
+// false on non-variant entries, so base-only token lists are never skipped.
+const reportDuplicateTokens = (
+	context: Rule.RuleContext,
+	tokenMap: Map<string, Entry[]>,
+	messageId: string,
+	data: Record<string, string>
+): void => {
+	for (const [token, list] of tokenMap.entries()) {
+		if (list.length < 2 || isMutuallyExclusiveVariants(list)) {
+			continue;
+		}
+
+		reportEntryList(context, list, messageId, { token, ...data });
+	}
+};
+
 const pushStringLiteralTokens = (
 	node: Node,
 	slot: string,
@@ -314,8 +328,8 @@ const pushStringLiteralTokens = (
 		return;
 	}
 
-	// String literals and untagged templates have a single-char opening
-	// delimiter, so range[0] + 1 is the first inner character.
+	// String/untagged-template delimiters are single-char, so range[0] + 1
+	// is the first inner character.
 	const raw = sourceCode.getText(node);
 	const inner = raw.slice(1, -1);
 	const base = range[0] + 1;
@@ -360,11 +374,7 @@ const extractTokens = (
 	}
 
 	if (node.type === 'ArrayExpression') {
-		for (const element of node.elements) {
-			if (!element || element.type === 'SpreadElement') {
-				continue;
-			}
-
+		forEachStaticItem(node.elements, (element) => {
 			extractTokens(
 				element,
 				slot,
@@ -373,7 +383,7 @@ const extractTokens = (
 				entries,
 				sourceCode
 			);
-		}
+		});
 
 		return;
 	}
@@ -393,8 +403,49 @@ const extractTokens = (
 	}
 };
 
-// Iterates a compoundVariants/compoundSlots array, yielding each entry's
-// class/className node alongside the entry's full property map.
+// Skips spreads and holes silently. Validators that need to flag spreads
+// should use forEachItemReportingSpread instead.
+const forEachStaticItem = (
+	items: ReadonlyArray<Expression | SpreadElement | null>,
+	visit: (item: Expression) => void
+): void => {
+	for (const item of items) {
+		if (!item || item.type === 'SpreadElement') {
+			continue;
+		}
+
+		visit(item);
+	}
+};
+
+// A variants[key] is a boolean shorthand when it's not a plain object, or
+// when its keys are slot names rather than value names.
+const isBooleanShorthandVariant = (
+	node: Node,
+	slotNames: Set<string>
+): boolean =>
+	node.type !== 'ObjectExpression' ||
+	collectSlotKeyedProperties(node, slotNames) !== null;
+
+const forEachStringLiteralElement = (
+	node: Node,
+	visit: (value: string) => void
+): void => {
+	if (node.type !== 'ArrayExpression') {
+		return;
+	}
+
+	for (const element of node.elements) {
+		if (
+			element &&
+			element.type === 'Literal' &&
+			typeof element.value === 'string'
+		) {
+			visit(element.value);
+		}
+	}
+};
+
 const forEachCompoundClass = (
 	node: Node | undefined,
 	visit: (cls: Node, compound: Map<string, Node>) => void
@@ -456,10 +507,7 @@ const analyzeConfig = (
 	const variantsMap = getProperties(variants);
 
 	for (const [variantKey, variantValue] of variantsMap.entries()) {
-		if (
-			variantValue.type !== 'ObjectExpression' ||
-			collectSlotKeyedProperties(variantValue, slotNames) !== null
-		) {
+		if (isBooleanShorthandVariant(variantValue, slotNames)) {
 			extract(variantValue, 'base', {
 				kind: 'variant',
 				key: variantKey,
@@ -484,36 +532,17 @@ const analyzeConfig = (
 	forEachCompoundClass(compoundSlots, (cls, compound) => {
 		const targetSlots = compound.get('slots');
 
-		if (!targetSlots || targetSlots.type !== 'ArrayExpression') {
-			return;
-		}
-
-		for (const slotEl of targetSlots.elements) {
-			if (
-				!slotEl ||
-				slotEl.type !== 'Literal' ||
-				typeof slotEl.value !== 'string'
-			) {
-				continue;
-			}
-
-			extract(cls, slotEl.value, compoundSource);
+		if (targetSlots) {
+			forEachStringLiteralElement(targetSlots, (slot) => {
+				extract(cls, slot, compoundSource);
+			});
 		}
 	});
 
 	const bySlot = indexEntriesBySlotAndToken(entries);
 
 	for (const [slotKey, tokenMap] of bySlot.entries()) {
-		for (const [token, list] of tokenMap.entries()) {
-			if (list.length < 2 || isMutuallyExclusiveVariants(list)) {
-				continue;
-			}
-
-			reportEntryList(context, list, 'duplicate', {
-				token,
-				slot: slotKey
-			});
-		}
+		reportDuplicateTokens(context, tokenMap, 'duplicate', { slot: slotKey });
 	}
 };
 
@@ -536,16 +565,8 @@ const analyzeCnCall = (
 
 	const tokenMap = indexEntriesBySlotAndToken(entries).get('base');
 
-	if (!tokenMap) {
-		return;
-	}
-
-	for (const [token, list] of tokenMap.entries()) {
-		if (list.length < 2) {
-			continue;
-		}
-
-		reportEntryList(context, list, 'duplicateCn', { token });
+	if (tokenMap) {
+		reportDuplicateTokens(context, tokenMap, 'duplicateCn', {});
 	}
 };
 
@@ -553,8 +574,27 @@ const reportDynamic = (context: Rule.RuleContext, node: Node): void => {
 	context.report({ node, messageId: 'dynamic' });
 };
 
-// Reports anything that isn't a static class value (string literal,
-// expressionless template, or array of those).
+// Validator counterpart to forEachStaticItem: spreads are reported as dynamic
+// rather than skipped.
+const forEachItemReportingSpread = (
+	context: Rule.RuleContext,
+	items: ReadonlyArray<Expression | SpreadElement | null>,
+	visit: (item: Expression) => void
+): void => {
+	for (const item of items) {
+		if (!item) {
+			continue;
+		}
+
+		if (item.type === 'SpreadElement') {
+			reportDynamic(context, item);
+			continue;
+		}
+
+		visit(item);
+	}
+};
+
 const checkClassValueIsStatic = (
 	context: Rule.RuleContext,
 	node: Node
@@ -576,18 +616,9 @@ const checkClassValueIsStatic = (
 	}
 
 	if (node.type === 'ArrayExpression') {
-		for (const element of node.elements) {
-			if (!element) {
-				continue;
-			}
-
-			if (element.type === 'SpreadElement') {
-				reportDynamic(context, element);
-				continue;
-			}
-
+		forEachItemReportingSpread(context, node.elements, (element) => {
 			checkClassValueIsStatic(context, element);
-		}
+		});
 
 		return;
 	}
@@ -595,8 +626,6 @@ const checkClassValueIsStatic = (
 	reportDynamic(context, node);
 };
 
-// Iterates the static (non-spread, non-computed) properties of an
-// ObjectExpression; reports spreads and computed keys as dynamic.
 const forEachStaticProperty = (
 	context: Rule.RuleContext,
 	node: ObjectExpression,
@@ -617,8 +646,6 @@ const forEachStaticProperty = (
 	}
 };
 
-// Validates an ObjectExpression of statically-known keys mapped to static
-// class values (slots, variant value records).
 const checkClassValueRecord = (context: Rule.RuleContext, node: Node): void => {
 	if (node.type !== 'ObjectExpression') {
 		reportDynamic(context, node);
@@ -630,8 +657,6 @@ const checkClassValueRecord = (context: Rule.RuleContext, node: Node): void => {
 	});
 };
 
-// Validates the `variants` field: each value is a class-value record or a
-// class value (boolean shorthand).
 const checkVariants = (context: Rule.RuleContext, node: Node): void => {
 	if (node.type !== 'ObjectExpression') {
 		reportDynamic(context, node);
@@ -649,9 +674,7 @@ const checkVariants = (context: Rule.RuleContext, node: Node): void => {
 	});
 };
 
-// Validates a compound array: each entry's `class`/`className` is static and
-// (for compoundSlots) `slots` is a literal string array. Other keys are
-// runtime matchers and are not validated.
+// Other keys on compound entries are runtime matchers and are not validated.
 const checkCompoundEntries = (
 	context: Rule.RuleContext,
 	node: Node,
@@ -703,8 +726,7 @@ const checkCompoundEntries = (
 	}
 };
 
-// Validates each class-bearing field in an sv() config. Non-class-bearing
-// keys (defaultVariants, presets, etc.) are not checked here.
+// Non-class-bearing keys (defaultVariants, presets, etc.) are not checked.
 const checkSvConfig = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
@@ -737,19 +759,13 @@ const checkSvConfig = (
 	}
 };
 
-// Validates cn-style arguments: each must be a static class value.
 const checkCnArguments = (
 	context: Rule.RuleContext,
 	args: ReadonlyArray<Expression | SpreadElement>
 ): void => {
-	for (const arg of args) {
-		if (arg.type === 'SpreadElement') {
-			reportDynamic(context, arg);
-			continue;
-		}
-
+	forEachItemReportingSpread(context, args, (arg) => {
 		checkClassValueIsStatic(context, arg);
-	}
+	});
 };
 
 const createImportsTracker = () => {
@@ -836,7 +852,7 @@ export const noDynamicClasses: Rule.RuleModule = {
 const hasRedundantSpaces = (value: string): boolean =>
 	!/^(?:[^\s]+(?: [^\s]+)*)?$/.test(value);
 
-// Highlights the entire literal — span-level reports would have to chase
+// Highlights the whole literal: span-level reports would need to chase
 // raw-text/escape-sequence mismatches.
 const reportRedundantSpaces = (
 	context: Rule.RuleContext,
@@ -848,8 +864,6 @@ const reportRedundantSpaces = (
 	}
 };
 
-// Walks a node and reports redundant whitespace in string/template literals;
-// silently ignores dynamic values.
 const visitForRedundantSpaces = (
 	context: Rule.RuleContext,
 	node: Node
@@ -878,13 +892,9 @@ const visitForRedundantSpaces = (
 	}
 
 	if (node.type === 'ArrayExpression') {
-		for (const element of node.elements) {
-			if (!element || element.type === 'SpreadElement') {
-				continue;
-			}
-
+		forEachStaticItem(node.elements, (element) => {
 			visitForRedundantSpaces(context, element);
-		}
+		});
 
 		return;
 	}
@@ -916,13 +926,9 @@ export const noRedundantSpaces: Rule.RuleModule = {
 	},
 	create(context) {
 		return createTrackedCallListeners((_node, call) => {
-			for (const arg of call.args) {
-				if (arg.type === 'SpreadElement') {
-					continue;
-				}
-
+			forEachStaticItem(call.args, (arg) => {
 				visitForRedundantSpaces(context, arg);
-			}
+			});
 
 			if (call.config) {
 				visitForRedundantSpaces(context, call.config);
@@ -961,10 +967,9 @@ export const noDuplicateClasses: Rule.RuleModule = {
 	}
 };
 
-// Reports tokens shared across every value of an exhaustive variant — one
-// with a `defaultVariants` entry or listed in `requiredVariants`. Without
-// coverage the prop can be undefined at runtime, so the token isn't
-// guaranteed to render.
+// A variant is "exhaustive" when it has a defaultVariants entry or is in
+// requiredVariants. Without coverage the prop can be undefined at runtime,
+// so a shared token isn't guaranteed to render.
 const analyzeSharedTokens = (
 	context: Rule.RuleContext,
 	configNode: Node
@@ -987,16 +992,10 @@ const analyzeSharedTokens = (
 	);
 	const requiredVariants = config.get('requiredVariants');
 
-	if (requiredVariants && requiredVariants.type === 'ArrayExpression') {
-		for (const element of requiredVariants.elements) {
-			if (
-				element &&
-				element.type === 'Literal' &&
-				typeof element.value === 'string'
-			) {
-				exhaustive.add(element.value);
-			}
-		}
+	if (requiredVariants) {
+		forEachStringLiteralElement(requiredVariants, (value) => {
+			exhaustive.add(value);
+		});
 	}
 
 	for (const [variantKey, variantValue] of getProperties(variants)) {
@@ -1005,10 +1004,7 @@ const analyzeSharedTokens = (
 		}
 
 		// Boolean shorthand has a single branch — no cross-value comparison.
-		if (
-			variantValue.type !== 'ObjectExpression' ||
-			collectSlotKeyedProperties(variantValue, slotNames) !== null
-		) {
+		if (isBooleanShorthandVariant(variantValue, slotNames)) {
 			continue;
 		}
 
@@ -1132,7 +1128,6 @@ export const noSharedTokens: Rule.RuleModule = {
 	}
 };
 
-// True when the node is an empty string literal or expressionless template.
 const isEmptyStringNode = (node: Node): boolean => {
 	if (node.type === 'Literal') {
 		return node.value === '';
@@ -1153,9 +1148,8 @@ const isEmptyStringNode = (node: Node): boolean => {
 	return false;
 };
 
-// Reports empty class values. `allowEmptyString` suppresses the empty-string
-// report at the top of a `slots[key]` value, where `''` declares a slot with
-// no default.
+// `allowEmptyString` is set at the top of a `slots[key]` value, where `''`
+// is a meaningful "slot with no default classes" declaration.
 const visitForEmptyClasses = (
 	context: Rule.RuleContext,
 	node: Node,
@@ -1175,13 +1169,9 @@ const visitForEmptyClasses = (
 			return;
 		}
 
-		for (const element of node.elements) {
-			if (!element || element.type === 'SpreadElement') {
-				continue;
-			}
-
+		forEachStaticItem(node.elements, (element) => {
 			visitForEmptyClasses(context, element, false);
-		}
+		});
 
 		return;
 	}
@@ -1191,7 +1181,6 @@ const visitForEmptyClasses = (
 	}
 };
 
-// Visits each value of a record ObjectExpression; reports the record itself when empty.
 const visitRecordEntriesForEmpty = (
 	context: Rule.RuleContext,
 	node: ObjectExpression,
@@ -1293,13 +1282,9 @@ export const noEmptyClasses: Rule.RuleModule = {
 				return;
 			}
 
-			for (const arg of call.args) {
-				if (arg.type === 'SpreadElement') {
-					continue;
-				}
-
+			forEachStaticItem(call.args, (arg) => {
 				visitForEmptyClasses(context, arg, false);
-			}
+			});
 
 			if (call.config) {
 				checkSvConfigForEmpty(context, call.config);
