@@ -589,14 +589,13 @@ const checkClassValueIsStatic = (
 	reportDynamic(context, node);
 };
 
-// Validates an ObjectExpression of statically-known keys mapped to static
-// class values (slots, variant value records).
-const checkClassValueRecord = (context: Rule.RuleContext, node: Node): void => {
-	if (node.type !== 'ObjectExpression') {
-		reportDynamic(context, node);
-		return;
-	}
-
+// Iterates the static (non-spread, non-computed) properties of an
+// ObjectExpression; reports spreads and computed keys as dynamic.
+const forEachStaticProperty = (
+	context: Rule.RuleContext,
+	node: ObjectExpression,
+	visit: (prop: Property) => void
+): void => {
 	for (const prop of node.properties) {
 		if (prop.type === 'SpreadElement') {
 			reportDynamic(context, prop);
@@ -608,8 +607,21 @@ const checkClassValueRecord = (context: Rule.RuleContext, node: Node): void => {
 			continue;
 		}
 
-		checkClassValueIsStatic(context, prop.value);
+		visit(prop);
 	}
+};
+
+// Validates an ObjectExpression of statically-known keys mapped to static
+// class values (slots, variant value records).
+const checkClassValueRecord = (context: Rule.RuleContext, node: Node): void => {
+	if (node.type !== 'ObjectExpression') {
+		reportDynamic(context, node);
+		return;
+	}
+
+	forEachStaticProperty(context, node, (prop) => {
+		checkClassValueIsStatic(context, prop.value);
+	});
 };
 
 // Validates the `variants` field: each value is a class-value record or a
@@ -620,17 +632,7 @@ const checkVariants = (context: Rule.RuleContext, node: Node): void => {
 		return;
 	}
 
-	for (const prop of node.properties) {
-		if (prop.type === 'SpreadElement') {
-			reportDynamic(context, prop);
-			continue;
-		}
-
-		if (prop.computed) {
-			reportDynamic(context, prop.key);
-			continue;
-		}
-
+	forEachStaticProperty(context, node, (prop) => {
 		const { value } = prop;
 
 		if (value.type === 'ObjectExpression') {
@@ -638,7 +640,7 @@ const checkVariants = (context: Rule.RuleContext, node: Node): void => {
 		} else {
 			checkClassValueIsStatic(context, value);
 		}
-	}
+	});
 };
 
 // Validates a compound array: each entry's `class`/`className` is static and
@@ -664,28 +666,18 @@ const checkCompoundEntries = (
 			continue;
 		}
 
-		for (const prop of element.properties) {
-			if (prop.type === 'SpreadElement') {
-				reportDynamic(context, prop);
-				continue;
-			}
-
-			if (prop.computed) {
-				reportDynamic(context, prop.key);
-				continue;
-			}
-
+		forEachStaticProperty(context, element, (prop) => {
 			const key = getKeyName(prop);
 
 			if (key === 'class' || key === 'className') {
 				checkClassValueIsStatic(context, prop.value);
-				continue;
+				return;
 			}
 
 			if (hasSlotsKey && key === 'slots') {
 				if (prop.value.type !== 'ArrayExpression') {
 					reportDynamic(context, prop.value);
-					continue;
+					return;
 				}
 
 				for (const slotEl of prop.value.elements) {
@@ -701,7 +693,7 @@ const checkCompoundEntries = (
 					}
 				}
 			}
-		}
+		});
 	}
 };
 
