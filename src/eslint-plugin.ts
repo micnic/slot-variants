@@ -57,7 +57,10 @@ const getOrCreate = <K, V>(map: Map<K, V>, key: K, make: () => V): V => {
 };
 
 const propertiesCache = new WeakMap<ObjectExpression, Map<string, Node>>();
-const strictPropertiesCache = new WeakMap<ObjectExpression, Map<string, Node> | null>();
+const strictPropertiesCache = new WeakMap<
+	ObjectExpression,
+	Map<string, Node> | null
+>();
 
 const getProperties = (obj: Node | undefined): Map<string, Node> => {
 	if (!obj || obj.type !== 'ObjectExpression') {
@@ -89,7 +92,9 @@ const getProperties = (obj: Node | undefined): Map<string, Node> => {
 	return map;
 };
 
-const getStrictProperties = (obj: Node | undefined): Map<string, Node> | null => {
+const getStrictProperties = (
+	obj: Node | undefined
+): Map<string, Node> | null => {
 	if (!obj || obj.type !== 'ObjectExpression') {
 		return null;
 	}
@@ -388,6 +393,30 @@ const extractTokens = (
 	}
 };
 
+// Iterates a compoundVariants/compoundSlots array, yielding each entry's
+// class/className node alongside the entry's full property map.
+const forEachCompoundClass = (
+	node: Node | undefined,
+	visit: (cls: Node, compound: Map<string, Node>) => void
+): void => {
+	if (!node || node.type !== 'ArrayExpression') {
+		return;
+	}
+
+	for (const element of node.elements) {
+		if (!element || element.type !== 'ObjectExpression') {
+			continue;
+		}
+
+		const compound = getProperties(element);
+		const cls = compound.get('class') ?? compound.get('className');
+
+		if (cls) {
+			visit(cls, compound);
+		}
+	}
+};
+
 const analyzeConfig = (
 	context: Rule.RuleContext,
 	configNode: Node,
@@ -448,52 +477,29 @@ const analyzeConfig = (
 		}
 	}
 
-	if (compoundVariants && compoundVariants.type === 'ArrayExpression') {
-		for (const element of compoundVariants.elements) {
-			if (!element || element.type !== 'ObjectExpression') {
-				continue;
-			}
+	forEachCompoundClass(compoundVariants, (cls) => {
+		extract(cls, 'base', compoundSource);
+	});
 
-			const compound = getProperties(element);
-			const cls = compound.get('class') ?? compound.get('className');
+	forEachCompoundClass(compoundSlots, (cls, compound) => {
+		const targetSlots = compound.get('slots');
 
-			if (cls) {
-				extract(cls, 'base', compoundSource);
-			}
+		if (!targetSlots || targetSlots.type !== 'ArrayExpression') {
+			return;
 		}
-	}
 
-	if (compoundSlots && compoundSlots.type === 'ArrayExpression') {
-		for (const element of compoundSlots.elements) {
-			if (!element || element.type !== 'ObjectExpression') {
-				continue;
-			}
-
-			const compound = getProperties(element);
-			const cls = compound.get('class') ?? compound.get('className');
-			const targetSlots = compound.get('slots');
-
+		for (const slotEl of targetSlots.elements) {
 			if (
-				!cls ||
-				!targetSlots ||
-				targetSlots.type !== 'ArrayExpression'
+				!slotEl ||
+				slotEl.type !== 'Literal' ||
+				typeof slotEl.value !== 'string'
 			) {
 				continue;
 			}
 
-			for (const slotEl of targetSlots.elements) {
-				if (!slotEl || slotEl.type !== 'Literal') {
-					continue;
-				}
-
-				if (typeof slotEl.value !== 'string') {
-					continue;
-				}
-
-				extract(cls, slotEl.value, compoundSource);
-			}
+			extract(cls, slotEl.value, compoundSource);
 		}
-	}
+	});
 
 	const bySlot = indexEntriesBySlotAndToken(entries);
 
@@ -818,11 +824,11 @@ export const noDynamicClasses: Rule.RuleModule = {
 	},
 	create(context) {
 		return createTrackedCallListeners((_node, call) => {
-				checkCnArguments(context, call.args);
+			checkCnArguments(context, call.args);
 
-				if (call.config) {
-					checkSvConfig(context, call.config);
-				}
+			if (call.config) {
+				checkSvConfig(context, call.config);
+			}
 		});
 	}
 };
@@ -914,17 +920,17 @@ export const noRedundantSpaces: Rule.RuleModule = {
 	},
 	create(context) {
 		return createTrackedCallListeners((_node, call) => {
-				for (const arg of call.args) {
-					if (arg.type === 'SpreadElement') {
-						continue;
-					}
-
-					visitForRedundantSpaces(context, arg);
+			for (const arg of call.args) {
+				if (arg.type === 'SpreadElement') {
+					continue;
 				}
 
-				if (call.config) {
-					visitForRedundantSpaces(context, call.config);
-				}
+				visitForRedundantSpaces(context, arg);
+			}
+
+			if (call.config) {
+				visitForRedundantSpaces(context, call.config);
+			}
 		});
 	}
 };
@@ -950,11 +956,11 @@ export const noDuplicateClasses: Rule.RuleModule = {
 	},
 	create(context) {
 		return createTrackedCallListeners((_node, call) => {
-				if (call.config) {
-					analyzeConfig(context, call.config, call.args);
-				} else {
-					analyzeCnCall(context, call.args);
-				}
+			if (call.config) {
+				analyzeConfig(context, call.config, call.args);
+			} else {
+				analyzeCnCall(context, call.args);
+			}
 		});
 	}
 };
@@ -1143,11 +1149,11 @@ export const noSharedTokens: Rule.RuleModule = {
 	},
 	create(context) {
 		return createTrackedCallListeners((_node, call) => {
-				if (!call.config) {
-					return;
-				}
+			if (!call.config) {
+				return;
+			}
 
-				analyzeSharedTokens(context, call.config);
+			analyzeSharedTokens(context, call.config);
 		});
 	}
 };
@@ -1332,22 +1338,22 @@ export const noEmptyClasses: Rule.RuleModule = {
 	},
 	create(context) {
 		return createTrackedCallListeners((node, call) => {
-				if (node.arguments.length === 0) {
-					context.report({ node, messageId: 'emptyCall' });
-					return;
+			if (node.arguments.length === 0) {
+				context.report({ node, messageId: 'emptyCall' });
+				return;
+			}
+
+			for (const arg of call.args) {
+				if (arg.type === 'SpreadElement') {
+					continue;
 				}
 
-				for (const arg of call.args) {
-					if (arg.type === 'SpreadElement') {
-						continue;
-					}
+				visitForEmptyClasses(context, arg, false);
+			}
 
-					visitForEmptyClasses(context, arg, false);
-				}
-
-				if (call.config) {
-					checkSvConfigForEmpty(context, call.config);
-				}
+			if (call.config) {
+				checkSvConfigForEmpty(context, call.config);
+			}
 		});
 	}
 };
