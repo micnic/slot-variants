@@ -890,12 +890,8 @@ const visitForRedundantSpaces = (
 	}
 
 	if (node.type === 'ObjectExpression') {
-		for (const prop of node.properties) {
-			if (prop.type !== 'Property' || prop.computed) {
-				continue;
-			}
-
-			visitForRedundantSpaces(context, prop.value);
+		for (const value of getProperties(node).values()) {
+			visitForRedundantSpaces(context, value);
 		}
 	}
 };
@@ -986,23 +982,9 @@ const analyzeSharedTokens = (
 
 	slotNames.delete('base');
 
-	const exhaustive = new Set<string>();
-	const defaultVariants = config.get('defaultVariants');
-
-	if (defaultVariants && defaultVariants.type === 'ObjectExpression') {
-		for (const prop of defaultVariants.properties) {
-			if (prop.type !== 'Property') {
-				continue;
-			}
-
-			const key = getKeyName(prop);
-
-			if (key !== null) {
-				exhaustive.add(key);
-			}
-		}
-	}
-
+	const exhaustive = new Set<string>(
+		getProperties(config.get('defaultVariants')).keys()
+	);
 	const requiredVariants = config.get('requiredVariants');
 
 	if (requiredVariants && requiredVariants.type === 'ArrayExpression') {
@@ -1017,18 +999,10 @@ const analyzeSharedTokens = (
 		}
 	}
 
-	for (const variantProp of variants.properties) {
-		if (variantProp.type !== 'Property' || variantProp.computed) {
+	for (const [variantKey, variantValue] of getProperties(variants)) {
+		if (!exhaustive.has(variantKey)) {
 			continue;
 		}
-
-		const variantKey = getKeyName(variantProp);
-
-		if (variantKey === null || !exhaustive.has(variantKey)) {
-			continue;
-		}
-
-		const variantValue = variantProp.value;
 
 		// Boolean shorthand has a single branch — no cross-value comparison.
 		if (
@@ -1228,12 +1202,8 @@ const visitRecordEntriesForEmpty = (
 		return;
 	}
 
-	for (const prop of node.properties) {
-		if (prop.type !== 'Property' || prop.computed) {
-			continue;
-		}
-
-		visitForEmptyClasses(context, prop.value, allowEmptyString);
+	for (const value of getProperties(node).values()) {
+		visitForEmptyClasses(context, value, allowEmptyString);
 	}
 };
 
@@ -1266,13 +1236,7 @@ const checkSvConfigForEmpty = (
 				continue;
 			}
 
-			for (const variantProp of value.properties) {
-				if (variantProp.type !== 'Property' || variantProp.computed) {
-					continue;
-				}
-
-				const variantValue = variantProp.value;
-
+			for (const variantValue of getProperties(value).values()) {
 				if (variantValue.type === 'ObjectExpression') {
 					visitRecordEntriesForEmpty(context, variantValue, false);
 				} else {
@@ -1293,23 +1257,9 @@ const checkSvConfigForEmpty = (
 				continue;
 			}
 
-			for (const element of value.elements) {
-				if (!element || element.type !== 'ObjectExpression') {
-					continue;
-				}
-
-				for (const innerProp of element.properties) {
-					if (innerProp.type !== 'Property' || innerProp.computed) {
-						continue;
-					}
-
-					const innerKey = getKeyName(innerProp);
-
-					if (innerKey === 'class' || innerKey === 'className') {
-						visitForEmptyClasses(context, innerProp.value, false);
-					}
-				}
-			}
+			forEachCompoundClass(value, (cls) => {
+				visitForEmptyClasses(context, cls, false);
+			});
 		}
 	}
 };
