@@ -23,10 +23,7 @@ const CONFIG_KEYS = new Set([
 	'introspection'
 ]);
 
-// Returns the statically-known key name of a Property node, or null when it
-// can't be determined (computed key). For non-computed keys the parser only
-// emits Identifier or Literal(string|number), so those are the two cases we
-// handle.
+// Statically-known key name of a Property node, or null for computed keys.
 const getKeyName = (prop: Property): string | null => {
 	if (prop.computed) {
 		return null;
@@ -160,9 +157,8 @@ type CallMatch = {
 	args: ReadonlyArray<Expression | SpreadElement>;
 };
 
-// Matches a CallExpression against the tracked `sv`/`cn` import names. Returns
-// the sv config (when the trailing argument looks like one) plus the remaining
-// cn-style arguments, or null when the call isn't an sv/cn call we recognize.
+// Matches a CallExpression against tracked sv/cn imports; splits the trailing
+// config argument off when present.
 const matchSvCnCall = (
 	node: CallExpression,
 	svNames: Set<string>,
@@ -231,11 +227,8 @@ type Entry = {
 
 type TokenEntriesBySlot = Map<string, Map<string, Entry[]>>;
 
-// Returns true when the entries in `list` cannot collide at runtime: they all
-// come from different values of a single variant key, so slot-variants will
-// only ever pick one of them on any given render. Any other shape — a base
-// class, a compound, or tokens from two different variant keys — means they
-// *will* co-occur, and the token is a real duplicate.
+// True when the entries can never co-occur: all come from different values of
+// a single variant key, so only one branch fires on any given render.
 const isMutuallyExclusiveVariants = (list: Entry[]): boolean => {
 	const seenValues = new Set<string>();
 	let sharedKey: string | null = null;
@@ -316,10 +309,8 @@ const pushStringLiteralTokens = (
 		return;
 	}
 
-	// Both string literals and template literals (without expressions) use a
-	// single-character opening delimiter (', ", or `), so range[0] + 1 is the
-	// absolute index of the first inner character, and slicing the delimiters
-	// off the raw text yields the token-bearing content.
+	// String literals and untagged templates have a single-char opening
+	// delimiter, so range[0] + 1 is the first inner character.
 	const raw = sourceCode.getText(node);
 	const inner = raw.slice(1, -1);
 	const base = range[0] + 1;
@@ -552,16 +543,12 @@ const analyzeCnCall = (
 	}
 };
 
-// Reports `node` as a dynamic value the static analyzer cannot infer.
 const reportDynamic = (context: Rule.RuleContext, node: Node): void => {
 	context.report({ node, messageId: 'dynamic' });
 };
 
-// Validates that `node` is a string-only class value: a string Literal, a
-// TemplateLiteral with no expressions, or an ArrayExpression of those (with
-// sparse holes allowed). Anything else — identifiers, member access, calls,
-// spreads, non-string literals, templates with expressions, object records —
-// is reported.
+// Reports anything that isn't a static class value (string literal,
+// expressionless template, or array of those).
 const checkClassValueIsStatic = (
 	context: Rule.RuleContext,
 	node: Node
@@ -602,9 +589,8 @@ const checkClassValueIsStatic = (
 	reportDynamic(context, node);
 };
 
-// Validates that `node` is an ObjectExpression where every property has a
-// statically-known key (no spreads, no computed keys) and every value is a
-// static class value. Used for `slots` and for variant value records.
+// Validates an ObjectExpression of statically-known keys mapped to static
+// class values (slots, variant value records).
 const checkClassValueRecord = (context: Rule.RuleContext, node: Node): void => {
 	if (node.type !== 'ObjectExpression') {
 		reportDynamic(context, node);
@@ -626,9 +612,8 @@ const checkClassValueRecord = (context: Rule.RuleContext, node: Node): void => {
 	}
 };
 
-// Validates the `variants` config field — an ObjectExpression where each
-// variant value is either a record of value-keyed class strings or a class
-// value (boolean shorthand).
+// Validates the `variants` field: each value is a class-value record or a
+// class value (boolean shorthand).
 const checkVariants = (context: Rule.RuleContext, node: Node): void => {
 	if (node.type !== 'ObjectExpression') {
 		reportDynamic(context, node);
@@ -656,11 +641,9 @@ const checkVariants = (context: Rule.RuleContext, node: Node): void => {
 	}
 };
 
-// Validates a `compoundVariants` or `compoundSlots` array — every entry must
-// be a static ObjectExpression. Within each entry the `class`/`className`
-// field must be a static class value, and (for compoundSlots) the `slots`
-// field must be a static array of string literals. Other keys are runtime
-// matchers and are not validated by this rule.
+// Validates a compound array: each entry's `class`/`className` is static and
+// (for compoundSlots) `slots` is a literal string array. Other keys are
+// runtime matchers and are not validated.
 const checkCompoundEntries = (
 	context: Rule.RuleContext,
 	node: Node,
@@ -722,12 +705,8 @@ const checkCompoundEntries = (
 	}
 };
 
-// Validates a config ObjectExpression — every known class-bearing field must
-// be statically inferrable. Top-level spreads and computed keys are already
-// filtered out upstream by `isConfigLike`, so this only iterates regular
-// Property entries with statically-known keys. Non-class-bearing keys
-// (defaultVariants, presets, requiredVariants, cacheSize, postProcess,
-// introspection) are not validated here.
+// Validates each class-bearing field in an sv() config. Non-class-bearing
+// keys (defaultVariants, presets, etc.) are not checked here.
 const checkSvConfig = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
@@ -760,8 +739,7 @@ const checkSvConfig = (
 	}
 };
 
-// Validates a list of cn-style arguments — each must be a static class value;
-// SpreadElement arguments are reported.
+// Validates cn-style arguments: each must be a static class value.
 const checkCnArguments = (
 	context: Rule.RuleContext,
 	args: ReadonlyArray<Expression | SpreadElement>
@@ -860,10 +838,8 @@ export const noDynamicClasses: Rule.RuleModule = {
 const hasRedundantSpaces = (value: string): boolean =>
 	!/^(?:[^\s]+(?: [^\s]+)*)?$/.test(value);
 
-// Reports the node when its string value contains redundant whitespace.
-// Highlights the entire literal — the cheapest message the user can act on,
-// and avoids the raw-text/escape-sequence mismatch a span-level report would
-// have to chase.
+// Highlights the entire literal — span-level reports would have to chase
+// raw-text/escape-sequence mismatches.
 const reportRedundantSpaces = (
 	context: Rule.RuleContext,
 	node: Node,
@@ -874,9 +850,8 @@ const reportRedundantSpaces = (
 	}
 };
 
-// Recursively walks a node and reports redundant whitespace in any string or
-// expressionless template literals it contains. Bails silently on dynamic
-// expressions and other non-class values rather than flagging them.
+// Walks a node and reports redundant whitespace in string/template literals;
+// silently ignores dynamic values.
 const visitForRedundantSpaces = (
 	context: Rule.RuleContext,
 	node: Node
@@ -992,11 +967,10 @@ export const noDuplicateClasses: Rule.RuleModule = {
 	}
 };
 
-// Walks an `sv()` config and reports class tokens that appear in every value
-// of an exhaustively-covered variant. "Exhaustively covered" means the
-// variant has a `defaultVariants` entry or is listed in `requiredVariants` —
-// without that, the prop can be `undefined` at call time and no value branch
-// fires, so the token isn't truly always present.
+// Reports tokens shared across every value of an exhaustive variant — one
+// with a `defaultVariants` entry or listed in `requiredVariants`. Without
+// coverage the prop can be undefined at runtime, so the token isn't
+// guaranteed to render.
 const analyzeSharedTokens = (
 	context: Rule.RuleContext,
 	configNode: Node
@@ -1058,8 +1032,7 @@ const analyzeSharedTokens = (
 
 		const variantValue = variantProp.value;
 
-		// Boolean shorthand (and slot-keyed boolean shorthand) has only a
-		// single class branch — there is no cross-value comparison to do.
+		// Boolean shorthand has a single branch — no cross-value comparison.
 		if (
 			variantValue.type !== 'ObjectExpression' ||
 			collectSlotKeyedProperties(variantValue, slotNames) !== null
@@ -1187,8 +1160,7 @@ export const noSharedTokens: Rule.RuleModule = {
 	}
 };
 
-// Returns true when the node represents an empty string — either an empty
-// string Literal or a TemplateLiteral with no expressions and an empty quasi.
+// True when the node is an empty string literal or expressionless template.
 const isEmptyStringNode = (node: Node): boolean => {
 	if (node.type === 'Literal') {
 		return node.value === '';
@@ -1209,12 +1181,9 @@ const isEmptyStringNode = (node: Node): boolean => {
 	return false;
 };
 
-// Walks a class-value position and reports empty strings, empty arrays, and
-// empty objects. Recurses into arrays but not objects — an object's values are
-// either truthy/falsy conditions (cn-style records) or unrelated to class
-// content. The `allowEmptyString` flag suppresses the empty-string report at
-// the top of an `slots[key]` value, where `''` is a meaningful slot
-// declaration.
+// Reports empty class values. `allowEmptyString` suppresses the empty-string
+// report at the top of a `slots[key]` value, where `''` declares a slot with
+// no default.
 const visitForEmptyClasses = (
 	context: Rule.RuleContext,
 	node: Node,
@@ -1250,12 +1219,11 @@ const visitForEmptyClasses = (
 	}
 };
 
-// Iterates the entries of an ObjectExpression value (used for variant value
-// records and slot-keyed boolean shorthand records). Reports an empty record
-// outright; otherwise visits each property's value as a class-value position.
+// Visits each value of a record ObjectExpression; reports the record itself when empty.
 const visitRecordEntriesForEmpty = (
 	context: Rule.RuleContext,
-	node: ObjectExpression
+	node: ObjectExpression,
+	allowEmptyString: boolean
 ): void => {
 	if (node.properties.length === 0) {
 		context.report({ node, messageId: 'emptyObject' });
@@ -1267,7 +1235,7 @@ const visitRecordEntriesForEmpty = (
 			continue;
 		}
 
-		visitForEmptyClasses(context, prop.value, false);
+		visitForEmptyClasses(context, prop.value, allowEmptyString);
 	}
 };
 
@@ -1276,7 +1244,6 @@ const checkSvConfigForEmpty = (
 	configNode: ObjectExpression
 ): void => {
 	for (const [key, value] of getProperties(configNode)) {
-
 		if (key === 'base') {
 			visitForEmptyClasses(context, value, false);
 			continue;
@@ -1287,19 +1254,7 @@ const checkSvConfigForEmpty = (
 				continue;
 			}
 
-			if (value.properties.length === 0) {
-				context.report({ node: value, messageId: 'emptyObject' });
-				continue;
-			}
-
-			for (const slotProp of value.properties) {
-				if (slotProp.type !== 'Property' || slotProp.computed) {
-					continue;
-				}
-
-				visitForEmptyClasses(context, slotProp.value, true);
-			}
-
+			visitRecordEntriesForEmpty(context, value, true);
 			continue;
 		}
 
@@ -1321,7 +1276,7 @@ const checkSvConfigForEmpty = (
 				const variantValue = variantProp.value;
 
 				if (variantValue.type === 'ObjectExpression') {
-					visitRecordEntriesForEmpty(context, variantValue);
+					visitRecordEntriesForEmpty(context, variantValue, false);
 				} else {
 					visitForEmptyClasses(context, variantValue, false);
 				}
