@@ -194,11 +194,6 @@ const matchSvCnCall = (
 
 	if (svNames.has(callee.name)) {
 		const args = node.arguments;
-
-		if (args.length === 0) {
-			return { config: null, args };
-		}
-
 		const last = args[args.length - 1];
 
 		if (isConfigLike(last)) {
@@ -302,7 +297,7 @@ const reportEntryList = (
 	entries: ReadonlyArray<Entry>,
 	messageId: string,
 	data: Record<string, string>
-): void => {
+) => {
 	const { sourceCode } = context;
 
 	for (const entry of entries) {
@@ -324,7 +319,7 @@ const reportDuplicateTokens = (
 	tokenMap: Map<string, Entry[]>,
 	messageId: string,
 	data: Record<string, string>
-): void => {
+) => {
 	for (const [token, list] of tokenMap.entries()) {
 		if (list.length < 2 || isMutuallyExclusiveVariants(list)) {
 			continue;
@@ -340,7 +335,7 @@ const pushStringLiteralTokens = (
 	source: Source,
 	entries: Entry[],
 	sourceCode: SourceCode
-): void => {
+) => {
 	const { range } = node;
 
 	/* c8 ignore next 3 -- ESLint always populates range on parsed nodes */
@@ -369,17 +364,8 @@ const pushStringLiteralTokens = (
 	}
 };
 
-const isStaticStringNode = (node: Node): boolean => {
-	if (node.type === 'Literal') {
-		return typeof node.value === 'string';
-	}
-
-	if (node.type === 'TemplateLiteral') {
-		return node.expressions.length === 0;
-	}
-
-	return false;
-};
+const isStaticStringNode = (node: Node): boolean =>
+	getStaticStringText(node) !== null;
 
 const extractTokens = (
 	node: Node,
@@ -388,7 +374,7 @@ const extractTokens = (
 	slotNames: Set<string>,
 	entries: Entry[],
 	sourceCode: SourceCode
-): void => {
+) => {
 	if (isStaticStringNode(node)) {
 		pushStringLiteralTokens(node, slot, source, entries, sourceCode);
 		return;
@@ -396,13 +382,16 @@ const extractTokens = (
 
 	if (node.type === 'ArrayExpression') {
 		forEachStaticItem(node.elements, (element) => {
-			extractTokens(element, slot, source, slotNames, entries, sourceCode);
+			extractTokens(
+				element,
+				slot,
+				source,
+				slotNames,
+				entries,
+				sourceCode
+			);
 		});
 
-		return;
-	}
-
-	if (node.type !== 'ObjectExpression') {
 		return;
 	}
 
@@ -422,7 +411,7 @@ const extractTokens = (
 const forEachStaticItem = (
 	items: ReadonlyArray<Expression | SpreadElement | null>,
 	visit: (item: Expression) => void
-): void => {
+) => {
 	for (const item of items) {
 		if (!item || item.type === 'SpreadElement') {
 			continue;
@@ -444,20 +433,16 @@ const isBooleanShorthandVariant = (
 const forEachStringLiteralElement = (
 	node: Node,
 	visit: (value: string) => void
-): void => {
+) => {
 	if (node.type !== 'ArrayExpression') {
 		return;
 	}
 
-	for (const element of node.elements) {
-		if (
-			element &&
-			element.type === 'Literal' &&
-			typeof element.value === 'string'
-		) {
+	forEachStaticItem(node.elements, (element) => {
+		if (element.type === 'Literal' && typeof element.value === 'string') {
 			visit(element.value);
 		}
-	}
+	});
 };
 
 const matchCompoundClass = (
@@ -480,7 +465,7 @@ const matchCompoundClass = (
 const forEachCompoundClass = (
 	node: Node | undefined,
 	visit: (cls: Node, compound: Map<string, Node>) => void
-): void => {
+) => {
 	if (!node || node.type !== 'ArrayExpression') {
 		return;
 	}
@@ -500,7 +485,7 @@ const extractVariantTokens = (
 	variantsMap: Map<string, Node>,
 	slotNames: Set<string>,
 	extract: ExtractFn
-): void => {
+) => {
 	for (const [variantKey, variantValue] of variantsMap.entries()) {
 		if (isBooleanShorthandVariant(variantValue, slotNames)) {
 			extract(variantValue, 'base', {
@@ -525,7 +510,7 @@ const extractCompoundTokens = (
 	compoundVariants: Node | undefined,
 	compoundSlots: Node | undefined,
 	extract: ExtractFn
-): void => {
+) => {
 	forEachCompoundClass(compoundVariants, (cls) => {
 		extract(cls, 'base', compoundSource);
 	});
@@ -545,7 +530,7 @@ const analyzeConfig = (
 	context: Rule.RuleContext,
 	configNode: Node,
 	baseArgs: ReadonlyArray<Expression | SpreadElement>
-): void => {
+) => {
 	const { sourceCode } = context;
 	const config = getProperties(configNode);
 	const slotsMap = getProperties(config.get('slots'));
@@ -573,7 +558,11 @@ const analyzeConfig = (
 		extract(base, 'base', baseSource);
 	}
 
-	extractVariantTokens(getProperties(config.get('variants')), slotNames, extract);
+	extractVariantTokens(
+		getProperties(config.get('variants')),
+		slotNames,
+		extract
+	);
 	extractCompoundTokens(
 		config.get('compoundVariants'),
 		config.get('compoundSlots'),
@@ -583,14 +572,16 @@ const analyzeConfig = (
 	const bySlot = indexEntriesBySlotAndToken(entries);
 
 	for (const [slotKey, tokenMap] of bySlot.entries()) {
-		reportDuplicateTokens(context, tokenMap, 'duplicate', { slot: slotKey });
+		reportDuplicateTokens(context, tokenMap, 'duplicate', {
+			slot: slotKey
+		});
 	}
 };
 
 const analyzeCnCall = (
 	context: Rule.RuleContext,
 	args: ReadonlyArray<Expression | SpreadElement>
-): void => {
+) => {
 	const entries: Entry[] = [];
 
 	for (const arg of args) {
@@ -611,7 +602,7 @@ const analyzeCnCall = (
 	}
 };
 
-const reportDynamic = (context: Rule.RuleContext, node: Node): void => {
+const reportDynamic = (context: Rule.RuleContext, node: Node) => {
 	context.report({ node, messageId: 'dynamic' });
 };
 
@@ -621,7 +612,7 @@ const forEachItemReportingSpread = (
 	context: Rule.RuleContext,
 	items: ReadonlyArray<Expression | SpreadElement | null>,
 	visit: (item: Expression) => void
-): void => {
+) => {
 	for (const item of items) {
 		if (!item) {
 			continue;
@@ -636,23 +627,8 @@ const forEachItemReportingSpread = (
 	}
 };
 
-const checkClassValueIsStatic = (
-	context: Rule.RuleContext,
-	node: Node
-): void => {
-	if (node.type === 'Literal') {
-		if (typeof node.value !== 'string') {
-			reportDynamic(context, node);
-		}
-
-		return;
-	}
-
-	if (node.type === 'TemplateLiteral') {
-		if (node.expressions.length > 0) {
-			reportDynamic(context, node);
-		}
-
+const checkClassValueIsStatic = (context: Rule.RuleContext, node: Node) => {
+	if (isStaticStringNode(node)) {
 		return;
 	}
 
@@ -671,7 +647,7 @@ const forEachStaticProperty = (
 	context: Rule.RuleContext,
 	node: ObjectExpression,
 	visit: (prop: Property) => void
-): void => {
+) => {
 	for (const prop of node.properties) {
 		if (prop.type === 'SpreadElement') {
 			reportDynamic(context, prop);
@@ -687,7 +663,7 @@ const forEachStaticProperty = (
 	}
 };
 
-const checkClassValueRecord = (context: Rule.RuleContext, node: Node): void => {
+const checkClassValueRecord = (context: Rule.RuleContext, node: Node) => {
 	if (node.type !== 'ObjectExpression') {
 		reportDynamic(context, node);
 		return;
@@ -698,7 +674,7 @@ const checkClassValueRecord = (context: Rule.RuleContext, node: Node): void => {
 	});
 };
 
-const checkVariants = (context: Rule.RuleContext, node: Node): void => {
+const checkVariants = (context: Rule.RuleContext, node: Node) => {
 	if (node.type !== 'ObjectExpression') {
 		reportDynamic(context, node);
 		return;
@@ -715,31 +691,24 @@ const checkVariants = (context: Rule.RuleContext, node: Node): void => {
 	});
 };
 
-const checkCompoundSlotsArray = (
-	context: Rule.RuleContext,
-	value: Node
-): void => {
+const checkCompoundSlotsArray = (context: Rule.RuleContext, value: Node) => {
 	if (value.type !== 'ArrayExpression') {
 		reportDynamic(context, value);
 		return;
 	}
 
-	for (const slotEl of value.elements) {
-		if (!slotEl) {
-			continue;
+	forEachItemReportingSpread(context, value.elements, (element) => {
+		if (element.type !== 'Literal' || typeof element.value !== 'string') {
+			reportDynamic(context, element);
 		}
-
-		if (slotEl.type !== 'Literal' || typeof slotEl.value !== 'string') {
-			reportDynamic(context, slotEl);
-		}
-	}
+	});
 };
 
 const checkCompoundEntryProperty = (
 	context: Rule.RuleContext,
 	prop: Property,
 	hasSlotsKey: boolean
-): void => {
+) => {
 	const key = getKeyName(prop);
 
 	if (key === 'class' || key === 'className') {
@@ -754,33 +723,29 @@ const checkCompoundEntries = (
 	context: Rule.RuleContext,
 	node: Node,
 	hasSlotsKey: boolean
-): void => {
+) => {
 	if (node.type !== 'ArrayExpression') {
 		reportDynamic(context, node);
 		return;
 	}
 
-	for (const element of node.elements) {
-		if (!element) {
-			continue;
-		}
-
+	forEachItemReportingSpread(context, node.elements, (element) => {
 		if (element.type !== 'ObjectExpression') {
 			reportDynamic(context, element);
-			continue;
+			return;
 		}
 
 		forEachStaticProperty(context, element, (prop) => {
 			checkCompoundEntryProperty(context, prop, hasSlotsKey);
 		});
-	}
+	});
 };
 
 // Non-class-bearing keys (defaultVariants, presets, etc.) are not checked.
 const checkSvConfig = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
-): void => {
+) => {
 	for (const prop of configNode.properties) {
 		/* c8 ignore next 3 -- isConfigLike filters out spreads upstream */
 		if (prop.type !== 'Property') {
@@ -812,7 +777,7 @@ const checkSvConfig = (
 const checkCnArguments = (
 	context: Rule.RuleContext,
 	args: ReadonlyArray<Expression | SpreadElement>
-): void => {
+) => {
 	forEachItemReportingSpread(context, args, (arg) => {
 		checkClassValueIsStatic(context, arg);
 	});
@@ -822,7 +787,7 @@ const createImportsTracker = () => {
 	const cnNames = new Set<string>();
 	const svNames = new Set<string>();
 
-	const importsTracker = (node: ImportDeclaration): void => {
+	const importsTracker = (node: ImportDeclaration) => {
 		if (node.source.value !== 'slot-variants') {
 			return;
 		}
@@ -908,7 +873,7 @@ const reportRedundantSpaces = (
 	context: Rule.RuleContext,
 	node: Node,
 	value: string
-): void => {
+) => {
 	if (hasRedundantSpaces(value)) {
 		context.report({ node, messageId: 'redundant' });
 	}
@@ -934,17 +899,11 @@ const getStaticStringText = (node: Node): string | null => {
 	return null;
 };
 
-const visitForRedundantSpaces = (
-	context: Rule.RuleContext,
-	node: Node
-): void => {
-	if (node.type === 'Literal' || node.type === 'TemplateLiteral') {
-		const text = getStaticStringText(node);
+const visitForRedundantSpaces = (context: Rule.RuleContext, node: Node) => {
+	const text = getStaticStringText(node);
 
-		if (text !== null) {
-			reportRedundantSpaces(context, node, text);
-		}
-
+	if (text !== null) {
+		reportRedundantSpaces(context, node, text);
 		return;
 	}
 
@@ -1030,7 +989,7 @@ export const noDuplicateClasses: Rule.RuleModule = {
 const intersectSlotTokens = (
 	tokens: Set<string>,
 	tokenMap: Map<string, Entry[]>
-): void => {
+) => {
 	for (const token of tokens) {
 		if (!tokenMap.has(token)) {
 			tokens.delete(token);
@@ -1041,23 +1000,20 @@ const intersectSlotTokens = (
 const intersectSharedTokensStep = (
 	sharedTokens: Map<string, Set<string>>,
 	valueMap: TokenEntriesBySlot
-): void => {
-	const emptySlots: string[] = [];
-
+) => {
 	for (const [slot, tokens] of sharedTokens) {
 		const tokenMap = valueMap.get(slot);
 
-		if (tokenMap) {
-			intersectSlotTokens(tokens, tokenMap);
+		if (!tokenMap) {
+			sharedTokens.delete(slot);
+			continue;
 		}
 
-		if (!tokenMap || tokens.size === 0) {
-			emptySlots.push(slot);
-		}
-	}
+		intersectSlotTokens(tokens, tokenMap);
 
-	for (const slot of emptySlots) {
-		sharedTokens.delete(slot);
+		if (tokens.size === 0) {
+			sharedTokens.delete(slot);
+		}
 	}
 };
 
@@ -1092,7 +1048,7 @@ const reportSharedTokensBySlot = (
 	sharedTokens: Map<string, Set<string>>,
 	tokensByValue: TokenEntriesBySlot[],
 	variantKey: string
-): void => {
+) => {
 	for (const [slot, tokens] of sharedTokens) {
 		for (const token of tokens) {
 			for (const valueMap of tokensByValue) {
@@ -1135,7 +1091,7 @@ const analyzeVariantSharedTokens = (
 	variantKey: string,
 	variantValue: Node,
 	slotNames: Set<string>
-): void => {
+) => {
 	// Boolean shorthand has a single branch — no cross-value comparison.
 	if (isBooleanShorthandVariant(variantValue, slotNames)) {
 		return;
@@ -1172,10 +1128,7 @@ const analyzeVariantSharedTokens = (
 	reportSharedTokensBySlot(context, sharedTokens, tokensByValue, variantKey);
 };
 
-const analyzeSharedTokens = (
-	context: Rule.RuleContext,
-	configNode: Node
-): void => {
+const analyzeSharedTokens = (context: Rule.RuleContext, configNode: Node) => {
 	const config = getProperties(configNode);
 	const variants = config.get('variants');
 
@@ -1191,7 +1144,12 @@ const analyzeSharedTokens = (
 
 	for (const [variantKey, variantValue] of getProperties(variants)) {
 		if (exhaustive.has(variantKey)) {
-			analyzeVariantSharedTokens(context, variantKey, variantValue, slotNames);
+			analyzeVariantSharedTokens(
+				context,
+				variantKey,
+				variantValue,
+				slotNames
+			);
 		}
 	}
 };
@@ -1226,32 +1184,15 @@ export const noSharedTokens: Rule.RuleModule = {
 	}
 };
 
-const isEmptyStringNode = (node: Node): boolean => {
-	if (node.type === 'Literal') {
-		return node.value === '';
-	}
-
-	if (node.type === 'TemplateLiteral' && node.expressions.length === 0) {
-		const [quasi] = node.quasis;
-
-		/* c8 ignore next 3 -- a TemplateLiteral always has at least one quasi */
-		if (!quasi) {
-			return false;
-		}
-
-		/* c8 ignore next -- cooked is always defined on untagged templates */
-		return (quasi.value.cooked ?? quasi.value.raw) === '';
-	}
-
-	return false;
-};
+const isEmptyStringNode = (node: Node): boolean =>
+	getStaticStringText(node) === '';
 
 // `allowEmptyString` is set at the top of a `slots[key]` value, where `''`
 // is a meaningful "slot with no default classes" declaration.
 const visitArrayForEmpty = (
 	context: Rule.RuleContext,
 	node: ArrayExpression
-): void => {
+) => {
 	if (node.elements.length === 0) {
 		context.report({ node, messageId: 'emptyArray' });
 		return;
@@ -1262,23 +1203,13 @@ const visitArrayForEmpty = (
 	});
 };
 
-const visitStringLiteralForEmpty = (
-	context: Rule.RuleContext,
-	node: Node,
-	allowEmptyString: boolean
-): void => {
-	if (!allowEmptyString && isEmptyStringNode(node)) {
-		context.report({ node, messageId: 'emptyString' });
-	}
-};
-
 const visitForEmptyClasses = (
 	context: Rule.RuleContext,
 	node: Node,
 	allowEmptyString: boolean
-): void => {
-	if (node.type === 'Literal' || node.type === 'TemplateLiteral') {
-		visitStringLiteralForEmpty(context, node, allowEmptyString);
+) => {
+	if (!allowEmptyString && isEmptyStringNode(node)) {
+		context.report({ node, messageId: 'emptyString' });
 		return;
 	}
 
@@ -1296,7 +1227,7 @@ const visitRecordEntriesForEmpty = (
 	context: Rule.RuleContext,
 	node: ObjectExpression,
 	allowEmptyString: boolean
-): void => {
+) => {
 	if (node.properties.length === 0) {
 		context.report({ node, messageId: 'emptyObject' });
 		return;
@@ -1307,10 +1238,7 @@ const visitRecordEntriesForEmpty = (
 	}
 };
 
-const checkVariantsForEmpty = (
-	context: Rule.RuleContext,
-	value: Node
-): void => {
+const checkVariantsForEmpty = (context: Rule.RuleContext, value: Node) => {
 	if (value.type !== 'ObjectExpression') {
 		return;
 	}
@@ -1329,10 +1257,7 @@ const checkVariantsForEmpty = (
 	}
 };
 
-const checkCompoundsForEmpty = (
-	context: Rule.RuleContext,
-	value: Node
-): void => {
+const checkCompoundsForEmpty = (context: Rule.RuleContext, value: Node) => {
 	if (value.type !== 'ArrayExpression') {
 		return;
 	}
@@ -1347,10 +1272,7 @@ const checkCompoundsForEmpty = (
 	});
 };
 
-const checkSlotsForEmpty = (
-	context: Rule.RuleContext,
-	value: Node
-): void => {
+const checkSlotsForEmpty = (context: Rule.RuleContext, value: Node) => {
 	if (value.type === 'ObjectExpression') {
 		visitRecordEntriesForEmpty(context, value, true);
 	}
@@ -1359,7 +1281,7 @@ const checkSlotsForEmpty = (
 const checkSvConfigForEmpty = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
-): void => {
+) => {
 	for (const [key, value] of getProperties(configNode)) {
 		switch (key) {
 			case 'base':
