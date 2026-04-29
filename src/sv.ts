@@ -347,6 +347,40 @@ const looseEquals = (first: unknown, second: unknown) =>
 /**
  * Check if a compound variant matches the given props
  */
+type CacheValue = string | Record<string, string>;
+
+const createCacheReturn = (
+	cache: Map<string, CacheValue>,
+	cacheSize: number
+) => <T extends CacheValue>(cacheKey: string | null, value: T): T => {
+	if (!cacheKey) {
+		return value;
+	}
+
+	if (cache.size >= cacheSize) {
+		const firstKey = cache.keys().next().value;
+
+		if (firstKey) {
+			cache.delete(firstKey);
+		}
+	}
+
+	cache.set(cacheKey, value);
+
+	return value;
+};
+
+const compoundMatchValue = (
+	compoundValue: string | number | boolean | (string | number | boolean)[] | undefined,
+	propValue: unknown
+): boolean => {
+	if (isArray(compoundValue)) {
+		return compoundValue.some((value) => looseEquals(value, propValue));
+	}
+
+	return looseEquals(compoundValue, propValue);
+};
+
 const matchesCompound = (
 	props: Record<
 		string,
@@ -358,8 +392,6 @@ const matchesCompound = (
 	>
 ): boolean => {
 	for (const compoundKey of keys(compound)) {
-
-		// Skip class/className/slots keys
 		if (
 			compoundKey === 'class' ||
 			compoundKey === 'className' ||
@@ -368,14 +400,7 @@ const matchesCompound = (
 			continue;
 		}
 
-		const compoundValue = compound[compoundKey];
-		const propValue = props[compoundKey];
-
-		if (isArray(compoundValue)) {
-			if (!compoundValue.some((value) => looseEquals(value, propValue))) {
-				return false;
-			}
-		} else if (!looseEquals(compoundValue, propValue)) {
+		if (!compoundMatchValue(compound[compoundKey], props[compoundKey])) {
 			return false;
 		}
 	}
@@ -493,32 +518,8 @@ export function sv<
 		postProcess
 	} = config;
 
-	const cache = new Map<string, string | Record<string, string>>();
-
-	const cacheReturn = <T extends string | Record<string, string>>(
-		cacheKey: string | null,
-		value: T
-	): T => {
-
-		// Only cache if cacheKey is not null
-		if (cacheKey) {
-
-			// If cache size limit is reached, delete the oldest entry
-			if (cache.size >= cacheSize) {
-				const firstKey = cache.keys().next().value;
-
-				// Delete the oldest entry
-				if (firstKey) {
-					cache.delete(firstKey);
-				}
-			}
-
-			// Cache the computed value
-			cache.set(cacheKey, value);
-		}
-
-		return value;
-	};
+	const cache = new Map<string, CacheValue>();
+	const cacheReturn = createCacheReturn(cache, cacheSize);
 
 	const { base: baseSlot, ...otherSlots } = slots;
 
@@ -526,53 +527,52 @@ export function sv<
 	const baseClassValue = cn(...baseArgs, configBase, baseSlot);
 	const slotKeys = new Set(keys(otherSlots));
 
+	const normalizeVariantValue = (
+		variantValue: unknown
+	): Record<string, NormalizedVariantValue> => {
+		if (
+			!variantValue ||
+			typeof variantValue !== 'object' ||
+			isArray(variantValue)
+		) {
+			// It's a boolean shorthand (string, array, etc.)
+			return { false: '', true: variantValue as NormalizedVariantValue };
+		}
+
+		const valueKeys = keys(variantValue as Record<string, unknown>);
+		const isSlotObjectValue =
+			slotKeys.size > 0 &&
+			valueKeys.length > 0 &&
+			valueKeys.every((k) => k === 'base' || slotKeys.has(k));
+
+		if (isSlotObjectValue) {
+			// It's a boolean shorthand with slot object value
+			return {
+				false: '',
+				true: variantValue as Partial<Record<string, ConfigClassValue>>
+			};
+		}
+
+		if (valueKeys.every((k) => k === 'true' || k === 'false')) {
+			// It's a boolean variant record, ensure both keys exist
+			return {
+				true: '',
+				false: '',
+				...(variantValue as Record<string, NormalizedVariantValue>)
+			};
+		}
+
+		// It's a regular variant record
+		return variantValue as Record<string, NormalizedVariantValue>;
+	};
+
 	const normalizedVariants: Record<
 		string,
 		Record<string, NormalizedVariantValue>
 	> = {};
 
-	// Normalize variants to ensure consistent structure for processing
 	for (const [variantKey, variantValue] of entries(variants)) {
-		if (
-			variantValue &&
-			typeof variantValue === 'object' &&
-			!isArray(variantValue)
-		) {
-
-			// Distinguish slot-object (only slot keys) from variant record
-			const valueKeys = keys(variantValue);
-			const isSlotObjectValue =
-				slotKeys.size > 0 &&
-				valueKeys.length > 0 &&
-				valueKeys.every((k) => k === 'base' || slotKeys.has(k));
-
-			if (isSlotObjectValue) {
-
-				// It's a boolean shorthand with slot object value
-				normalizedVariants[variantKey] = {
-					false: '',
-					true: variantValue as Partial<
-						Record<string, ConfigClassValue>
-					>
-				};
-			} else if (valueKeys.every((k) => k === 'true' || k === 'false')) {
-
-				// It's a boolean variant record, ensure both keys exist
-				normalizedVariants[variantKey] = {
-					true: '',
-					false: '',
-					...variantValue
-				};
-			} else {
-
-				// It's a regular variant record
-				normalizedVariants[variantKey] = variantValue;
-			}
-		} else {
-
-			// It's a boolean shorthand (string, array, etc.)
-			normalizedVariants[variantKey] = { false: '', true: variantValue };
-		}
+		normalizedVariants[variantKey] = normalizeVariantValue(variantValue);
 	}
 
 	const variantEntries = entries(normalizedVariants);
@@ -582,21 +582,23 @@ export function sv<
 	const applyPostProcess = (className: string) =>
 		postProcess?.(className) ?? className;
 
-	const isSlotObject = (
-		value: ResolvedVariantValue<S>
-	): value is Partial<Record<SlotKey<S>, ClassValue>> => {
-		if (!value || typeof value !== 'object' || isArray(value)) {
-			return false;
-		}
-
+	const hasOnlySlotKeys = (value: object): boolean => {
 		for (const key of keys(value)) {
-			if (!(key === 'base' || slotKeys.has(key))) {
+			if (key !== 'base' && !slotKeys.has(key)) {
 				return false;
 			}
 		}
 
 		return true;
 	};
+
+	const isSlotObject = (
+		value: ResolvedVariantValue<S>
+	): value is Partial<Record<SlotKey<S>, ClassValue>> =>
+		!!value &&
+		typeof value === 'object' &&
+		!isArray(value) &&
+		hasOnlySlotKeys(value);
 
 	const applyClasses = (
 		slotClasses: { base: ClassValue[] } & Record<string, ClassValue[]>,
@@ -631,24 +633,124 @@ export function sv<
 
 	const presetKeys = new Set(keys(presets));
 
+	const resolveVariantValue = (
+		variantKey: string,
+		props: Props<S, V, RV, P>,
+		presetValues: Record<string, ResolvedVariantValue<S>> | undefined
+	): ResolvedVariantValue<S> | undefined => {
+		const propValue = (
+			props as Record<string, ResolvedVariantValue<S> | undefined>
+		)[variantKey];
+
+		if (propValue !== undefined) {
+			return propValue;
+		}
+
+		const presetValue = presetValues?.[variantKey];
+
+		if (presetValue !== undefined) {
+			return presetValue;
+		}
+
+		if (!defaultVariantKeys.has(variantKey)) {
+			return undefined;
+		}
+
+		const defaultValue = (
+			defaultVariants as Record<
+				string,
+				| ResolvedVariantValue<S>
+				| ((
+						props: Props<S, V, RV, P>
+				  ) => ResolvedVariantValue<S> | undefined)
+			>
+		)[variantKey];
+
+		if (typeof defaultValue === 'function') {
+			return defaultValue(props);
+		}
+
+		return defaultValue;
+	};
+
+	const resolvePresetValues = (
+		presetName: string | undefined
+	): Record<string, ResolvedVariantValue<S>> | undefined => {
+		if (presetName === undefined) {
+			return undefined;
+		}
+
+		if (!presetKeys.has(presetName)) {
+			throw new Error(`Invalid preset "${presetName}"`);
+		}
+
+		return (
+			presets as Record<string, Record<string, ResolvedVariantValue<S>>>
+		)[presetName];
+	};
+
+	const applyCompoundSlotsClasses = (
+		slotClasses: { base: ClassValue[] } & Record<string, ClassValue[]>,
+		resolvedProps: Record<string, ResolvedVariantValue<S>>
+	) => {
+		for (const compound of compoundSlots) {
+			if (!matchesCompound(resolvedProps, compound)) {
+				continue;
+			}
+
+			const compoundClass = compound.class ?? compound.className;
+
+			for (const slotName of compound.slots) {
+				slotClasses[slotName]?.push(compoundClass as ClassValue);
+			}
+		}
+	};
+
+	const applyCompoundClasses = (
+		slotClasses: { base: ClassValue[] } & Record<string, ClassValue[]>,
+		resolvedProps: Record<string, ResolvedVariantValue<S>>
+	) => {
+		for (const compound of compoundVariants) {
+			if (matchesCompound(resolvedProps, compound)) {
+				applyClasses(slotClasses, compound.class ?? compound.className);
+			}
+		}
+
+		applyCompoundSlotsClasses(slotClasses, resolvedProps);
+	};
+
+	const applyResolvedVariantClasses = (
+		slotClasses: { base: ClassValue[] } & Record<string, ClassValue[]>,
+		resolvedProps: Record<string, ResolvedVariantValue<S>>
+	) => {
+		for (const [variantKey, variantValues] of variantEntries) {
+			const variantProp = resolvedProps[variantKey];
+
+			if (variantProp === undefined) {
+				continue;
+			}
+
+			const variantClasses = variantValues[String(variantProp)];
+
+			if (variantClasses === undefined) {
+				throw new Error(
+					`Invalid value "${variantProp}" for variant "${variantKey}"`
+				);
+			}
+
+			if (variantClasses !== '') {
+				applyClasses(slotClasses, variantClasses);
+			}
+		}
+	};
+
 	const variantFn = (
 		props: Props<S, V, RV, P> = {} as Props<S, V, RV, P>
 	) => {
 		const classProp = props.class ?? props.className;
-		const presetName = (props as { preset?: string }).preset;
-
-		// Resolve preset values
-		let presetValues: Record<string, ResolvedVariantValue<S>> | undefined;
-
-		if (presetName !== undefined) {
-			if (!presetKeys.has(presetName)) {
-				throw new Error(`Invalid preset "${presetName}"`);
-			}
-
-			presetValues = (
-				presets as Record<string, Record<string, ResolvedVariantValue<S>>>
-			)[presetName];
-		}
+		const presetValues = resolvePresetValues(
+			(props as { preset?: string }).preset
+		);
 
 		const resolvedProps: Record<string, ResolvedVariantValue<S>> = {};
 
@@ -656,47 +758,16 @@ export function sv<
 
 		// Resolve variant props: explicit prop > preset > default
 		for (const variantKey of variantKeys) {
+			const value = resolveVariantValue(variantKey, props, presetValues);
 
-			const propValue = (
-				props as Record<string, ResolvedVariantValue<S> | undefined>
-			)[variantKey];
+			if (value === undefined) {
+				continue;
+			}
 
-			if (propValue === undefined) {
-				const presetValue = presetValues?.[variantKey];
+			resolvedProps[variantKey] = value;
 
-				if (presetValue !== undefined) {
-					resolvedProps[variantKey] = presetValue;
-
-					if (!classProp) {
-						cacheKey += `${presetValue};`;
-					}
-				} else if (defaultVariantKeys.has(variantKey)) {
-					const defaultValue = (
-						defaultVariants as Record<
-							string,
-							| ResolvedVariantValue<S>
-							| ((
-									props: Props<S, V, RV, P>
-							  ) => ResolvedVariantValue<S> | undefined)
-						>
-					)[variantKey];
-
-					if (typeof defaultValue === 'function') {
-						resolvedProps[variantKey] = defaultValue(props);
-					} else {
-						resolvedProps[variantKey] = defaultValue;
-					}
-
-					if (!classProp) {
-						cacheKey += `${resolvedProps[variantKey]};`;
-					}
-				}
-			} else {
-				resolvedProps[variantKey] = propValue;
-
-				if (!classProp) {
-					cacheKey += `${propValue};`;
-				}
+			if (!classProp) {
+				cacheKey += `${value};`;
 			}
 		}
 
@@ -730,49 +801,8 @@ export function sv<
 			slotClasses[key] = [otherSlots[key]];
 		}
 
-		// Apply variant classes
-		for (const [variantKey, variantValues] of variantEntries) {
-
-			const variantProp = resolvedProps[variantKey];
-
-			// Skip if variant prop is not defined (undefined or not provided)
-			if (variantProp === undefined) {
-				continue;
-			}
-
-			const variantClasses = variantValues[String(variantProp)];
-
-			// If variant value is invalid, throw an error
-			if (variantClasses === undefined) {
-				throw new Error(
-					`Invalid value "${variantProp}" for variant "${variantKey}"`
-				);
-			}
-
-			// Apply variant classes if they exist
-			if (variantClasses !== '') {
-				applyClasses(slotClasses, variantClasses);
-			}
-		}
-
-		// Apply compound variant classes
-		for (const compound of compoundVariants) {
-			if (matchesCompound(resolvedProps, compound)) {
-				applyClasses(slotClasses, compound.class ?? compound.className);
-			}
-		}
-
-		// Apply compound slot classes
-		for (const compound of compoundSlots) {
-			if (matchesCompound(resolvedProps, compound)) {
-
-				const compoundClass = compound.class ?? compound.className;
-
-				for (const slotName of compound.slots) {
-					slotClasses[slotName]?.push(compoundClass as ClassValue);
-				}
-			}
-		}
+		applyResolvedVariantClasses(slotClasses, resolvedProps);
+		applyCompoundClasses(slotClasses, resolvedProps);
 
 		// Handle class/className prop, detect slot-specific object
 		if (classProp) {

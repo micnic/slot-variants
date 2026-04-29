@@ -1,5 +1,6 @@
 import type { Rule, SourceCode } from 'eslint';
 import type {
+	ArrayExpression,
 	CallExpression,
 	Expression,
 	ImportDeclaration,
@@ -61,17 +62,7 @@ const strictPropertiesCache = new WeakMap<
 	Map<string, Node> | null
 >();
 
-const getProperties = (obj: Node | undefined): Map<string, Node> => {
-	if (!obj || obj.type !== 'ObjectExpression') {
-		return new Map<string, Node>();
-	}
-
-	const cached = propertiesCache.get(obj);
-
-	if (cached) {
-		return cached;
-	}
-
+const buildPropertiesMap = (obj: ObjectExpression): Map<string, Node> => {
 	const map = new Map<string, Node>();
 
 	for (const prop of obj.properties) {
@@ -86,7 +77,45 @@ const getProperties = (obj: Node | undefined): Map<string, Node> => {
 		}
 	}
 
+	return map;
+};
+
+const getProperties = (obj: Node | undefined): Map<string, Node> => {
+	if (!obj || obj.type !== 'ObjectExpression') {
+		return new Map<string, Node>();
+	}
+
+	const cached = propertiesCache.get(obj);
+
+	if (cached) {
+		return cached;
+	}
+
+	const map = buildPropertiesMap(obj);
+
 	propertiesCache.set(obj, map);
+
+	return map;
+};
+
+const buildStrictPropertiesMap = (
+	obj: ObjectExpression
+): Map<string, Node> | null => {
+	const map = new Map<string, Node>();
+
+	for (const prop of obj.properties) {
+		if (prop.type !== 'Property') {
+			return null;
+		}
+
+		const key = getKeyName(prop);
+
+		if (key === null) {
+			return null;
+		}
+
+		map.set(key, prop.value);
+	}
 
 	return map;
 };
@@ -102,44 +131,20 @@ const getStrictProperties = (
 		return strictPropertiesCache.get(obj) ?? null;
 	}
 
-	const map = new Map<string, Node>();
-
-	for (const prop of obj.properties) {
-		if (prop.type !== 'Property') {
-			strictPropertiesCache.set(obj, null);
-			return null;
-		}
-
-		const key = getKeyName(prop);
-
-		if (key === null) {
-			strictPropertiesCache.set(obj, null);
-			return null;
-		}
-
-		map.set(key, prop.value);
-	}
+	const map = buildStrictPropertiesMap(obj);
 
 	strictPropertiesCache.set(obj, map);
 
 	return map;
 };
 
-const collectSlotKeyedProperties = (
-	node: Node,
+const buildSlotKeyedMap = (
+	obj: ObjectExpression,
 	slotNames: Set<string>
 ): Map<string, Node> | null => {
-	if (
-		node.type !== 'ObjectExpression' ||
-		node.properties.length === 0 ||
-		slotNames.size === 0
-	) {
-		return null;
-	}
-
 	const result = new Map<string, Node>();
 
-	for (const prop of node.properties) {
+	for (const prop of obj.properties) {
 		if (prop.type !== 'Property') {
 			return null;
 		}
@@ -154,6 +159,21 @@ const collectSlotKeyedProperties = (
 	}
 
 	return result;
+};
+
+const collectSlotKeyedProperties = (
+	node: Node,
+	slotNames: Set<string>
+): Map<string, Node> | null => {
+	if (
+		node.type !== 'ObjectExpression' ||
+		node.properties.length === 0 ||
+		slotNames.size === 0
+	) {
+		return null;
+	}
+
+	return buildSlotKeyedMap(node, slotNames);
 };
 
 type CallMatch = {
@@ -349,6 +369,18 @@ const pushStringLiteralTokens = (
 	}
 };
 
+const isStaticStringNode = (node: Node): boolean => {
+	if (node.type === 'Literal') {
+		return typeof node.value === 'string';
+	}
+
+	if (node.type === 'TemplateLiteral') {
+		return node.expressions.length === 0;
+	}
+
+	return false;
+};
+
 const extractTokens = (
 	node: Node,
 	slot: string,
@@ -357,32 +389,14 @@ const extractTokens = (
 	entries: Entry[],
 	sourceCode: SourceCode
 ): void => {
-	if (node.type === 'Literal') {
-		if (typeof node.value === 'string') {
-			pushStringLiteralTokens(node, slot, source, entries, sourceCode);
-		}
-
-		return;
-	}
-
-	if (node.type === 'TemplateLiteral') {
-		if (node.expressions.length === 0) {
-			pushStringLiteralTokens(node, slot, source, entries, sourceCode);
-		}
-
+	if (isStaticStringNode(node)) {
+		pushStringLiteralTokens(node, slot, source, entries, sourceCode);
 		return;
 	}
 
 	if (node.type === 'ArrayExpression') {
 		forEachStaticItem(node.elements, (element) => {
-			extractTokens(
-				element,
-				slot,
-				source,
-				slotNames,
-				entries,
-				sourceCode
-			);
+			extractTokens(element, slot, source, slotNames, entries, sourceCode);
 		});
 
 		return;
@@ -446,6 +460,23 @@ const forEachStringLiteralElement = (
 	}
 };
 
+const matchCompoundClass = (
+	element: Expression | SpreadElement | null
+): { cls: Node; compound: Map<string, Node> } | null => {
+	if (!element || element.type !== 'ObjectExpression') {
+		return null;
+	}
+
+	const compound = getProperties(element);
+	const cls = compound.get('class') ?? compound.get('className');
+
+	if (!cls) {
+		return null;
+	}
+
+	return { cls, compound };
+};
+
 const forEachCompoundClass = (
 	node: Node | undefined,
 	visit: (cls: Node, compound: Map<string, Node>) => void
@@ -455,57 +486,21 @@ const forEachCompoundClass = (
 	}
 
 	for (const element of node.elements) {
-		if (!element || element.type !== 'ObjectExpression') {
-			continue;
-		}
+		const match = matchCompoundClass(element);
 
-		const compound = getProperties(element);
-		const cls = compound.get('class') ?? compound.get('className');
-
-		if (cls) {
-			visit(cls, compound);
+		if (match) {
+			visit(match.cls, match.compound);
 		}
 	}
 };
 
-const analyzeConfig = (
-	context: Rule.RuleContext,
-	configNode: Node,
-	baseArgs: ReadonlyArray<Expression | SpreadElement>
+type ExtractFn = (node: Node, slot: string, source: Source) => void;
+
+const extractVariantTokens = (
+	variantsMap: Map<string, Node>,
+	slotNames: Set<string>,
+	extract: ExtractFn
 ): void => {
-	const { sourceCode } = context;
-	const config = getProperties(configNode);
-	const base = config.get('base');
-	const variants = config.get('variants');
-	const slots = config.get('slots');
-	const compoundVariants = config.get('compoundVariants');
-	const compoundSlots = config.get('compoundSlots');
-
-	const slotsMap = getProperties(slots);
-	const slotNames = new Set(slotsMap.keys());
-
-	// 'base' is a reserved key meaning "default slot", not a slot name.
-	slotNames.delete('base');
-
-	const entries: Entry[] = [];
-	const extract = (node: Node, slot: string, source: Source): void => {
-		extractTokens(node, slot, source, slotNames, entries, sourceCode);
-	};
-
-	for (const [slotKey, slotValue] of slotsMap.entries()) {
-		extract(slotValue, slotKey, baseSource);
-	}
-
-	for (const arg of baseArgs) {
-		extract(arg, 'base', baseSource);
-	}
-
-	if (base) {
-		extract(base, 'base', baseSource);
-	}
-
-	const variantsMap = getProperties(variants);
-
 	for (const [variantKey, variantValue] of variantsMap.entries()) {
 		if (isBooleanShorthandVariant(variantValue, slotNames)) {
 			extract(variantValue, 'base', {
@@ -524,7 +519,13 @@ const analyzeConfig = (
 			});
 		}
 	}
+};
 
+const extractCompoundTokens = (
+	compoundVariants: Node | undefined,
+	compoundSlots: Node | undefined,
+	extract: ExtractFn
+): void => {
 	forEachCompoundClass(compoundVariants, (cls) => {
 		extract(cls, 'base', compoundSource);
 	});
@@ -538,6 +539,46 @@ const analyzeConfig = (
 			});
 		}
 	});
+};
+
+const analyzeConfig = (
+	context: Rule.RuleContext,
+	configNode: Node,
+	baseArgs: ReadonlyArray<Expression | SpreadElement>
+): void => {
+	const { sourceCode } = context;
+	const config = getProperties(configNode);
+	const slotsMap = getProperties(config.get('slots'));
+	const slotNames = new Set(slotsMap.keys());
+
+	// 'base' is a reserved key meaning "default slot", not a slot name.
+	slotNames.delete('base');
+
+	const entries: Entry[] = [];
+	const extract: ExtractFn = (node, slot, source) => {
+		extractTokens(node, slot, source, slotNames, entries, sourceCode);
+	};
+
+	for (const [slotKey, slotValue] of slotsMap.entries()) {
+		extract(slotValue, slotKey, baseSource);
+	}
+
+	for (const arg of baseArgs) {
+		extract(arg, 'base', baseSource);
+	}
+
+	const base = config.get('base');
+
+	if (base) {
+		extract(base, 'base', baseSource);
+	}
+
+	extractVariantTokens(getProperties(config.get('variants')), slotNames, extract);
+	extractCompoundTokens(
+		config.get('compoundVariants'),
+		config.get('compoundSlots'),
+		extract
+	);
 
 	const bySlot = indexEntriesBySlotAndToken(entries);
 
@@ -674,6 +715,40 @@ const checkVariants = (context: Rule.RuleContext, node: Node): void => {
 	});
 };
 
+const checkCompoundSlotsArray = (
+	context: Rule.RuleContext,
+	value: Node
+): void => {
+	if (value.type !== 'ArrayExpression') {
+		reportDynamic(context, value);
+		return;
+	}
+
+	for (const slotEl of value.elements) {
+		if (!slotEl) {
+			continue;
+		}
+
+		if (slotEl.type !== 'Literal' || typeof slotEl.value !== 'string') {
+			reportDynamic(context, slotEl);
+		}
+	}
+};
+
+const checkCompoundEntryProperty = (
+	context: Rule.RuleContext,
+	prop: Property,
+	hasSlotsKey: boolean
+): void => {
+	const key = getKeyName(prop);
+
+	if (key === 'class' || key === 'className') {
+		checkClassValueIsStatic(context, prop.value);
+	} else if (hasSlotsKey && key === 'slots') {
+		checkCompoundSlotsArray(context, prop.value);
+	}
+};
+
 // Other keys on compound entries are runtime matchers and are not validated.
 const checkCompoundEntries = (
 	context: Rule.RuleContext,
@@ -696,32 +771,7 @@ const checkCompoundEntries = (
 		}
 
 		forEachStaticProperty(context, element, (prop) => {
-			const key = getKeyName(prop);
-
-			if (key === 'class' || key === 'className') {
-				checkClassValueIsStatic(context, prop.value);
-				return;
-			}
-
-			if (hasSlotsKey && key === 'slots') {
-				if (prop.value.type !== 'ArrayExpression') {
-					reportDynamic(context, prop.value);
-					return;
-				}
-
-				for (const slotEl of prop.value.elements) {
-					if (!slotEl) {
-						continue;
-					}
-
-					if (
-						slotEl.type !== 'Literal' ||
-						typeof slotEl.value !== 'string'
-					) {
-						reportDynamic(context, slotEl);
-					}
-				}
-			}
+			checkCompoundEntryProperty(context, prop, hasSlotsKey);
 		});
 	}
 };
@@ -864,28 +914,35 @@ const reportRedundantSpaces = (
 	}
 };
 
+const getStaticStringText = (node: Node): string | null => {
+	if (node.type === 'Literal') {
+		return typeof node.value === 'string' ? node.value : null;
+	}
+
+	if (node.type === 'TemplateLiteral' && node.expressions.length === 0) {
+		const [quasi] = node.quasis;
+
+		/* c8 ignore next 3 -- a TemplateLiteral always has at least one quasi */
+		if (!quasi) {
+			return null;
+		}
+
+		/* c8 ignore next -- cooked is always defined on untagged templates */
+		return quasi.value.cooked ?? quasi.value.raw;
+	}
+
+	return null;
+};
+
 const visitForRedundantSpaces = (
 	context: Rule.RuleContext,
 	node: Node
 ): void => {
-	if (node.type === 'Literal') {
-		if (typeof node.value === 'string') {
-			reportRedundantSpaces(context, node, node.value);
-		}
+	if (node.type === 'Literal' || node.type === 'TemplateLiteral') {
+		const text = getStaticStringText(node);
 
-		return;
-	}
-
-	if (node.type === 'TemplateLiteral') {
-		const [quasi] = node.quasis;
-
-		if (node.expressions.length === 0 && quasi) {
-			reportRedundantSpaces(
-				context,
-				node,
-				/* c8 ignore next -- cooked is always defined on untagged templates */
-				quasi.value.cooked ?? quasi.value.raw
-			);
+		if (text !== null) {
+			reportRedundantSpaces(context, node, text);
 		}
 
 		return;
@@ -970,23 +1027,95 @@ export const noDuplicateClasses: Rule.RuleModule = {
 // A variant is "exhaustive" when it has a defaultVariants entry or is in
 // requiredVariants. Without coverage the prop can be undefined at runtime,
 // so a shared token isn't guaranteed to render.
-const analyzeSharedTokens = (
-	context: Rule.RuleContext,
-	configNode: Node
+const intersectSlotTokens = (
+	tokens: Set<string>,
+	tokenMap: Map<string, Entry[]>
 ): void => {
-	const { sourceCode } = context;
-	const config = getProperties(configNode);
-	const variants = config.get('variants');
+	for (const token of tokens) {
+		if (!tokenMap.has(token)) {
+			tokens.delete(token);
+		}
+	}
+};
 
-	if (!variants || variants.type !== 'ObjectExpression') {
-		return;
+const intersectSharedTokensStep = (
+	sharedTokens: Map<string, Set<string>>,
+	valueMap: TokenEntriesBySlot
+): void => {
+	const emptySlots: string[] = [];
+
+	for (const [slot, tokens] of sharedTokens) {
+		const tokenMap = valueMap.get(slot);
+
+		if (tokenMap) {
+			intersectSlotTokens(tokens, tokenMap);
+		}
+
+		if (!tokenMap || tokens.size === 0) {
+			emptySlots.push(slot);
+		}
 	}
 
-	const slotsMap = getProperties(config.get('slots'));
-	const slotNames = new Set(slotsMap.keys());
+	for (const slot of emptySlots) {
+		sharedTokens.delete(slot);
+	}
+};
 
-	slotNames.delete('base');
+const intersectSharedTokensBySlot = (
+	tokensByValue: TokenEntriesBySlot[]
+): Map<string, Set<string>> => {
+	const sharedTokens = new Map<string, Set<string>>();
+	const firstValueMap = tokensByValue[0];
 
+	/* c8 ignore next 3 -- callers guarantee tokensByValue has at least two entries */
+	if (!firstValueMap) {
+		return sharedTokens;
+	}
+
+	for (const [slot, tokenMap] of firstValueMap) {
+		sharedTokens.set(slot, new Set(tokenMap.keys()));
+	}
+
+	for (const valueMap of tokensByValue.slice(1)) {
+		intersectSharedTokensStep(sharedTokens, valueMap);
+
+		if (sharedTokens.size === 0) {
+			break;
+		}
+	}
+
+	return sharedTokens;
+};
+
+const reportSharedTokensBySlot = (
+	context: Rule.RuleContext,
+	sharedTokens: Map<string, Set<string>>,
+	tokensByValue: TokenEntriesBySlot[],
+	variantKey: string
+): void => {
+	for (const [slot, tokens] of sharedTokens) {
+		for (const token of tokens) {
+			for (const valueMap of tokensByValue) {
+				const entryList = valueMap.get(slot)?.get(token);
+
+				/* c8 ignore next 3 -- `sharedTokens` only retains tokens present in every value map */
+				if (!entryList) {
+					continue;
+				}
+
+				reportEntryList(context, entryList, 'shared', {
+					token,
+					variant: variantKey,
+					slot
+				});
+			}
+		}
+	}
+};
+
+const collectExhaustiveVariantKeys = (
+	config: Map<string, Node>
+): Set<string> => {
 	const exhaustive = new Set<string>(
 		getProperties(config.get('defaultVariants')).keys()
 	);
@@ -998,102 +1127,71 @@ const analyzeSharedTokens = (
 		});
 	}
 
+	return exhaustive;
+};
+
+const analyzeVariantSharedTokens = (
+	context: Rule.RuleContext,
+	variantKey: string,
+	variantValue: Node,
+	slotNames: Set<string>
+): void => {
+	// Boolean shorthand has a single branch — no cross-value comparison.
+	if (isBooleanShorthandVariant(variantValue, slotNames)) {
+		return;
+	}
+
+	const valueEntries = getStrictProperties(variantValue);
+
+	// A spread or computed key means we can't see every value; we'd
+	// over-flag tokens that may differ in the unseen branches.
+	if (!valueEntries || valueEntries.size < 2) {
+		return;
+	}
+
+	const { sourceCode } = context;
+	const tokensByValue: TokenEntriesBySlot[] = [];
+
+	for (const [valueKey, valueNode] of valueEntries) {
+		const entries: Entry[] = [];
+
+		extractTokens(
+			valueNode,
+			'base',
+			{ kind: 'variant', key: variantKey, value: valueKey },
+			slotNames,
+			entries,
+			sourceCode
+		);
+
+		tokensByValue.push(indexEntriesBySlotAndToken(entries));
+	}
+
+	const sharedTokens = intersectSharedTokensBySlot(tokensByValue);
+
+	reportSharedTokensBySlot(context, sharedTokens, tokensByValue, variantKey);
+};
+
+const analyzeSharedTokens = (
+	context: Rule.RuleContext,
+	configNode: Node
+): void => {
+	const config = getProperties(configNode);
+	const variants = config.get('variants');
+
+	if (!variants || variants.type !== 'ObjectExpression') {
+		return;
+	}
+
+	const slotNames = new Set(getProperties(config.get('slots')).keys());
+
+	slotNames.delete('base');
+
+	const exhaustive = collectExhaustiveVariantKeys(config);
+
 	for (const [variantKey, variantValue] of getProperties(variants)) {
-		if (!exhaustive.has(variantKey)) {
-			continue;
-		}
-
-		// Boolean shorthand has a single branch — no cross-value comparison.
-		if (isBooleanShorthandVariant(variantValue, slotNames)) {
-			continue;
-		}
-
-		const valueEntries = getStrictProperties(variantValue);
-
-		// A spread or computed key means we can't see every value; we'd
-		// over-flag tokens that may differ in the unseen branches.
-		if (!valueEntries || valueEntries.size < 2) {
-			continue;
-		}
-
-		const tokensByValue: TokenEntriesBySlot[] = [];
-
-		for (const [valueKey, valueNode] of valueEntries) {
-			const entries: Entry[] = [];
-
-			extractTokens(
-				valueNode,
-				'base',
-				{ kind: 'variant', key: variantKey, value: valueKey },
-				slotNames,
-				entries,
-				sourceCode
-			);
-
-			tokensByValue.push(indexEntriesBySlotAndToken(entries));
-		}
-
-		const firstValueMap = tokensByValue[0];
-
-		/* c8 ignore next 3 -- valueEntries.size >= 2 guarantees at least one extracted value map */
-		if (!firstValueMap) {
-			continue;
-		}
-
-		const sharedTokens = new Map<string, Set<string>>();
-
-		for (const [slot, tokenMap] of firstValueMap) {
-			sharedTokens.set(slot, new Set(tokenMap.keys()));
-		}
-
-		for (const valueMap of tokensByValue.slice(1)) {
-			const emptySlots: string[] = [];
-
-			for (const [slot, tokens] of sharedTokens) {
-				const tokenMap = valueMap.get(slot);
-
-				if (!tokenMap) {
-					emptySlots.push(slot);
-					continue;
-				}
-
-				for (const token of tokens) {
-					if (!tokenMap.has(token)) {
-						tokens.delete(token);
-					}
-				}
-
-				if (tokens.size === 0) {
-					emptySlots.push(slot);
-				}
-			}
-
-			for (const slot of emptySlots) {
-				sharedTokens.delete(slot);
-			}
-
-			if (sharedTokens.size === 0) {
-				break;
-			}
-		}
-
-		for (const [slot, tokens] of sharedTokens) {
-			for (const token of tokens) {
-				for (const valueMap of tokensByValue) {
-					const entryList = valueMap.get(slot)?.get(token);
-
-					/* c8 ignore next 3 -- `sharedTokens` only retains tokens present in every value map */
-					if (!entryList) {
-						continue;
-					}
-
-					reportEntryList(context, entryList, 'shared', {
-						token,
-						variant: variantKey,
-						slot
-					});
-				}
-			}
+		if (exhaustive.has(variantKey)) {
+			analyzeVariantSharedTokens(context, variantKey, variantValue, slotNames);
 		}
 	}
 };
@@ -1150,29 +1248,42 @@ const isEmptyStringNode = (node: Node): boolean => {
 
 // `allowEmptyString` is set at the top of a `slots[key]` value, where `''`
 // is a meaningful "slot with no default classes" declaration.
+const visitArrayForEmpty = (
+	context: Rule.RuleContext,
+	node: ArrayExpression
+): void => {
+	if (node.elements.length === 0) {
+		context.report({ node, messageId: 'emptyArray' });
+		return;
+	}
+
+	forEachStaticItem(node.elements, (element) => {
+		visitForEmptyClasses(context, element, false);
+	});
+};
+
+const visitStringLiteralForEmpty = (
+	context: Rule.RuleContext,
+	node: Node,
+	allowEmptyString: boolean
+): void => {
+	if (!allowEmptyString && isEmptyStringNode(node)) {
+		context.report({ node, messageId: 'emptyString' });
+	}
+};
+
 const visitForEmptyClasses = (
 	context: Rule.RuleContext,
 	node: Node,
 	allowEmptyString: boolean
 ): void => {
 	if (node.type === 'Literal' || node.type === 'TemplateLiteral') {
-		if (!allowEmptyString && isEmptyStringNode(node)) {
-			context.report({ node, messageId: 'emptyString' });
-		}
-
+		visitStringLiteralForEmpty(context, node, allowEmptyString);
 		return;
 	}
 
 	if (node.type === 'ArrayExpression') {
-		if (node.elements.length === 0) {
-			context.report({ node, messageId: 'emptyArray' });
-			return;
-		}
-
-		forEachStaticItem(node.elements, (element) => {
-			visitForEmptyClasses(context, element, false);
-		});
-
+		visitArrayForEmpty(context, node);
 		return;
 	}
 
@@ -1196,59 +1307,76 @@ const visitRecordEntriesForEmpty = (
 	}
 };
 
+const checkVariantsForEmpty = (
+	context: Rule.RuleContext,
+	value: Node
+): void => {
+	if (value.type !== 'ObjectExpression') {
+		return;
+	}
+
+	if (value.properties.length === 0) {
+		context.report({ node: value, messageId: 'emptyObject' });
+		return;
+	}
+
+	for (const variantValue of getProperties(value).values()) {
+		if (variantValue.type === 'ObjectExpression') {
+			visitRecordEntriesForEmpty(context, variantValue, false);
+		} else {
+			visitForEmptyClasses(context, variantValue, false);
+		}
+	}
+};
+
+const checkCompoundsForEmpty = (
+	context: Rule.RuleContext,
+	value: Node
+): void => {
+	if (value.type !== 'ArrayExpression') {
+		return;
+	}
+
+	if (value.elements.length === 0) {
+		context.report({ node: value, messageId: 'emptyArray' });
+		return;
+	}
+
+	forEachCompoundClass(value, (cls) => {
+		visitForEmptyClasses(context, cls, false);
+	});
+};
+
+const checkSlotsForEmpty = (
+	context: Rule.RuleContext,
+	value: Node
+): void => {
+	if (value.type === 'ObjectExpression') {
+		visitRecordEntriesForEmpty(context, value, true);
+	}
+};
+
 const checkSvConfigForEmpty = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
 ): void => {
 	for (const [key, value] of getProperties(configNode)) {
-		if (key === 'base') {
-			visitForEmptyClasses(context, value, false);
-			continue;
-		}
-
-		if (key === 'slots') {
-			if (value.type !== 'ObjectExpression') {
-				continue;
-			}
-
-			visitRecordEntriesForEmpty(context, value, true);
-			continue;
-		}
-
-		if (key === 'variants') {
-			if (value.type !== 'ObjectExpression') {
-				continue;
-			}
-
-			if (value.properties.length === 0) {
-				context.report({ node: value, messageId: 'emptyObject' });
-				continue;
-			}
-
-			for (const variantValue of getProperties(value).values()) {
-				if (variantValue.type === 'ObjectExpression') {
-					visitRecordEntriesForEmpty(context, variantValue, false);
-				} else {
-					visitForEmptyClasses(context, variantValue, false);
-				}
-			}
-
-			continue;
-		}
-
-		if (key === 'compoundVariants' || key === 'compoundSlots') {
-			if (value.type !== 'ArrayExpression') {
-				continue;
-			}
-
-			if (value.elements.length === 0) {
-				context.report({ node: value, messageId: 'emptyArray' });
-				continue;
-			}
-
-			forEachCompoundClass(value, (cls) => {
-				visitForEmptyClasses(context, cls, false);
-			});
+		switch (key) {
+			case 'base':
+				visitForEmptyClasses(context, value, false);
+				break;
+			case 'slots':
+				checkSlotsForEmpty(context, value);
+				break;
+			case 'variants':
+				checkVariantsForEmpty(context, value);
+				break;
+			case 'compoundVariants':
+			case 'compoundSlots':
+				checkCompoundsForEmpty(context, value);
+				break;
+			default:
+				break;
 		}
 	}
 };
