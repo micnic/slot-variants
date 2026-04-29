@@ -43,6 +43,7 @@
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
 		"@stylistic/eslint-plugin": "^5.10.0",
+		"@types/estree": "^1.0.8",
 		"class-variance-authority": "^0.7.1",
 		"classnames": "^2.5.1",
 		"eslint": "^10.2.1",

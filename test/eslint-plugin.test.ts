@@ -1,9 +1,6 @@
-import { createRequire } from 'node:module';
 import t from 'tap';
-import { Linter, RuleTester, SourceCode } from 'eslint';
+import { Linter, RuleTester } from 'eslint';
 import plugin, { rules } from '../src/eslint-plugin.ts';
-
-const require = createRequire(import.meta.url);
 
 const tester = new RuleTester({
 	languageOptions: {
@@ -18,9 +15,6 @@ const IMPORT_CN = "import { cn } from 'slot-variants';\n";
 
 t.test('shared plugin run reuses cached property analysis', (t) => {
 	const linter = new Linter({ configType: 'flat' });
-	const espree = require('espree') as {
-		parse: (code: string, options: Record<string, unknown>) => unknown;
-	};
 	const code = `${IMPORT}const rest = { body: 'ignored' };
 		sv({ ...rest, base: 'flex' });
 		sv({
@@ -33,20 +27,6 @@ t.test('shared plugin run reuses cached property analysis', (t) => {
 			},
 			defaultVariants: { size: 'sm' }
 		});`;
-
-	const sourceCode = new SourceCode({
-		text: code,
-		// espree is ESLint's parser, but its exported types don't line up exactly
-		// with SourceCode's AST type alias in this repo's dependency graph.
-		ast: espree.parse(code, {
-			ecmaVersion: 'latest',
-			sourceType: 'module',
-			range: true,
-			loc: true,
-			tokens: true,
-			comment: true
-		}) as ConstructorParameters<typeof SourceCode>[0]['ast']
-	});
 	const config: Linter.Config[] = [
 		{
 			files: ['**/*.ts'],
@@ -77,8 +57,8 @@ t.test('shared plugin run reuses cached property analysis', (t) => {
 
 		return counts;
 	};
-	const firstMessages = linter.verify(sourceCode, config, { filename: 'test.ts' });
-	const secondMessages = linter.verify(sourceCode, config, {
+	const firstMessages = linter.verify(code, config, { filename: 'test.ts' });
+	const secondMessages = linter.verify(linter.getSourceCode(), config, {
 		filename: 'test.ts'
 	});
 
