@@ -7,7 +7,8 @@ import type {
 	Node,
 	ObjectExpression,
 	Property,
-	SpreadElement
+	SpreadElement,
+	TemplateLiteral
 } from 'estree';
 
 const CONFIG_KEYS = new Set([
@@ -759,7 +760,6 @@ const checkSvConfigProperty = (
 	context: Rule.RuleContext,
 	prop: Property
 ) => {
-	/* c8 ignore next 3 -- getStrictProperties ensures top-level config keys are static */
 	const key = getKeyName(prop);
 
 	if (key !== null) {
@@ -786,9 +786,27 @@ const checkCnArguments = (
 	});
 };
 
+const trackNamedImport = (
+	specifier: ImportDeclaration['specifiers'][number],
+	trackedNamesByImport: Record<string, Set<string>>
+) => {
+	if (
+		specifier.type !== 'ImportSpecifier' ||
+		specifier.imported.type !== 'Identifier'
+	) {
+		return;
+	}
+
+	trackedNamesByImport[specifier.imported.name]?.add(specifier.local.name);
+};
+
 const createImportsTracker = () => {
 	const cnNames = new Set<string>();
 	const svNames = new Set<string>();
+	const trackedNamesByImport: Record<string, Set<string>> = {
+		cn: cnNames,
+		sv: svNames
+	};
 
 	const importsTracker = (node: ImportDeclaration) => {
 		if (node.source.value !== 'slot-variants') {
@@ -796,18 +814,7 @@ const createImportsTracker = () => {
 		}
 
 		for (const specifier of node.specifiers) {
-			if (
-				specifier.type !== 'ImportSpecifier' ||
-				specifier.imported.type !== 'Identifier'
-			) {
-				continue;
-			}
-
-			if (specifier.imported.name === 'cn') {
-				cnNames.add(specifier.local.name);
-			} else if (specifier.imported.name === 'sv') {
-				svNames.add(specifier.local.name);
-			}
+			trackNamedImport(specifier, trackedNamesByImport);
 		}
 	};
 
@@ -882,21 +889,30 @@ const reportRedundantSpaces = (
 	}
 };
 
+const isStaticTemplateLiteral = (
+	node: Node
+): node is TemplateLiteral =>
+	node.type === 'TemplateLiteral' && node.expressions.length === 0;
+
+const getStaticTemplateLiteralText = (node: TemplateLiteral): string | null => {
+	const [quasi] = node.quasis;
+
+	/* c8 ignore next 3 -- a TemplateLiteral always has at least one quasi */
+	if (!quasi) {
+		return null;
+	}
+
+	/* c8 ignore next -- cooked is always defined on untagged templates */
+	return quasi.value.cooked ?? quasi.value.raw;
+};
+
 const getStaticStringText = (node: Node): string | null => {
 	if (node.type === 'Literal') {
 		return typeof node.value === 'string' ? node.value : null;
 	}
 
-	if (node.type === 'TemplateLiteral' && node.expressions.length === 0) {
-		const [quasi] = node.quasis;
-
-		/* c8 ignore next 3 -- a TemplateLiteral always has at least one quasi */
-		if (!quasi) {
-			return null;
-		}
-
-		/* c8 ignore next -- cooked is always defined on untagged templates */
-		return quasi.value.cooked ?? quasi.value.raw;
+	if (isStaticTemplateLiteral(node)) {
+		return getStaticTemplateLiteralText(node);
 	}
 
 	return null;
