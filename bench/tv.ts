@@ -62,59 +62,11 @@ bench.add('tv (no merge) - simple with props', () => {
 
 // --- Compound variants ---
 
-const svCompound = sv('btn', {
-	variants: {
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500'
-		},
-		size: {
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg'
-		},
-		disabled: {
-			true: 'opacity-50 cursor-not-allowed',
-			false: ''
-		}
-	},
-	compoundVariants: [
-		{ color: 'primary', size: 'lg', class: 'font-bold uppercase' },
-		{ color: 'secondary', disabled: true, class: 'bg-gray-300' }
-	],
-	defaultVariants: {
-		color: 'primary',
-		size: 'md',
-		disabled: false
-	}
-});
+const svCompound = sv('btn', createCompoundButtonConfig());
 
 const svCompoundMerge = sv('btn', {
 	postProcess: twMerge,
-	variants: {
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500'
-		},
-		size: {
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg'
-		},
-		disabled: {
-			true: 'opacity-50 cursor-not-allowed',
-			false: ''
-		}
-	},
-	compoundVariants: [
-		{ color: 'primary', size: 'lg', class: 'font-bold uppercase' },
-		{ color: 'secondary', disabled: true, class: 'bg-gray-300' }
-	],
-	defaultVariants: {
-		color: 'primary',
-		size: 'md',
-		disabled: false
-	}
+	...createCompoundButtonConfig()
 });
 
 const tvCompound = tv({
