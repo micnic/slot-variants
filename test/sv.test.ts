@@ -92,6 +92,30 @@ t.test('variadic args with config as last argument', (t) => {
 	t.end();
 });
 
+t.test('variadic args with helper-returned config use the config overload', (t) => {
+	const createButtonConfig = () => ({
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			}
+		},
+		defaultVariants: {
+			size: 'sm'
+		}
+	} as const);
+
+	const button = sv('flex', createButtonConfig());
+
+	t.equal(
+		button({ size: 'lg' }),
+		'flex text-lg',
+		'helper-returned configs stay on the variant overload'
+	);
+
+	t.end();
+});
+
 // =============================================================================
 // sv() - config only (no base argument)
 // =============================================================================
@@ -2419,6 +2443,7 @@ t.test('required variant throws when missing at runtime', (t) => {
 t.test('required variant throws when not defined in variants', (t) => {
 	t.throws(
 		() =>
+			// @ts-expect-error - intentionally passing an undefined required variant for the runtime check
 			sv('rounded-lg', {
 				variants: {
 					size: {

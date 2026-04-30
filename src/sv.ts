@@ -10,6 +10,19 @@ type PartialUndefined<T> = {
 
 type StringKeyof<T> = Extract<keyof T, string>;
 
+type ConfigKey =
+	| 'base'
+	| 'variants'
+	| 'slots'
+	| 'compoundVariants'
+	| 'compoundSlots'
+	| 'defaultVariants'
+	| 'requiredVariants'
+	| 'presets'
+	| 'cacheSize'
+	| 'postProcess'
+	| 'introspection';
+
 type ConfigClassValue = string | string[] | undefined;
 
 type ConfigSlotClassValue<S extends Slots | undefined> = S extends Slots
@@ -216,6 +229,12 @@ type ResultType<
 	I extends boolean
 > = ReturnFn<S, V, RV, P> &
 	(I extends true ? IntrospectionValues<S, V, RV, P> : object);
+
+type NonConfigClassArg<T> = T extends Record<string, unknown>
+	? Exclude<StringKeyof<T>, ConfigKey> extends never
+		? never
+		: T
+	: T;
 
 /**
  * Extracts the variant props object from an `sv()` return type
@@ -470,7 +489,9 @@ export function sv<
 >(
 	...args: [...ClassValue[], Config<S, V, RV, P, I>]
 ): ResultType<S, V, RV, P, I>;
-export function sv(...args: ClassValue[]): string;
+export function sv<const T extends ClassValue[]>(
+	...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
+): string;
 export function sv<
 	S extends Slots | undefined = undefined,
 	V extends Variants<S> | undefined = undefined,
