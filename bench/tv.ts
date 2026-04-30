@@ -2,87 +2,36 @@ import { Bench } from 'tinybench';
 import { twMerge } from 'tailwind-merge';
 import { createTV, tv } from 'tailwind-variants';
 import { sv } from '../src/index.ts';
+import {
+	createCompoundButtonConfig,
+	createSimpleButtonConfig,
+	createSlotsCardConfig
+} from './fixtures.ts';
 import { printBenchResults } from './report.ts';
 
 const tvNoMerge = createTV({ twMerge: false });
 
 const bench = new Bench({ warmupIterations: 1000 });
 
+const compoundButtonConfig = createCompoundButtonConfig();
+
 // --- Simple variants (no slots) ---
 
-const svButton = sv('btn', {
-	variants: {
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500'
-		},
-		size: {
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg'
-		}
-	},
-	defaultVariants: {
-		color: 'primary',
-		size: 'md'
-	}
-});
+const svButton = sv('btn', { ...createSimpleButtonConfig() });
 
 const svButtonMerge = sv('btn', {
 	postProcess: twMerge,
-	variants: {
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500'
-		},
-		size: {
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg'
-		}
-	},
-	defaultVariants: {
-		color: 'primary',
-		size: 'md'
-	}
+	...createSimpleButtonConfig()
 });
 
 const tvButton = tv({
 	base: 'btn',
-	variants: {
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500'
-		},
-		size: {
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg'
-		}
-	},
-	defaultVariants: {
-		color: 'primary',
-		size: 'md'
-	}
+	...createSimpleButtonConfig()
 });
 
 const tvButtonNoMerge = tvNoMerge({
 	base: 'btn',
-	variants: {
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500'
-		},
-		size: {
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg'
-		}
-	},
-	defaultVariants: {
-		color: 'primary',
-		size: 'md'
-	}
+	...createSimpleButtonConfig()
 });
 
 bench.add('sv - simple defaults', () => {
@@ -170,58 +119,14 @@ const svCompoundMerge = sv('btn', {
 
 const tvCompound = tv({
 	base: 'btn',
-	variants: {
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500'
-		},
-		size: {
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg'
-		},
-		disabled: {
-			true: 'opacity-50 cursor-not-allowed',
-			false: ''
-		}
-	},
-	compoundVariants: [
-		{ color: 'primary', size: 'lg', class: 'font-bold uppercase' },
-		{ color: 'secondary', disabled: true, class: 'bg-gray-300' }
-	],
-	defaultVariants: {
-		color: 'primary',
-		size: 'md',
-		disabled: false
-	}
+	...compoundButtonConfig,
+	compoundVariants: [...compoundButtonConfig.compoundVariants]
 });
 
 const tvCompoundNoMerge = tvNoMerge({
 	base: 'btn',
-	variants: {
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500'
-		},
-		size: {
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg'
-		},
-		disabled: {
-			true: 'opacity-50 cursor-not-allowed',
-			false: ''
-		}
-	},
-	compoundVariants: [
-		{ color: 'primary', size: 'lg', class: 'font-bold uppercase' },
-		{ color: 'secondary', disabled: true, class: 'bg-gray-300' }
-	],
-	defaultVariants: {
-		color: 'primary',
-		size: 'md',
-		disabled: false
-	}
+	...compoundButtonConfig,
+	compoundVariants: [...compoundButtonConfig.compoundVariants]
 });
 
 bench.add('sv - compound match', () => {
@@ -252,99 +157,21 @@ bench.add('tv (no merge) - compound no match', () => {
 
 // --- Slots ---
 
-const svSlots = sv('card', {
-	slots: {
-		header: 'card-header font-bold',
-		body: 'card-body p-4',
-		footer: 'card-footer border-t'
-	},
-	variants: {
-		size: {
-			sm: { base: 'w-48', header: 'text-sm', body: 'text-sm' },
-			md: { base: 'w-64', header: 'text-base', body: 'text-base' },
-			lg: { base: 'w-96', header: 'text-lg', body: 'text-lg' }
-		},
-		variant: {
-			outlined: { base: 'border', header: 'border-b' },
-			filled: { base: 'bg-gray-100', header: 'bg-gray-200' }
-		}
-	},
-	defaultVariants: {
-		size: 'md',
-		variant: 'outlined'
-	}
-});
+const svSlots = sv('card', { ...createSlotsCardConfig() });
 
 const svSlotsMerge = sv('card', {
 	postProcess: twMerge,
-	slots: {
-		header: 'card-header font-bold',
-		body: 'card-body p-4',
-		footer: 'card-footer border-t'
-	},
-	variants: {
-		size: {
-			sm: { base: 'w-48', header: 'text-sm', body: 'text-sm' },
-			md: { base: 'w-64', header: 'text-base', body: 'text-base' },
-			lg: { base: 'w-96', header: 'text-lg', body: 'text-lg' }
-		},
-		variant: {
-			outlined: { base: 'border', header: 'border-b' },
-			filled: { base: 'bg-gray-100', header: 'bg-gray-200' }
-		}
-	},
-	defaultVariants: {
-		size: 'md',
-		variant: 'outlined'
-	}
+	...createSlotsCardConfig()
 });
 
 const tvSlots = tv({
 	base: 'card',
-	slots: {
-		header: 'card-header font-bold',
-		body: 'card-body p-4',
-		footer: 'card-footer border-t'
-	},
-	variants: {
-		size: {
-			sm: { base: 'w-48', header: 'text-sm', body: 'text-sm' },
-			md: { base: 'w-64', header: 'text-base', body: 'text-base' },
-			lg: { base: 'w-96', header: 'text-lg', body: 'text-lg' }
-		},
-		variant: {
-			outlined: { base: 'border', header: 'border-b' },
-			filled: { base: 'bg-gray-100', header: 'bg-gray-200' }
-		}
-	},
-	defaultVariants: {
-		size: 'md',
-		variant: 'outlined'
-	}
+	...createSlotsCardConfig()
 });
 
 const tvSlotsNoMerge = tvNoMerge({
 	base: 'card',
-	slots: {
-		header: 'card-header font-bold',
-		body: 'card-body p-4',
-		footer: 'card-footer border-t'
-	},
-	variants: {
-		size: {
-			sm: { base: 'w-48', header: 'text-sm', body: 'text-sm' },
-			md: { base: 'w-64', header: 'text-base', body: 'text-base' },
-			lg: { base: 'w-96', header: 'text-lg', body: 'text-lg' }
-		},
-		variant: {
-			outlined: { base: 'border', header: 'border-b' },
-			filled: { base: 'bg-gray-100', header: 'bg-gray-200' }
-		}
-	},
-	defaultVariants: {
-		size: 'md',
-		variant: 'outlined'
-	}
+	...createSlotsCardConfig()
 });
 
 bench.add('sv - slots defaults', () => {

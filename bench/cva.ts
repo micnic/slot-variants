@@ -1,47 +1,22 @@
 import { Bench } from 'tinybench';
 import { cva } from 'class-variance-authority';
 import { sv } from '../src/index.ts';
+import {
+	createCompoundButtonConfig,
+	createManyVariantsConfig,
+	createSimpleButtonConfig
+} from './fixtures.ts';
 import { printBenchResults } from './report.ts';
 
 const bench = new Bench({ warmupIterations: 1000 });
 
+const compoundButtonConfig = createCompoundButtonConfig();
+
 // --- Simple variants ---
 
-const svButton = sv('btn', {
-	variants: {
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500'
-		},
-		size: {
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg'
-		}
-	},
-	defaultVariants: {
-		color: 'primary',
-		size: 'md'
-	}
-});
+const svButton = sv('btn', createSimpleButtonConfig());
 
-const cvaButton = cva('btn', {
-	variants: {
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500'
-		},
-		size: {
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg'
-		}
-	},
-	defaultVariants: {
-		color: 'primary',
-		size: 'md'
-	}
-});
+const cvaButton = cva('btn', createSimpleButtonConfig());
 
 bench.add('sv - simple defaults', () => {
 	svButton();
@@ -87,30 +62,8 @@ const svCompound = sv('btn', {
 });
 
 const cvaCompound = cva('btn', {
-	variants: {
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500'
-		},
-		size: {
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg'
-		},
-		disabled: {
-			true: 'opacity-50 cursor-not-allowed',
-			false: ''
-		}
-	},
-	compoundVariants: [
-		{ color: 'primary', size: 'lg', class: 'font-bold uppercase' },
-		{ color: 'secondary', disabled: true, class: 'bg-gray-300' }
-	],
-	defaultVariants: {
-		color: 'primary',
-		size: 'md',
-		disabled: false
-	}
+	...compoundButtonConfig,
+	compoundVariants: [...compoundButtonConfig.compoundVariants]
 });
 
 bench.add('sv - compound match', () => {
@@ -129,81 +82,9 @@ bench.add('cva - compound no match', () => {
 
 // --- Many variants ---
 
-const svMany = sv('component', {
-	variants: {
-		size: {
-			xs: 'text-xs',
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg',
-			xl: 'text-xl'
-		},
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500',
-			success: 'bg-green-500',
-			danger: 'bg-red-500',
-			warning: 'bg-yellow-500'
-		},
-		rounded: {
-			none: 'rounded-none',
-			sm: 'rounded-sm',
-			md: 'rounded-md',
-			lg: 'rounded-lg',
-			full: 'rounded-full'
-		},
-		shadow: {
-			none: 'shadow-none',
-			sm: 'shadow-sm',
-			md: 'shadow-md',
-			lg: 'shadow-lg'
-		}
-	},
-	defaultVariants: {
-		size: 'md',
-		color: 'primary',
-		rounded: 'md',
-		shadow: 'none'
-	}
-});
+const svMany = sv('component', createManyVariantsConfig());
 
-const cvaMany = cva('component', {
-	variants: {
-		size: {
-			xs: 'text-xs',
-			sm: 'text-sm',
-			md: 'text-md',
-			lg: 'text-lg',
-			xl: 'text-xl'
-		},
-		color: {
-			primary: 'bg-blue-500',
-			secondary: 'bg-gray-500',
-			success: 'bg-green-500',
-			danger: 'bg-red-500',
-			warning: 'bg-yellow-500'
-		},
-		rounded: {
-			none: 'rounded-none',
-			sm: 'rounded-sm',
-			md: 'rounded-md',
-			lg: 'rounded-lg',
-			full: 'rounded-full'
-		},
-		shadow: {
-			none: 'shadow-none',
-			sm: 'shadow-sm',
-			md: 'shadow-md',
-			lg: 'shadow-lg'
-		}
-	},
-	defaultVariants: {
-		size: 'md',
-		color: 'primary',
-		rounded: 'md',
-		shadow: 'none'
-	}
-});
+const cvaMany = cva('component', createManyVariantsConfig());
 
 bench.add('sv - many variants defaults', () => {
 	svMany();
