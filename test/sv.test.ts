@@ -116,6 +116,110 @@ t.test('variadic args with helper-returned config use the config overload', (t) 
 	t.end();
 });
 
+t.test('helper-returned compound configs use the config overload', (t) => {
+	const createButtonConfig = () => ({
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		compoundVariants: [
+			{ size: 'lg', intent: 'danger', class: 'uppercase' }
+		],
+		defaultVariants: {
+			size: 'sm',
+			intent: 'primary'
+		}
+	} as const);
+
+	const button = sv('flex', createButtonConfig());
+
+	t.equal(
+		button({ size: 'lg', intent: 'danger' }),
+		'flex text-lg bg-red-500 uppercase',
+		'helper-returned compound configs stay on the variant overload'
+	);
+
+	t.end();
+});
+
+const _helperRequiredConfigFn = sv(
+	'rounded-lg',
+	(() => ({
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		requiredVariants: ['intent']
+	}) as const)()
+);
+
+type HelperRequiredConfigProps = VariantProps<typeof _helperRequiredConfigFn>;
+
+type AssertHelperRequiredConfig = HelperRequiredConfigProps extends {
+	size?: 'sm' | 'lg' | undefined;
+	intent: 'primary' | 'danger';
+}
+	? true
+	: false;
+const _assertHelperRequiredConfig: AssertHelperRequiredConfig = true;
+
+void _helperRequiredConfigFn;
+void _assertHelperRequiredConfig;
+
+t.test('helper-returned compound slot configs support readonly matcher arrays', (t) => {
+	const createCardConfig = () => ({
+		slots: {
+			header: 'font-bold',
+			body: 'py-4'
+		},
+		variants: {
+			tone: {
+				info: {
+					base: 'border-blue-500',
+					header: 'text-blue-700'
+				},
+				danger: {
+					base: 'border-red-500',
+					header: 'text-red-700'
+				}
+			}
+		},
+		compoundSlots: [
+			{
+				slots: ['base', 'header'],
+				tone: ['info', 'danger'],
+				class: 'rounded-lg'
+			}
+		]
+	} as const);
+
+	const card = sv('card', createCardConfig());
+
+	t.same(
+		card({ tone: 'info' }),
+		{
+			base: 'card border-blue-500 rounded-lg',
+			header: 'font-bold text-blue-700 rounded-lg',
+			body: 'py-4'
+		},
+		'helper-returned compound slot configs stay on the variant overload'
+	);
+
+	t.end();
+});
+
 // =============================================================================
 // sv() - config only (no base argument)
 // =============================================================================

@@ -47,9 +47,7 @@ type BooleanString<T> = T extends `${boolean}` ? boolean : T;
 
 type SlotKey<S extends Slots | undefined> = 'base' | StringKeyof<S>;
 
-type SlotsClassValue<S extends Slots> = Partial<
-	Record<SlotKey<S>, ClassValue>
->;
+type SlotsClassValue<S extends Slots> = Partial<Record<SlotKey<S>, ClassValue>>;
 
 type ConfigSlotsClassValue<S extends Slots> = Partial<
 	Record<SlotKey<S>, ConfigClassValue>
@@ -66,20 +64,20 @@ type VariantConditions<
 > = {
 	[K in StringKeyof<V>]?:
 		| VariantPropType<V[K], S>
-		| VariantPropType<V[K], S>[]
+		| readonly VariantPropType<V[K], S>[]
 		| undefined;
 };
 
 type CompoundVariants<
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined
-> = (VariantConditions<S, V> & ConfigClassProp<S>)[];
+> = readonly (VariantConditions<S, V> & ConfigClassProp<S>)[];
 
 type CompoundSlots<
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined
-> = ({
-	slots: SlotKey<S>[];
+> = readonly ({
+	slots: readonly SlotKey<S>[];
 } & VariantConditions<S, V> &
 	ConfigClassProp<S>)[];
 
@@ -121,7 +119,7 @@ type DefaultVariantFn<
 type DefaultVariants<
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined,
-	RV extends StringKeyof<V>[]
+	RV extends readonly StringKeyof<V>[]
 > = {
 	[K in StringKeyof<Omit<VariantPropsInternal<S, V>, RV[number]>>]?:
 		| VariantPropType<V[K], S>
@@ -150,7 +148,7 @@ type PresetProp<P extends Record<string, unknown> | undefined> =
 type Props<
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined,
-	RV extends StringKeyof<V>[],
+	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined
 > = V extends undefined
 	? ClassProp<S>
@@ -170,7 +168,7 @@ type Props<
 type Config<
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined,
-	RV extends StringKeyof<V>[],
+	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined,
 	I extends boolean = false
 > = {
@@ -194,16 +192,16 @@ type ReturnValue<S extends Slots | undefined> = S extends undefined
 type ReturnFn<
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined,
-	RV extends StringKeyof<V>[],
+	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined
-> = RV extends []
+> = RV extends readonly []
 	? (props?: Props<S, V, RV, P> | undefined) => ReturnValue<S>
 	: (props: Props<S, V, RV, P>) => ReturnValue<S>;
 
 type IntrospectionValues<
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined,
-	RV extends StringKeyof<V>[],
+	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined
 > = {
 	variants: V;
@@ -224,17 +222,18 @@ type IntrospectionValues<
 type ResultType<
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined,
-	RV extends StringKeyof<V>[],
+	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined,
 	I extends boolean
 > = ReturnFn<S, V, RV, P> &
 	(I extends true ? IntrospectionValues<S, V, RV, P> : object);
 
-type NonConfigClassArg<T> = T extends Record<string, unknown>
-	? Exclude<StringKeyof<T>, ConfigKey> extends never
-		? never
-		: T
-	: T;
+type NonConfigClassArg<T> =
+	T extends Record<string, unknown>
+		? Exclude<StringKeyof<T>, ConfigKey> extends never
+			? never
+			: T
+		: T;
 
 /**
  * Extracts the variant props object from an `sv()` return type
@@ -346,7 +345,7 @@ const configKeys = new Set([
 const isConfig = <
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined,
-	RV extends StringKeyof<V>[] | [],
+	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined,
 	I extends boolean
 >(
@@ -368,29 +367,33 @@ const looseEquals = (first: unknown, second: unknown) =>
  */
 type CacheValue = string | Record<string, string>;
 
-const createCacheReturn = (
-	cache: Map<string, CacheValue>,
-	cacheSize: number
-) => <T extends CacheValue>(cacheKey: string | null, value: T): T => {
-	if (!cacheKey) {
-		return value;
-	}
-
-	if (cache.size >= cacheSize) {
-		const firstKey = cache.keys().next().value;
-
-		if (firstKey) {
-			cache.delete(firstKey);
+const createCacheReturn =
+	(cache: Map<string, CacheValue>, cacheSize: number) =>
+	<T extends CacheValue>(cacheKey: string | null, value: T): T => {
+		if (!cacheKey) {
+			return value;
 		}
-	}
 
-	cache.set(cacheKey, value);
+		if (cache.size >= cacheSize) {
+			const firstKey = cache.keys().next().value;
 
-	return value;
-};
+			if (firstKey) {
+				cache.delete(firstKey);
+			}
+		}
+
+		cache.set(cacheKey, value);
+
+		return value;
+	};
 
 const compoundMatchValue = (
-	compoundValue: string | number | boolean | (string | number | boolean)[] | undefined,
+	compoundValue:
+		| string
+		| number
+		| boolean
+		| readonly (string | number | boolean)[]
+		| undefined,
 	propValue: unknown
 ): boolean => {
 	if (isArray(compoundValue)) {
@@ -405,10 +408,7 @@ const matchesCompound = (
 		string,
 		ClassValue | Partial<{ base: ClassValue } & Record<string, ClassValue>>
 	>,
-	compound: Record<
-		string,
-		string | number | boolean | (string | number | boolean)[] | undefined
-	>
+	compound: Record<string, unknown>
 ): boolean => {
 	for (const compoundKey of keys(compound)) {
 		if (
@@ -419,7 +419,17 @@ const matchesCompound = (
 			continue;
 		}
 
-		if (!compoundMatchValue(compound[compoundKey], props[compoundKey])) {
+		if (
+			!compoundMatchValue(
+				compound[compoundKey] as
+					| string
+					| number
+					| boolean
+					| readonly (string | number | boolean)[]
+					| undefined,
+				props[compoundKey]
+			)
+		) {
 			return false;
 		}
 	}
@@ -476,14 +486,14 @@ const matchesCompound = (
 export function sv<
 	S extends Slots | undefined = undefined,
 	V extends Variants<S> | undefined = undefined,
-	RV extends StringKeyof<V>[] | [] = [],
+	RV extends readonly StringKeyof<V>[] = [],
 	P extends Presets<S, V> | undefined = undefined,
 	I extends boolean = false
 >(config: Config<S, V, RV, P, I>): ResultType<S, V, RV, P, I>;
 export function sv<
 	S extends Slots | undefined = undefined,
 	V extends Variants<S> | undefined = undefined,
-	RV extends StringKeyof<V>[] | [] = [],
+	RV extends readonly StringKeyof<V>[] = [],
 	P extends Presets<S, V> | undefined = undefined,
 	I extends boolean = false
 >(
@@ -495,7 +505,7 @@ export function sv<const T extends ClassValue[]>(
 export function sv<
 	S extends Slots | undefined = undefined,
 	V extends Variants<S> | undefined = undefined,
-	RV extends StringKeyof<V>[] | [] = [],
+	RV extends readonly StringKeyof<V>[] = [],
 	P extends Presets<S, V> | undefined = undefined,
 	I extends boolean = false
 >(
