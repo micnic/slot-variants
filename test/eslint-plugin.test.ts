@@ -343,6 +343,12 @@ t.test('no-dynamic-classes', (t) => {
 						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
 						compoundVariants: [{ size: 'lg', className: 'font-bold' }]
 					});`,
+				// compoundVariants slots matcher is ignored outside compoundSlots.
+				IMPORT +
+					`sv({
+						variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+						compoundVariants: [{ slots: dynamic, class: 'font-bold' }]
+					});`,
 				// compoundVariants entry without class/className.
 				IMPORT +
 					`sv({

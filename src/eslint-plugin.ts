@@ -121,6 +121,16 @@ const buildStrictPropertiesMap = (
 	return map;
 };
 
+const getCachedStrictProperties = (
+	obj: ObjectExpression
+): Map<string, Node> | null | undefined => {
+	if (!strictPropertiesCache.has(obj)) {
+		return undefined;
+	}
+
+	return strictPropertiesCache.get(obj) ?? null;
+};
+
 const getStrictProperties = (
 	obj: Node | undefined
 ): Map<string, Node> | null => {
@@ -128,8 +138,10 @@ const getStrictProperties = (
 		return null;
 	}
 
-	if (strictPropertiesCache.has(obj)) {
-		return strictPropertiesCache.get(obj) ?? null;
+	const cached = getCachedStrictProperties(obj);
+
+	if (cached !== undefined) {
+		return cached;
 	}
 
 	const map = buildStrictPropertiesMap(obj);
@@ -139,6 +151,28 @@ const getStrictProperties = (
 	return map;
 };
 
+const isSlotKeyedPropertyKey = (
+	key: string | null,
+	slotNames: Set<string>
+): key is string => key === 'base' || (key !== null && slotNames.has(key));
+
+const getSlotKeyedPropertyEntry = (
+	prop: ObjectExpression['properties'][number],
+	slotNames: Set<string>
+): [string, Node] | null => {
+	if (prop.type !== 'Property') {
+		return null;
+	}
+
+	const key = getKeyName(prop);
+
+	if (!isSlotKeyedPropertyKey(key, slotNames)) {
+		return null;
+	}
+
+	return [key, prop.value];
+};
+
 const buildSlotKeyedMap = (
 	obj: ObjectExpression,
 	slotNames: Set<string>
@@ -146,17 +180,15 @@ const buildSlotKeyedMap = (
 	const result = new Map<string, Node>();
 
 	for (const prop of obj.properties) {
-		if (prop.type !== 'Property') {
+		const entry = getSlotKeyedPropertyEntry(prop, slotNames);
+
+		if (!entry) {
 			return null;
 		}
 
-		const key = getKeyName(prop);
+		const [key, value] = entry;
 
-		if (key === null || (key !== 'base' && !slotNames.has(key))) {
-			return null;
-		}
-
-		result.set(key, prop.value);
+		result.set(key, value);
 	}
 
 	return result;
@@ -182,33 +214,50 @@ type CallMatch = {
 	args: ReadonlyArray<Expression | SpreadElement>;
 };
 
+const getIdentifierCalleeName = (node: CallExpression): string | null =>
+	node.callee.type === 'Identifier' ? node.callee.name : null;
+
+const matchSvCall = (node: CallExpression): CallMatch => {
+	const args = node.arguments;
+	const last = args[args.length - 1];
+
+	if (!isConfigLike(last)) {
+		return { config: null, args };
+	}
+
+	return { config: last, args: args.slice(0, -1) };
+};
+
 const matchSvCnCall = (
 	node: CallExpression,
 	svNames: Set<string>,
 	cnNames: Set<string>
 ): CallMatch | null => {
-	const { callee } = node;
+	const calleeName = getIdentifierCalleeName(node);
 
-	if (callee.type !== 'Identifier') {
+	if (calleeName === null) {
 		return null;
 	}
 
-	if (svNames.has(callee.name)) {
-		const args = node.arguments;
-		const last = args[args.length - 1];
-
-		if (isConfigLike(last)) {
-			return { config: last, args: args.slice(0, -1) };
-		}
-
-		return { config: null, args };
+	if (svNames.has(calleeName)) {
+		return matchSvCall(node);
 	}
 
-	if (cnNames.has(callee.name)) {
+	if (cnNames.has(calleeName)) {
 		return { config: null, args: node.arguments };
 	}
 
 	return null;
+};
+
+const hasOnlyConfigKeys = (properties: Map<string, Node>): boolean => {
+	for (const key of properties.keys()) {
+		if (!CONFIG_KEYS.has(key)) {
+			return false;
+		}
+	}
+
+	return true;
 };
 
 const isConfigLike = (node: Node | undefined): node is ObjectExpression => {
@@ -218,13 +267,7 @@ const isConfigLike = (node: Node | undefined): node is ObjectExpression => {
 		return false;
 	}
 
-	for (const key of properties.keys()) {
-		if (!CONFIG_KEYS.has(key)) {
-			return false;
-		}
-	}
-
-	return true;
+	return hasOnlyConfigKeys(properties);
 };
 
 type Source =
@@ -244,6 +287,24 @@ type Entry = {
 };
 
 type TokenEntriesBySlot = Map<string, Map<string, Entry[]>>;
+type VariantSource = Extract<Source, { kind: 'variant' }>;
+
+const getVariantSource = (entry: Entry): VariantSource | null =>
+	entry.source.kind === 'variant' ? entry.source : null;
+
+const sharesVariantKey = (
+	sharedKey: string | null,
+	source: VariantSource
+): boolean => sharedKey === null || sharedKey === source.key;
+
+const isExclusiveVariantSource = (
+	source: VariantSource | null,
+	sharedKey: string | null,
+	seenValues: Set<string>
+): source is VariantSource =>
+	source !== null &&
+	sharesVariantKey(sharedKey, source) &&
+	!seenValues.has(source.value);
 
 // Entries can't co-occur when they all come from different values of a single
 // variant key — only one branch fires per render.
@@ -252,21 +313,14 @@ const isMutuallyExclusiveVariants = (list: Entry[]): boolean => {
 	let sharedKey: string | null = null;
 
 	for (const entry of list) {
-		if (entry.source.kind !== 'variant') {
+		const source = getVariantSource(entry);
+
+		if (!isExclusiveVariantSource(source, sharedKey, seenValues)) {
 			return false;
 		}
 
-		if (sharedKey === null) {
-			sharedKey = entry.source.key;
-		} else if (sharedKey !== entry.source.key) {
-			return false;
-		}
-
-		if (seenValues.has(entry.source.value)) {
-			return false;
-		}
-
-		seenValues.add(entry.source.value);
+		sharedKey = source.key;
+		seenValues.add(source.value);
 	}
 
 	return true;
@@ -446,21 +500,42 @@ const forEachStringLiteralElement = (
 	});
 };
 
+const getCompoundObjectExpression = (
+	element: Expression | SpreadElement | null
+): ObjectExpression | null =>
+	element?.type === 'ObjectExpression' ? element : null;
+
+const getCompoundClassNode = (compound: Map<string, Node>): Node | null =>
+	compound.get('class') ?? compound.get('className') ?? null;
+
 const matchCompoundClass = (
 	element: Expression | SpreadElement | null
 ): { cls: Node; compound: Map<string, Node> } | null => {
-	if (!element || element.type !== 'ObjectExpression') {
+	const objectExpression = getCompoundObjectExpression(element);
+
+	if (!objectExpression) {
 		return null;
 	}
 
-	const compound = getProperties(element);
-	const cls = compound.get('class') ?? compound.get('className');
+	const compound = getProperties(objectExpression);
+	const cls = getCompoundClassNode(compound);
 
 	if (!cls) {
 		return null;
 	}
 
 	return { cls, compound };
+};
+
+const visitCompoundClassMatch = (
+	element: Expression,
+	visit: (cls: Node, compound: Map<string, Node>) => void
+) => {
+	const match = matchCompoundClass(element);
+
+	if (match) {
+		visit(match.cls, match.compound);
+	}
 };
 
 const forEachCompoundClass = (
@@ -471,13 +546,9 @@ const forEachCompoundClass = (
 		return;
 	}
 
-	for (const element of node.elements) {
-		const match = matchCompoundClass(element);
-
-		if (match) {
-			visit(match.cls, match.compound);
-		}
-	}
+	forEachStaticItem(node.elements, (element) => {
+		visitCompoundClassMatch(element, visit);
+	});
 };
 
 type ExtractFn = (node: Node, slot: string, source: Source) => void;
@@ -705,20 +776,6 @@ const checkCompoundSlotsArray = (context: Rule.RuleContext, value: Node) => {
 	});
 };
 
-const checkCompoundEntryProperty = (
-	context: Rule.RuleContext,
-	prop: Property,
-	hasSlotsKey: boolean
-) => {
-	const key = getKeyName(prop);
-
-	if (key === 'class' || key === 'className') {
-		checkClassValueIsStatic(context, prop.value);
-	} else if (hasSlotsKey && key === 'slots') {
-		checkCompoundSlotsArray(context, prop.value);
-	}
-};
-
 // Other keys on compound entries are runtime matchers and are not validated.
 const checkCompoundEntries = (
 	context: Rule.RuleContext,
@@ -743,6 +800,45 @@ const checkCompoundEntries = (
 };
 
 type SvConfigValueChecker = (context: Rule.RuleContext, node: Node) => void;
+
+const compoundEntryValueCheckers: Record<string, SvConfigValueChecker> = {
+	class: checkClassValueIsStatic,
+	className: checkClassValueIsStatic,
+	slots: checkCompoundSlotsArray
+};
+
+const getCompoundEntrySlotsChecker = (
+	hasSlotsKey: boolean
+): SvConfigValueChecker | null =>
+	hasSlotsKey ? checkCompoundSlotsArray : null;
+
+const getCompoundEntryValueChecker = (
+	key: string | null,
+	hasSlotsKey: boolean
+): SvConfigValueChecker | null => {
+	/* c8 ignore next 3 -- forEachStaticProperty skips computed keys before dispatch */
+	if (key === null) {
+		return null;
+	}
+
+	if (key === 'slots') {
+		return getCompoundEntrySlotsChecker(hasSlotsKey);
+	}
+
+	return compoundEntryValueCheckers[key] ?? null;
+};
+
+const checkCompoundEntryProperty = (
+	context: Rule.RuleContext,
+	prop: Property,
+	hasSlotsKey: boolean
+) => {
+	const checker = getCompoundEntryValueChecker(getKeyName(prop), hasSlotsKey);
+
+	if (checker) {
+		checker(context, prop.value);
+	}
+};
 
 const svConfigValueCheckers: Record<string, SvConfigValueChecker> = {
 	base: checkClassValueIsStatic,
@@ -918,6 +1014,24 @@ const getStaticStringText = (node: Node): string | null => {
 	return null;
 };
 
+const visitArrayForRedundantSpaces = (
+	context: Rule.RuleContext,
+	node: ArrayExpression
+) => {
+	forEachStaticItem(node.elements, (element) => {
+		visitForRedundantSpaces(context, element);
+	});
+};
+
+const visitObjectForRedundantSpaces = (
+	context: Rule.RuleContext,
+	node: ObjectExpression
+) => {
+	for (const value of getProperties(node).values()) {
+		visitForRedundantSpaces(context, value);
+	}
+};
+
 const visitForRedundantSpaces = (context: Rule.RuleContext, node: Node) => {
 	const text = getStaticStringText(node);
 
@@ -927,17 +1041,12 @@ const visitForRedundantSpaces = (context: Rule.RuleContext, node: Node) => {
 	}
 
 	if (node.type === 'ArrayExpression') {
-		forEachStaticItem(node.elements, (element) => {
-			visitForRedundantSpaces(context, element);
-		});
-
+		visitArrayForRedundantSpaces(context, node);
 		return;
 	}
 
 	if (node.type === 'ObjectExpression') {
-		for (const value of getProperties(node).values()) {
-			visitForRedundantSpaces(context, value);
-		}
+		visitObjectForRedundantSpaces(context, node);
 	}
 };
 
@@ -1206,6 +1315,14 @@ export const noSharedTokens: Rule.RuleModule = {
 const isEmptyStringNode = (node: Node): boolean =>
 	getStaticStringText(node) === '';
 
+const shouldReportEmptyString = (
+	node: Node,
+	allowEmptyString: boolean
+): boolean => !allowEmptyString && isEmptyStringNode(node);
+
+const isEmptyObjectExpression = (node: Node): node is ObjectExpression =>
+	node.type === 'ObjectExpression' && node.properties.length === 0;
+
 // `allowEmptyString` is set at the top of a `slots[key]` value, where `''`
 // is a meaningful "slot with no default classes" declaration.
 const visitArrayForEmpty = (
@@ -1227,7 +1344,7 @@ const visitForEmptyClasses = (
 	node: Node,
 	allowEmptyString: boolean
 ) => {
-	if (!allowEmptyString && isEmptyStringNode(node)) {
+	if (shouldReportEmptyString(node, allowEmptyString)) {
 		context.report({ node, messageId: 'emptyString' });
 		return;
 	}
@@ -1237,7 +1354,7 @@ const visitForEmptyClasses = (
 		return;
 	}
 
-	if (node.type === 'ObjectExpression' && node.properties.length === 0) {
+	if (isEmptyObjectExpression(node)) {
 		context.report({ node, messageId: 'emptyObject' });
 	}
 };
