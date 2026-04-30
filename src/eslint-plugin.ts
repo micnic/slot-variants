@@ -741,37 +741,40 @@ const checkCompoundEntries = (
 	});
 };
 
+type SvConfigValueChecker = (context: Rule.RuleContext, node: Node) => void;
+
+const svConfigValueCheckers: Record<string, SvConfigValueChecker> = {
+	base: checkClassValueIsStatic,
+	slots: checkClassValueRecord,
+	variants: checkVariants,
+	compoundVariants: (context, node) => {
+		checkCompoundEntries(context, node, false);
+	},
+	compoundSlots: (context, node) => {
+		checkCompoundEntries(context, node, true);
+	}
+};
+
+const checkSvConfigProperty = (
+	context: Rule.RuleContext,
+	prop: Property
+) => {
+	/* c8 ignore next 3 -- getStrictProperties ensures top-level config keys are static */
+	const key = getKeyName(prop);
+
+	if (key !== null) {
+		svConfigValueCheckers[key]?.(context, prop.value);
+	}
+};
+
 // Non-class-bearing keys (defaultVariants, presets, etc.) are not checked.
 const checkSvConfig = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
 ) => {
-	for (const prop of configNode.properties) {
-		/* c8 ignore next 3 -- isConfigLike filters out spreads upstream */
-		if (prop.type !== 'Property') {
-			continue;
-		}
-
-		switch (getKeyName(prop)) {
-			case 'base':
-				checkClassValueIsStatic(context, prop.value);
-				break;
-			case 'slots':
-				checkClassValueRecord(context, prop.value);
-				break;
-			case 'variants':
-				checkVariants(context, prop.value);
-				break;
-			case 'compoundVariants':
-				checkCompoundEntries(context, prop.value, false);
-				break;
-			case 'compoundSlots':
-				checkCompoundEntries(context, prop.value, true);
-				break;
-			default:
-				break;
-		}
-	}
+	forEachStaticProperty(context, configNode, (prop) => {
+		checkSvConfigProperty(context, prop);
+	});
 };
 
 const checkCnArguments = (
