@@ -1,6 +1,7 @@
 import { Bench } from 'tinybench';
 import { cva } from 'class-variance-authority';
 import { sv } from '../src/index.ts';
+import { printBenchResults } from './report.ts';
 
 const bench = new Bench({ warmupIterations: 1000 });
 
@@ -220,19 +221,4 @@ bench.add('cva - many variants with props', () => {
 
 await bench.run();
 
-console.log('\n');
-console.table(
-	bench.tasks
-		.filter((task) => task.result)
-		.map((task) => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const { latency, throughput } = task.result as any;
-
-			return {
-				'Task': task.name,
-				'ops/sec': Math.round(throughput.mean).toLocaleString(),
-				'Mean (ns)': Math.round(latency.mean * 1_000_000),
-				'Margin': `\xb1${latency.rme.toFixed(2)}%`
-			};
-		})
-);
+printBenchResults(bench);

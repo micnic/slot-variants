@@ -2,6 +2,7 @@ import { Bench } from 'tinybench';
 import { twMerge } from 'tailwind-merge';
 import { createTV, tv } from 'tailwind-variants';
 import { sv } from '../src/index.ts';
+import { printBenchResults } from './report.ts';
 
 const tvNoMerge = createTV({ twMerge: false });
 
@@ -400,19 +401,4 @@ bench.add('tv (no merge) - slots with props', () => {
 
 await bench.run();
 
-console.log('\n');
-console.table(
-	bench.tasks
-		.filter((task) => task.result)
-		.map((task) => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const { latency, throughput } = task.result as any;
-
-			return {
-				'Task': task.name,
-				'ops/sec': Math.round(throughput.mean).toLocaleString(),
-				'Mean (ns)': Math.round(latency.mean * 1_000_000),
-				'Margin': `\xb1${latency.rme.toFixed(2)}%`
-			};
-		})
-);
+printBenchResults(bench);
