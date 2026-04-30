@@ -2680,6 +2680,34 @@ t.test('required boolean shorthand variant', (t) => {
 // sv() - conditional default variants (function-based)
 // =============================================================================
 
+const createFunctionDefaultIntentButton = (withCompoundVariant = false) =>
+	sv('rounded-lg', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		defaultVariants: {
+			intent: (props) => (props.size === 'sm' ? 'primary' : undefined)
+		},
+		...(withCompoundVariant
+			? {
+				compoundVariants: [
+					{
+						size: 'sm',
+						intent: 'primary',
+						class: 'uppercase'
+					}
+				]
+			}
+			: {})
+	});
+
 t.test('function default resolves based on other props', (t) => {
 	const button = sv('rounded-lg', {
 		variants: {
@@ -2712,21 +2740,7 @@ t.test('function default resolves based on other props', (t) => {
 });
 
 t.test('function default returns undefined to skip variant', (t) => {
-	const button = sv('rounded-lg', {
-		variants: {
-			size: {
-				sm: 'text-sm',
-				lg: 'text-lg'
-			},
-			intent: {
-				primary: 'bg-blue-500',
-				danger: 'bg-red-500'
-			}
-		},
-		defaultVariants: {
-			intent: (props) => (props.size === 'sm' ? 'primary' : undefined)
-		}
-	});
+	const button = createFunctionDefaultIntentButton();
 
 	t.equal(
 		button({ size: 'sm' }),
@@ -2806,28 +2820,7 @@ t.test('mixed static and function defaults', (t) => {
 });
 
 t.test('function default variant triggering compound variant', (t) => {
-	const button = sv('rounded-lg', {
-		variants: {
-			size: {
-				sm: 'text-sm',
-				lg: 'text-lg'
-			},
-			intent: {
-				primary: 'bg-blue-500',
-				danger: 'bg-red-500'
-			}
-		},
-		defaultVariants: {
-			intent: (props) => (props.size === 'sm' ? 'primary' : undefined)
-		},
-		compoundVariants: [
-			{
-				size: 'sm',
-				intent: 'primary',
-				class: 'uppercase'
-			}
-		]
-	});
+	const button = createFunctionDefaultIntentButton(true);
 
 	t.equal(
 		button({ size: 'sm' }),
