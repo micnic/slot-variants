@@ -1297,28 +1297,22 @@ const checkSlotsForEmpty = (context: Rule.RuleContext, value: Node) => {
 	}
 };
 
+const svEmptyConfigValueCheckers: Record<string, SvConfigValueChecker> = {
+	base: (context, node) => {
+		visitForEmptyClasses(context, node, false);
+	},
+	slots: checkSlotsForEmpty,
+	variants: checkVariantsForEmpty,
+	compoundVariants: checkCompoundsForEmpty,
+	compoundSlots: checkCompoundsForEmpty
+};
+
 const checkSvConfigForEmpty = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
 ) => {
 	for (const [key, value] of getProperties(configNode)) {
-		switch (key) {
-			case 'base':
-				visitForEmptyClasses(context, value, false);
-				break;
-			case 'slots':
-				checkSlotsForEmpty(context, value);
-				break;
-			case 'variants':
-				checkVariantsForEmpty(context, value);
-				break;
-			case 'compoundVariants':
-			case 'compoundSlots':
-				checkCompoundsForEmpty(context, value);
-				break;
-			default:
-				break;
-		}
+		svEmptyConfigValueCheckers[key]?.(context, value);
 	}
 };
 
