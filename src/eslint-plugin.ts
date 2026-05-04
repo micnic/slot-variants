@@ -422,6 +422,37 @@ const pushStringLiteralTokens = (
 const isStaticStringNode = (node: Node): boolean =>
 	getStaticStringText(node) !== null;
 
+const extractArrayTokens = (
+	node: ArrayExpression,
+	slot: string,
+	source: Source,
+	slotNames: Set<string>,
+	entries: Entry[],
+	sourceCode: SourceCode
+) => {
+	forEachStaticItem(node.elements, (element) => {
+		extractTokens(element, slot, source, slotNames, entries, sourceCode);
+	});
+};
+
+const extractSlotKeyedTokens = (
+	node: Node,
+	source: Source,
+	slotNames: Set<string>,
+	entries: Entry[],
+	sourceCode: SourceCode
+) => {
+	const slotKeyedProps = collectSlotKeyedProperties(node, slotNames);
+
+	if (!slotKeyedProps) {
+		return;
+	}
+
+	for (const [key, value] of slotKeyedProps) {
+		extractTokens(value, key, source, slotNames, entries, sourceCode);
+	}
+};
+
 const extractTokens = (
 	node: Node,
 	slot: string,
@@ -436,29 +467,11 @@ const extractTokens = (
 	}
 
 	if (node.type === 'ArrayExpression') {
-		forEachStaticItem(node.elements, (element) => {
-			extractTokens(
-				element,
-				slot,
-				source,
-				slotNames,
-				entries,
-				sourceCode
-			);
-		});
-
+		extractArrayTokens(node, slot, source, slotNames, entries, sourceCode);
 		return;
 	}
 
-	const slotKeyedProps = collectSlotKeyedProperties(node, slotNames);
-
-	if (!slotKeyedProps) {
-		return;
-	}
-
-	for (const [key, value] of slotKeyedProps) {
-		extractTokens(value, key, source, slotNames, entries, sourceCode);
-	}
+	extractSlotKeyedTokens(node, source, slotNames, entries, sourceCode);
 };
 
 // Skips spreads and holes silently. Validators that need to flag spreads
@@ -598,19 +611,13 @@ const extractCompoundTokens = (
 	});
 };
 
-const analyzeConfig = (
-	context: Rule.RuleContext,
-	configNode: Node,
-	baseArgs: ReadonlyArray<Expression | SpreadElement>
-) => {
-	const { sourceCode } = context;
-	const config = getProperties(configNode);
-	const slotsMap = getProperties(config.get('slots'));
-	const slotNames = new Set(slotsMap.keys());
-
-	// 'base' is a reserved key meaning "default slot", not a slot name.
-	slotNames.delete('base');
-
+const collectConfigEntries = (
+	config: Map<string, Node>,
+	slotsMap: Map<string, Node>,
+	slotNames: Set<string>,
+	baseArgs: ReadonlyArray<Expression | SpreadElement>,
+	sourceCode: SourceCode
+): Entry[] => {
 	const entries: Entry[] = [];
 	const extract: ExtractFn = (node, slot, source) => {
 		extractTokens(node, slot, source, slotNames, entries, sourceCode);
@@ -641,13 +648,44 @@ const analyzeConfig = (
 		extract
 	);
 
-	const bySlot = indexEntriesBySlotAndToken(entries);
+	return entries;
+};
 
+const reportDuplicatesBySlot = (
+	context: Rule.RuleContext,
+	bySlot: TokenEntriesBySlot
+) => {
 	for (const [slotKey, tokenMap] of bySlot.entries()) {
 		reportDuplicateTokens(context, tokenMap, 'duplicate', {
 			slot: slotKey
 		});
 	}
+};
+
+const analyzeConfig = (
+	context: Rule.RuleContext,
+	configNode: Node,
+	baseArgs: ReadonlyArray<Expression | SpreadElement>
+) => {
+	const config = getProperties(configNode);
+	const slotsMap = getProperties(config.get('slots'));
+	const slotNames = new Set(slotsMap.keys());
+
+	// 'base' is a reserved key meaning "default slot", not a slot name.
+	slotNames.delete('base');
+
+	reportDuplicatesBySlot(
+		context,
+		indexEntriesBySlotAndToken(
+			collectConfigEntries(
+				config,
+				slotsMap,
+				slotNames,
+				baseArgs,
+				context.sourceCode
+			)
+		)
+	);
 };
 
 const analyzeCnCall = (
@@ -946,7 +984,7 @@ const createTrackedCallListeners = (
  * those, and ObjectExpressions whose keys/values are themselves inferrable —
  * are allowed in class-bearing positions.
  */
-export const noDynamicClasses: Rule.RuleModule = {
+const noDynamicClasses: Rule.RuleModule = {
 	meta: {
 		type: 'problem',
 		docs: {
@@ -1056,7 +1094,7 @@ const visitForRedundantSpaces = (context: Rule.RuleContext, node: Node) => {
  * between non-whitespace tokens; leading, trailing, repeated, or non-space
  * whitespace runs are reported. Dynamic expressions are skipped silently.
  */
-export const noRedundantSpaces: Rule.RuleModule = {
+const noRedundantSpaces: Rule.RuleModule = {
 	meta: {
 		type: 'problem',
 		docs: {
@@ -1085,7 +1123,7 @@ export const noRedundantSpaces: Rule.RuleModule = {
  * Flags class name tokens that are guaranteed (or guaranteed-on-some-path) to
  * appear more than once in the output of an `sv()` or `cn()` call.
  */
-export const noDuplicateClasses: Rule.RuleModule = {
+const noDuplicateClasses: Rule.RuleModule = {
 	meta: {
 		type: 'problem',
 		docs: {
@@ -1145,30 +1183,69 @@ const intersectSharedTokensStep = (
 	}
 };
 
-const intersectSharedTokensBySlot = (
-	tokensByValue: TokenEntriesBySlot[]
+const seedSharedTokens = (
+	valueMap: TokenEntriesBySlot
 ): Map<string, Set<string>> => {
 	const sharedTokens = new Map<string, Set<string>>();
-	const firstValueMap = tokensByValue[0];
 
-	/* c8 ignore next 3 -- callers guarantee tokensByValue has at least two entries */
-	if (!firstValueMap) {
-		return sharedTokens;
-	}
-
-	for (const [slot, tokenMap] of firstValueMap) {
+	for (const [slot, tokenMap] of valueMap) {
 		sharedTokens.set(slot, new Set(tokenMap.keys()));
 	}
 
-	for (const valueMap of tokensByValue.slice(1)) {
+	return sharedTokens;
+};
+
+const applySharedTokenIntersections = (
+	sharedTokens: Map<string, Set<string>>,
+	valueMaps: TokenEntriesBySlot[]
+) => {
+	for (const valueMap of valueMaps) {
 		intersectSharedTokensStep(sharedTokens, valueMap);
 
 		if (sharedTokens.size === 0) {
 			break;
 		}
 	}
+};
+
+const intersectSharedTokensBySlot = (
+	tokensByValue: TokenEntriesBySlot[]
+): Map<string, Set<string>> => {
+	const firstValueMap = tokensByValue[0];
+
+	/* c8 ignore next 3 -- callers guarantee tokensByValue has at least two entries */
+	if (!firstValueMap) {
+		return new Map<string, Set<string>>();
+	}
+
+	const sharedTokens = seedSharedTokens(firstValueMap);
+
+	applySharedTokenIntersections(sharedTokens, tokensByValue.slice(1));
 
 	return sharedTokens;
+};
+
+const reportSharedTokenEntries = (
+	context: Rule.RuleContext,
+	tokensByValue: TokenEntriesBySlot[],
+	variantKey: string,
+	slot: string,
+	token: string
+) => {
+	for (const valueMap of tokensByValue) {
+		const entryList = valueMap.get(slot)?.get(token);
+
+		/* c8 ignore next 3 -- `sharedTokens` only retains tokens present in every value map */
+		if (!entryList) {
+			continue;
+		}
+
+		reportEntryList(context, entryList, 'shared', {
+			token,
+			variant: variantKey,
+			slot
+		});
+	}
 };
 
 const reportSharedTokensBySlot = (
@@ -1179,20 +1256,13 @@ const reportSharedTokensBySlot = (
 ) => {
 	for (const [slot, tokens] of sharedTokens) {
 		for (const token of tokens) {
-			for (const valueMap of tokensByValue) {
-				const entryList = valueMap.get(slot)?.get(token);
-
-				/* c8 ignore next 3 -- `sharedTokens` only retains tokens present in every value map */
-				if (!entryList) {
-					continue;
-				}
-
-				reportEntryList(context, entryList, 'shared', {
-					token,
-					variant: variantKey,
-					slot
-				});
-			}
+			reportSharedTokenEntries(
+				context,
+				tokensByValue,
+				variantKey,
+				slot,
+				token
+			);
 		}
 	}
 };
@@ -1212,6 +1282,32 @@ const collectExhaustiveVariantKeys = (
 	}
 
 	return exhaustive;
+};
+
+const collectVariantTokensByValue = (
+	variantEntries: Map<string, Node>,
+	variantKey: string,
+	slotNames: Set<string>,
+	sourceCode: SourceCode
+): TokenEntriesBySlot[] => {
+	const tokensByValue: TokenEntriesBySlot[] = [];
+
+	for (const [valueKey, valueNode] of variantEntries) {
+		const entries: Entry[] = [];
+
+		extractTokens(
+			valueNode,
+			'base',
+			{ kind: 'variant', key: variantKey, value: valueKey },
+			slotNames,
+			entries,
+			sourceCode
+		);
+
+		tokensByValue.push(indexEntriesBySlotAndToken(entries));
+	}
+
+	return tokensByValue;
 };
 
 const analyzeVariantSharedTokens = (
@@ -1234,26 +1330,44 @@ const analyzeVariantSharedTokens = (
 	}
 
 	const { sourceCode } = context;
-	const tokensByValue: TokenEntriesBySlot[] = [];
-
-	for (const [valueKey, valueNode] of valueEntries) {
-		const entries: Entry[] = [];
-
-		extractTokens(
-			valueNode,
-			'base',
-			{ kind: 'variant', key: variantKey, value: valueKey },
-			slotNames,
-			entries,
-			sourceCode
-		);
-
-		tokensByValue.push(indexEntriesBySlotAndToken(entries));
-	}
+	const tokensByValue = collectVariantTokensByValue(
+		valueEntries,
+		variantKey,
+		slotNames,
+		sourceCode
+	);
 
 	const sharedTokens = intersectSharedTokensBySlot(tokensByValue);
 
 	reportSharedTokensBySlot(context, sharedTokens, tokensByValue, variantKey);
+};
+
+const getConfigSlotNames = (config: Map<string, Node>): Set<string> => {
+	const slotNames = new Set(getProperties(config.get('slots')).keys());
+
+	slotNames.delete('base');
+
+	return slotNames;
+};
+
+const analyzeExhaustiveVariants = (
+	context: Rule.RuleContext,
+	variants: ObjectExpression,
+	exhaustive: Set<string>,
+	slotNames: Set<string>
+) => {
+	for (const [variantKey, variantValue] of getProperties(variants)) {
+		if (!exhaustive.has(variantKey)) {
+			continue;
+		}
+
+		analyzeVariantSharedTokens(
+			context,
+			variantKey,
+			variantValue,
+			slotNames
+		);
+	}
 };
 
 const analyzeSharedTokens = (context: Rule.RuleContext, configNode: Node) => {
@@ -1264,22 +1378,12 @@ const analyzeSharedTokens = (context: Rule.RuleContext, configNode: Node) => {
 		return;
 	}
 
-	const slotNames = new Set(getProperties(config.get('slots')).keys());
-
-	slotNames.delete('base');
-
-	const exhaustive = collectExhaustiveVariantKeys(config);
-
-	for (const [variantKey, variantValue] of getProperties(variants)) {
-		if (exhaustive.has(variantKey)) {
-			analyzeVariantSharedTokens(
-				context,
-				variantKey,
-				variantValue,
-				slotNames
-			);
-		}
-	}
+	analyzeExhaustiveVariants(
+		context,
+		variants,
+		collectExhaustiveVariantKeys(config),
+		getConfigSlotNames(config)
+	);
 };
 
 /**
@@ -1289,7 +1393,7 @@ const analyzeSharedTokens = (context: Rule.RuleContext, configNode: Node) => {
  * each variant value. Coverage is treated as exhaustive when the variant has a
  * `defaultVariants` entry or is listed in `requiredVariants`.
  */
-export const noSharedTokens: Rule.RuleModule = {
+const noSharedTokens: Rule.RuleModule = {
 	meta: {
 		type: 'problem',
 		docs: {
@@ -1374,6 +1478,18 @@ const visitRecordEntriesForEmpty = (
 	}
 };
 
+const visitVariantValueForEmpty = (
+	context: Rule.RuleContext,
+	variantValue: Node
+) => {
+	if (variantValue.type === 'ObjectExpression') {
+		visitRecordEntriesForEmpty(context, variantValue, false);
+		return;
+	}
+
+	visitForEmptyClasses(context, variantValue, false);
+};
+
 const checkVariantsForEmpty = (context: Rule.RuleContext, value: Node) => {
 	if (value.type !== 'ObjectExpression') {
 		return;
@@ -1385,11 +1501,7 @@ const checkVariantsForEmpty = (context: Rule.RuleContext, value: Node) => {
 	}
 
 	for (const variantValue of getProperties(value).values()) {
-		if (variantValue.type === 'ObjectExpression') {
-			visitRecordEntriesForEmpty(context, variantValue, false);
-		} else {
-			visitForEmptyClasses(context, variantValue, false);
-		}
+		visitVariantValueForEmpty(context, variantValue);
 	}
 };
 
@@ -1440,7 +1552,7 @@ const checkSvConfigForEmpty = (
  * string is still allowed as a direct `slots[key]` value, since declaring a
  * slot with no default classes is a meaningful use case.
  */
-export const noEmptyClasses: Rule.RuleModule = {
+const noEmptyClasses: Rule.RuleModule = {
 	meta: {
 		type: 'problem',
 		docs: {
@@ -1487,7 +1599,7 @@ export const rules = {
 /**
  * Plugin metadata.
  */
-export const meta = { name: 'slot-variants' };
+const meta = { name: 'slot-variants' };
 
 const plugin = { meta, rules };
 
