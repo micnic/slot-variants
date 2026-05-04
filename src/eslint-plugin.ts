@@ -1601,6 +1601,4 @@ export const rules = {
  */
 const meta = { name: 'slot-variants' };
 
-const plugin = { meta, rules };
-
-export default plugin;
+export default { meta, rules };
