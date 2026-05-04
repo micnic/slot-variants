@@ -22,13 +22,14 @@
 		"logo.svg"
 	],
 	"scripts": {
-		"build": "tsup src/index.ts src/eslint-plugin.ts && rm dist/index.d.cts dist/eslint-plugin.d.cts",
-		"test": "tap --show-full-coverage test/*.test.ts",
 		"bench": "jiti bench/cn.ts && jiti bench/cva.ts && jiti bench/tv.ts",
-		"lint": "eslint src",
+		"build": "tsup src/index.ts src/eslint-plugin.ts && rm dist/index.d.cts dist/eslint-plugin.d.cts",
+		"fallow": "npm t && tap report json && node scripts/sanitize-tap-coverage.mjs && fallow health --coverage .tap/report/coverage-final.json",
 		"format": "prettier --write src",
 		"format:check": "prettier --check src",
-		"prepublishOnly": "npm run build"
+		"lint": "eslint src",
+		"prepublishOnly": "npm run build",
+		"test": "tap --show-full-coverage test/*.test.ts"
 	},
 	"repository": "github:micnic/slot-variants",
 	"keywords": [

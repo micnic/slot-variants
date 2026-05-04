@@ -3,5 +3,9 @@
   "entry": [
     "src/index.ts"
   ],
+  "ignorePatterns": [
+    "bench/**",
+    "scripts/**"
+  ],
   "rules": {}
 }

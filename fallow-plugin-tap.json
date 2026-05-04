@@ -1,0 +1,8 @@
+{
+	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/plugin-schema.json",
+	"name": "tap",
+	"enablers": ["tap"],
+	"entryPoints": ["test/**/*.test.ts"],
+	"entryPointRole": "test",
+	"toolingDependencies": ["tap"]
+}
