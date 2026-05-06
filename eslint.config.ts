@@ -14,6 +14,7 @@ export default [
 		},
 		rules: {
 			'@stylistic/eol-last': ['error', 'never'],
+			'@typescript-eslint/no-empty-object-type': 'error',
 			'@typescript-eslint/no-non-null-assertion': 'error',
 			'no-cond-assign': ['error', 'always'],
 			'no-implicit-coercion': 'error'

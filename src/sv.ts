@@ -12,42 +12,39 @@ type StringKeyof<T> = Extract<keyof T, string>;
 
 type ConfigClassValue = string | string[] | undefined;
 
-type SlotValue<S extends Slots | undefined, V> = S extends Slots
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyFn = (...args: any[]) => unknown;
+
+type RuntimeVariantValue = string | number | boolean;
+
+type RuntimeVariantState = Record<string, RuntimeVariantValue | undefined>;
+
+type MaybeSlots = Slots | undefined;
+
+type MaybeVariants<S extends MaybeSlots> = Variants<S> | undefined;
+
+type SlotValue<S extends MaybeSlots, V> = S extends Slots
 	? Partial<Record<SlotKey<S>, V>> | V
 	: V;
 
-type ConfigSlotClassValue<S extends Slots | undefined> = SlotValue<
-	S,
-	ConfigClassValue
->;
+type ClassProp<S extends MaybeSlots, V> = {
+	class?: SlotValue<S, V>;
+	className?: SlotValue<S, V>;
+};
 
-type XorClass<V> =
-	| { class?: V; className?: never }
-	| { class?: never; className?: V };
-
-type ClassProp<S extends Slots | undefined = undefined> = XorClass<
-	SlotValue<S, ClassValue>
->;
-
-type ConfigClassProp<S extends Slots | undefined = undefined> = XorClass<
-	ConfigSlotClassValue<S>
->;
-
-type Slots = { base?: ConfigClassValue } & Record<string, ConfigClassValue>;
+type Slots = Record<string, ConfigClassValue>;
 
 type BooleanString<T> = T extends `${boolean}` ? boolean : T;
 
-type SlotKey<S extends Slots | undefined> = 'base' | StringKeyof<S>;
+type SlotKey<S extends MaybeSlots> = 'base' | StringKeyof<S>;
 
-type Variants<S extends Slots | undefined> = Record<
+type Variants<S extends MaybeSlots> = Record<
 	string,
-	Record<string | number, ConfigSlotClassValue<S>> | ConfigSlotClassValue<S>
+	| Record<string | number, SlotValue<S, ConfigClassValue>>
+	| SlotValue<S, ConfigClassValue>
 >;
 
-type VariantConditions<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined
-> = {
+type VariantConditions<S extends MaybeSlots, V extends MaybeVariants<S>> = {
 	[K in StringKeyof<V>]?:
 		| VariantPropType<V[K], S>
 		| readonly VariantPropType<V[K], S>[]
@@ -55,23 +52,24 @@ type VariantConditions<
 };
 
 type CompoundVariants<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined
-> = readonly (VariantConditions<S, V> & ConfigClassProp<S>)[];
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>
+> = readonly (VariantConditions<S, V> & ClassProp<S, ConfigClassValue>)[];
 
 type CompoundSlots<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>
 > = readonly ({
 	slots: readonly SlotKey<S>[];
 } & VariantConditions<S, V> &
-	ConfigClassProp<S>)[];
+	ClassProp<S, ConfigClassValue>)[];
 
-type BooleanShorthandKeys<S extends Slots | undefined> = S extends Slots
-	? SlotKey<S> | 'true' | 'false'
-	: 'true' | 'false';
+type BooleanShorthandKeys<S extends MaybeSlots> =
+	| (S extends Slots ? SlotKey<S> : never)
+	| 'true'
+	| 'false';
 
-type VariantPropType<T, S extends Slots | undefined> =
+type VariantPropType<T, S extends MaybeSlots> =
 	T extends Record<string | number, unknown>
 		? [Extract<keyof T, number>] extends [never]
 			? StringKeyof<T> extends BooleanShorthandKeys<S>
@@ -80,68 +78,88 @@ type VariantPropType<T, S extends Slots | undefined> =
 			: BooleanString<StringKeyof<T>> | Extract<keyof T, number>
 		: boolean;
 
-type VariantPropsInternal<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined
-> = { [K in StringKeyof<V>]: VariantPropType<V[K], S> };
-
-type DefaultVariantFn<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined,
-	K extends StringKeyof<V>
-> = (
-	props: Partial<VariantPropsInternal<S, V>>
-) => VariantPropType<V[K], S> | undefined;
-
-type DefaultVariants<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined,
-	RV extends readonly StringKeyof<V>[]
-> = {
-	[K in Exclude<StringKeyof<V>, RV[number]>]?:
-		| VariantPropType<V[K], S>
-		| DefaultVariantFn<S, V, K>
-		| undefined;
+type VariantPropsInternal<S extends MaybeSlots, V extends MaybeVariants<S>> = {
+	[K in StringKeyof<V>]: VariantPropType<V[K], S>;
 };
 
-type ResolvedVariantValue<S extends Slots | undefined> =
-	| ClassValue
-	| Partial<Record<SlotKey<S>, ClassValue>>;
+type DefaultVariantValue<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
+	K extends StringKeyof<V>
+> =
+	| VariantPropType<V[K], S>
+	| ((
+			props: RuntimeVariantState
+	  ) => VariantPropType<V[K], S> | undefined)
+	| undefined;
+
+type DefaultVariants<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
+	RV extends readonly StringKeyof<V>[]
+> = {
+	[K in Exclude<StringKeyof<V>, RV[number]>]?: DefaultVariantValue<S, V, K>;
+};
+
+type RuntimeClassValue = SlotValue<Slots, ClassValue>;
 
 type NormalizedVariantValue =
 	| ConfigClassValue
 	| Record<string, ConfigClassValue>;
 
-type Presets<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined
-> = Record<string, Partial<VariantPropsInternal<S, V>>>;
+type RuntimeVariantConfigValue =
+	| ConfigClassValue
+	| Record<string, NormalizedVariantValue>;
 
-type PresetProp<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined,
-	P extends Presets<S, V> | undefined
-> = P extends undefined
-	? { preset?: undefined }
-	: { preset?: StringKeyof<P> | undefined };
+type CacheValue = string | Record<string, string>;
+
+type Presets<S extends MaybeSlots, V extends MaybeVariants<S>> = Record<
+	string,
+	Partial<VariantPropsInternal<S, V>>
+>;
+
+type VariantPropsWithRequired<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
+	RV extends readonly StringKeyof<V>[]
+> = Pick<VariantPropsInternal<S, V>, RV[number]> &
+	Omit<PartialUndefined<VariantPropsInternal<S, V>>, RV[number]>;
 
 type Props<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined,
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
 	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined
-> = (P extends undefined
-	? Prettify<
-			Pick<VariantPropsInternal<S, V>, RV[number]> &
-				Omit<PartialUndefined<VariantPropsInternal<S, V>>, RV[number]>
-		>
-	: Prettify<PartialUndefined<VariantPropsInternal<S, V>>>) &
-	ClassProp<S> &
-	PresetProp<S, V, P>;
+> = Prettify<
+	P extends undefined
+		? VariantPropsWithRequired<S, V, RV>
+		: PartialUndefined<VariantPropsInternal<S, V>> & {
+				preset?: StringKeyof<P> | undefined;
+			}
+> &
+	ClassProp<S, ClassValue>;
+
+type RuntimeProps = RuntimeVariantState & {
+	class?: RuntimeClassValue;
+	className?: RuntimeClassValue;
+	preset?: string;
+};
+
+type RuntimeDefaultVariant =
+	| RuntimeVariantValue
+	| ((props: RuntimeVariantState) => RuntimeVariantValue | undefined)
+	| undefined;
+
+type RuntimeCompoundVariant = Record<string, unknown> &
+	ClassProp<Slots, ClassValue>;
+
+type RuntimeCompoundSlot = RuntimeCompoundVariant & {
+	slots: readonly string[];
+};
 
 type Config<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined,
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
 	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined,
 	I extends boolean = false
@@ -159,50 +177,69 @@ type Config<
 	postProcess?: ((className: string) => string) | undefined;
 };
 
+type SlotClasses = { base: ClassValue[] } & Record<string, ClassValue[]>;
+
+type CompiledConfig = {
+	baseClassValue: ClassValue;
+	slots: Slots;
+	otherSlots: Record<string, ConfigClassValue>;
+	slotKeys: Set<string>;
+	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>;
+	variantEntries: [string, Record<string, NormalizedVariantValue>][];
+	variantKeys: Set<string>;
+	defaultVariants: Record<string, RuntimeDefaultVariant>;
+	defaultVariantKeys: Set<string>;
+	requiredVariants: readonly string[];
+	presets: Record<string, RuntimeVariantState>;
+	presetKeys: Set<string>;
+	compoundVariants: readonly RuntimeCompoundVariant[];
+	compoundSlots: readonly RuntimeCompoundSlot[];
+	cache: Map<string, CacheValue>;
+	introspection: boolean;
+	cacheReturn: <T extends CacheValue>(cacheKey: string | null, value: T) => T;
+	postProcess: (className: string) => string;
+};
+
 type ConfigKey = keyof Config<undefined, undefined, [], undefined>;
 
-type ReturnValue<S extends Slots | undefined> = S extends undefined
+type VariantFn<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
+	RV extends readonly StringKeyof<V>[],
+	P extends Presets<S, V> | undefined,
+	I extends boolean
+> = {
+	(
+		...args: RV extends readonly []
+			? [props?: Prettify<Props<S, V, RV, P>> | undefined]
+			: [props: Prettify<Props<S, V, RV, P>>]
+	): ReturnValue<S>;
+} & (I extends true ? Prettify<IntrospectionValues<S, V, RV, P>> : unknown);
+
+type ReturnValue<S extends MaybeSlots> = S extends undefined
 	? string
 	: Prettify<Record<SlotKey<S>, string>>;
 
-type ReturnFn<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined,
-	RV extends readonly StringKeyof<V>[],
-	P extends Presets<S, V> | undefined
-> = RV extends readonly []
-	? (props?: Props<S, V, RV, P> | undefined) => ReturnValue<S>
-	: (props: Props<S, V, RV, P>) => ReturnValue<S>;
-
 type IntrospectionValues<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined,
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
 	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined
 > = {
 	variants: V;
 	variantKeys: StringKeyof<V>[];
 	slots: S;
-	slotKeys: S extends Slots ? SlotKey<S>[] : ['base'];
+	slotKeys: SlotKey<S>[];
 	defaultVariants: DefaultVariants<S, V, RV>;
 	requiredVariants: RV;
 	presets: P;
-	presetKeys: P extends Record<string, unknown> ? StringKeyof<P>[] : [];
-	getVariantValues: V extends Variants<S>
-		? <K extends StringKeyof<V>>(key: K) => VariantPropType<V[K], S>[]
-		: (key: never) => never[];
+	presetKeys: P extends undefined ? [] : StringKeyof<P>[];
+	getVariantValues: V extends undefined
+		? (key: never) => never[]
+		: <K extends StringKeyof<V>>(key: K) => VariantPropType<V[K], S>[];
 	clearCache: () => void;
 	getCacheSize: () => number;
 };
-
-type ResultType<
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined,
-	RV extends readonly StringKeyof<V>[],
-	P extends Presets<S, V> | undefined,
-	I extends boolean
-> = ReturnFn<S, V, RV, P> &
-	(I extends true ? IntrospectionValues<S, V, RV, P> : object);
 
 type NonConfigClassArg<T> =
 	T extends Record<string, unknown>
@@ -233,8 +270,7 @@ type NonConfigClassArg<T> =
  * ```
  */
 export type VariantProps<
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	T extends (...args: any[]) => unknown,
+	T extends AnyFn,
 	E extends string = never
 > = Prettify<
 	Omit<
@@ -261,8 +297,7 @@ export type VariantProps<
  * ```
  */
 export type VariantValue<
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	T extends (...args: any[]) => unknown,
+	T extends AnyFn,
 	K extends keyof VariantProps<T>
 > = NonNullable<VariantProps<T>[K]>;
 
@@ -287,8 +322,7 @@ export type VariantValue<
  * ```
  */
 export type SlotClassProps<
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	T extends (...args: any[]) => unknown
+	T extends AnyFn
 > =
 	ReturnType<T> extends string
 		? Partial<Record<'base', ClassValue>>
@@ -306,11 +340,6 @@ const { assign, entries, keys } = Object;
  */
 const looseEquals = (first: unknown, second: unknown) =>
 	first === second || `${first}` === `${second}`;
-
-/**
- * Check if a compound variant matches the given props
- */
-type CacheValue = string | Record<string, string>;
 
 const createCacheReturn =
 	(cache: Map<string, CacheValue>, cacheSize: number) =>
@@ -354,7 +383,7 @@ const isCompoundMetaKey = (compoundKey: string): boolean =>
 	compoundKey === 'slots';
 
 const matchesCompound = (
-	props: Record<string, ResolvedVariantValue<Slots>>,
+	props: RuntimeVariantState,
 	compound: Record<string, unknown>
 ): boolean => {
 	for (const compoundKey of keys(compound)) {
@@ -380,13 +409,15 @@ const matchesCompound = (
 	return true;
 };
 
-const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+const isObjectRecord = (
+	value: RuntimeVariantConfigValue
+): value is Extract<RuntimeVariantConfigValue, Record<string, unknown>> =>
 	value !== null && typeof value === 'object' && !isArray(value);
 
 const isSlotObjectVariantValue = (
-	variantValue: Record<string, unknown>,
+	variantValue: Record<string, NormalizedVariantValue>,
 	slotKeys: Set<string>
-): boolean => {
+): variantValue is Record<string, ConfigClassValue> => {
 	const valueKeys = keys(variantValue);
 
 	return (
@@ -397,26 +428,26 @@ const isSlotObjectVariantValue = (
 };
 
 const isBooleanVariantRecord = (
-	variantValue: Record<string, unknown>
-): boolean =>
+	variantValue: Record<string, NormalizedVariantValue>
+): variantValue is Record<string, NormalizedVariantValue> =>
 	keys(variantValue).every((key) => key === 'true' || key === 'false');
 
 const normalizeVariantValue = (
-	variantValue: unknown,
+	variantValue: RuntimeVariantConfigValue,
 	slotKeys: Set<string>
 ): Record<string, NormalizedVariantValue> => {
 
 	if (!isObjectRecord(variantValue)) {
 		return {
 			false: '',
-			true: variantValue as NormalizedVariantValue
+			true: variantValue
 		};
 	}
 
 	if (isSlotObjectVariantValue(variantValue, slotKeys)) {
 		return {
 			false: '',
-			true: variantValue as Record<string, ConfigClassValue>
+			true: variantValue
 		};
 	}
 
@@ -424,11 +455,11 @@ const normalizeVariantValue = (
 		return {
 			true: '',
 			false: '',
-			...(variantValue as Record<string, NormalizedVariantValue>)
+			...variantValue
 		};
 	}
 
-	return variantValue as Record<string, NormalizedVariantValue>;
+	return variantValue;
 };
 
 const coerceBooleanVariantKey = (value: string): string | boolean => {
@@ -479,8 +510,8 @@ const configKeys = new Set(keys(configKeysRecord) as ConfigKey[]);
  * Check if a value is a Config object
  */
 const isConfig = <
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined,
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
 	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined,
 	I extends boolean
@@ -492,9 +523,9 @@ const isConfig = <
 	!isArray(value) &&
 	keys(value).every((key) => (configKeys as Set<string>).has(key));
 
-const resolveSVInputs = <
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined,
+const resolveInputs = <
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
 	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined,
 	I extends boolean
@@ -524,7 +555,7 @@ const resolveSVInputs = <
 	};
 };
 
-const createNormalizedVariants = <S extends Slots | undefined>(
+const createNormalizedVariants = <S extends MaybeSlots>(
 	variants: Variants<S>,
 	slotKeys: Set<string>
 ): Record<string, Record<string, NormalizedVariantValue>> => {
@@ -566,7 +597,9 @@ const assertValidRequiredVariantConfig = (
 };
 
 const hasOnlyBaseOrSlotKeys = (
-	value: object,
+	value:
+		| Record<string, unknown>
+		| Partial<Record<SlotKey<Slots>, ClassValue>>,
 	slotKeys: Set<string>
 ): boolean => {
 
@@ -580,7 +613,7 @@ const hasOnlyBaseOrSlotKeys = (
 };
 
 const isSlotObjectValue = (
-	value: ResolvedVariantValue<Slots>,
+	value: RuntimeClassValue,
 	slotKeys: Set<string>
 ): value is Partial<Record<string, ClassValue>> =>
 	value !== null &&
@@ -590,7 +623,7 @@ const isSlotObjectValue = (
 
 const applyValueToSlotClasses = (
 	slotClasses: SlotClasses,
-	value: ResolvedVariantValue<Slots>,
+	value: RuntimeClassValue,
 	slotKeys: Set<string>
 ) => {
 
@@ -604,34 +637,9 @@ const applyValueToSlotClasses = (
 	slotClasses.base.push(value);
 };
 
-type SlotClasses = { base: ClassValue[] } & Record<string, ClassValue[]>;
-
-type CompiledConfig = {
-	baseClassValue: ClassValue;
-	slots: Slots;
-	otherSlots: Record<string, ConfigClassValue>;
-	slotKeys: Set<string>;
-	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>;
-	variantEntries: [string, Record<string, NormalizedVariantValue>][];
-	variantKeys: Set<string>;
-	defaultVariants: Record<string, unknown>;
-	defaultVariantKeys: Set<string>;
-	requiredVariants: readonly string[];
-	presets: Record<string, Record<string, ResolvedVariantValue<Slots>>>;
-	presetKeys: Set<string>;
-	compoundVariants: readonly Record<string, unknown>[];
-	compoundSlots: readonly ({
-		slots: readonly string[];
-	} & Record<string, unknown>)[];
-	cache: Map<string, CacheValue>;
-	introspection: boolean;
-	cacheReturn: <T extends CacheValue>(cacheKey: string | null, value: T) => T;
-	postProcess: (className: string) => string;
-};
-
 const compileConfig = <
-	S extends Slots | undefined,
-	V extends Variants<S> | undefined,
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
 	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined,
 	I extends boolean
@@ -643,7 +651,7 @@ const compileConfig = <
 	const {
 		base: configBase,
 		variants = {},
-		slots = {} as Slots,
+		slots = {},
 		compoundVariants = [],
 		compoundSlots = [],
 		defaultVariants = {} as DefaultVariants<S, V, RV>,
@@ -694,7 +702,7 @@ const compileConfig = <
 const resolvePresetValues = (
 	config: CompiledConfig,
 	presetName: string | undefined
-): Record<string, ResolvedVariantValue<Slots>> | undefined => {
+): RuntimeVariantState | undefined => {
 
 	if (presetName === undefined) {
 		return undefined;
@@ -710,9 +718,9 @@ const resolvePresetValues = (
 const resolveVariantValue = (
 	config: CompiledConfig,
 	variantKey: string,
-	props: Record<string, unknown>,
-	presetValues: Record<string, ResolvedVariantValue<Slots>> | undefined
-): ResolvedVariantValue<Slots> | undefined => {
+	props: RuntimeVariantState,
+	presetValues: RuntimeVariantState | undefined
+): RuntimeVariantValue | undefined => {
 
 	const propValue = props[variantKey];
 
@@ -733,26 +741,22 @@ const resolveVariantValue = (
 	const defaultValue = config.defaultVariants[variantKey];
 
 	if (typeof defaultValue === 'function') {
-		return (
-			defaultValue as (
-				p: Record<string, unknown>
-			) => ResolvedVariantValue<Slots> | undefined
-		)(props);
+		return defaultValue(props);
 	}
 
-	return defaultValue as ResolvedVariantValue<Slots> | undefined;
+	return defaultValue;
 };
 
 const resolveVariantState = (
 	config: CompiledConfig,
-	props: Record<string, unknown>,
-	presetValues: Record<string, ResolvedVariantValue<Slots>> | undefined
+	props: RuntimeProps,
+	presetValues: RuntimeVariantState | undefined
 ): {
 	cacheKey: string;
-	resolvedProps: Record<string, ResolvedVariantValue<Slots>>;
+	resolvedProps: RuntimeVariantState;
 } => {
 
-	const resolvedProps: Record<string, ResolvedVariantValue<Slots>> = {};
+	const resolvedProps: RuntimeVariantState = {};
 
 	let cacheKey = '';
 
@@ -779,7 +783,7 @@ const resolveVariantState = (
 
 const assertRequiredVariants = (
 	config: CompiledConfig,
-	resolvedProps: Record<string, ResolvedVariantValue<Slots>>
+	resolvedProps: RuntimeVariantState
 ) => {
 
 	for (const variant of config.requiredVariants) {
@@ -822,7 +826,7 @@ const getVariantClasses = (
 const applyResolvedVariantClasses = (
 	config: CompiledConfig,
 	slotClasses: SlotClasses,
-	resolvedProps: Record<string, ResolvedVariantValue<Slots>>
+	resolvedProps: RuntimeVariantState
 ) => {
 
 	for (const [variantKey, variantValues] of config.variantEntries) {
@@ -841,7 +845,7 @@ const applyResolvedVariantClasses = (
 		if (variantClasses !== '') {
 			applyValueToSlotClasses(
 				slotClasses,
-				variantClasses as ResolvedVariantValue<Slots>,
+				variantClasses,
 				config.slotKeys
 			);
 		}
@@ -851,7 +855,7 @@ const applyResolvedVariantClasses = (
 const applyCompoundSlotsClasses = (
 	config: CompiledConfig,
 	slotClasses: SlotClasses,
-	resolvedProps: Record<string, ResolvedVariantValue<Slots>>
+	resolvedProps: RuntimeVariantState
 ) => {
 
 	for (const compound of config.compoundSlots) {
@@ -859,9 +863,7 @@ const applyCompoundSlotsClasses = (
 			continue;
 		}
 
-		const compoundClass =
-			(compound as { class?: ClassValue }).class ??
-			(compound as { className?: ClassValue }).className;
+		const compoundClass = compound.class ?? compound.className;
 
 		for (const slotName of compound.slots) {
 			slotClasses[slotName]?.push(compoundClass);
@@ -872,16 +874,14 @@ const applyCompoundSlotsClasses = (
 const applyCompoundClasses = (
 	config: CompiledConfig,
 	slotClasses: SlotClasses,
-	resolvedProps: Record<string, ResolvedVariantValue<Slots>>
+	resolvedProps: RuntimeVariantState
 ) => {
 
 	for (const compound of config.compoundVariants) {
 		if (matchesCompound(resolvedProps, compound)) {
 			applyValueToSlotClasses(
 				slotClasses,
-				((compound as { class?: ClassValue }).class ??
-					(compound as { className?: ClassValue })
-						.className) as ResolvedVariantValue<Slots>,
+				compound.class ?? compound.className,
 				config.slotKeys
 			);
 		}
@@ -907,16 +907,16 @@ const finalizeVariantResult = (
 		: config.cacheReturn(cacheKey, result);
 };
 
+const toSlotResult = (cacheValue: CacheValue): Record<string, string> =>
+	typeof cacheValue === 'string' ? { base: cacheValue } : cacheValue;
+
 const mergeClassPropIntoResult = (
 	config: CompiledConfig,
 	baseResult: CacheValue,
-	classProp: ResolvedVariantValue<Slots>
+	classProp: RuntimeClassValue
 ): CacheValue => {
 
-	const baseObj =
-		config.slotKeys.size === 0
-			? { base: baseResult as string }
-			: (baseResult as Record<string, string>);
+	const baseObj = toSlotResult(baseResult);
 	const slotClasses: SlotClasses = { base: [baseObj.base] };
 
 	for (const key of config.slotKeys) {
@@ -938,14 +938,9 @@ const mergeClassPropIntoResult = (
 	return result;
 };
 
-const runVariant = <
-	S extends Slots | undefined = undefined,
-	V extends Variants<S> | undefined = undefined,
-	RV extends readonly StringKeyof<V>[] = [],
-	P extends Presets<S, V> | undefined = undefined
->(
+const runVariant = (
 	config: CompiledConfig,
-	props: Props<S, V, RV, P>
+	props: RuntimeProps
 ): CacheValue => {
 
 	const classProp = props.class ?? props.className;
@@ -1023,45 +1018,44 @@ const runVariant = <
  * ```
  */
 export function sv<
-	S extends Slots | undefined = undefined,
-	V extends Variants<S> | undefined = undefined,
+	S extends MaybeSlots = undefined,
+	V extends MaybeVariants<S> = undefined,
 	RV extends readonly StringKeyof<V>[] = [],
 	P extends Presets<S, V> | undefined = undefined,
 	I extends boolean = false
->(config: Config<S, V, RV, P, I>): ResultType<S, V, RV, P, I>;
+>(config: Config<S, V, RV, P, I>): VariantFn<S, V, RV, P, I>;
 export function sv<
-	S extends Slots | undefined = undefined,
-	V extends Variants<S> | undefined = undefined,
+	S extends MaybeSlots = undefined,
+	V extends MaybeVariants<S> = undefined,
 	RV extends readonly StringKeyof<V>[] = [],
 	P extends Presets<S, V> | undefined = undefined,
 	I extends boolean = false
 >(
 	...args: [...ClassValue[], Config<S, V, RV, P, I>]
-): ResultType<S, V, RV, P, I>;
+): VariantFn<S, V, RV, P, I>;
 export function sv<const T extends ClassValue[]>(
 	...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
 ): string;
 export function sv<
-	S extends Slots | undefined = undefined,
-	V extends Variants<S> | undefined = undefined,
+	S extends MaybeSlots = undefined,
+	V extends MaybeVariants<S> = undefined,
 	RV extends readonly StringKeyof<V>[] = [],
 	P extends Presets<S, V> | undefined = undefined,
 	I extends boolean = false
 >(
 	...args: (ClassValue | Config<S, V, RV, P, I>)[]
-): string | ResultType<S, V, RV, P, I> {
+): string | VariantFn<S, V, RV, P, I> {
 
-	const { baseArgs, config } = resolveSVInputs(args);
+	const { baseArgs, config } = resolveInputs(args);
 
 	if (!config) {
 		return cn(...baseArgs);
 	}
 
-	const variantFn = (props: Props<S, V, RV, P> = {} as Props<S, V, RV, P>) =>
-		runVariant(config, props);
+	const variantFn = (props: RuntimeProps = {}) => runVariant(config, props);
 
 	if (!config.introspection) {
-		return variantFn as ResultType<S, V, RV, P, I>;
+		return variantFn as VariantFn<S, V, RV, P, I>;
 	}
 
 	return assign(variantFn, {
@@ -1079,5 +1073,5 @@ export function sv<
 			),
 		clearCache: () => config.cache.clear(),
 		getCacheSize: () => config.cache.size
-	}) as unknown as ResultType<S, V, RV, P, I>;
+	}) as unknown as VariantFn<S, V, RV, P, I>;
 }
