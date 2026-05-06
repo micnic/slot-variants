@@ -127,30 +127,29 @@ type Presets<
 	V extends Variants<S> | undefined
 > = Record<string, Partial<VariantPropsInternal<S, V>>>;
 
-type PresetProp<P extends Record<string, unknown> | undefined> =
-	P extends Record<string, unknown>
-		? { preset?: StringKeyof<P> | undefined }
-		: unknown;
+type PresetProp<
+	S extends Slots | undefined,
+	V extends Variants<S> | undefined,
+	P extends Presets<S, V> | undefined
+> = P extends undefined
+	? { preset?: undefined }
+	: { preset?: StringKeyof<P> | undefined };
 
 type Props<
 	S extends Slots | undefined,
 	V extends Variants<S> | undefined,
 	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined
-> = V extends undefined
-	? ClassProp<S>
-	: P extends Record<string, unknown>
-		? Prettify<PartialUndefined<VariantPropsInternal<S, V>>> &
-				ClassProp<S> &
-				PresetProp<P>
-		: Prettify<
-				Pick<VariantPropsInternal<S, V>, RV[number]> &
-					Omit<
-						PartialUndefined<VariantPropsInternal<S, V>>,
-						RV[number]
-					>
-			> &
-				ClassProp<S>;
+> = P extends undefined
+	? Prettify<
+			Pick<VariantPropsInternal<S, V>, RV[number]> &
+				Omit<PartialUndefined<VariantPropsInternal<S, V>>, RV[number]>
+		> &
+			ClassProp<S> &
+			PresetProp<S, V, P>
+	: Prettify<PartialUndefined<VariantPropsInternal<S, V>>> &
+			ClassProp<S> &
+			PresetProp<S, V, P>;
 
 type Config<
 	S extends Slots | undefined,
@@ -764,8 +763,7 @@ const resolveVariantValue = (
 const resolveVariantState = (
 	config: CompiledConfig,
 	props: Record<string, unknown>,
-	presetValues: Record<string, ResolvedVariantValue<Slots>> | undefined,
-	useCache: boolean
+	presetValues: Record<string, ResolvedVariantValue<Slots>> | undefined
 ): {
 	cacheKey: string;
 	resolvedProps: Record<string, ResolvedVariantValue<Slots>>;
@@ -790,9 +788,7 @@ const resolveVariantState = (
 
 		resolvedProps[variantKey] = value;
 
-		if (useCache) {
-			cacheKey += `${value};`;
-		}
+		cacheKey += `${value};`;
 	}
 
 	return { cacheKey, resolvedProps };
@@ -946,6 +942,37 @@ const finalizeVariantResult = (
 		: config.cacheReturn(cacheKey, result);
 };
 
+const mergeClassPropIntoResult = (
+	config: CompiledConfig,
+	baseResult: CacheValue,
+	classProp: ResolvedVariantValue<Slots>
+): CacheValue => {
+
+	const baseObj =
+		config.slotKeys.size === 0
+			? { base: baseResult as string }
+			: (baseResult as Record<string, string>);
+	const slotClasses: SlotClasses = { base: [baseObj.base] };
+
+	for (const key of config.slotKeys) {
+		slotClasses[key] = [baseObj[key]];
+	}
+
+	applyValueToSlotClasses(slotClasses, classProp, config.slotKeys);
+
+	if (config.slotKeys.size === 0) {
+		return cn(slotClasses.base);
+	}
+
+	const result: { base: string } & Record<string, string> = { base: '' };
+
+	for (const [slotKey, slotValues] of entries(slotClasses)) {
+		result[slotKey] = cn(slotValues);
+	}
+
+	return result;
+};
+
 const runVariant = <
 	S extends Slots | undefined = undefined,
 	V extends Variants<S> | undefined = undefined,
@@ -957,38 +984,31 @@ const runVariant = <
 ): CacheValue => {
 
 	const classProp = props.class ?? props.className;
-	const useCache = !classProp;
-	const presetValues = resolvePresetValues(
-		config,
-		'preset' in props ? props.preset : undefined
-	);
+	const presetValues = resolvePresetValues(config, props.preset);
 	const { cacheKey, resolvedProps } = resolveVariantState(
 		config,
 		props,
-		presetValues,
-		useCache
+		presetValues
 	);
 
-	if (useCache) {
-		const cached = config.cache.get(cacheKey);
+	let baseResult = config.cache.get(cacheKey);
 
-		if (cached) {
-			return cached;
-		}
+	if (!baseResult) {
+		assertRequiredVariants(config, resolvedProps);
+
+		const slotClasses = createSlotClasses(config);
+
+		applyResolvedVariantClasses(config, slotClasses, resolvedProps);
+		applyCompoundClasses(config, slotClasses, resolvedProps);
+
+		baseResult = finalizeVariantResult(config, slotClasses, cacheKey);
 	}
 
-	assertRequiredVariants(config, resolvedProps);
-
-	const slotClasses = createSlotClasses(config);
-
-	applyResolvedVariantClasses(config, slotClasses, resolvedProps);
-	applyCompoundClasses(config, slotClasses, resolvedProps);
-
-	if (classProp) {
-		applyValueToSlotClasses(slotClasses, classProp, config.slotKeys);
+	if (!classProp) {
+		return baseResult;
 	}
 
-	return finalizeVariantResult(config, slotClasses, cacheKey);
+	return mergeClassPropIntoResult(config, baseResult, classProp);
 };
 
 /**
