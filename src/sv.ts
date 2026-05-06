@@ -12,33 +12,32 @@ type StringKeyof<T> = Extract<keyof T, string>;
 
 type ConfigClassValue = string | string[] | undefined;
 
-type ConfigSlotClassValue<S extends Slots | undefined> = S extends Slots
-	? ConfigSlotsClassValue<S> | ConfigClassValue
-	: ConfigClassValue;
+type SlotValue<S extends Slots | undefined, V> = S extends Slots
+	? Partial<Record<SlotKey<S>, V>> | V
+	: V;
 
-type SlotClassValue<S extends Slots | undefined> = S extends Slots
-	? SlotsClassValue<S> | ClassValue
-	: ClassValue;
+type ConfigSlotClassValue<S extends Slots | undefined> = SlotValue<
+	S,
+	ConfigClassValue
+>;
 
-type ClassProp<S extends Slots | undefined = undefined> =
-	| { class?: SlotClassValue<S>; className?: never }
-	| { class?: never; className?: SlotClassValue<S> };
+type XorClass<V> =
+	| { class?: V; className?: never }
+	| { class?: never; className?: V };
 
-type ConfigClassProp<S extends Slots | undefined = undefined> =
-	| { class?: ConfigSlotClassValue<S>; className?: never }
-	| { class?: never; className?: ConfigSlotClassValue<S> };
+type ClassProp<S extends Slots | undefined = undefined> = XorClass<
+	SlotValue<S, ClassValue>
+>;
+
+type ConfigClassProp<S extends Slots | undefined = undefined> = XorClass<
+	ConfigSlotClassValue<S>
+>;
 
 type Slots = { base?: ConfigClassValue } & Record<string, ConfigClassValue>;
 
 type BooleanString<T> = T extends `${boolean}` ? boolean : T;
 
 type SlotKey<S extends Slots | undefined> = 'base' | StringKeyof<S>;
-
-type SlotsClassValue<S extends Slots> = Partial<Record<SlotKey<S>, ClassValue>>;
-
-type ConfigSlotsClassValue<S extends Slots> = Partial<
-	Record<SlotKey<S>, ConfigClassValue>
->;
 
 type Variants<S extends Slots | undefined> = Record<
 	string,
@@ -68,27 +67,18 @@ type CompoundSlots<
 } & VariantConditions<S, V> &
 	ConfigClassProp<S>)[];
 
-type IsBooleanShorthand<T, S extends Slots | undefined> =
-	T extends Record<string, unknown>
-		? [Extract<keyof T, number>] extends [never]
-			? S extends Slots
-				? StringKeyof<T> extends SlotKey<S>
-					? true
-					: StringKeyof<T> extends 'true' | 'false'
-						? true
-						: false
-				: StringKeyof<T> extends 'true' | 'false'
-					? true
-					: false
-			: false
-		: true;
+type BooleanShorthandKeys<S extends Slots | undefined> = S extends Slots
+	? SlotKey<S> | 'true' | 'false'
+	: 'true' | 'false';
 
 type VariantPropType<T, S extends Slots | undefined> =
-	IsBooleanShorthand<T, S> extends true
-		? boolean
-		: T extends Record<string | number, unknown>
-			? BooleanString<StringKeyof<T>> | Extract<keyof T, number>
-			: boolean;
+	T extends Record<string | number, unknown>
+		? [Extract<keyof T, number>] extends [never]
+			? StringKeyof<T> extends BooleanShorthandKeys<S>
+				? boolean
+				: BooleanString<StringKeyof<T>>
+			: BooleanString<StringKeyof<T>> | Extract<keyof T, number>
+		: boolean;
 
 type VariantPropsInternal<
 	S extends Slots | undefined,
@@ -108,7 +98,7 @@ type DefaultVariants<
 	V extends Variants<S> | undefined,
 	RV extends readonly StringKeyof<V>[]
 > = {
-	[K in StringKeyof<Omit<VariantPropsInternal<S, V>, RV[number]>>]?:
+	[K in Exclude<StringKeyof<V>, RV[number]>]?:
 		| VariantPropType<V[K], S>
 		| DefaultVariantFn<S, V, K>
 		| undefined;
@@ -140,16 +130,14 @@ type Props<
 	V extends Variants<S> | undefined,
 	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined
-> = P extends undefined
+> = (P extends undefined
 	? Prettify<
 			Pick<VariantPropsInternal<S, V>, RV[number]> &
 				Omit<PartialUndefined<VariantPropsInternal<S, V>>, RV[number]>
-		> &
-			ClassProp<S> &
-			PresetProp<S, V, P>
-	: Prettify<PartialUndefined<VariantPropsInternal<S, V>>> &
-			ClassProp<S> &
-			PresetProp<S, V, P>;
+		>
+	: Prettify<PartialUndefined<VariantPropsInternal<S, V>>>) &
+	ClassProp<S> &
+	PresetProp<S, V, P>;
 
 type Config<
 	S extends Slots | undefined,
@@ -171,7 +159,7 @@ type Config<
 	postProcess?: ((className: string) => string) | undefined;
 };
 
-type ConfigKey = Prettify<keyof Config<undefined, undefined, [], undefined>>;
+type ConfigKey = keyof Config<undefined, undefined, [], undefined>;
 
 type ReturnValue<S extends Slots | undefined> = S extends undefined
 	? string
@@ -366,10 +354,7 @@ const isCompoundMetaKey = (compoundKey: string): boolean =>
 	compoundKey === 'slots';
 
 const matchesCompound = (
-	props: Record<
-		string,
-		ClassValue | Partial<{ base: ClassValue } & Record<string, ClassValue>>
-	>,
+	props: Record<string, ResolvedVariantValue<Slots>>,
 	compound: Record<string, unknown>
 ): boolean => {
 	for (const compoundKey of keys(compound)) {
@@ -431,7 +416,7 @@ const normalizeVariantValue = (
 	if (isSlotObjectVariantValue(variantValue, slotKeys)) {
 		return {
 			false: '',
-			true: variantValue as Partial<Record<string, ConfigClassValue>>
+			true: variantValue as Record<string, ConfigClassValue>
 		};
 	}
 
@@ -594,18 +579,18 @@ const hasOnlyBaseOrSlotKeys = (
 	return true;
 };
 
-const isSlotObjectValue = <S extends Slots | undefined>(
-	value: ResolvedVariantValue<S>,
+const isSlotObjectValue = (
+	value: ResolvedVariantValue<Slots>,
 	slotKeys: Set<string>
-): value is Partial<Record<SlotKey<S>, ClassValue>> =>
+): value is Partial<Record<string, ClassValue>> =>
 	value !== null &&
 	typeof value === 'object' &&
 	!isArray(value) &&
 	hasOnlyBaseOrSlotKeys(value, slotKeys);
 
-const applyValueToSlotClasses = <S extends Slots | undefined>(
-	slotClasses: { base: ClassValue[] } & Record<string, ClassValue[]>,
-	value: ResolvedVariantValue<S>,
+const applyValueToSlotClasses = (
+	slotClasses: SlotClasses,
+	value: ResolvedVariantValue<Slots>,
 	slotKeys: Set<string>
 ) => {
 
@@ -623,7 +608,6 @@ type SlotClasses = { base: ClassValue[] } & Record<string, ClassValue[]>;
 
 type CompiledConfig = {
 	baseClassValue: ClassValue;
-	variants: Record<string, Record<string, NormalizedVariantValue>>;
 	slots: Slots;
 	otherSlots: Record<string, ConfigClassValue>;
 	slotKeys: Set<string>;
@@ -687,7 +671,6 @@ const compileConfig = <
 
 	return {
 		baseClassValue,
-		variants: normalizedVariants,
 		slots,
 		otherSlots,
 		slotKeys,
@@ -872,16 +855,7 @@ const applyCompoundSlotsClasses = (
 ) => {
 
 	for (const compound of config.compoundSlots) {
-		if (
-			!matchesCompound(
-				resolvedProps as Record<
-					string,
-					| ClassValue
-					| Partial<{ base: ClassValue } & Record<string, ClassValue>>
-				>,
-				compound
-			)
-		) {
+		if (!matchesCompound(resolvedProps, compound)) {
 			continue;
 		}
 
@@ -902,16 +876,7 @@ const applyCompoundClasses = (
 ) => {
 
 	for (const compound of config.compoundVariants) {
-		if (
-			matchesCompound(
-				resolvedProps as Record<
-					string,
-					| ClassValue
-					| Partial<{ base: ClassValue } & Record<string, ClassValue>>
-				>,
-				compound
-			)
-		) {
+		if (matchesCompound(resolvedProps, compound)) {
 			applyValueToSlotClasses(
 				slotClasses,
 				((compound as { class?: ClassValue }).class ??
@@ -1100,8 +1065,8 @@ export function sv<
 	}
 
 	return assign(variantFn, {
-		variants: config.variants,
-		variantKeys: keys(config.variants),
+		variants: config.normalizedVariants,
+		variantKeys: keys(config.normalizedVariants),
 		slots: config.slots,
 		slotKeys: ['base', ...config.slotKeys],
 		defaultVariants: config.defaultVariants,
