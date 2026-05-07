@@ -47,18 +47,21 @@ const NO_REDUNDANT_SPACES_VALID = [
 			],
 			compoundSlots: [{ slots: ['body'], class: 'font-bold' }]
 		});`,
-	// Non-class-bearing keys are walked but contain no offending strings.
+	// Non-class-bearing keys are not walked — odd whitespace in matcher
+	// values, requiredVariants entries, etc. is ignored.
 	IMPORT +
 		`sv({
 			base: 'flex',
-			defaultVariants: { size: 'sm' },
-			requiredVariants: ['intent'],
+			defaultVariants: { size: 'sm', intent: 'primary  danger' },
+			requiredVariants: ['  intent  '],
 			presets: { cta: { size: 'lg' } },
 			cacheSize: 256,
 			introspection: true
 		});`,
 	// Dynamic identifier - walker skips silently.
 	IMPORT + 'sv({ base: dynamic });',
+	// Class-bearing keys with dynamic values - skipped.
+	IMPORT + 'sv({ slots: dynamic, variants: dynamic });',
 	// Non-string literal - walker skips.
 	IMPORT + 'sv({ base: 42 });',
 	// Template with expression - walker skips.
@@ -1673,7 +1676,8 @@ t.test('no-shared-tokens', (t) => {
 					]
 				},
 				{
-					// Two-value variant, exhaustive via requiredVariants.
+					// Two-value variant, exhaustive via requiredVariants —
+					// entry given as a static template literal.
 					code:
 						IMPORT +
 						`sv({
@@ -1683,7 +1687,7 @@ t.test('no-shared-tokens', (t) => {
 									danger: 'rounded font-bold bg-red-500'
 								}
 							},
-							requiredVariants: ['intent']
+							requiredVariants: [\`intent\`]
 						});`,
 					errors: [
 						{
