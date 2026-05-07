@@ -716,6 +716,14 @@ const reportDynamic = (context: Rule.RuleContext, node: Node) => {
 	context.report({ node, messageId: 'dynamic' });
 };
 
+const isUndefinedIdentifier = (node: Node): boolean =>
+	node.type === 'Identifier' && node.name === 'undefined';
+
+type StaticClassValueOptions = {
+	allowNestedArrays?: boolean;
+	allowUndefined?: boolean;
+};
+
 // Validator counterpart to forEachStaticItem: spreads are reported as dynamic
 // rather than skipped.
 const forEachItemReportingSpread = (
@@ -737,13 +745,28 @@ const forEachItemReportingSpread = (
 	}
 };
 
-const checkClassValueIsStatic = (context: Rule.RuleContext, node: Node) => {
+const checkClassValueIsStatic = (
+	context: Rule.RuleContext,
+	node: Node,
+	options: StaticClassValueOptions = {}
+) => {
+	if (options.allowUndefined && isUndefinedIdentifier(node)) {
+		return;
+	}
+
 	if (isStaticStringNode(node)) {
 		return;
 	}
 
 	if (node.type === 'ArrayExpression') {
 		forEachItemReportingSpread(context, node.elements, (element) => {
+			if (options.allowNestedArrays === false) {
+				if (element.type === 'ArrayExpression') {
+					reportDynamic(context, element);
+					return;
+				}
+			}
+
 			checkClassValueIsStatic(context, element);
 		});
 
@@ -751,6 +774,16 @@ const checkClassValueIsStatic = (context: Rule.RuleContext, node: Node) => {
 	}
 
 	reportDynamic(context, node);
+};
+
+const checkConfigClassValueIsStatic = (
+	context: Rule.RuleContext,
+	node: Node
+) => {
+	checkClassValueIsStatic(context, node, {
+		allowNestedArrays: false,
+		allowUndefined: true
+	});
 };
 
 const forEachStaticProperty = (
@@ -780,24 +813,79 @@ const checkClassValueRecord = (context: Rule.RuleContext, node: Node) => {
 	}
 
 	forEachStaticProperty(context, node, (prop) => {
-		checkClassValueIsStatic(context, prop.value);
+		checkConfigClassValueIsStatic(context, prop.value);
 	});
 };
 
-const checkVariants = (context: Rule.RuleContext, node: Node) => {
+const checkSlotKeyedClassValueRecord = (
+	context: Rule.RuleContext,
+	node: ObjectExpression
+) => {
+	for (const value of getProperties(node).values()) {
+		checkConfigClassValueIsStatic(context, value);
+	}
+};
+
+const isSlotKeyedClassValueRecord = (
+	node: ObjectExpression,
+	slotNames: Set<string>
+): boolean => collectSlotKeyedProperties(node, slotNames) !== null;
+
+const checkVariantBranchValue = (
+	context: Rule.RuleContext,
+	node: Node,
+	slotNames: Set<string>
+) => {
+	if (node.type === 'ObjectExpression') {
+		if (isSlotKeyedClassValueRecord(node, slotNames)) {
+			checkSlotKeyedClassValueRecord(context, node);
+			return;
+		}
+	}
+
+	checkConfigClassValueIsStatic(context, node);
+};
+
+const checkValueKeyedVariant = (
+	context: Rule.RuleContext,
+	node: ObjectExpression,
+	slotNames: Set<string>
+) => {
+	forEachStaticProperty(context, node, (prop) => {
+		checkVariantBranchValue(context, prop.value, slotNames);
+	});
+};
+
+const checkVariantDefinition = (
+	context: Rule.RuleContext,
+	node: Node,
+	slotNames: Set<string>
+) => {
+	if (node.type === 'ObjectExpression') {
+		if (isSlotKeyedClassValueRecord(node, slotNames)) {
+			checkSlotKeyedClassValueRecord(context, node);
+			return;
+		}
+
+		checkValueKeyedVariant(context, node, slotNames);
+		return;
+	}
+
+	checkConfigClassValueIsStatic(context, node);
+};
+
+const checkVariants = (
+	context: Rule.RuleContext,
+	node: Node,
+	slotNames: Set<string>
+) => {
 	if (node.type !== 'ObjectExpression') {
 		reportDynamic(context, node);
 		return;
 	}
 
 	forEachStaticProperty(context, node, (prop) => {
-		const { value } = prop;
-
-		if (value.type === 'ObjectExpression') {
-			checkClassValueRecord(context, value);
-		} else {
-			checkClassValueIsStatic(context, value);
-		}
+		checkVariantDefinition(context, prop.value, slotNames);
 	});
 };
 
@@ -840,8 +928,8 @@ const checkCompoundEntries = (
 type SvConfigValueChecker = (context: Rule.RuleContext, node: Node) => void;
 
 const compoundEntryValueCheckers: Record<string, SvConfigValueChecker> = {
-	class: checkClassValueIsStatic,
-	className: checkClassValueIsStatic,
+	class: checkConfigClassValueIsStatic,
+	className: checkConfigClassValueIsStatic,
 	slots: checkCompoundSlotsArray
 };
 
@@ -879,9 +967,8 @@ const checkCompoundEntryProperty = (
 };
 
 const svConfigValueCheckers: Record<string, SvConfigValueChecker> = {
-	base: checkClassValueIsStatic,
+	base: checkConfigClassValueIsStatic,
 	slots: checkClassValueRecord,
-	variants: checkVariants,
 	compoundVariants: (context, node) => {
 		checkCompoundEntries(context, node, false);
 	},
@@ -892,9 +979,15 @@ const svConfigValueCheckers: Record<string, SvConfigValueChecker> = {
 
 const checkSvConfigProperty = (
 	context: Rule.RuleContext,
-	prop: Property
+	prop: Property,
+	slotNames: Set<string>
 ) => {
 	const key = getKeyName(prop);
+
+	if (key === 'variants') {
+		checkVariants(context, prop.value, slotNames);
+		return;
+	}
 
 	if (key !== null) {
 		svConfigValueCheckers[key]?.(context, prop.value);
@@ -906,8 +999,10 @@ const checkSvConfig = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
 ) => {
+	const slotNames = getConfigSlotNames(getProperties(configNode));
+
 	forEachStaticProperty(context, configNode, (prop) => {
-		checkSvConfigProperty(context, prop);
+		checkSvConfigProperty(context, prop, slotNames);
 	});
 };
 
@@ -920,18 +1015,33 @@ const checkCnArguments = (
 	});
 };
 
+const getImportedName = (
+	specifier: ImportDeclaration['specifiers'][number]
+): string | null => {
+	if (specifier.type !== 'ImportSpecifier') {
+		return null;
+	}
+
+	const { imported } = specifier;
+
+	if (imported.type === 'Identifier') {
+		return imported.name;
+	}
+
+	return String(imported.value);
+};
+
 const trackNamedImport = (
 	specifier: ImportDeclaration['specifiers'][number],
 	trackedNamesByImport: Record<string, Set<string>>
 ) => {
-	if (
-		specifier.type !== 'ImportSpecifier' ||
-		specifier.imported.type !== 'Identifier'
-	) {
+	const importedName = getImportedName(specifier);
+
+	if (importedName === null) {
 		return;
 	}
 
-	trackedNamesByImport[specifier.imported.name]?.add(specifier.local.name);
+	trackedNamesByImport[importedName]?.add(specifier.local.name);
 };
 
 const createImportsTracker = () => {
@@ -1267,11 +1377,40 @@ const reportSharedTokensBySlot = (
 	}
 };
 
+const isStaticDefinedDefaultVariantValue = (node: Node): boolean => {
+	if (isUndefinedIdentifier(node)) {
+		return false;
+	}
+
+	if (getStaticStringText(node) !== null) {
+		return true;
+	}
+
+	return (
+		node.type === 'Literal' &&
+		(typeof node.value === 'boolean' || typeof node.value === 'number')
+	);
+};
+
+const collectDefaultVariantKeys = (
+	defaultVariants: Node | undefined
+): Set<string> => {
+	const keys = new Set<string>();
+
+	for (const [key, value] of getProperties(defaultVariants)) {
+		if (isStaticDefinedDefaultVariantValue(value)) {
+			keys.add(key);
+		}
+	}
+
+	return keys;
+};
+
 const collectExhaustiveVariantKeys = (
 	config: Map<string, Node>
 ): Set<string> => {
-	const exhaustive = new Set<string>(
-		getProperties(config.get('defaultVariants')).keys()
+	const exhaustive = collectDefaultVariantKeys(
+		config.get('defaultVariants')
 	);
 	const requiredVariants = config.get('requiredVariants');
 
@@ -1478,12 +1617,38 @@ const visitRecordEntriesForEmpty = (
 	}
 };
 
+const visitVariantClassValueForEmpty = (
+	context: Rule.RuleContext,
+	node: Node
+) => {
+	if (node.type === 'ObjectExpression') {
+		visitVariantRecordForEmpty(context, node);
+		return;
+	}
+
+	visitForEmptyClasses(context, node, false);
+};
+
+const visitVariantRecordForEmpty = (
+	context: Rule.RuleContext,
+	node: ObjectExpression
+) => {
+	if (node.properties.length === 0) {
+		context.report({ node, messageId: 'emptyObject' });
+		return;
+	}
+
+	for (const value of getProperties(node).values()) {
+		visitVariantClassValueForEmpty(context, value);
+	}
+};
+
 const visitVariantValueForEmpty = (
 	context: Rule.RuleContext,
 	variantValue: Node
 ) => {
 	if (variantValue.type === 'ObjectExpression') {
-		visitRecordEntriesForEmpty(context, variantValue, false);
+		visitVariantRecordForEmpty(context, variantValue);
 		return;
 	}
 

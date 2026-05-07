@@ -315,6 +315,20 @@ t.test('no-dynamic-classes', (t) => {
 				IMPORT + "sv({ base: 'flex' });",
 				// Array of static class values.
 				IMPORT + "sv({ base: ['flex', 'gap-2'] });",
+				// Explicit undefined is an allowed no-op config class value.
+				IMPORT +
+					`sv({
+						base: undefined,
+						slots: { body: undefined },
+						variants: {
+							size: {
+								sm: undefined,
+								lg: { base: undefined, body: undefined }
+							}
+						},
+						compoundVariants: [{ size: 'sm', class: undefined }],
+						compoundSlots: [{ slots: ['body'], size: 'lg', className: undefined }]
+					});`,
 				// Sparse hole in array — allowed.
 				IMPORT + "sv({ base: ['flex', , 'gap-2'] });",
 				// Template literal without expressions.
@@ -324,6 +338,23 @@ t.test('no-dynamic-classes', (t) => {
 				// Static value-keyed variants.
 				IMPORT +
 					"sv({ variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });",
+				// Slot-keyed variant branches.
+				IMPORT +
+					`sv({
+						slots: { body: 'p-4', icon: 'size-4' },
+						variants: {
+							size: {
+								sm: { base: 'text-sm', body: 'gap-1', icon: 'size-3' },
+								lg: { base: 'text-lg', body: 'gap-2', icon: 'size-5' }
+							}
+						}
+					});`,
+				// Slot-keyed boolean shorthand variant.
+				IMPORT +
+					`sv({
+						slots: { body: 'p-4' },
+						variants: { disabled: { base: 'opacity-50', body: 'cursor-not-allowed' } }
+					});`,
 				// Boolean shorthand variant — value is a class value.
 				IMPORT + "sv({ variants: { disabled: 'opacity-50' } });",
 				// Variant value is an array.
@@ -407,6 +438,10 @@ t.test('no-dynamic-classes', (t) => {
 				"import { VariantProps } from 'slot-variants'; sv(dynamic);",
 				// Import from a different module is ignored.
 				"import { sv } from 'other'; sv(dynamic);",
+				// String-literal import specifier for a different export is ignored.
+				"import { 'not-sv' as sv } from 'slot-variants'; sv(dynamic);",
+				// Non-string literal import specifier is ignored.
+				"import { null as sv } from 'slot-variants'; sv(dynamic);",
 				// Importing both sv and cn.
 				"import { sv, cn } from 'slot-variants'; sv('a'); cn('b');",
 				// Member-expression callee is not tracked.
@@ -418,6 +453,12 @@ t.test('no-dynamic-classes', (t) => {
 				{
 					// Identifier as cn-style argument.
 					code: IMPORT + 'sv(dynamic);',
+					errors: 1
+				},
+				{
+					// String-literal import specifier for sv is tracked.
+					code:
+						"import { 'sv' as sv } from 'slot-variants';\nsv(dynamic);",
 					errors: 1
 				},
 				{
@@ -458,6 +499,29 @@ t.test('no-dynamic-classes', (t) => {
 				{
 					// Identifier element inside base array.
 					code: IMPORT + "sv({ base: ['flex', dynamic] });",
+					errors: 1
+				},
+				{
+					// Undefined is only allowed as the whole config class value,
+					// not as an array element.
+					code: IMPORT + "sv({ base: ['flex', undefined] });",
+					errors: 1
+				},
+				{
+					// Config class arrays must be flat string arrays.
+					code: IMPORT + "sv({ base: ['flex', ['gap-2']] });",
+					errors: 1
+				},
+				{
+					// Slot class arrays must also be flat.
+					code: IMPORT + "sv({ slots: { body: [['p-4']] } });",
+					errors: 1
+				},
+				{
+					// Variant class arrays must also be flat.
+					code:
+						IMPORT +
+						"sv({ variants: { size: { sm: [['text-sm']] } } });",
 					errors: 1
 				},
 				{
@@ -532,6 +596,26 @@ t.test('no-dynamic-classes', (t) => {
 				{
 					// Dynamic value inside a variant value record.
 					code: IMPORT + 'sv({ variants: { size: { sm: dynamic } } });',
+					errors: 1
+				},
+				{
+					// Dynamic value inside a slot-keyed variant branch.
+					code:
+						IMPORT +
+						`sv({
+							slots: { body: 'p-4' },
+							variants: { size: { sm: { body: dynamic } } }
+						});`,
+					errors: 1
+				},
+				{
+					// Unknown slot key inside a slot-keyed variant branch.
+					code:
+						IMPORT +
+						`sv({
+							slots: { body: 'p-4' },
+							variants: { size: { sm: { footer: 'p-2' } } }
+						});`,
 					errors: 1
 				},
 				{
@@ -895,8 +979,28 @@ t.test('no-empty-classes', (t) => {
 					errors: [{ messageId: 'emptyString' }]
 				},
 				{
+					// Empty string inside a slot-keyed variant branch.
+					code:
+						IMPORT +
+						`sv({
+							slots: { body: 'p-4' },
+							variants: { size: { sm: { body: '' } } }
+						});`,
+					errors: [{ messageId: 'emptyString' }]
+				},
+				{
 					// Empty array inside a variant value record.
 					code: IMPORT + 'sv({ variants: { size: { sm: [] } } });',
+					errors: [{ messageId: 'emptyArray' }]
+				},
+				{
+					// Empty array inside a slot-keyed variant branch.
+					code:
+						IMPORT +
+						`sv({
+							slots: { body: 'p-4' },
+							variants: { size: { sm: { body: [] } } }
+						});`,
 					errors: [{ messageId: 'emptyArray' }]
 				},
 				{
@@ -1325,6 +1429,12 @@ t.test('no-duplicate-classes', (t) => {
 					]
 				},
 				{
+					// String-literal import specifier for cn is tracked.
+					code:
+						"import { 'cn' as cn } from 'slot-variants';\ncn('flex', 'flex');",
+					errors: 2
+				},
+				{
 					// cn() duplicate within a single literal.
 					code: IMPORT_CN + "cn('flex flex');",
 					errors: [
@@ -1391,6 +1501,27 @@ t.test('no-shared-tokens', (t) => {
 							intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
 						},
 						defaultVariants: { intent: 'primary' }
+					});`,
+				// Explicit undefined default does not make a variant exhaustive.
+				IMPORT +
+					`sv({
+						variants: {
+							size: { sm: 'rounded text-sm', lg: 'rounded text-lg' }
+						},
+						defaultVariants: { size: undefined }
+					});`,
+				// Dynamic/function defaults may return undefined, so they do
+				// not prove a value branch always renders.
+				IMPORT +
+					`sv({
+						variants: {
+							size: { sm: 'rounded text-sm', lg: 'rounded text-lg' },
+							intent: { primary: 'font-bold text-blue', danger: 'font-bold text-red' }
+						},
+						defaultVariants: {
+							size: getDefaultSize(),
+							intent: () => 'primary'
+						}
 					});`,
 				// Single-value variant — nothing to compare against.
 				IMPORT +
