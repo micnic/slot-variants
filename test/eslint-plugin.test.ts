@@ -105,46 +105,55 @@ const NO_REDUNDANT_SPACES_INVALID = [
 	{
 		// Leading whitespace.
 		code: IMPORT + "sv({ base: ' flex' });",
+		output: IMPORT + "sv({ base: 'flex' });",
 		errors: 1
 	},
 	{
 		// Trailing whitespace.
 		code: IMPORT + "sv({ base: 'flex ' });",
+		output: IMPORT + "sv({ base: 'flex' });",
 		errors: 1
 	},
 	{
 		// Multiple consecutive spaces.
 		code: IMPORT + "sv({ base: 'flex  items-center' });",
+		output: IMPORT + "sv({ base: 'flex items-center' });",
 		errors: 1
 	},
 	{
 		// Tab character between tokens.
 		code: IMPORT + "sv({ base: 'flex\\titems-center' });",
+		output: IMPORT + "sv({ base: 'flex items-center' });",
 		errors: 1
 	},
 	{
 		// Newline whitespace inside template literal.
 		code: IMPORT + 'sv({ base: `flex\nitems-center` });',
+		output: IMPORT + 'sv({ base: `flex items-center` });',
 		errors: 1
 	},
 	{
 		// Leading + middle + trailing - single report on the literal.
 		code: IMPORT + "sv({ base: ' flex  items ' });",
+		output: IMPORT + "sv({ base: 'flex items' });",
 		errors: 1
 	},
 	{
 		// Redundant whitespace inside an array element.
 		code: IMPORT + "sv({ base: ['flex ', 'gap-2'] });",
+		output: IMPORT + "sv({ base: ['flex', 'gap-2'] });",
 		errors: 1
 	},
 	{
 		// Redundant whitespace inside a static template literal.
 		code: IMPORT + 'sv({ base: `flex  items-center` });',
+		output: IMPORT + 'sv({ base: `flex items-center` });',
 		errors: 1
 	},
 	{
 		// Redundant whitespace in a slots value.
 		code: IMPORT + "sv({ slots: { body: 'p-4 ', header: 'font-bold' } });",
+		output: IMPORT + "sv({ slots: { body: 'p-4', header: 'font-bold' } });",
 		errors: 1
 	},
 	{
@@ -152,6 +161,9 @@ const NO_REDUNDANT_SPACES_INVALID = [
 		code:
 			IMPORT +
 			"sv({ variants: { size: { sm: ' text-sm', lg: 'text-lg' } } });",
+		output:
+			IMPORT +
+			"sv({ variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });",
 		errors: 1
 	},
 	{
@@ -159,6 +171,9 @@ const NO_REDUNDANT_SPACES_INVALID = [
 		code:
 			IMPORT +
 			"sv({ variants: { disabled: 'opacity-50  cursor-not-allowed' } });",
+		output:
+			IMPORT +
+			"sv({ variants: { disabled: 'opacity-50 cursor-not-allowed' } });",
 		errors: 1
 	},
 	{
@@ -168,6 +183,12 @@ const NO_REDUNDANT_SPACES_INVALID = [
 			`sv({
 				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
 				compoundVariants: [{ size: 'lg', class: 'font-bold ' }]
+			});`,
+		output:
+			IMPORT +
+			`sv({
+				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+				compoundVariants: [{ size: 'lg', class: 'font-bold' }]
 			});`,
 		errors: 1
 	},
@@ -179,6 +200,12 @@ const NO_REDUNDANT_SPACES_INVALID = [
 				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
 				compoundVariants: [{ size: 'lg', className: ' font-bold' }]
 			});`,
+		output:
+			IMPORT +
+			`sv({
+				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+				compoundVariants: [{ size: 'lg', className: 'font-bold' }]
+			});`,
 		errors: 1
 	},
 	{
@@ -189,26 +216,36 @@ const NO_REDUNDANT_SPACES_INVALID = [
 				slots: { body: 'p-4' },
 				compoundSlots: [{ slots: ['body'], class: 'font-bold  uppercase' }]
 			});`,
+		output:
+			IMPORT +
+			`sv({
+				slots: { body: 'p-4' },
+				compoundSlots: [{ slots: ['body'], class: 'font-bold uppercase' }]
+			});`,
 		errors: 1
 	},
 	{
 		// cn() positional with trailing whitespace.
 		code: IMPORT_CN + "cn('flex ', 'items-center');",
+		output: IMPORT_CN + "cn('flex', 'items-center');",
 		errors: 1
 	},
 	{
 		// cn() with redundant whitespace inside template literal.
 		code: IMPORT_CN + 'cn(`flex  items-center`);',
+		output: IMPORT_CN + 'cn(`flex items-center`);',
 		errors: 1
 	},
 	{
 		// cn() with redundant whitespace inside an array argument.
 		code: IMPORT_CN + "cn(['flex  items-center']);",
+		output: IMPORT_CN + "cn(['flex items-center']);",
 		errors: 1
 	},
 	{
 		// sv() called cn-style with redundant whitespace.
 		code: IMPORT + "sv('flex  items-center');",
+		output: IMPORT + "sv('flex items-center');",
 		errors: 1
 	}
 ];

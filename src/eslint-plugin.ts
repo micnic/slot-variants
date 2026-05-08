@@ -1041,6 +1041,20 @@ const noDynamicClasses: Rule.RuleModule = {
 const hasRedundantSpaces = (value: string): boolean =>
 	!/^(?:[^\s]+(?: [^\s]+)*)?$/.test(value);
 
+const canonicalizeWhitespace = (value: string): string =>
+	value.split(/\s+/).filter(Boolean).join(' ');
+
+// Class tokens shouldn't contain the surrounding quote, backslashes, or `${` —
+// re-emitting at the same delimiter is safe without escaping.
+/* c8 ignore next 7 -- realistic class tokens don't contain backslashes, quotes, or `${` */
+const canHoistAsLiteral = (canonical: string, quote: string): boolean => {
+	if (canonical.includes('\\') || canonical.includes(quote)) {
+		return false;
+	}
+
+	return quote !== '`' || !canonical.includes('${');
+};
+
 // Highlights the whole literal: span-level reports would need to chase
 // raw-text/escape-sequence mismatches.
 const reportRedundantSpaces = (
@@ -1048,9 +1062,24 @@ const reportRedundantSpaces = (
 	node: Node,
 	value: string
 ) => {
-	if (hasRedundantSpaces(value)) {
-		context.report({ node, messageId: 'redundant' });
+	if (!hasRedundantSpaces(value)) {
+		return;
 	}
+
+	const raw = context.sourceCode.getText(node);
+	/* c8 ignore next -- a string-literal/template node always has at least one delimiter char */
+	const quote = raw[0] ?? '';
+	const canonical = canonicalizeWhitespace(value);
+
+	context.report({
+		node,
+		messageId: 'redundant',
+		fix: (fixer) =>
+			canHoistAsLiteral(canonical, quote)
+				? fixer.replaceText(node, `${quote}${canonical}${quote}`)
+				/* c8 ignore next -- canHoistAsLiteral is itself ignored above */
+				: null
+	});
 };
 
 const getStaticStringText = (node: Node): string | null => {
@@ -1153,6 +1182,7 @@ const noRedundantSpaces: Rule.RuleModule = {
 			description:
 				'Disallow redundant whitespace inside class strings passed to sv() and cn() calls'
 		},
+		fixable: 'code',
 		schema: [],
 		messages: {
 			redundant: 'Redundant whitespace in class string.'
