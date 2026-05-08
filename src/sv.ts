@@ -798,16 +798,11 @@ const resolveVariantValue = (
 	return defaultValue;
 };
 
-const resolveVariantState = (
+const buildCacheKey = (
 	config: CompiledConfig,
 	props: RuntimeProps,
 	presetValues: RuntimeVariantState | undefined
-): {
-	cacheKey: string;
-	resolvedProps: RuntimeVariantState;
-} => {
-
-	const resolvedProps: RuntimeVariantState = {};
+): string => {
 
 	let cacheKey = '';
 
@@ -820,16 +815,37 @@ const resolveVariantState = (
 			presetValues
 		);
 
-		if (value === undefined) {
-			continue;
+		if (value !== undefined) {
+			cacheKey += `${value};`;
 		}
-
-		resolvedProps[variantKey] = value;
-
-		cacheKey += `${value};`;
 	}
 
-	return { cacheKey, resolvedProps };
+	return cacheKey;
+};
+
+const buildResolvedProps = (
+	config: CompiledConfig,
+	props: RuntimeProps,
+	presetValues: RuntimeVariantState | undefined
+): RuntimeVariantState => {
+
+	const resolvedProps: RuntimeVariantState = {};
+
+	for (const variantKey of config.variantKeys) {
+
+		const value = resolveVariantValue(
+			config,
+			variantKey,
+			props,
+			presetValues
+		);
+
+		if (value !== undefined) {
+			resolvedProps[variantKey] = value;
+		}
+	}
+
+	return resolvedProps;
 };
 
 const assertRequiredVariants = (
@@ -1009,15 +1025,13 @@ const runVariant = (
 
 	const classProp = props.class ?? props.className;
 	const presetValues = resolvePresetValues(config, props.preset);
-	const { cacheKey, resolvedProps } = resolveVariantState(
-		config,
-		props,
-		presetValues
-	);
+	const cacheKey = buildCacheKey(config, props, presetValues);
 
 	let entry = config.cache.get(cacheKey);
 
 	if (!entry) {
+		const resolvedProps = buildResolvedProps(config, props, presetValues);
+
 		assertRequiredVariants(config, resolvedProps);
 
 		const slotClasses = createSlotClasses(config);
