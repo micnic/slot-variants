@@ -1,6 +1,6 @@
 {
 	"name": "slot-variants",
-	"version": "1.2.0",
+	"version": "1.3.0",
 	"description": "Type-safe class name variants with slots",
 	"type": "module",
 	"exports": {
@@ -31,7 +31,10 @@
 		"prepublishOnly": "npm run build",
 		"test": "tap --show-full-coverage test/*.test.ts"
 	},
-	"repository": "github:micnic/slot-variants",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/micnic/slot-variants.git"
+	},
 	"keywords": [
 		"classes",
 		"classname",
