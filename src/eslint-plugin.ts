@@ -1528,32 +1528,81 @@ const shouldReportEmptyString = (
 const isEmptyObjectExpression = (node: Node): node is ObjectExpression =>
 	node.type === 'ObjectExpression' && node.properties.length === 0;
 
+type ListItems = ReadonlyArray<Expression | SpreadElement | null>;
+
+// Removes `node` (a member of `list`) along with the adjacent comma so the
+// surrounding call/array literal stays syntactically valid. Returns null when
+// removal would empty the list — the resulting empty call/array is itself
+// reported separately, so we leave it for the developer.
+const removeFromList = (
+	fixer: Rule.RuleFixer,
+	sourceCode: SourceCode,
+	node: Node,
+	list: ListItems
+): Rule.Fix | null => {
+	let nonNullCount = 0;
+
+	for (const item of list) {
+		if (item) {
+			nonNullCount += 1;
+		}
+	}
+
+	if (nonNullCount <= 1) {
+		return null;
+	}
+
+	const [start, end] = sourceCode.getRange(node);
+	const after = sourceCode.getTokenAfter(node);
+
+	if (after && after.value === ',') {
+		return fixer.removeRange([start, after.range[1]]);
+	}
+
+	const before = sourceCode.getTokenBefore(node);
+
+	/* c8 ignore next 3 -- a non-trailing list element always has a comma after; trailing always has one before */
+	if (!before || before.value !== ',') {
+		return null;
+	}
+
+	return fixer.removeRange([before.range[0], end]);
+};
+
 // `allowEmptyString` is set at the top of a `slots[key]` value, where `''`
-// is a meaningful "slot with no default classes" declaration.
+// is a meaningful "slot with no default classes" declaration. `list`, when
+// provided, is the parent call/array list `node` belongs to — used to attach
+// an autofix that removes `node` and its adjacent comma.
 const visitForEmptyClasses = (
 	context: Rule.RuleContext,
 	node: Node,
-	allowEmptyString: boolean
+	allowEmptyString: boolean,
+	list?: ListItems
 ) => {
+	const fix = list
+		? (fixer: Rule.RuleFixer) =>
+				removeFromList(fixer, context.sourceCode, node, list)
+		: undefined;
+
 	if (shouldReportEmptyString(node, allowEmptyString)) {
-		context.report({ node, messageId: 'emptyString' });
+		context.report({ node, messageId: 'emptyString', fix });
 		return;
 	}
 
 	if (node.type === 'ArrayExpression') {
 		if (node.elements.length === 0) {
-			context.report({ node, messageId: 'emptyArray' });
+			context.report({ node, messageId: 'emptyArray', fix });
 			return;
 		}
 
 		forEachStaticItem(node.elements, (element) => {
-			visitForEmptyClasses(context, element, false);
+			visitForEmptyClasses(context, element, false, node.elements);
 		});
 		return;
 	}
 
 	if (isEmptyObjectExpression(node)) {
-		context.report({ node, messageId: 'emptyObject' });
+		context.report({ node, messageId: 'emptyObject', fix });
 	}
 };
 
@@ -1645,6 +1694,7 @@ const noEmptyClasses: Rule.RuleModule = {
 			description:
 				'Disallow empty class values (empty strings, arrays, or objects) and zero-argument calls in sv() and cn()'
 		},
+		fixable: 'code',
 		schema: [],
 		messages: {
 			emptyString: 'Empty class string is not allowed.',
@@ -1661,7 +1711,7 @@ const noEmptyClasses: Rule.RuleModule = {
 			}
 
 			forEachStaticItem(call.args, (arg) => {
-				visitForEmptyClasses(context, arg, false);
+				visitForEmptyClasses(context, arg, false, node.arguments);
 			});
 
 			if (call.config) {

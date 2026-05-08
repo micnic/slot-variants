@@ -996,6 +996,7 @@ t.test('no-empty-classes', (t) => {
 				{
 					// Empty string inside an array argument.
 					code: IMPORT + "sv(['', 'flex']);",
+					output: IMPORT + "sv([ 'flex']);",
 					errors: [{ messageId: 'emptyString' }]
 				},
 				{
@@ -1006,6 +1007,7 @@ t.test('no-empty-classes', (t) => {
 				{
 					// Empty string inside a nested array.
 					code: IMPORT + "sv([['', 'flex']]);",
+					output: IMPORT + "sv([[ 'flex']]);",
 					errors: [{ messageId: 'emptyString' }]
 				},
 				{
@@ -1026,6 +1028,7 @@ t.test('no-empty-classes', (t) => {
 				{
 					// Empty string inside a base array.
 					code: IMPORT + "sv({ base: ['', 'flex'] });",
+					output: IMPORT + "sv({ base: [ 'flex'] });",
 					errors: [{ messageId: 'emptyString' }]
 				},
 				{
@@ -1157,11 +1160,13 @@ t.test('no-empty-classes', (t) => {
 				{
 					// cn() with empty string mixed with non-empty.
 					code: IMPORT_CN + "cn('flex', '');",
+					output: IMPORT_CN + "cn('flex');",
 					errors: [{ messageId: 'emptyString' }]
 				},
 				{
 					// Multiple empties reported in a single call.
 					code: IMPORT_CN + "cn('', [], {});",
+					output: IMPORT_CN + 'cn(  {});',
 					errors: [
 						{ messageId: 'emptyString' },
 						{ messageId: 'emptyArray' },
@@ -1171,6 +1176,7 @@ t.test('no-empty-classes', (t) => {
 				{
 					// Empty string as a base arg with config.
 					code: IMPORT + "sv('', { base: 'flex' });",
+					output: IMPORT + "sv( { base: 'flex' });",
 					errors: [{ messageId: 'emptyString' }]
 				},
 				{
