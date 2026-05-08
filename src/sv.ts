@@ -211,7 +211,7 @@ type CompiledConfig = {
 	cache: Map<string, CacheEntry>;
 	introspection: boolean;
 	cacheReturn: (cacheKey: string, value: CacheEntry) => CacheEntry;
-	postProcess: (className: string) => string;
+	postProcess: ((className: string) => string) | undefined;
 };
 
 type ConfigKey = keyof Config<undefined, undefined, [], undefined>;
@@ -746,7 +746,7 @@ const compileConfig = <
 		cache,
 		introspection,
 		cacheReturn,
-		postProcess: postProcess ?? ((className) => className)
+		postProcess
 	};
 };
 
@@ -974,14 +974,20 @@ const applyPostProcess = (
 	value: CacheValue
 ): CacheValue => {
 
+	const { postProcess } = config;
+
+	if (postProcess === undefined) {
+		return value;
+	}
+
 	if (typeof value === 'string') {
-		return config.postProcess(value);
+		return postProcess(value);
 	}
 
 	const result: Record<string, string> = {};
 
 	for (const [slotKey, slotValue] of entries(value)) {
-		result[slotKey] = config.postProcess(slotValue);
+		result[slotKey] = postProcess(slotValue);
 	}
 
 	return result;
