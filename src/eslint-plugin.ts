@@ -1691,4 +1691,24 @@ export const rules = {
  */
 const meta = { name: 'slot-variants' };
 
-export default { meta, rules };
+const recommendedRules: Record<string, 'error'> = {
+	'slot-variants/no-duplicate-classes': 'error',
+	'slot-variants/no-dynamic-classes': 'error',
+	'slot-variants/no-empty-classes': 'error',
+	'slot-variants/no-redundant-spaces': 'error',
+	'slot-variants/no-shared-tokens': 'error'
+};
+
+const plugin = { meta, rules, configs: {} as Record<string, unknown> };
+
+/**
+ * Flat-config preset enabling every rule at `error`. Spread into your ESLint
+ * v9+ config array (or list under `oxlint`'s `extends`) instead of wiring up
+ * each rule by hand.
+ */
+plugin.configs.recommended = {
+	plugins: { 'slot-variants': plugin },
+	rules: recommendedRules
+};
+
+export default plugin;

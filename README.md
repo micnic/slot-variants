@@ -910,6 +910,16 @@ Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analy
 
 ### ESLint (flat config)
 
+Use the `recommended` preset to enable every rule at `error` in one line:
+
+```js
+import svPlugin from 'slot-variants/eslint-plugin';
+
+export default [svPlugin.configs.recommended];
+```
+
+Or wire each rule by hand if you want per-rule control:
+
 ```js
 import svPlugin from 'slot-variants/eslint-plugin';
 

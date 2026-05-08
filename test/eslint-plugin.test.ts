@@ -331,6 +331,58 @@ t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 	t.end();
 });
 
+t.test('configs.recommended preset', (t) => {
+	const recommended = plugin.configs.recommended as {
+		plugins: Record<string, unknown>;
+		rules: Record<string, string>;
+	};
+
+	t.ok(recommended, 'recommended preset is exposed');
+	t.equal(
+		recommended.plugins['slot-variants'],
+		plugin,
+		'preset references the plugin under its name'
+	);
+
+	const ruleNames = Object.keys(plugin.rules);
+	const recommendedKeys = Object.keys(recommended.rules);
+
+	t.equal(
+		recommendedKeys.length,
+		ruleNames.length,
+		'preset enables every shipped rule'
+	);
+
+	for (const ruleName of ruleNames) {
+		t.equal(
+			recommended.rules[`slot-variants/${ruleName}`],
+			'error',
+			`preset enables ${ruleName} at error`
+		);
+	}
+
+	const linter = new Linter({ configType: 'flat' });
+	const messages = linter.verify(
+		`${IMPORT}sv({ base: 'flex  flex' });`,
+		[
+			recommended as unknown as Linter.Config,
+			{ files: ['**/*.ts'], languageOptions: { ecmaVersion: 'latest', sourceType: 'module' } }
+		],
+		{ filename: 'test.ts' }
+	);
+	const ruleIds = new Set(messages.map((m) => m.ruleId).filter(Boolean));
+
+	t.ok(
+		ruleIds.has('slot-variants/no-redundant-spaces'),
+		'preset wires no-redundant-spaces into the linter'
+	);
+	t.ok(
+		ruleIds.has('slot-variants/no-duplicate-classes'),
+		'preset wires no-duplicate-classes into the linter'
+	);
+	t.end();
+});
+
 t.test('no-redundant-spaces', (t) => {
 	const spacesRule = rules['no-redundant-spaces'];
 
