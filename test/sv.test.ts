@@ -3173,6 +3173,65 @@ t.test('postProcess with class prop', (t) => {
 	t.end();
 });
 
+t.test('postProcess sees class prop overrides (twMerge use case)', (t) => {
+	const lastWins = (className: string) => {
+		const seen = new Map<string, string>();
+
+		for (const token of className.split(/\s+/).filter(Boolean)) {
+			const prefix = token.split('-')[0] ?? token;
+
+			seen.set(prefix, token);
+		}
+
+		return Array.from(seen.values()).join(' ');
+	};
+
+	const button = sv('p-4 bg-blue-500', {
+		variants: {
+			size: {
+				sm: 'p-2',
+				lg: 'p-8'
+			}
+		},
+		postProcess: lastWins
+	});
+
+	t.equal(
+		button({ class: 'p-12' }),
+		'p-12 bg-blue-500',
+		'class prop participates in postProcess deduping'
+	);
+
+	t.equal(
+		button({ size: 'lg', class: 'p-12' }),
+		'p-12 bg-blue-500',
+		'variant + class prop both deduped by postProcess'
+	);
+
+	t.end();
+});
+
+t.test('postProcess sees class prop overrides for slots', (t) => {
+	const card = sv({
+		slots: {
+			base: 'p-4',
+			header: 'font-bold'
+		},
+		postProcess: (className) => `[${className}]`
+	});
+
+	t.same(
+		card({ class: { base: 'extra', header: 'underline' } }),
+		{
+			base: '[p-4 extra]',
+			header: '[font-bold underline]'
+		},
+		'postProcess wraps merged slot output including class prop'
+	);
+
+	t.end();
+});
+
 // =============================================================================
 // sv() - introspection
 // =============================================================================

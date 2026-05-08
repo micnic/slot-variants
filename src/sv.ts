@@ -899,12 +899,30 @@ const finalizeVariantResult = (
 	const result: { base: string } & Record<string, string> = { base: '' };
 
 	for (const [slotKey, slotValues] of entries(slotClasses)) {
-		result[slotKey] = config.postProcess(cn(slotValues));
+		result[slotKey] = cn(slotValues);
 	}
 
 	return config.slotKeys.size === 0
 		? config.cacheReturn(cacheKey, result.base)
 		: config.cacheReturn(cacheKey, result);
+};
+
+const applyPostProcess = (
+	config: CompiledConfig,
+	value: CacheValue
+): CacheValue => {
+
+	if (typeof value === 'string') {
+		return config.postProcess(value);
+	}
+
+	const result: Record<string, string> = {};
+
+	for (const [slotKey, slotValue] of entries(value)) {
+		result[slotKey] = config.postProcess(slotValue);
+	}
+
+	return result;
 };
 
 const toSlotResult = (cacheValue: CacheValue): Record<string, string> =>
@@ -965,10 +983,13 @@ const runVariant = (
 	}
 
 	if (!classProp) {
-		return baseResult;
+		return applyPostProcess(config, baseResult);
 	}
 
-	return mergeClassPropIntoResult(config, baseResult, classProp);
+	return applyPostProcess(
+		config,
+		mergeClassPropIntoResult(config, baseResult, classProp)
+	);
 };
 
 /**
