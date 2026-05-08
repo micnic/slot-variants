@@ -155,12 +155,6 @@ type RuntimeDefaultVariant =
 	| ((props: RuntimeVariantState) => RuntimeVariantValue | undefined)
 	| undefined;
 
-type RuntimeCompoundVariant = Record<string, unknown> &
-	ClassProp<Slots, ClassValue>;
-
-type RuntimeCompoundSlot = RuntimeCompoundVariant & {
-	slots: readonly string[];
-};
 
 type Config<
 	S extends MaybeSlots,
@@ -184,6 +178,21 @@ type Config<
 
 type SlotClasses = { base: ClassValue[] } & Record<string, ClassValue[]>;
 
+type CompoundMatcher = {
+	key: string;
+	expected: RuntimeVariantValue | readonly RuntimeVariantValue[];
+	isArrayExpected: boolean;
+};
+
+type CompiledCompoundVariant = {
+	matchers: readonly CompoundMatcher[];
+	classValue: ClassValue;
+};
+
+type CompiledCompoundSlot = CompiledCompoundVariant & {
+	slots: readonly string[];
+};
+
 type CompiledConfig = {
 	baseClassValue: ClassValue;
 	slots: Slots;
@@ -197,11 +206,11 @@ type CompiledConfig = {
 	requiredVariants: readonly string[];
 	presets: Record<string, RuntimeVariantState>;
 	presetKeys: Set<string>;
-	compoundVariants: readonly RuntimeCompoundVariant[];
-	compoundSlots: readonly RuntimeCompoundSlot[];
+	compoundVariants: readonly CompiledCompoundVariant[];
+	compoundSlots: readonly CompiledCompoundSlot[];
 	cache: Map<string, CacheEntry>;
 	introspection: boolean;
-	cacheReturn: (cacheKey: string | null, value: CacheEntry) => CacheEntry;
+	cacheReturn: (cacheKey: string, value: CacheEntry) => CacheEntry;
 	postProcess: (className: string) => string;
 };
 
@@ -348,17 +357,17 @@ const looseEquals = (first: unknown, second: unknown) =>
 
 const createCacheReturn =
 	(cache: Map<string, CacheEntry>, cacheSize: number) =>
-	(cacheKey: string | null, value: CacheEntry): CacheEntry => {
-		if (!cacheKey) {
-			return value;
-		}
+	(cacheKey: string, value: CacheEntry): CacheEntry => {
 
 		if (cache.size >= cacheSize) {
 			const firstKey = cache.keys().next().value;
 
-			if (firstKey) {
-				cache.delete(firstKey);
+			/* c8 ignore next 3 -- cache.size > 0 guarantees a first key */
+			if (firstKey === undefined) {
+				return value;
 			}
+
+			cache.delete(firstKey);
 		}
 
 		cache.set(cacheKey, value);
@@ -366,47 +375,66 @@ const createCacheReturn =
 		return value;
 	};
 
-const compoundMatchValue = (
-	compoundValue:
-		| string
-		| number
-		| boolean
-		| readonly (string | number | boolean)[]
-		| undefined,
-	propValue: unknown
-): boolean => {
-	if (isArray(compoundValue)) {
-		return compoundValue.some((value) => looseEquals(value, propValue));
-	}
-
-	return looseEquals(compoundValue, propValue);
-};
-
 const isCompoundMetaKey = (compoundKey: string): boolean =>
 	compoundKey === 'class' ||
 	compoundKey === 'className' ||
 	compoundKey === 'slots';
 
-const matchesCompound = (
-	props: RuntimeVariantState,
+const compileCompoundMatchers = (
 	compound: Record<string, unknown>
-): boolean => {
+): readonly CompoundMatcher[] => {
+
+	const matchers: CompoundMatcher[] = [];
+
 	for (const compoundKey of keys(compound)) {
 		if (isCompoundMetaKey(compoundKey)) {
 			continue;
 		}
 
-		if (
-			!compoundMatchValue(
-				compound[compoundKey] as
-					| string
-					| number
-					| boolean
-					| readonly (string | number | boolean)[]
-					| undefined,
-				props[compoundKey]
-			)
-		) {
+		const expected = compound[compoundKey] as
+			| RuntimeVariantValue
+			| readonly RuntimeVariantValue[]
+			| undefined;
+
+		matchers.push({
+			key: compoundKey,
+			expected: expected as
+				| RuntimeVariantValue
+				| readonly RuntimeVariantValue[],
+			isArrayExpected: isArray(expected)
+		});
+	}
+
+	return matchers;
+};
+
+const matchesCompound = (
+	props: RuntimeVariantState,
+	matchers: readonly CompoundMatcher[]
+): boolean => {
+
+	for (const { key, expected, isArrayExpected } of matchers) {
+		const propValue = props[key];
+
+		if (isArrayExpected) {
+			const list = expected as readonly RuntimeVariantValue[];
+			let matched = false;
+
+			for (const value of list) {
+				if (looseEquals(value, propValue)) {
+					matched = true;
+					break;
+				}
+			}
+
+			if (!matched) {
+				return false;
+			}
+
+			continue;
+		}
+
+		if (!looseEquals(expected, propValue)) {
 			return false;
 		}
 	}
@@ -682,6 +710,24 @@ const compileConfig = <
 		defaultVariantKeys
 	);
 
+	const compiledCompoundVariants: CompiledCompoundVariant[] =
+		compoundVariants.map((compound) => ({
+			matchers: compileCompoundMatchers(
+				compound as Record<string, unknown>
+			),
+			classValue: compound.class ?? compound.className
+		}));
+
+	const compiledCompoundSlots: CompiledCompoundSlot[] = compoundSlots.map(
+		(compound) => ({
+			matchers: compileCompoundMatchers(
+				compound as Record<string, unknown>
+			),
+			classValue: compound.class ?? compound.className,
+			slots: compound.slots as readonly string[]
+		})
+	);
+
 	return {
 		baseClassValue,
 		slots,
@@ -695,8 +741,8 @@ const compileConfig = <
 		requiredVariants,
 		presets,
 		presetKeys: new Set(keys(presets)),
-		compoundVariants,
-		compoundSlots,
+		compoundVariants: compiledCompoundVariants,
+		compoundSlots: compiledCompoundSlots,
 		cache,
 		introspection,
 		cacheReturn,
@@ -864,14 +910,12 @@ const applyCompoundSlotsClasses = (
 ) => {
 
 	for (const compound of config.compoundSlots) {
-		if (!matchesCompound(resolvedProps, compound)) {
+		if (!matchesCompound(resolvedProps, compound.matchers)) {
 			continue;
 		}
 
-		const compoundClass = compound.class ?? compound.className;
-
 		for (const slotName of compound.slots) {
-			slotClasses[slotName]?.push(compoundClass);
+			slotClasses[slotName]?.push(compound.classValue);
 		}
 	}
 };
@@ -883,10 +927,10 @@ const applyCompoundClasses = (
 ) => {
 
 	for (const compound of config.compoundVariants) {
-		if (matchesCompound(resolvedProps, compound)) {
+		if (matchesCompound(resolvedProps, compound.matchers)) {
 			applyValueToSlotClasses(
 				slotClasses,
-				compound.class ?? compound.className,
+				compound.classValue,
 				config.slotKeys
 			);
 		}
