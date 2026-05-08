@@ -2921,6 +2921,46 @@ t.test('cacheSize config limits cache entries', (t) => {
 	t.end();
 });
 
+t.test('cache uses LRU eviction', (t) => {
+	let resolves = 0;
+	const button = sv('rounded-lg', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				md: 'text-base',
+				lg: 'text-lg'
+			}
+		},
+		cacheSize: 2,
+		postProcess: (value) => {
+			resolves += 1;
+			return value;
+		}
+	});
+
+	button({ size: 'sm' });
+	button({ size: 'md' });
+	t.equal(resolves, 2, 'sm and md resolved');
+
+	// Touch 'sm' so that 'md' becomes the least-recently-used entry.
+	button({ size: 'sm' });
+	t.equal(resolves, 2, 'sm hit cache, no re-resolve');
+
+	// Insert 'lg' — under FIFO this would evict 'sm', under LRU it evicts 'md'.
+	button({ size: 'lg' });
+	t.equal(resolves, 3, 'lg resolved');
+
+	// 'sm' should still be cached (LRU kept it).
+	button({ size: 'sm' });
+	t.equal(resolves, 3, 'sm still cached after lg insert');
+
+	// 'md' should have been evicted as least-recently-used.
+	button({ size: 'md' });
+	t.equal(resolves, 4, 'md was evicted and re-resolved');
+
+	t.end();
+});
+
 t.test('cacheSize 0 still produces correct results', (t) => {
 	const button = sv(
 		'rounded-lg',

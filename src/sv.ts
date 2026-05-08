@@ -1035,7 +1035,11 @@ const runVariant = (
 
 	let entry = config.cache.get(cacheKey);
 
-	if (!entry) {
+	if (entry) {
+		// Make the cache entry as the most recently used by reinserting it
+		config.cache.delete(cacheKey);
+		config.cache.set(cacheKey, entry);
+	} else {
 		const resolvedProps = buildResolvedProps(config, props, presetValues);
 
 		assertRequiredVariants(config, resolvedProps);
