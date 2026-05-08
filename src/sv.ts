@@ -113,6 +113,11 @@ type RuntimeVariantConfigValue =
 
 type CacheValue = string | Record<string, string>;
 
+type CacheEntry = {
+	raw: CacheValue;
+	processed: CacheValue;
+};
+
 type Presets<S extends MaybeSlots, V extends MaybeVariants<S>> = Record<
 	string,
 	Partial<VariantPropsInternal<S, V>>
@@ -194,9 +199,9 @@ type CompiledConfig = {
 	presetKeys: Set<string>;
 	compoundVariants: readonly RuntimeCompoundVariant[];
 	compoundSlots: readonly RuntimeCompoundSlot[];
-	cache: Map<string, CacheValue>;
+	cache: Map<string, CacheEntry>;
 	introspection: boolean;
-	cacheReturn: <T extends CacheValue>(cacheKey: string | null, value: T) => T;
+	cacheReturn: (cacheKey: string | null, value: CacheEntry) => CacheEntry;
 	postProcess: (className: string) => string;
 };
 
@@ -342,8 +347,8 @@ const looseEquals = (first: unknown, second: unknown) =>
 	first === second || `${first}` === `${second}`;
 
 const createCacheReturn =
-	(cache: Map<string, CacheValue>, cacheSize: number) =>
-	<T extends CacheValue>(cacheKey: string | null, value: T): T => {
+	(cache: Map<string, CacheEntry>, cacheSize: number) =>
+	(cacheKey: string | null, value: CacheEntry): CacheEntry => {
 		if (!cacheKey) {
 			return value;
 		}
@@ -662,7 +667,7 @@ const compileConfig = <
 		introspection = false
 	} = config;
 
-	const cache = new Map<string, CacheValue>();
+	const cache = new Map<string, CacheEntry>();
 	const cacheReturn = createCacheReturn(cache, cacheSize);
 	const { base: baseSlot, ...otherSlots } = slots;
 	const baseClassValue = cn(...baseArgs, configBase, baseSlot);
@@ -892,8 +897,7 @@ const applyCompoundClasses = (
 
 const finalizeVariantResult = (
 	config: CompiledConfig,
-	slotClasses: SlotClasses,
-	cacheKey: string
+	slotClasses: SlotClasses
 ): CacheValue => {
 
 	const result: { base: string } & Record<string, string> = { base: '' };
@@ -902,9 +906,7 @@ const finalizeVariantResult = (
 		result[slotKey] = cn(slotValues);
 	}
 
-	return config.slotKeys.size === 0
-		? config.cacheReturn(cacheKey, result.base)
-		: config.cacheReturn(cacheKey, result);
+	return config.slotKeys.size === 0 ? result.base : result;
 };
 
 const applyPostProcess = (
@@ -969,9 +971,9 @@ const runVariant = (
 		presetValues
 	);
 
-	let baseResult = config.cache.get(cacheKey);
+	let entry = config.cache.get(cacheKey);
 
-	if (!baseResult) {
+	if (!entry) {
 		assertRequiredVariants(config, resolvedProps);
 
 		const slotClasses = createSlotClasses(config);
@@ -979,16 +981,21 @@ const runVariant = (
 		applyResolvedVariantClasses(config, slotClasses, resolvedProps);
 		applyCompoundClasses(config, slotClasses, resolvedProps);
 
-		baseResult = finalizeVariantResult(config, slotClasses, cacheKey);
+		const raw = finalizeVariantResult(config, slotClasses);
+
+		entry = config.cacheReturn(cacheKey, {
+			raw,
+			processed: applyPostProcess(config, raw)
+		});
 	}
 
 	if (!classProp) {
-		return applyPostProcess(config, baseResult);
+		return entry.processed;
 	}
 
 	return applyPostProcess(
 		config,
-		mergeClassPropIntoResult(config, baseResult, classProp)
+		mergeClassPropIntoResult(config, entry.raw, classProp)
 	);
 };
 
