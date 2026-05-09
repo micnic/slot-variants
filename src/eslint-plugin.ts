@@ -1,4 +1,4 @@
-import type { Rule, SourceCode } from 'eslint';
+import type { Linter, Rule, SourceCode } from 'eslint';
 import type {
 	CallExpression,
 	Expression,
@@ -1749,7 +1749,11 @@ const recommendedRules: Record<string, 'error'> = {
 	'slot-variants/no-shared-tokens': 'error'
 };
 
-const plugin = { meta, rules, configs: {} as Record<string, unknown> };
+const plugin = {
+	meta,
+	rules,
+	configs: {} as Record<string, Linter.Config>
+};
 
 /**
  * Flat-config preset enabling every rule at `error`. Spread into your ESLint
