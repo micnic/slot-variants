@@ -242,13 +242,13 @@ type IntrospectionValues<
 	RV extends readonly StringKeyof<V>[],
 	P extends Presets<S, V> | undefined
 > = {
-	variants: V;
+	variants: V extends undefined ? Record<string, never> : V;
 	variantKeys: StringKeyof<V>[];
-	slots: S;
+	slots: S extends undefined ? Record<string, never> : S;
 	slotKeys: SlotKey<S>[];
 	defaultVariants: DefaultVariants<S, V, RV>;
 	requiredVariants: RV;
-	presets: P;
+	presets: P extends undefined ? Record<string, never> : P;
 	presetKeys: P extends undefined ? [] : StringKeyof<P>[];
 	getVariantValues: V extends undefined
 		? (key: never) => never[]
