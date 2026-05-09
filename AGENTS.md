@@ -215,8 +215,6 @@ const button = sv('btn', {
 
 Cache inspection methods (`getCacheSize`, `clearCache`) are only exposed when `introspection: true` is set — see rule 11.
 
-Note: Using `class` or `className` prop bypasses caching.
-
 ### 10. Use Presets for Reusable Variant Combinations
 
 Define presets for frequently used combinations of variants (rarely needed):
@@ -525,6 +523,5 @@ Reports class tokens that appear in every value of an exhaustively-covered varia
 ## Performance Notes
 
 1. **Caching is automatic** - Results are cached by default
-2. **Class prop bypasses cache** - Dynamic classes at runtime should use `class` prop
-3. **Complex components benefit from larger cache** - Increase `cacheSize` for components with many variant combinations
-4. **Prefer static defaults** - Function-based defaults are called on every invocation
+2. **Complex components benefit from larger cache** - Increase `cacheSize` for components with many variant combinations
+3. **Prefer static defaults** - Function-based defaults are called on every invocation

@@ -668,7 +668,7 @@ The `postProcess` function is applied to each slot's final class string independ
 
 ### Caching
 
-Results are cached automatically for performance. The default cache size is **256** entries. Calls with `class` or `className` props bypass the cache.
+Results are cached automatically for performance. The default cache size is **256** entries.
 
 ```typescript
 const button = sv('btn', {
