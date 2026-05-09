@@ -198,6 +198,7 @@ type CompiledConfig = {
 	slots: Slots;
 	otherSlots: Record<string, ConfigClassValue>;
 	slotKeys: Set<string>;
+	originalVariants: Variants<MaybeSlots>;
 	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>;
 	variantEntries: [string, Record<string, NormalizedVariantValue>][];
 	variantKeys: Set<string>;
@@ -757,6 +758,7 @@ const compileConfig = <
 		slots,
 		otherSlots,
 		slotKeys,
+		originalVariants: variants,
 		normalizedVariants,
 		variantEntries: entries(normalizedVariants),
 		variantKeys,
@@ -1190,7 +1192,7 @@ export function sv<
 	}
 
 	return assign(variantFn, {
-		variants: config.normalizedVariants,
+		variants: config.originalVariants,
 		variantKeys: keys(config.normalizedVariants),
 		slots: config.slots,
 		slotKeys: ['base', ...config.slotKeys],

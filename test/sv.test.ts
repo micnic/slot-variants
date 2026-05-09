@@ -3282,7 +3282,7 @@ t.test('variantKeys is empty array when no variants', (t) => {
 	t.end();
 });
 
-t.test('variants exposes the normalized variants config', (t) => {
+t.test('variants exposes the original variants config', (t) => {
 	const button = sv('rounded-lg', {
 		variants: {
 			size: {
@@ -3302,6 +3302,23 @@ t.test('variants exposes the normalized variants config', (t) => {
 			}
 		},
 		'variants config object'
+	);
+
+	t.end();
+});
+
+t.test('variants preserves boolean shorthand in introspection', (t) => {
+	const button = sv('btn', {
+		variants: {
+			disabled: 'opacity-50'
+		},
+		introspection: true
+	});
+
+	t.same(
+		button.variants,
+		{ disabled: 'opacity-50' },
+		'shorthand value is exposed as written, not as the normalized {true,false} record'
 	);
 
 	t.end();
