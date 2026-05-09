@@ -1045,17 +1045,7 @@ const mergeClassPropIntoResult = (
 
 	applyValueToSlotClasses(slotClasses, classProp, config.slotKeys);
 
-	if (config.slotKeys.size === 0) {
-		return cn(slotClasses.base);
-	}
-
-	const result: { base: string } & Record<string, string> = { base: '' };
-
-	for (const [slotKey, slotValues] of entries(slotClasses)) {
-		result[slotKey] = cn(slotValues);
-	}
-
-	return result;
+	return finalizeVariantResult(config, slotClasses);
 };
 
 const runVariant = (
