@@ -1193,13 +1193,13 @@ export function sv<
 
 	return assign(variantFn, {
 		variants: config.originalVariants,
-		variantKeys: keys(config.normalizedVariants),
+		variantKeys: [...config.variantKeys],
 		slots: config.slots,
 		slotKeys: ['base', ...config.slotKeys],
 		defaultVariants: config.defaultVariants,
 		requiredVariants: config.requiredVariants,
 		presets: config.presets,
-		presetKeys: keys(config.presets),
+		presetKeys: [...config.presetKeys],
 		getVariantValues: (key: string) =>
 			keys(config.normalizedVariants[key] ?? {}).map(
 				coerceVariantKeyValue
