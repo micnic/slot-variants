@@ -356,14 +356,21 @@ const { assign, entries, keys } = Object;
 const looseEquals = (first: unknown, second: unknown) =>
 	first === second || `${first}` === `${second}`;
 
-const createCacheReturn =
-	(cache: Map<string, CacheEntry>, cacheSize: number) =>
-	(cacheKey: string, value: CacheEntry): CacheEntry => {
+const createCacheReturn = (
+	cache: Map<string, CacheEntry>,
+	cacheSize: number
+) => {
+
+	if (cacheSize <= 0) {
+		return (_cacheKey: string, value: CacheEntry): CacheEntry => value;
+	}
+
+	return (cacheKey: string, value: CacheEntry): CacheEntry => {
 
 		if (cache.size >= cacheSize) {
 			const firstKey = cache.keys().next().value;
 
-			/* c8 ignore next 3 -- cache.size > 0 guarantees a first key */
+			/* c8 ignore next 3 -- size >= cacheSize > 0 guarantees a key */
 			if (firstKey === undefined) {
 				return value;
 			}
@@ -375,6 +382,7 @@ const createCacheReturn =
 
 		return value;
 	};
+};
 
 const isCompoundMetaKey = (compoundKey: string): boolean =>
 	compoundKey === 'class' ||
