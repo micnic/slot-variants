@@ -1080,7 +1080,7 @@ module.exports = {
       size: { sm: 'text-sm', lg: 'text-lg' },
       intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
     },
-    defaultVariants: { size: 'md' },
+    defaultVariants: { size: 'sm' },
     compoundVariants: [
       { size: 'lg', intent: 'primary', class: 'uppercase' }
     ]
@@ -1103,7 +1103,7 @@ Everything else works identically — the config shape, `class`/`className` over
     variants: {
       size: { sm: 'text-sm', lg: 'text-lg' }
     },
-    defaultVariants: { size: 'md' }
+    defaultVariants: { size: 'sm' }
   });
 ```
 
