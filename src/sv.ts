@@ -201,6 +201,7 @@ type CompiledConfig = {
 	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>;
 	variantEntries: [string, Record<string, NormalizedVariantValue>][];
 	variantKeys: Set<string>;
+	variantValueIds: Record<string, Record<string, number>>;
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
 	defaultVariantKeys: Set<string>;
 	requiredVariants: readonly string[];
@@ -703,6 +704,21 @@ const compileConfig = <
 	const normalizedVariants = createNormalizedVariants(variants, slotKeys);
 	const variantKeys = new Set(keys(normalizedVariants));
 	const defaultVariantKeys = new Set(keys(defaultVariants));
+	const variantValueIds: Record<string, Record<string, number>> = {};
+
+	for (const [variantKey, variantValues] of entries(normalizedVariants)) {
+
+		const ids: Record<string, number> = {};
+
+		let nextId = 0;
+
+		for (const valueKey of keys(variantValues)) {
+			ids[valueKey] = nextId;
+			nextId++;
+		}
+
+		variantValueIds[variantKey] = ids;
+	}
 
 	assertValidRequiredVariantConfig(
 		requiredVariants,
@@ -736,6 +752,7 @@ const compileConfig = <
 		normalizedVariants,
 		variantEntries: entries(normalizedVariants),
 		variantKeys,
+		variantValueIds,
 		defaultVariants,
 		defaultVariantKeys,
 		requiredVariants,
@@ -804,9 +821,10 @@ const buildCacheKey = (
 	presetValues: RuntimeVariantState | undefined
 ): string => {
 
-	let cacheKey = '';
+	const { variantKeys, variantValueIds } = config;
+	const parts: (number | string)[] = [];
 
-	for (const variantKey of config.variantKeys) {
+	for (const variantKey of variantKeys) {
 
 		const value = resolveVariantValue(
 			config,
@@ -815,12 +833,21 @@ const buildCacheKey = (
 			presetValues
 		);
 
-		if (value !== undefined) {
-			cacheKey += `${value};`;
+		if (value === undefined) {
+			parts.push('');
+		} else {
+			const ids = variantValueIds[variantKey];
+			const id = ids?.[`${value}`];
+
+			if (id === undefined) {
+				parts.push(`?${value}`);
+			} else {
+				parts.push(id);
+			}
 		}
 	}
 
-	return cacheKey;
+	return parts.join('.');
 };
 
 const buildResolvedProps = (
@@ -1035,11 +1062,7 @@ const runVariant = (
 
 	let entry = config.cache.get(cacheKey);
 
-	if (entry) {
-		// Make the cache entry as the most recently used by reinserting it
-		config.cache.delete(cacheKey);
-		config.cache.set(cacheKey, entry);
-	} else {
+	if (!entry) {
 		const resolvedProps = buildResolvedProps(config, props, presetValues);
 
 		assertRequiredVariants(config, resolvedProps);

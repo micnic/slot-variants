@@ -2845,6 +2845,24 @@ t.test('function default variant triggering compound variant', (t) => {
 // sv() - cache management
 // =============================================================================
 
+t.test('cache key disambiguates variants with overlapping value names', (t) => {
+	const component = sv({
+		variants: {
+			size: { sm: 'text-sm', md: 'text-base' },
+			color: { sm: 'bg-blue-500', md: 'bg-red-500' }
+		}
+	});
+
+	t.equal(component({ size: 'sm' }), 'text-sm');
+	t.equal(
+		component({ color: 'sm' }),
+		'bg-blue-500',
+		'second call must not return the cached size=sm result'
+	);
+
+	t.end();
+});
+
 t.test('getCacheSize returns current cache size', (t) => {
 	const button = sv('rounded-lg', {
 		variants: {
