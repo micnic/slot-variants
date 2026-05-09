@@ -35,6 +35,10 @@
 		"type": "git",
 		"url": "git+https://github.com/micnic/slot-variants.git"
 	},
+	"homepage": "https://github.com/micnic/slot-variants",
+	"bugs": {
+		"url": "https://github.com/micnic/slot-variants/issues"
+	},
 	"keywords": [
 		"classes",
 		"classname",
