@@ -815,13 +815,17 @@ const resolveVariantValue = (
 	return defaultValue;
 };
 
-const buildCacheKey = (
+const resolveVariantState = (
 	config: CompiledConfig,
 	props: RuntimeProps,
 	presetValues: RuntimeVariantState | undefined
-): string => {
+): {
+	cacheKey: string;
+	resolvedValues: (RuntimeVariantValue | undefined)[];
+} => {
 
 	const { variantKeys, variantValueIds } = config;
+	const resolvedValues: (RuntimeVariantValue | undefined)[] = [];
 	const parts: (number | string)[] = [];
 
 	for (const variantKey of variantKeys) {
@@ -832,6 +836,8 @@ const buildCacheKey = (
 			props,
 			presetValues
 		);
+
+		resolvedValues.push(value);
 
 		if (value === undefined) {
 			parts.push('');
@@ -847,29 +853,30 @@ const buildCacheKey = (
 		}
 	}
 
-	return parts.join('.');
+	return {
+		cacheKey: parts.join('.'),
+		resolvedValues
+	};
 };
 
-const buildResolvedProps = (
+const buildResolvedPropsFromValues = (
 	config: CompiledConfig,
-	props: RuntimeProps,
-	presetValues: RuntimeVariantState | undefined
+	resolvedValues: (RuntimeVariantValue | undefined)[]
 ): RuntimeVariantState => {
 
 	const resolvedProps: RuntimeVariantState = {};
 
+	let index = 0;
+
 	for (const variantKey of config.variantKeys) {
 
-		const value = resolveVariantValue(
-			config,
-			variantKey,
-			props,
-			presetValues
-		);
+		const value = resolvedValues[index];
 
 		if (value !== undefined) {
 			resolvedProps[variantKey] = value;
 		}
+
+		index++;
 	}
 
 	return resolvedProps;
@@ -1058,12 +1065,19 @@ const runVariant = (
 
 	const classProp = props.class ?? props.className;
 	const presetValues = resolvePresetValues(config, props.preset);
-	const cacheKey = buildCacheKey(config, props, presetValues);
+	const { cacheKey, resolvedValues } = resolveVariantState(
+		config,
+		props,
+		presetValues
+	);
 
 	let entry = config.cache.get(cacheKey);
 
 	if (!entry) {
-		const resolvedProps = buildResolvedProps(config, props, presetValues);
+		const resolvedProps = buildResolvedPropsFromValues(
+			config,
+			resolvedValues
+		);
 
 		assertRequiredVariants(config, resolvedProps);
 
