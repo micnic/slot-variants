@@ -1235,6 +1235,149 @@ const noDuplicateClasses: Rule.RuleModule = {
 	}
 };
 
+// Returns null for tokens that don't look like a namespaced utility — single
+// words (`flex`), purely-prefixed (`-`), or anything without a `-` after the
+// optional leading negative marker. The `!` important suffix is stripped so
+// `w-200` and `w-200!` share a conflict key.
+const getConflictKey = (token: string): string | null => {
+	const stripped = token.endsWith('!') ? token.slice(0, -1) : token;
+	const lastColon = stripped.lastIndexOf(':');
+	let variantPrefix = '';
+	let utility = stripped;
+
+	if (lastColon !== -1) {
+		variantPrefix = stripped.slice(0, lastColon);
+		utility = stripped.slice(lastColon + 1);
+	}
+
+	const utilStart = utility.startsWith('-') ? 1 : 0;
+	const firstDash = utility.indexOf('-', utilStart + 1);
+
+	if (firstDash === -1) {
+		return null;
+	}
+
+	return `${variantPrefix}|${utility.slice(utilStart, firstDash)}`;
+};
+
+type ConflictGroup = { tokens: Set<string>; entries: Entry[] };
+
+const groupEntriesByConflictKey = (
+	tokenMap: Map<string, Entry[]>
+): Map<string, ConflictGroup> => {
+	const groups = new Map<string, ConflictGroup>();
+
+	for (const [token, list] of tokenMap) {
+		const key = getConflictKey(token);
+
+		if (key === null) {
+			continue;
+		}
+
+		const group = getOrCreate(groups, key, () => ({
+			tokens: new Set<string>(),
+			entries: []
+		}));
+
+		group.tokens.add(token);
+
+		for (const entry of list) {
+			group.entries.push(entry);
+		}
+	}
+
+	return groups;
+};
+
+const reportConflicts = (
+	context: Rule.RuleContext,
+	tokenMap: Map<string, Entry[]>,
+	messageId: string,
+	data: Record<string, string>
+) => {
+	for (const group of groupEntriesByConflictKey(tokenMap).values()) {
+		if (group.tokens.size < 2 || isMutuallyExclusiveVariants(group.entries)) {
+			continue;
+		}
+
+		const tokens = [...group.tokens].sort().join(', ');
+
+		reportEntryList(context, group.entries, messageId, { tokens, ...data });
+	}
+};
+
+const analyzeConfigConflicts = (
+	context: Rule.RuleContext,
+	configNode: Node,
+	baseArgs: ReadonlyArray<Expression | SpreadElement>
+) => {
+	const config = getProperties(configNode);
+	const slotNames = getConfigSlotNames(config);
+	const bySlot = indexEntriesBySlotAndToken(
+		collectConfigEntries(config, slotNames, baseArgs, context.sourceCode)
+	);
+
+	for (const [slot, tokenMap] of bySlot) {
+		reportConflicts(context, tokenMap, 'conflict', { slot });
+	}
+};
+
+const analyzeCnConflicts = (
+	context: Rule.RuleContext,
+	args: ReadonlyArray<Expression | SpreadElement>
+) => {
+	const entries: Entry[] = [];
+
+	for (const arg of args) {
+		extractTokens(
+			arg,
+			'base',
+			baseSource,
+			EMPTY_SLOT_NAMES,
+			entries,
+			context.sourceCode
+		);
+	}
+
+	const tokenMap = indexEntriesBySlotAndToken(entries).get('base');
+
+	if (tokenMap) {
+		reportConflicts(context, tokenMap, 'conflictCn', {});
+	}
+};
+
+/**
+ * Flags class tokens that target the same Tailwind-style utility namespace
+ * (e.g. `w-100` and `w-200`) within the same slot output. Tokens with
+ * different variant prefixes (`w-100` vs `hover:w-200`) don't conflict, and
+ * the trailing `!` important marker is ignored when computing the namespace.
+ */
+const noConflictingClasses: Rule.RuleModule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Disallow class tokens that target the same utility namespace within an sv() or cn() output'
+		},
+		schema: [],
+		messages: {
+			conflict:
+				'Conflicting classes "{{tokens}}" target the same utility namespace in the "{{slot}}" slot output.',
+			conflictCn:
+				'Conflicting classes "{{tokens}}" target the same utility namespace in the call output.'
+		}
+	},
+	create(context) {
+		return createTrackedCallListeners((_node, call) => {
+			if (call.config) {
+				analyzeConfigConflicts(context, call.config, call.args);
+			} else {
+				analyzeCnConflicts(context, call.args);
+			}
+		});
+	}
+};
+
 // A variant is "exhaustive" when it has a defaultVariants entry or is in
 // requiredVariants. Without coverage the prop can be undefined at runtime,
 // so a shared token isn't guaranteed to render.
@@ -1729,6 +1872,7 @@ const noEmptyClasses: Rule.RuleModule = {
  * Rules exported by the plugin.
  */
 export const rules = {
+	'no-conflicting-classes': noConflictingClasses,
 	'no-duplicate-classes': noDuplicateClasses,
 	'no-dynamic-classes': noDynamicClasses,
 	'no-empty-classes': noEmptyClasses,
@@ -1742,6 +1886,7 @@ export const rules = {
 const meta = { name: 'slot-variants' };
 
 const recommendedRules: Record<string, 'error'> = {
+	'slot-variants/no-conflicting-classes': 'error',
 	'slot-variants/no-duplicate-classes': 'error',
 	'slot-variants/no-dynamic-classes': 'error',
 	'slot-variants/no-empty-classes': 'error',

@@ -1578,6 +1578,116 @@ t.test('no-duplicate-classes', (t) => {
 	t.end();
 });
 
+t.test('no-conflicting-classes', (t) => {
+	const conflictRule = rules['no-conflicting-classes'];
+
+	t.doesNotThrow(() => {
+		tester.run('no-conflicting-classes', conflictRule, {
+			valid: [
+				// Single namespaced utility — nothing to conflict with.
+				IMPORT + "sv({ base: 'w-100' });",
+				// Single-word utilities have no namespace and are skipped.
+				IMPORT + "sv({ base: 'flex block' });",
+				// Different variant prefixes — not a conflict.
+				IMPORT + "sv({ base: 'w-100 hover:w-200' });",
+				// Same namespace across mutually-exclusive variant values.
+				IMPORT +
+					"sv({ variants: { size: { sm: 'w-100', lg: 'w-200' } } });",
+				// Exact duplicate token — no distinct-token conflict (handled by no-duplicate-classes).
+				IMPORT + "sv({ base: 'w-100 w-100' });",
+				// Without the import the rule stays quiet.
+				"sv({ base: 'w-100 w-200' });",
+				// cn() with a dynamic arg — no static entries, exercises the empty-tokenMap branch.
+				IMPORT_CN + 'cn(dynamic);',
+				// Different namespace prefixes don't conflict.
+				IMPORT + "sv({ base: 'w-100 h-200' });",
+				// Zero-arg call.
+				IMPORT + 'sv();'
+			],
+			invalid: [
+				{
+					// Basic conflict in base.
+					code: IMPORT + "sv({ base: 'w-100 w-200' });",
+					errors: [
+						{
+							messageId: 'conflict',
+							data: { tokens: 'w-100, w-200', slot: 'base' }
+						},
+						{
+							messageId: 'conflict',
+							data: { tokens: 'w-100, w-200', slot: 'base' }
+						}
+					]
+				},
+				{
+					// Important suffix is ignored when computing the conflict key.
+					code: IMPORT + "sv({ base: 'w-100 w-200!' });",
+					errors: 2
+				},
+				{
+					// Same variant prefix — still a conflict.
+					code: IMPORT + "sv({ base: 'hover:w-100 hover:w-200' });",
+					errors: 2
+				},
+				{
+					// Multi-segment namespace conflict (bg-red-500 vs bg-blue-500).
+					code: IMPORT + "sv({ base: 'bg-red-500 bg-blue-500' });",
+					errors: 2
+				},
+				{
+					// Negative utility shares namespace with positive sibling.
+					code: IMPORT + "sv({ base: '-mt-2 mt-4' });",
+					errors: 2
+				},
+				{
+					// Conflict spans base and a variant value (different variant
+					// keys means not mutually exclusive).
+					code:
+						IMPORT +
+						"sv({ base: 'w-100', variants: { size: { sm: 'w-200' } } });",
+					errors: 2
+				},
+				{
+					// Slot-scoped conflict — namespace duplicated within a slot.
+					code:
+						IMPORT +
+						"sv({ slots: { body: 'w-100 w-200' } });",
+					errors: [
+						{
+							messageId: 'conflict',
+							data: { tokens: 'w-100, w-200', slot: 'body' }
+						},
+						{
+							messageId: 'conflict',
+							data: { tokens: 'w-100, w-200', slot: 'body' }
+						}
+					]
+				},
+				{
+					// sv used as cn (no config) — uses the cn message.
+					code: IMPORT + "sv('w-100', 'w-200');",
+					errors: [
+						{
+							messageId: 'conflictCn',
+							data: { tokens: 'w-100, w-200' }
+						},
+						{
+							messageId: 'conflictCn',
+							data: { tokens: 'w-100, w-200' }
+						}
+					]
+				},
+				{
+					// cn() conflict across args.
+					code: IMPORT_CN + "cn('w-100', 'w-200');",
+					errors: 2
+				}
+			]
+		});
+	}, 'rule tester passes');
+	t.end();
+});
+
 t.test('no-shared-tokens', (t) => {
 	const sharedRule = rules['no-shared-tokens'];
 
