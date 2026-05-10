@@ -298,6 +298,12 @@ t.test('sv(config) with base and class prop', (t) => {
 		'config base + variant + class prop'
 	);
 
+	t.equal(
+		button({ size: 'sm', class: { base: 'extra' } }),
+		'flex text-sm extra',
+		'config base + variant + base-keyed class prop on no-slots component'
+	);
+
 	t.end();
 });
 

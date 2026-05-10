@@ -978,26 +978,25 @@ const applyPostProcess = (
 	return result;
 };
 
-const toSlotResult = (cacheValue: CacheValue): Record<string, string> => {
-
-	if (typeof cacheValue === 'string') {
-		return { base: cacheValue };
-	}
-
-	return cacheValue;
-};
-
 const mergeClassPropIntoResult = (
 	config: CompiledConfig,
 	baseResult: CacheValue,
 	classProp: RuntimeClassValue
 ): CacheValue => {
 
-	const baseObj = toSlotResult(baseResult);
-	const slotClasses: SlotClasses = { base: [baseObj.base] };
+	if (typeof baseResult === 'string') {
+
+		if (isSlotObjectValue(classProp, config.slotKeys)) {
+			return cn(baseResult, classProp.base);
+		}
+
+		return cn(baseResult, classProp);
+	}
+
+	const slotClasses: SlotClasses = { base: [baseResult.base] };
 
 	for (const key of config.slotKeys) {
-		slotClasses[key] = [baseObj[key]];
+		slotClasses[key] = [baseResult[key]];
 	}
 
 	applyValueToSlotClasses(slotClasses, classProp, config.slotKeys);
