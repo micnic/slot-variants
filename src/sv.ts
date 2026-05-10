@@ -200,7 +200,6 @@ type CompiledConfig = {
 	slotKeys: Set<string>;
 	originalVariants: Variants<MaybeSlots>;
 	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>;
-	variantEntries: [string, Record<string, NormalizedVariantValue>][];
 	variantKeys: Set<string>;
 	variantValueIds: Record<string, Record<string, number>>;
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
@@ -766,7 +765,6 @@ const compileConfig = <
 		slotKeys,
 		originalVariants: variants,
 		normalizedVariants,
-		variantEntries: entries(normalizedVariants),
 		variantKeys,
 		variantValueIds,
 		defaultVariants,
@@ -929,10 +927,15 @@ const applyResolvedVariantClasses = (
 	resolvedProps: RuntimeVariantState
 ) => {
 
-	for (const [variantKey, variantValues] of config.variantEntries) {
-		const variantProp = resolvedProps[variantKey];
+	for (const [variantKey, variantProp] of entries(resolvedProps)) {
 
 		if (variantProp === undefined) {
+			continue;
+		}
+
+		const variantValues = config.normalizedVariants[variantKey];
+
+		if (variantValues === undefined) {
 			continue;
 		}
 
