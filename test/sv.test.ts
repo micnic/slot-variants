@@ -3596,6 +3596,19 @@ t.test('getVariantValues returns booleans for true/false record variant', (t) =>
 	t.end();
 });
 
+t.test('getVariantValues preserves empty-string variant value keys', (t) => {
+	const example = sv('x', {
+		variants: {
+			tone: { '': 'tone-default', loud: 'tone-loud' }
+		},
+		introspection: true
+	});
+
+	t.same(example.getVariantValues('tone'), ['', 'loud'], 'empty-string key preserved as string, not coerced to 0');
+
+	t.end();
+});
+
 t.test('getVariantValues returns numbers for numeric variant', (t) => {
 	const grid = sv('grid', {
 		variants: {

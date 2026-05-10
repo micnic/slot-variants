@@ -200,10 +200,9 @@ type CompiledConfig = {
 	slotKeys: Set<string>;
 	originalVariants: Variants<MaybeSlots>;
 	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>;
-	variantKeys: Set<string>;
+	variantKeys: string[];
 	variantValueIds: Record<string, Record<string, number>>;
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
-	defaultVariantKeys: Set<string>;
 	requiredVariants: readonly string[];
 	presets: Record<string, RuntimeVariantState>;
 	presetKeys: Set<string>;
@@ -625,12 +624,14 @@ const createNormalizedVariants = <S extends MaybeSlots>(
 
 const assertValidRequiredVariantConfig = (
 	requiredVariants: readonly string[],
-	variantKeys: Set<string>,
+	variantKeys: readonly string[],
 	defaultVariantKeys: Set<string>
 ) => {
 
+	const variantKeySet = new Set(variantKeys);
+
 	for (const variant of requiredVariants) {
-		if (!variantKeys.has(variant)) {
+		if (!variantKeySet.has(variant)) {
 			throw new Error(
 				`Required variant "${variant}" is not defined in variants`
 			);
@@ -716,7 +717,7 @@ const compileConfig = <
 	const baseClassValue = cn(...baseArgs, configBase, baseSlot);
 	const slotKeys = new Set(keys(otherSlots));
 	const normalizedVariants = createNormalizedVariants(variants, slotKeys);
-	const variantKeys = new Set(keys(normalizedVariants));
+	const variantKeys = keys(normalizedVariants);
 	const defaultVariantKeys = new Set(keys(defaultVariants));
 	const variantValueIds: Record<string, Record<string, number>> = {};
 
@@ -768,7 +769,6 @@ const compileConfig = <
 		variantKeys,
 		variantValueIds,
 		defaultVariants,
-		defaultVariantKeys,
 		requiredVariants,
 		presets,
 		presetKeys: new Set(keys(presets)),
@@ -814,10 +814,6 @@ const resolveVariantValue = (
 
 	if (presetValue !== undefined) {
 		return presetValue;
-	}
-
-	if (!config.defaultVariantKeys.has(variantKey)) {
-		return undefined;
 	}
 
 	const defaultValue = config.defaultVariants[variantKey];
@@ -929,12 +925,9 @@ const applyResolvedVariantClasses = (
 
 	for (const [variantKey, variantProp] of entries(resolvedProps)) {
 
-		if (variantProp === undefined) {
-			continue;
-		}
-
 		const variantValues = config.normalizedVariants[variantKey];
 
+		/* c8 ignore next 3 -- resolvedProps keys always correspond to normalized variants */
 		if (variantValues === undefined) {
 			continue;
 		}
@@ -955,23 +948,6 @@ const applyResolvedVariantClasses = (
 	}
 };
 
-const applyCompoundSlotsClasses = (
-	config: CompiledConfig,
-	slotClasses: SlotClasses,
-	resolvedProps: RuntimeVariantState
-) => {
-
-	for (const compound of config.compoundSlots) {
-		if (!matchesCompound(resolvedProps, compound.matchers)) {
-			continue;
-		}
-
-		for (const slotName of compound.slots) {
-			slotClasses[slotName]?.push(compound.classValue);
-		}
-	}
-};
-
 const applyCompoundClasses = (
 	config: CompiledConfig,
 	slotClasses: SlotClasses,
@@ -988,7 +964,15 @@ const applyCompoundClasses = (
 		}
 	}
 
-	applyCompoundSlotsClasses(config, slotClasses, resolvedProps);
+	for (const compound of config.compoundSlots) {
+		if (!matchesCompound(resolvedProps, compound.matchers)) {
+			continue;
+		}
+
+		for (const slotName of compound.slots) {
+			slotClasses[slotName]?.push(compound.classValue);
+		}
+	}
 };
 
 const finalizeVariantResult = (
