@@ -472,7 +472,7 @@ const isSlotObjectVariantValue = (
 
 const isBooleanVariantRecord = (
 	variantValue: Record<string, NormalizedVariantValue>
-): variantValue is Record<string, NormalizedVariantValue> =>
+): boolean =>
 	keys(variantValue).every((key) => key === 'true' || key === 'false');
 
 const normalizeVariantValue = (
@@ -526,11 +526,17 @@ const coerceVariantKeyValue = (value: string): string | number | boolean => {
 		return booleanValue;
 	}
 
+	if (booleanValue === '') {
+		return booleanValue;
+	}
+
 	const numericValue = Number(booleanValue);
 
-	return booleanValue !== '' && !Number.isNaN(numericValue)
-		? numericValue
-		: booleanValue;
+	if (Number.isNaN(numericValue)) {
+		return booleanValue;
+	}
+
+	return numericValue;
 };
 
 const configKeysRecord: Record<ConfigKey, true> = {
@@ -831,12 +837,14 @@ const resolveVariantState = (
 	presetValues: RuntimeVariantState | undefined
 ): {
 	cacheKey: string;
-	resolvedValues: (RuntimeVariantValue | undefined)[];
+	resolvedProps: RuntimeVariantState;
 } => {
 
 	const { variantKeys, variantValueIds } = config;
-	const resolvedValues: (RuntimeVariantValue | undefined)[] = [];
-	const parts: (number | string)[] = [];
+	const resolvedProps: RuntimeVariantState = {};
+
+	let cacheKey = '';
+	let first = true;
 
 	for (const variantKey of variantKeys) {
 
@@ -847,49 +855,30 @@ const resolveVariantState = (
 			presetValues
 		);
 
-		resolvedValues.push(value);
+		if (!first) {
+			cacheKey += '.';
+		}
+		first = false;
 
 		if (value === undefined) {
-			parts.push('');
-		} else {
-			const ids = variantValueIds[variantKey];
-			const id = ids?.[`${value}`];
+			continue;
+		}
 
-			if (id === undefined) {
-				parts.push(`?${value}`);
-			} else {
-				parts.push(id);
-			}
+		resolvedProps[variantKey] = value;
+
+		const id = variantValueIds[variantKey]?.[`${value}`];
+
+		if (id === undefined) {
+			cacheKey += `?${value}`;
+		} else {
+			cacheKey += id;
 		}
 	}
 
 	return {
-		cacheKey: parts.join('.'),
-		resolvedValues
+		cacheKey,
+		resolvedProps
 	};
-};
-
-const buildResolvedPropsFromValues = (
-	config: CompiledConfig,
-	resolvedValues: (RuntimeVariantValue | undefined)[]
-): RuntimeVariantState => {
-
-	const resolvedProps: RuntimeVariantState = {};
-
-	let index = 0;
-
-	for (const variantKey of config.variantKeys) {
-
-		const value = resolvedValues[index];
-
-		if (value !== undefined) {
-			resolvedProps[variantKey] = value;
-		}
-
-		index++;
-	}
-
-	return resolvedProps;
 };
 
 const assertRequiredVariants = (
@@ -1004,13 +993,17 @@ const finalizeVariantResult = (
 	slotClasses: SlotClasses
 ): CacheValue => {
 
+	if (config.slotKeys.size === 0) {
+		return cn(slotClasses.base);
+	}
+
 	const result: { base: string } & Record<string, string> = { base: '' };
 
 	for (const [slotKey, slotValues] of entries(slotClasses)) {
 		result[slotKey] = cn(slotValues);
 	}
 
-	return config.slotKeys.size === 0 ? result.base : result;
+	return result;
 };
 
 const applyPostProcess = (
@@ -1065,7 +1058,7 @@ const runVariant = (
 
 	const classProp = props.class ?? props.className;
 	const presetValues = resolvePresetValues(config, props.preset);
-	const { cacheKey, resolvedValues } = resolveVariantState(
+	const { cacheKey, resolvedProps } = resolveVariantState(
 		config,
 		props,
 		presetValues
@@ -1074,11 +1067,6 @@ const runVariant = (
 	let entry = config.cache.get(cacheKey);
 
 	if (!entry) {
-		const resolvedProps = buildResolvedPropsFromValues(
-			config,
-			resolvedValues
-		);
-
 		assertRequiredVariants(config, resolvedProps);
 
 		const slotClasses = createSlotClasses(config);
