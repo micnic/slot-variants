@@ -592,7 +592,7 @@ const createNormalizedVariants = <S extends MaybeSlots>(
 const assertValidRequiredVariantConfig = (
 	requiredVariants: readonly string[],
 	variantKeys: readonly string[],
-	defaultVariantKeys: Set<string>
+	defaultVariants: Record<string, RuntimeDefaultVariant>
 ) => {
 
 	const variantKeySet = new Set(variantKeys);
@@ -604,7 +604,7 @@ const assertValidRequiredVariantConfig = (
 			);
 		}
 
-		if (defaultVariantKeys.has(variant)) {
+		if (hasOwn(defaultVariants, variant)) {
 			throw new Error(
 				`Required variant "${variant}" cannot have a default value`
 			);
@@ -685,7 +685,6 @@ const compileConfig = <
 	const slotKeys = new Set(keys(otherSlots));
 	const normalizedVariants = createNormalizedVariants(variants, slotKeys);
 	const variantKeys = keys(normalizedVariants);
-	const defaultVariantKeys = new Set(keys(defaultVariants));
 	const variantValueIds: Record<string, Record<string, number>> = {};
 
 	for (const [variantKey, variantValues] of entries(normalizedVariants)) {
@@ -705,7 +704,7 @@ const compileConfig = <
 	assertValidRequiredVariantConfig(
 		requiredVariants,
 		variantKeys,
-		defaultVariantKeys
+		defaultVariants
 	);
 
 	const compiledCompoundVariants: CompiledCompoundVariant[] =
@@ -884,7 +883,7 @@ const applyResolvedVariantClasses = (
 	resolvedProps: RuntimeVariantState
 ) => {
 
-	for (const [variantKey, variantProp] of entries(resolvedProps)) {
+	for (const variantKey in resolvedProps) {
 
 		const variantValues = config.normalizedVariants[variantKey];
 
@@ -895,7 +894,7 @@ const applyResolvedVariantClasses = (
 
 		const variantClasses = getVariantClasses(
 			variantKey,
-			variantProp,
+			resolvedProps[variantKey],
 			variantValues
 		);
 
