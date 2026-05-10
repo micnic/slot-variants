@@ -205,7 +205,6 @@ type CompiledConfig = {
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
 	requiredVariants: readonly string[];
 	presets: Record<string, RuntimeVariantState>;
-	presetKeys: Set<string>;
 	compoundVariants: readonly CompiledCompoundVariant[];
 	compoundSlots: readonly CompiledCompoundSlot[];
 	cache: Map<string, CacheEntry>;
@@ -347,7 +346,7 @@ export type SlotClassProps<
 			>;
 
 const { isArray } = Array;
-const { assign, entries, keys } = Object;
+const { assign, entries, hasOwn, keys } = Object;
 
 /**
  * Compare two values for equality, with string coercion fallback
@@ -771,7 +770,6 @@ const compileConfig = <
 		defaultVariants,
 		requiredVariants,
 		presets,
-		presetKeys: new Set(keys(presets)),
 		compoundVariants: compiledCompoundVariants,
 		compoundSlots: compiledCompoundSlots,
 		cache,
@@ -790,7 +788,7 @@ const resolvePresetValues = (
 		return undefined;
 	}
 
-	if (!config.presetKeys.has(presetName)) {
+	if (!hasOwn(config.presets, presetName)) {
 		throw new Error(`Invalid preset "${presetName}"`);
 	}
 
@@ -838,7 +836,6 @@ const resolveVariantState = (
 	const resolvedProps: RuntimeVariantState = {};
 
 	let cacheKey = '';
-	let first = true;
 
 	for (const variantKey of variantKeys) {
 
@@ -849,12 +846,8 @@ const resolveVariantState = (
 			presetValues
 		);
 
-		if (!first) {
-			cacheKey += '.';
-		}
-		first = false;
-
 		if (value === undefined) {
+			cacheKey += '.';
 			continue;
 		}
 
@@ -863,9 +856,9 @@ const resolveVariantState = (
 		const id = variantValueIds[variantKey]?.[`${value}`];
 
 		if (id === undefined) {
-			cacheKey += `?${value}`;
+			cacheKey += `.?${value}`;
 		} else {
-			cacheKey += id;
+			cacheKey += `.${id}`;
 		}
 	}
 
@@ -1017,8 +1010,14 @@ const applyPostProcess = (
 	return result;
 };
 
-const toSlotResult = (cacheValue: CacheValue): Record<string, string> =>
-	typeof cacheValue === 'string' ? { base: cacheValue } : cacheValue;
+const toSlotResult = (cacheValue: CacheValue): Record<string, string> => {
+
+	if (typeof cacheValue === 'string') {
+		return { base: cacheValue };
+	}
+
+	return cacheValue;
+};
 
 const mergeClassPropIntoResult = (
 	config: CompiledConfig,
@@ -1174,7 +1173,7 @@ export function sv<
 		defaultVariants: config.defaultVariants,
 		requiredVariants: config.requiredVariants,
 		presets: config.presets,
-		presetKeys: [...config.presetKeys],
+		presetKeys: keys(config.presets),
 		getVariantValues: (key: string) =>
 			keys(config.normalizedVariants[key] ?? {}).map(
 				coerceVariantKeyValue
