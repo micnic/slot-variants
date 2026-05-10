@@ -569,38 +569,6 @@ const isConfig = <
 	!isArray(value) &&
 	keys(value).every((key) => (configKeys as Set<string>).has(key));
 
-const resolveInputs = <
-	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	RV extends readonly StringKeyof<V>[],
-	P extends Presets<S, V> | undefined,
-	I extends boolean
->(
-	args: (ClassValue | Config<S, V, RV, P, I>)[]
-): {
-	baseArgs: ClassValue[];
-	config: CompiledConfig | undefined;
-} => {
-
-	const last = args.at(-1);
-
-	if (isConfig<S, V, RV, P, I>(last)) {
-
-		const baseArgs = args.slice(0, -1) as ClassValue[];
-		const config = compileConfig(baseArgs, last);
-
-		return {
-			baseArgs,
-			config
-		};
-	}
-
-	return {
-		baseArgs: args as ClassValue[],
-		config: undefined
-	};
-};
-
 const createNormalizedVariants = <S extends MaybeSlots>(
 	variants: Variants<S>,
 	slotKeys: Set<string>
@@ -1153,11 +1121,13 @@ export function sv<
 	...args: (ClassValue | Config<S, V, RV, P, I>)[]
 ): string | VariantFn<S, V, RV, P, I> {
 
-	const { baseArgs, config } = resolveInputs(args);
+	const last = args.at(-1);
 
-	if (!config) {
-		return cn(...baseArgs);
+	if (!isConfig<S, V, RV, P, I>(last)) {
+		return cn(...(args as ClassValue[]));
 	}
+
+	const config = compileConfig(args.slice(0, -1) as ClassValue[], last);
 
 	const variantFn = (props: RuntimeProps = {}) => runVariant(config, props);
 
