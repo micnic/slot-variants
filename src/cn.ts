@@ -25,15 +25,13 @@ const { keys } = Object;
  */
 export function cn(...args: ClassValue[]): string {
 
-	const stack = [...args];
-
 	let index = 0;
 	let result = '';
 
-	// Process the stack iteratively to avoid deep recursion
-	while (index < stack.length) {
+	// Process args iteratively to avoid deep recursion
+	while (index < args.length) {
 
-		const item = stack[index];
+		const item = args[index];
 
 		// Move to the next item
 		index++;
@@ -47,7 +45,7 @@ export function cn(...args: ClassValue[]): string {
 		if (typeof item === 'string') {
 			result += ` ${item}`;
 		} else if (isArray(item)) {
-			stack.push(...item);
+			args.push(...item);
 		} else if (typeof item === 'object') {
 
 			// Handle object records
