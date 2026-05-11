@@ -587,63 +587,6 @@ const collectConfigEntries = (
 	return entries;
 };
 
-const reportDuplicatesBySlot = (
-	context: Rule.RuleContext,
-	bySlot: TokenEntriesBySlot
-) => {
-	for (const [slotKey, tokenMap] of bySlot.entries()) {
-		reportDuplicateTokens(context, tokenMap, 'duplicate', {
-			slot: slotKey
-		});
-	}
-};
-
-const analyzeConfig = (
-	context: Rule.RuleContext,
-	configNode: Node,
-	baseArgs: ReadonlyArray<Expression | SpreadElement>
-) => {
-	const config = getProperties(configNode);
-	// 'base' is a reserved key meaning "default slot", not a slot name.
-	const slotNames = getConfigSlotNames(config);
-
-	reportDuplicatesBySlot(
-		context,
-		indexEntriesBySlotAndToken(
-			collectConfigEntries(
-				config,
-				slotNames,
-				baseArgs,
-				context.sourceCode
-			)
-		)
-	);
-};
-
-const analyzeCnCall = (
-	context: Rule.RuleContext,
-	args: ReadonlyArray<Expression | SpreadElement>
-) => {
-	const entries: Entry[] = [];
-
-	for (const arg of args) {
-		extractTokens(
-			arg,
-			'base',
-			baseSource,
-			EMPTY_SLOT_NAMES,
-			entries,
-			context.sourceCode
-		);
-	}
-
-	const tokenMap = indexEntriesBySlotAndToken(entries).get('base');
-
-	if (tokenMap) {
-		reportDuplicateTokens(context, tokenMap, 'duplicateCn', {});
-	}
-};
-
 const reportDynamic = (context: Rule.RuleContext, node: Node) => {
 	context.report({ node, messageId: 'dynamic' });
 };
@@ -1205,36 +1148,6 @@ const noRedundantSpaces: Rule.RuleModule = {
 	}
 };
 
-/**
- * Flags class name tokens that are guaranteed (or guaranteed-on-some-path) to
- * appear more than once in the output of an `sv()` or `cn()` call.
- */
-const noDuplicateClasses: Rule.RuleModule = {
-	meta: {
-		type: 'problem',
-		docs: {
-			description:
-				'Disallow duplicate class names in sv() and cn() outputs across slots, variants, and compounds'
-		},
-		schema: [],
-		messages: {
-			duplicate:
-				'Class "{{token}}" will appear more than once in the "{{slot}}" slot output.',
-			duplicateCn:
-				'Class "{{token}}" will appear more than once in the call output.'
-		}
-	},
-	create(context) {
-		return createTrackedCallListeners((_node, call) => {
-			if (call.config) {
-				analyzeConfig(context, call.config, call.args);
-			} else {
-				analyzeCnCall(context, call.args);
-			}
-		});
-	}
-};
-
 // Returns null for tokens that don't look like a namespaced utility — single
 // words (`flex`), purely-prefixed (`-`), or anything without a `-` after the
 // optional leading negative marker. The `!` important suffix is stripped so
@@ -1306,7 +1219,7 @@ const reportConflicts = (
 	}
 };
 
-const analyzeConfigConflicts = (
+const analyzeConfigForRule = (
 	context: Rule.RuleContext,
 	configNode: Node,
 	baseArgs: ReadonlyArray<Expression | SpreadElement>
@@ -1318,11 +1231,12 @@ const analyzeConfigConflicts = (
 	);
 
 	for (const [slot, tokenMap] of bySlot) {
+		reportDuplicateTokens(context, tokenMap, 'duplicate', { slot });
 		reportConflicts(context, tokenMap, 'conflict', { slot });
 	}
 };
 
-const analyzeCnConflicts = (
+const analyzeCnForRule = (
 	context: Rule.RuleContext,
 	args: ReadonlyArray<Expression | SpreadElement>
 ) => {
@@ -1342,25 +1256,34 @@ const analyzeCnConflicts = (
 	const tokenMap = indexEntriesBySlotAndToken(entries).get('base');
 
 	if (tokenMap) {
+		reportDuplicateTokens(context, tokenMap, 'duplicateCn', {});
 		reportConflicts(context, tokenMap, 'conflictCn', {});
 	}
 };
 
 /**
- * Flags class tokens that target the same Tailwind-style utility namespace
- * (e.g. `w-100` and `w-200`) within the same slot output. Tokens with
- * different variant prefixes (`w-100` vs `hover:w-200`) don't conflict, and
- * the trailing `!` important marker is ignored when computing the namespace.
+ * Flags class tokens that collide within the same slot output: exact-duplicate
+ * tokens that will appear more than once (including across `base`, variants,
+ * compounds, and within a single literal), and distinct tokens that target the
+ * same Tailwind-style utility namespace (e.g. `w-100` and `w-200`). Tokens with
+ * different variant prefixes (`w-100` vs `hover:w-200`) don't conflict, the
+ * trailing `!` important marker is ignored when computing the namespace, and
+ * tokens that only co-occur across mutually-exclusive variant values are not
+ * flagged.
  */
 const noConflictingClasses: Rule.RuleModule = {
 	meta: {
 		type: 'problem',
 		docs: {
 			description:
-				'Disallow class tokens that target the same utility namespace within an sv() or cn() output'
+				'Disallow duplicate class tokens and tokens targeting the same utility namespace within an sv() or cn() output'
 		},
 		schema: [],
 		messages: {
+			duplicate:
+				'Class "{{token}}" will appear more than once in the "{{slot}}" slot output.',
+			duplicateCn:
+				'Class "{{token}}" will appear more than once in the call output.',
 			conflict:
 				'Conflicting classes "{{tokens}}" target the same utility namespace in the "{{slot}}" slot output.',
 			conflictCn:
@@ -1370,9 +1293,9 @@ const noConflictingClasses: Rule.RuleModule = {
 	create(context) {
 		return createTrackedCallListeners((_node, call) => {
 			if (call.config) {
-				analyzeConfigConflicts(context, call.config, call.args);
+				analyzeConfigForRule(context, call.config, call.args);
 			} else {
-				analyzeCnConflicts(context, call.args);
+				analyzeCnForRule(context, call.args);
 			}
 		});
 	}
@@ -1873,7 +1796,6 @@ const noEmptyClasses: Rule.RuleModule = {
  */
 export const rules = {
 	'no-conflicting-classes': noConflictingClasses,
-	'no-duplicate-classes': noDuplicateClasses,
 	'no-dynamic-classes': noDynamicClasses,
 	'no-empty-classes': noEmptyClasses,
 	'no-redundant-spaces': noRedundantSpaces,
@@ -1887,7 +1809,6 @@ const meta = { name: 'slot-variants' };
 
 const recommendedRules: Record<string, 'error'> = {
 	'slot-variants/no-conflicting-classes': 'error',
-	'slot-variants/no-duplicate-classes': 'error',
 	'slot-variants/no-dynamic-classes': 'error',
 	'slot-variants/no-empty-classes': 'error',
 	'slot-variants/no-redundant-spaces': 'error',

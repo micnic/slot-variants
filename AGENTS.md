@@ -447,7 +447,7 @@ import svPlugin from 'slot-variants/eslint-plugin';
 export default [{
   plugins: { 'slot-variants': svPlugin },
   rules: {
-    'slot-variants/no-duplicate-classes': 'error',
+    'slot-variants/no-conflicting-classes': 'error',
     'slot-variants/no-dynamic-classes': 'error',
     'slot-variants/no-empty-classes': 'error',
     'slot-variants/no-redundant-spaces': 'error',
@@ -461,7 +461,7 @@ export default [{
 {
   "jsPlugins": ["slot-variants/eslint-plugin"],
   "rules": {
-    "slot-variants/no-duplicate-classes": "error",
+    "slot-variants/no-conflicting-classes": "error",
     "slot-variants/no-dynamic-classes": "error",
     "slot-variants/no-empty-classes": "error",
     "slot-variants/no-redundant-spaces": "error",
@@ -472,18 +472,19 @@ export default [{
 
 All rules only analyze calls where `sv` or `cn` is a **named import** from `'slot-variants'`. Default, namespace, and aliased-to-other-identifier imports are ignored.
 
-### `slot-variants/no-duplicate-classes`
+### `slot-variants/no-conflicting-classes`
 
-Reports class tokens that will appear more than once in the output of an `sv()` or `cn()` call.
+Reports class tokens that collide within the output of an `sv()` or `cn()` call: exact-duplicate tokens that will appear more than once, and distinct tokens that target the same Tailwind-style utility namespace (e.g. `w-100` and `w-200`).
 
-- For `sv()` with a config, flags a token as duplicated when two of its sources can both be active at runtime: base + any variant, base + compound, two variants with different keys, two compound entries, or the same literal token repeated inside a single source.
-- Does **not** flag the same token appearing in different values of the **same** variant key (those are mutually exclusive).
-- For `cn()` (and `sv()` called without a config — the cn-style calling convention), flags any token that appears in more than one always-present source: across args, inside arrays, template literals without expressions, or within a single literal.
+- For `sv()` with a config, flags a collision when two of its sources can both be active at runtime: base + any variant, base + compound, two variants with different keys, two compound entries, or the same literal token repeated inside a single source.
+- Does **not** flag tokens that only co-occur across different values of the **same** variant key (those are mutually exclusive at runtime).
+- For `cn()` (and `sv()` called without a config — the cn-style calling convention), flags collisions across args, inside arrays, template literals without expressions, or within a single literal.
+- Tokens with different variant prefixes (`w-100` vs `hover:w-200`) don't conflict; the trailing `!` important marker is ignored when computing the namespace; single-word utilities (no `-`) participate only in exact-duplicate detection.
 - Bails out silently on dynamic inputs (identifiers, spreads, computed keys, template literals with expressions, cn-style `{ cls: condition }` records) — no false positives for code it can't statically resolve.
 
 ### `slot-variants/no-dynamic-classes`
 
-Reports class-bearing positions in `sv()` and `cn()` calls that aren't statically inferrable. Pair this rule with `no-duplicate-classes` to guarantee every call is fully analyzable.
+Reports class-bearing positions in `sv()` and `cn()` calls that aren't statically inferrable. Pair this rule with `no-conflicting-classes` to guarantee every call is fully analyzable.
 
 - Accepts only string literals, template literals without expressions, and arrays of those as class values. Identifiers, member access, calls, spreads, non-string literals, templates with expressions, and object records are reported.
 - For `sv()` config, validates `base`, `slots` values, `variants` values (both record form and boolean shorthand), and the `class` / `className` of `compoundVariants` / `compoundSlots` entries. The `slots` array of `compoundSlots` must be a static array of string literals.

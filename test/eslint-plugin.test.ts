@@ -9,7 +9,7 @@ const tester = new RuleTester({
 	}
 });
 
-const rule = rules['no-duplicate-classes'];
+const rule = rules['no-conflicting-classes'];
 const IMPORT = "import { sv } from 'slot-variants';\n";
 const IMPORT_CN = "import { cn } from 'slot-variants';\n";
 
@@ -270,7 +270,7 @@ t.test('shared plugin run reuses cached property analysis', (t) => {
 			plugins: { 'slot-variants': plugin },
 			rules: {
 				'slot-variants/no-empty-classes': 2,
-				'slot-variants/no-duplicate-classes': 2,
+				'slot-variants/no-conflicting-classes': 2,
 				'slot-variants/no-shared-tokens': 2
 			},
 			languageOptions: {
@@ -305,7 +305,7 @@ t.test('shared plugin run reuses cached property analysis', (t) => {
 		summarizeByRuleId(secondMessages),
 		{
 			'slot-variants/no-empty-classes': 1,
-			'slot-variants/no-duplicate-classes': 4,
+			'slot-variants/no-conflicting-classes': 4,
 			'slot-variants/no-shared-tokens': 4
 		},
 		'second pass keeps the expected rule counts while exercising cached valid and invalid object analysis'
@@ -377,8 +377,8 @@ t.test('configs.recommended preset', (t) => {
 		'preset wires no-redundant-spaces into the linter'
 	);
 	t.ok(
-		ruleIds.has('slot-variants/no-duplicate-classes'),
-		'preset wires no-duplicate-classes into the linter'
+		ruleIds.has('slot-variants/no-conflicting-classes'),
+		'preset wires no-conflicting-classes into the linter'
 	);
 	t.end();
 });
@@ -1195,9 +1195,9 @@ t.test('no-empty-classes', (t) => {
 	t.end();
 });
 
-t.test('no-duplicate-classes', (t) => {
+t.test('no-conflicting-classes (duplicate detection)', (t) => {
 	t.doesNotThrow(() => {
-		tester.run('no-duplicate-classes', rule, {
+		tester.run('no-conflicting-classes', rule, {
 			valid: [
 				IMPORT +
 					"sv({ base: 'flex items-center', variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });",
@@ -1578,7 +1578,7 @@ t.test('no-duplicate-classes', (t) => {
 	t.end();
 });
 
-t.test('no-conflicting-classes', (t) => {
+t.test('no-conflicting-classes (namespace conflicts)', (t) => {
 	const conflictRule = rules['no-conflicting-classes'];
 
 	t.doesNotThrow(() => {
@@ -1593,8 +1593,6 @@ t.test('no-conflicting-classes', (t) => {
 				// Same namespace across mutually-exclusive variant values.
 				IMPORT +
 					"sv({ variants: { size: { sm: 'w-100', lg: 'w-200' } } });",
-				// Exact duplicate token — no distinct-token conflict (handled by no-duplicate-classes).
-				IMPORT + "sv({ base: 'w-100 w-100' });",
 				// Without the import the rule stays quiet.
 				"sv({ base: 'w-100 w-200' });",
 				// cn() with a dynamic arg — no static entries, exercises the empty-tokenMap branch.

@@ -896,7 +896,7 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 ### Rules
 
-- **`slot-variants/no-duplicate-classes`** — flags class name tokens that will appear more than once in the output of an `sv()` or `cn()` call. For `sv()`, detects duplicates within `base`, across different variant keys, inside compound variants and compound slots, between `base` and a variant value, and within a single literal. For `cn()` (and the cn-style calling convention of `sv()` without a config), flags any token that appears in more than one always-present source — across args, inside arrays, template literals, or within a single literal.
+- **`slot-variants/no-conflicting-classes`** — flags class tokens that collide within the output of an `sv()` or `cn()` call: both exact-duplicate tokens that will appear more than once and distinct tokens that target the same Tailwind-style utility namespace (e.g. `w-100` and `w-200`). For `sv()`, detects collisions within `base`, across different variant keys, inside compound variants and compound slots, between `base` and a variant value, and within a single literal. For `cn()` (and the cn-style calling convention of `sv()` without a config), flags collisions across args, inside arrays, template literals, or within a single literal. Tokens with different variant prefixes (`w-100` vs `hover:w-200`) don't conflict, the trailing `!` important marker is ignored when computing the namespace, and tokens that only co-occur across mutually-exclusive variant values are skipped.
 
 - **`slot-variants/no-dynamic-classes`** — flags class-bearing positions in `sv()` and `cn()` calls that aren't statically inferrable. Only string literals, template literals without expressions, flat arrays of those in config, and explicit `undefined` config class values are accepted, and config objects must use static keys (no spreads, no computed keys). Identifiers, member access, calls, spreads, non-string literals, templates with expressions, nested config arrays, and runtime conditional records are reported. Non-class-bearing config keys (`defaultVariants`, `presets`, `requiredVariants`, `cacheSize`, `postProcess`, `introspection`) are not validated, and runtime variant matchers inside compound entries are left alone — only the `class`/`className` value (and the `slots` array of `compoundSlots`) is checked.
 
@@ -906,7 +906,7 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 - **`slot-variants/no-shared-tokens`** — flags class tokens that appear in every value of an exhaustively-covered variant, where “exhaustive” means the variant has a statically defined default value or is listed in `requiredVariants`. Those tokens are constant in the rendered output, so they belong in `base` or the corresponding `slots[slot]` entry rather than being repeated in every variant value. The rule only analyzes `sv()` calls with a config, compares tokens per-slot, skips non-exhaustive variants, single-value variants, boolean shorthand, undefined or dynamic defaults, and dynamic or partially-analyzable variant value records, and reports every repeated occurrence that should be lifted out.
 
-Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analyzed. `no-duplicate-classes` skips dynamic inputs silently to avoid false positives; `no-dynamic-classes` is the opposite — it flags exactly those positions so the static analyzer can fully reason about every call. `no-shared-tokens` sits between them: it needs a fully statically analyzable, exhaustive variant before it can prove a token is constant across every value. `no-empty-classes` and `no-redundant-spaces` are independent and complement the structural rules: they cover empty and badly-shaped literals reachable from a call's arguments, regardless of whether the surrounding call is fully static.
+Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analyzed. `no-conflicting-classes` skips dynamic inputs silently to avoid false positives; `no-dynamic-classes` is the opposite — it flags exactly those positions so the static analyzer can fully reason about every call. `no-shared-tokens` sits between them: it needs a fully statically analyzable, exhaustive variant before it can prove a token is constant across every value. `no-empty-classes` and `no-redundant-spaces` are independent and complement the structural rules: they cover empty and badly-shaped literals reachable from a call's arguments, regardless of whether the surrounding call is fully static.
 
 ### ESLint (flat config)
 
@@ -927,7 +927,7 @@ export default [
   {
     plugins: { 'slot-variants': svPlugin },
     rules: {
-      'slot-variants/no-duplicate-classes': 'error',
+      'slot-variants/no-conflicting-classes': 'error',
       'slot-variants/no-dynamic-classes': 'error',
       'slot-variants/no-empty-classes': 'error',
       'slot-variants/no-redundant-spaces': 'error',
@@ -943,7 +943,7 @@ export default [
 {
   "jsPlugins": ["slot-variants/eslint-plugin"],
   "rules": {
-    "slot-variants/no-duplicate-classes": "error",
+    "slot-variants/no-conflicting-classes": "error",
     "slot-variants/no-dynamic-classes": "error",
     "slot-variants/no-empty-classes": "error",
     "slot-variants/no-redundant-spaces": "error",
@@ -970,7 +970,7 @@ const button = sv({
 cn('flex items-center', 'flex'); // 'flex' duplicated across args
 ```
 
-`no-duplicate-classes` reports `flex` on the `base` literal and on both variant values; for the `cn()` call, both occurrences of `'flex'` are flagged. Move the shared class into `base` — or use compound variants — so each class has a single source.
+`no-conflicting-classes` reports `flex` on the `base` literal and on both variant values; for the `cn()` call, both occurrences of `'flex'` are flagged. Move the shared class into `base` — or use compound variants — so each class has a single source.
 
 ```typescript
 import { sv, cn } from 'slot-variants';
