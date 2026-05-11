@@ -17,7 +17,7 @@
 	},
 	"sideEffects": false,
 	"files": [
-		"AGENTS.md",
+		"SKILL.md",
 		"dist",
 		"logo.svg"
 	],
