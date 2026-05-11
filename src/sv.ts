@@ -883,18 +883,17 @@ const applyResolvedVariantClasses = (
 	resolvedProps: RuntimeVariantState
 ) => {
 
-	for (const variantKey in resolvedProps) {
+	for (const [variantKey, variantValues] of entries(config.normalizedVariants)) {
 
-		const variantValues = config.normalizedVariants[variantKey];
+		const variantProp = resolvedProps[variantKey];
 
-		/* c8 ignore next 3 -- resolvedProps keys always correspond to normalized variants */
-		if (variantValues === undefined) {
+		if (variantProp === undefined) {
 			continue;
 		}
 
 		const variantClasses = getVariantClasses(
 			variantKey,
-			resolvedProps[variantKey],
+			variantProp,
 			variantValues
 		);
 
