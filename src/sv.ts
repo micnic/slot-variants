@@ -992,15 +992,20 @@ const mergeClassPropIntoResult = (
 		return cn(baseResult, classProp);
 	}
 
-	const slotClasses: SlotClasses = { base: [baseResult.base] };
+	const result: Record<string, string> = { ...baseResult };
 
-	for (const key of config.slotKeys) {
-		slotClasses[key] = [baseResult[key]];
+	if (isSlotObjectValue(classProp, config.slotKeys)) {
+
+		for (const [slotKey, slotValue] of entries(classProp)) {
+			result[slotKey] = cn(baseResult[slotKey], slotValue);
+		}
+
+		return result;
 	}
 
-	applyValueToSlotClasses(slotClasses, classProp, config.slotKeys);
+	result.base = cn(baseResult.base, classProp);
 
-	return finalizeVariantResult(config, slotClasses);
+	return result;
 };
 
 const runVariant = (
