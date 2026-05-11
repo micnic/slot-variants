@@ -181,7 +181,6 @@ type SlotClasses = { base: ClassValue[] } & Record<string, ClassValue[]>;
 type CompoundMatcher = {
 	key: string;
 	expected: RuntimeVariantValue | readonly RuntimeVariantValue[];
-	isArrayExpected: boolean;
 };
 
 type CompiledCompoundVariant = {
@@ -366,14 +365,10 @@ const createCacheReturn = (
 	return (cacheKey: string, value: CacheEntry): CacheEntry => {
 
 		if (cache.size >= cacheSize) {
-			const firstKey = cache.keys().next().value;
-
-			/* c8 ignore next 3 -- size >= cacheSize > 0 guarantees a key */
-			if (firstKey === undefined) {
-				return value;
+			for (const firstKey of cache.keys()) {
+				cache.delete(firstKey);
+				break;
 			}
-
-			cache.delete(firstKey);
 		}
 
 		cache.set(cacheKey, value);
@@ -400,15 +395,11 @@ const compileCompoundMatchers = (
 
 		const expected = compound[compoundKey] as
 			| RuntimeVariantValue
-			| readonly RuntimeVariantValue[]
-			| undefined;
+			| readonly RuntimeVariantValue[];
 
 		matchers.push({
 			key: compoundKey,
-			expected: expected as
-				| RuntimeVariantValue
-				| readonly RuntimeVariantValue[],
-			isArrayExpected: isArray(expected)
+			expected
 		});
 	}
 
@@ -420,14 +411,13 @@ const matchesCompound = (
 	matchers: readonly CompoundMatcher[]
 ): boolean => {
 
-	for (const { key, expected, isArrayExpected } of matchers) {
+	for (const { key, expected } of matchers) {
 		const propValue = props[key];
 
-		if (isArrayExpected) {
-			const list = expected as readonly RuntimeVariantValue[];
+		if (isArray(expected)) {
 			let matched = false;
 
-			for (const value of list) {
+			for (const value of expected) {
 				if (looseEquals(value, propValue)) {
 					matched = true;
 					break;
@@ -477,14 +467,10 @@ const normalizeVariantValue = (
 	slotKeys: Set<string>
 ): Record<string, NormalizedVariantValue> => {
 
-	if (!isObjectRecord(variantValue)) {
-		return {
-			false: '',
-			true: variantValue
-		};
-	}
-
-	if (isSlotObjectVariantValue(variantValue, slotKeys)) {
+	if (
+		!isObjectRecord(variantValue) ||
+		isSlotObjectVariantValue(variantValue, slotKeys)
+	) {
 		return {
 			false: '',
 			true: variantValue
@@ -550,7 +536,7 @@ const configKeysRecord: Record<ConfigKey, true> = {
 	introspection: true
 };
 
-const configKeys = new Set(keys(configKeysRecord) as ConfigKey[]);
+const configKeys: Set<string> = new Set(keys(configKeysRecord));
 
 /**
  * Check if a value is a Config object
@@ -567,7 +553,7 @@ const isConfig = <
 	value !== null &&
 	typeof value === 'object' &&
 	!isArray(value) &&
-	keys(value).every((key) => (configKeys as Set<string>).has(key));
+	keys(value).every((key) => configKeys.has(key));
 
 const createNormalizedVariants = <S extends MaybeSlots>(
 	variants: Variants<S>,
@@ -670,7 +656,7 @@ const compileConfig = <
 		slots = {},
 		compoundVariants = [],
 		compoundSlots = [],
-		defaultVariants = {} as DefaultVariants<S, V, RV>,
+		defaultVariants = {},
 		requiredVariants = [],
 		presets = {},
 		cacheSize = 256,
@@ -721,7 +707,7 @@ const compileConfig = <
 				compound as Record<string, unknown>
 			),
 			classValue: compound.class ?? compound.className,
-			slots: compound.slots as readonly string[]
+			slots: compound.slots
 		})
 	);
 
