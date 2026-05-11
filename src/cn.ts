@@ -43,7 +43,11 @@ export function cn(...args: ClassValue[]): string {
 
 		// Handle different types of class values
 		if (typeof item === 'string') {
-			result += ` ${item}`;
+			if (result) {
+				result += ` ${item}`;
+			} else {
+				result = item;
+			}
 		} else if (isArray(item)) {
 			args.push(...item);
 		} else if (typeof item === 'object') {
@@ -53,11 +57,15 @@ export function cn(...args: ClassValue[]): string {
 
 				// Include key if value is truthy
 				if (item[key]) {
-					result += ` ${key}`;
+					if (result) {
+						result += ` ${key}`;
+					} else {
+						result = key;
+					}
 				}
 			}
 		}
 	}
 
-	return result.slice(1);
+	return result;
 }
