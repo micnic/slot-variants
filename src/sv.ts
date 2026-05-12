@@ -415,16 +415,7 @@ const matchesCompound = (
 		const propValue = props[key];
 
 		if (isArray(expected)) {
-			let matched = false;
-
-			for (const value of expected) {
-				if (looseEquals(value, propValue)) {
-					matched = true;
-					break;
-				}
-			}
-
-			if (!matched) {
+			if (!expected.some((value) => looseEquals(value, propValue))) {
 				return false;
 			}
 
@@ -580,6 +571,10 @@ const assertValidRequiredVariantConfig = (
 	variantKeys: readonly string[],
 	defaultVariants: Record<string, RuntimeDefaultVariant>
 ) => {
+
+	if (requiredVariants.length === 0) {
+		return;
+	}
 
 	const variantKeySet = new Set(variantKeys);
 
@@ -929,7 +924,7 @@ const finalizeVariantResult = (
 		return cn(slotClasses.base);
 	}
 
-	const result: { base: string } & Record<string, string> = { base: '' };
+	const result: Record<string, string> = {};
 
 	for (const [slotKey, slotValues] of entries(slotClasses)) {
 		result[slotKey] = cn(slotValues);
@@ -995,6 +990,27 @@ const mergeClassPropIntoResult = (
 	return result;
 };
 
+const buildCacheEntry = (
+	config: CompiledConfig,
+	cacheKey: string,
+	resolvedProps: RuntimeVariantState
+): CacheEntry => {
+
+	assertRequiredVariants(config, resolvedProps);
+
+	const slotClasses = createSlotClasses(config);
+
+	applyResolvedVariantClasses(config, slotClasses, resolvedProps);
+	applyCompoundClasses(config, slotClasses, resolvedProps);
+
+	const raw = finalizeVariantResult(config, slotClasses);
+
+	return config.cacheReturn(cacheKey, {
+		raw,
+		processed: applyPostProcess(config, raw)
+	});
+};
+
 const runVariant = (
 	config: CompiledConfig,
 	props: RuntimeProps
@@ -1007,24 +1023,9 @@ const runVariant = (
 		props,
 		presetValues
 	);
-
-	let entry = config.cache.get(cacheKey);
-
-	if (!entry) {
-		assertRequiredVariants(config, resolvedProps);
-
-		const slotClasses = createSlotClasses(config);
-
-		applyResolvedVariantClasses(config, slotClasses, resolvedProps);
-		applyCompoundClasses(config, slotClasses, resolvedProps);
-
-		const raw = finalizeVariantResult(config, slotClasses);
-
-		entry = config.cacheReturn(cacheKey, {
-			raw,
-			processed: applyPostProcess(config, raw)
-		});
-	}
+	const entry =
+		config.cache.get(cacheKey) ??
+		buildCacheEntry(config, cacheKey, resolvedProps);
 
 	if (!classProp) {
 		return entry.processed;
