@@ -18,6 +18,36 @@ const { isArray } = Array;
 const { keys } = Object;
 
 /**
+ * Appends a value to the result string with a space if the result is not empty
+ */
+const append = (result: string, value: string): string => {
+
+	// If the current result is empty, return the value directly
+	if (result === '') {
+		return value;
+	}
+
+	return `${result} ${value}`;
+};
+
+/**
+ * Appends record keys to the result string when their values are truthy
+ */
+const appendRecord = (result: string, record: ClassRecord): string => {
+
+	let current = result;
+
+	// Iterate over the keys of the record and append those with truthy values
+	for (const key of keys(record)) {
+		if (record[key]) {
+			current = append(current, key);
+		}
+	}
+
+	return current;
+};
+
+/**
  * Constructs a class name string from various input types
  *
  * Strings are included directly, arrays are flattened, object keys are included
@@ -33,7 +63,7 @@ export function cn(...args: ClassValue[]): string {
 
 		const item = args[index];
 
-		// Move to the next item
+		// Increment index before processing for early continue statements
 		index++;
 
 		// Skip falsy values
@@ -41,29 +71,21 @@ export function cn(...args: ClassValue[]): string {
 			continue;
 		}
 
-		// Handle different types of class values
+		// Handle string values directly
 		if (typeof item === 'string') {
-			if (result) {
-				result += ` ${item}`;
-			} else {
-				result = item;
-			}
-		} else if (isArray(item)) {
+			result = append(result, item);
+			continue;
+		}
+
+		// Handle array values by flattening them into the main args list
+		if (isArray(item)) {
 			args.push(...item);
-		} else if (typeof item === 'object') {
+			continue;
+		}
 
-			// Handle object records
-			for (const key of keys(item)) {
-
-				// Include key if value is truthy
-				if (item[key]) {
-					if (result) {
-						result += ` ${key}`;
-					} else {
-						result = key;
-					}
-				}
-			}
+		// Handle object values by including keys with truthy values
+		if (typeof item === 'object') {
+			result = appendRecord(result, item);
 		}
 	}
 
