@@ -982,7 +982,7 @@ const noDynamicClasses: Rule.RuleModule = {
 };
 
 const hasRedundantSpaces = (value: string): boolean =>
-	!/^(?:[^\s]+(?: [^\s]+)*)?$/.test(value);
+	!/^(?:\S+(?: \S+)*)?$/.test(value);
 
 const canonicalizeWhitespace = (value: string): string =>
 	value.split(/\s+/).filter(Boolean).join(' ');
