@@ -8,6 +8,7 @@
 		"strict": true,
 		"exactOptionalPropertyTypes": true,
 		"noUncheckedIndexedAccess": true,
+		"rootDir": ".",
 		"outDir": "dist",
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
