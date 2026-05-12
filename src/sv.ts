@@ -968,9 +968,11 @@ const mergeClassPropIntoResult = (
 	classProp: RuntimeClassValue
 ): CacheValue => {
 
+	const classPropIsSlotObject = isSlotObjectValue(classProp, config.slotKeys);
+
 	if (typeof baseResult === 'string') {
 
-		if (isSlotObjectValue(classProp, config.slotKeys)) {
+		if (classPropIsSlotObject) {
 			return cn(baseResult, classProp.base);
 		}
 
@@ -979,7 +981,7 @@ const mergeClassPropIntoResult = (
 
 	const result: Record<string, string> = { ...baseResult };
 
-	if (isSlotObjectValue(classProp, config.slotKeys)) {
+	if (classPropIsSlotObject) {
 
 		for (const [slotKey, slotValue] of entries(classProp)) {
 			result[slotKey] = cn(baseResult[slotKey], slotValue);
