@@ -128,8 +128,10 @@ const getStrictProperties = (
 		return null;
 	}
 
-	if (strictPropertiesCache.has(obj)) {
-		return strictPropertiesCache.get(obj) ?? null;
+	const cached = strictPropertiesCache.get(obj);
+
+	if (cached !== undefined) {
+		return cached;
 	}
 
 	const map = buildStrictPropertiesMap(obj);
@@ -142,7 +144,7 @@ const getStrictProperties = (
 const isSlotKeyedPropertyKey = (
 	key: string | null,
 	slotNames: Set<string>
-): key is string => key === 'base' || (key !== null && slotNames.has(key));
+): key is string => key !== null && (key === 'base' || slotNames.has(key));
 
 const buildSlotKeyedMap = (
 	obj: ObjectExpression,
@@ -187,8 +189,13 @@ type CallMatch = {
 	args: ReadonlyArray<Expression | SpreadElement>;
 };
 
-const getIdentifierCalleeName = (node: CallExpression): string | null =>
-	node.callee.type === 'Identifier' ? node.callee.name : null;
+const getIdentifierCalleeName = (node: CallExpression): string | null => {
+	if (node.callee.type === 'Identifier') {
+		return node.callee.name;
+	}
+
+	return null;
+};
 
 const matchSvCall = (node: CallExpression): CallMatch => {
 	const args = node.arguments;
@@ -262,8 +269,13 @@ type Entry = {
 type TokenEntriesBySlot = Map<string, Map<string, Entry[]>>;
 type VariantSource = Extract<Source, { kind: 'variant' }>;
 
-const getVariantSource = (entry: Entry): VariantSource | null =>
-	entry.source.kind === 'variant' ? entry.source : null;
+const getVariantSource = (entry: Entry): VariantSource | null => {
+	if (entry.source.kind === 'variant') {
+		return entry.source;
+	}
+
+	return null;
+};
 
 const sharesVariantKey = (
 	sharedKey: string | null,
@@ -811,7 +823,11 @@ const getCompoundEntryValueChecker = (
 	}
 
 	if (key === 'slots') {
-		return hasSlotsKey ? checkCompoundSlotsArray : null;
+		if (hasSlotsKey) {
+			return checkCompoundSlotsArray;
+		}
+
+		return null;
 	}
 
 	return null;
@@ -1017,17 +1033,24 @@ const reportRedundantSpaces = (
 	context.report({
 		node,
 		messageId: 'redundant',
-		fix: (fixer) =>
-			canHoistAsLiteral(canonical, quote)
-				? fixer.replaceText(node, `${quote}${canonical}${quote}`)
-				/* c8 ignore next -- canHoistAsLiteral is itself ignored above */
-				: null
+		fix: (fixer) => {
+			/* c8 ignore next 3 -- canHoistAsLiteral is itself ignored above */
+			if (!canHoistAsLiteral(canonical, quote)) {
+				return null;
+			}
+
+			return fixer.replaceText(node, `${quote}${canonical}${quote}`);
+		}
 	});
 };
 
 const getStaticStringText = (node: Node): string | null => {
 	if (node.type === 'Literal') {
-		return typeof node.value === 'string' ? node.value : null;
+		if (typeof node.value === 'string') {
+			return node.value;
+		}
+
+		return null;
 	}
 
 	if (node.type !== 'TemplateLiteral' || node.expressions.length > 0) {
@@ -1153,7 +1176,12 @@ const noRedundantSpaces: Rule.RuleModule = {
 // optional leading negative marker. The `!` important suffix is stripped so
 // `w-200` and `w-200!` share a conflict key.
 const getConflictKey = (token: string): string | null => {
-	const stripped = token.endsWith('!') ? token.slice(0, -1) : token;
+	let stripped = token;
+
+	if (token.endsWith('!')) {
+		stripped = token.slice(0, -1);
+	}
+
 	const lastColon = stripped.lastIndexOf(':');
 	let variantPrefix = '';
 	let utility = stripped;
@@ -1163,7 +1191,12 @@ const getConflictKey = (token: string): string | null => {
 		utility = stripped.slice(lastColon + 1);
 	}
 
-	const utilStart = utility.startsWith('-') ? 1 : 0;
+	let utilStart = 0;
+
+	if (utility.startsWith('-')) {
+		utilStart = 1;
+	}
+
 	const firstDash = utility.indexOf('-', utilStart + 1);
 
 	if (firstDash === -1) {
@@ -1193,10 +1226,7 @@ const groupEntriesByConflictKey = (
 		}));
 
 		group.tokens.add(token);
-
-		for (const entry of list) {
-			group.entries.push(entry);
-		}
+		group.entries.push(...list);
 	}
 
 	return groups;
@@ -1645,10 +1675,11 @@ const visitForEmptyClasses = (
 	allowEmptyString: boolean,
 	list?: ListItems
 ) => {
-	const fix = list
-		? (fixer: Rule.RuleFixer) =>
-				removeFromList(fixer, context.sourceCode, node, list)
-		: undefined;
+	let fix: ((fixer: Rule.RuleFixer) => Rule.Fix | null) | undefined;
+
+	if (list) {
+		fix = (fixer) => removeFromList(fixer, context.sourceCode, node, list);
+	}
 
 	if (shouldReportEmptyString(node, allowEmptyString)) {
 		context.report({ node, messageId: 'emptyString', fix });
