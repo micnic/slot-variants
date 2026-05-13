@@ -200,6 +200,7 @@ type CompiledConfig = {
 	baseClassValue: string;
 	slots: Slots;
 	normalizedSlots: Slots;
+	slotEntries: readonly [string, ConfigClassValue][];
 	slotKeys: Set<string>;
 	originalVariants: Variants<MaybeSlots>;
 	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>;
@@ -652,6 +653,7 @@ const compileConfig = <
 	const cacheReturn = createCacheReturn(cache, cacheSize);
 	const baseClassValue = cn(...baseArgs, configBase, baseSlot);
 	const normalizedSlots: Slots = { base: baseClassValue, ...otherSlots };
+	const slotEntries = entries(normalizedSlots);
 	const slotKeys = new Set<string>(keys(normalizedSlots));
 	const normalizedVariants = createNormalizedVariants(variants, slotKeys);
 
@@ -728,6 +730,7 @@ const compileConfig = <
 		baseClassValue,
 		slots,
 		normalizedSlots,
+		slotEntries,
 		slotKeys,
 		originalVariants: variants,
 		normalizedVariants,
@@ -1005,7 +1008,7 @@ const buildCacheEntry = (
 
 	const slotClasses: SlotClasses = {};
 
-	for (const [key, value] of entries(config.normalizedSlots)) {
+	for (const [key, value] of config.slotEntries) {
 		slotClasses[key] = [value];
 	}
 
