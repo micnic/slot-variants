@@ -4364,6 +4364,20 @@ t.test('compound slot with empty slots array throws', (t) => {
 	t.end();
 });
 
+t.test('compound slot with unknown slot throws', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error unknown slot name not assignable
+			sv('border', {
+				slots: { header: 'font-bold' },
+				compoundSlots: [{ slots: ['footer'], class: 'px-4' }]
+			}),
+		{ message: 'Compound slot references unknown slot "footer"' }
+	);
+
+	t.end();
+});
+
 // =============================================================================
 // VariantValue type
 // =============================================================================

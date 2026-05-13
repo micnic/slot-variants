@@ -582,6 +582,22 @@ const assertValidRequiredVariantConfig = (
 	}
 };
 
+const assertKnownCompoundSlots = (
+	compoundSlots: readonly string[],
+	slotKeys: Set<string>
+) => {
+
+	if (compoundSlots.length === 0) {
+		throw new Error('Compound slot must define at least one slot');
+	}
+
+	for (const slot of compoundSlots) {
+		if (!slotKeys.has(slot)) {
+			throw new Error(`Compound slot references unknown slot "${slot}"`);
+		}
+	}
+};
+
 const hasOnlySlotKeys = (
 	value:
 		| Record<string, unknown>
@@ -705,9 +721,8 @@ const compileConfig = <
 	const compiledCompoundSlots: CompiledCompoundSlot[] = [];
 
 	for (const compound of compoundSlots) {
-		if (compound.slots.length === 0) {
-			throw new Error('Compound slot must define at least one slot');
-		}
+
+		assertKnownCompoundSlots(compound.slots, slotKeys);
 
 		const classValue = compound.class ?? compound.className;
 
