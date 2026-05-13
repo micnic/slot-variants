@@ -603,6 +603,22 @@ const assertKnownDefaultVariants = (
 	}
 };
 
+const assertKnownPresetVariants = (
+	presets: Record<string, RuntimeVariantState>,
+	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>
+) => {
+
+	for (const [presetName, presetValues] of entries(presets)) {
+		for (const variant of keys(presetValues)) {
+			if (!hasOwn(normalizedVariants, variant)) {
+				throw new Error(
+					`Preset "${presetName}" references unknown variant "${variant}"`
+				);
+			}
+		}
+	}
+};
+
 const assertKnownCompoundSlots = (
 	compoundSlots: readonly string[],
 	slotKeys: Set<string>
@@ -720,6 +736,7 @@ const compileConfig = <
 		defaultVariants
 	);
 	assertKnownDefaultVariants(defaultVariants, normalizedVariants);
+	assertKnownPresetVariants(presets, normalizedVariants);
 
 	const compiledCompoundVariants: CompiledCompoundVariant[] = [];
 

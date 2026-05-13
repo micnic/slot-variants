@@ -4192,6 +4192,28 @@ t.test('throws for invalid preset name', (t) => {
 	t.end();
 });
 
+t.test('preset throws when it references an unknown variant', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error - intentionally passing an undefined preset variant for the runtime check
+			sv('btn', {
+				variants: {
+					size: {
+						sm: 'text-sm',
+						lg: 'text-lg'
+					}
+				},
+				presets: {
+					large: { sze: 'lg' }
+				}
+			}),
+		{ message: 'Preset "large" references unknown variant "sze"' },
+		'throws at config time for undefined preset variant'
+	);
+
+	t.end();
+});
+
 t.test('preset with slots', (t) => {
 	const card = sv('card border', {
 		slots: {
