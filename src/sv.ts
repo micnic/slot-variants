@@ -27,10 +27,11 @@ type SlotValue<S extends MaybeSlots, V> = S extends Slots
 	? Partial<Record<SlotKey<S>, V>> | V
 	: V;
 
-type ClassProp<S extends MaybeSlots, V> = {
-	class?: SlotValue<S, V>;
-	className?: SlotValue<S, V>;
-};
+type XORClassProp<C, O extends boolean = false> = O extends true
+	? { class?: C; className?: never } | { class?: never; className?: C }
+	: { class: C; className?: never } | { class?: never; className: C };
+
+type ClassProp<S extends MaybeSlots, V> = XORClassProp<SlotValue<S, V>, true>;
 
 type Slots = Record<string, ConfigClassValue>;
 
@@ -54,17 +55,16 @@ type VariantConditions<S extends MaybeSlots, V extends MaybeVariants<S>> = {
 type CompoundVariants<
 	S extends MaybeSlots,
 	V extends MaybeVariants<S>
-> = readonly (VariantConditions<S, V> & ClassProp<S, ConfigClassValue>)[];
+> = readonly (VariantConditions<S, V> &
+	XORClassProp<SlotValue<S, ConfigClassValue>>)[];
 
 type CompoundSlots<
 	S extends MaybeSlots,
 	V extends MaybeVariants<S>
 > = readonly ({
-	slots: readonly SlotKey<S>[];
-} & VariantConditions<S, V> & {
-	class?: ConfigClassValue;
-	className?: ConfigClassValue;
-})[];
+	slots: readonly [SlotKey<S>, ...SlotKey<S>[]];
+} & VariantConditions<S, V> &
+	XORClassProp<ConfigClassValue>)[];
 
 type BooleanShorthandKeys<S extends MaybeSlots> =
 	| (S extends Slots ? SlotKey<S> : never)
@@ -348,7 +348,7 @@ export type SlotClassProps<
 			>;
 
 const { isArray } = Array;
-const { assign, entries, fromEntries, hasOwn, keys } = Object;
+const { assign, entries, hasOwn, keys } = Object;
 
 /**
  * Compare two values for equality, with string coercion fallback
@@ -391,18 +391,16 @@ const compileCompoundMatchers = (
 
 	const matchers: CompoundMatcher[] = [];
 
-	for (const compoundKey of keys(compound)) {
+	for (const [compoundKey, value] of entries(compound)) {
 		if (isCompoundMetaKey(compoundKey)) {
 			continue;
 		}
 
-		const expected = compound[compoundKey] as
-			| RuntimeVariantValue
-			| readonly RuntimeVariantValue[];
-
 		matchers.push({
 			key: compoundKey,
-			expected
+			expected: value as
+				| RuntimeVariantValue
+				| readonly RuntimeVariantValue[]
 		});
 	}
 
@@ -683,23 +681,48 @@ const compileConfig = <
 		defaultVariants
 	);
 
-	const compiledCompoundVariants: CompiledCompoundVariant[] =
-		compoundVariants.map((compound) => ({
-			matchers: compileCompoundMatchers(
-				compound as Record<string, unknown>
-			),
-			classValue: compound.class ?? compound.className
-		}));
+	const compiledCompoundVariants: CompiledCompoundVariant[] = [];
 
-	const compiledCompoundSlots: CompiledCompoundSlot[] = compoundSlots.map(
-		(compound) => ({
+	for (const compound of compoundVariants) {
+		const classValue = compound.class ?? compound.className;
+
+		if (classValue === undefined) {
+			throw new Error(
+				'Compound variant must define "class" or "className"'
+			);
+		}
+
+		compiledCompoundVariants.push({
 			matchers: compileCompoundMatchers(
 				compound as Record<string, unknown>
 			),
-			classValue: compound.class ?? compound.className,
+			classValue
+		});
+	}
+
+	const compiledCompoundSlots: CompiledCompoundSlot[] = [];
+
+	for (const compound of compoundSlots) {
+		if (compound.slots.length === 0) {
+			throw new Error('Compound slot must define at least one slot');
+		}
+
+		const classValue = compound.class ?? compound.className;
+
+		if (classValue === undefined) {
+			throw new Error(
+				'Compound slot must define "class" or "className"'
+			);
+		}
+
+		compiledCompoundSlots.push({
+			matchers: compileCompoundMatchers(
+				compound as Record<string, unknown>
+			),
+			classValue,
 			slots: compound.slots
-		})
-	);
+		});
+	}
 
 	return {
 		baseClassValue,
@@ -980,9 +1003,11 @@ const buildCacheEntry = (
 
 	assertRequiredVariants(config, resolvedProps);
 
-	const slotClasses: SlotClasses = fromEntries(
-		entries(config.normalizedSlots).map(([key, value]) => [key, [value]])
-	);
+	const slotClasses: SlotClasses = {};
+
+	for (const [key, value] of entries(config.normalizedSlots)) {
+		slotClasses[key] = [value];
+	}
 
 	applyResolvedVariantClasses(config, slotClasses, resolvedProps);
 	applyCompoundClasses(config, slotClasses, resolvedProps);

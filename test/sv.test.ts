@@ -4320,6 +4320,50 @@ t.test('presets is empty object when none provided', (t) => {
 	t.end();
 });
 
+t.test('compound variant without class or className throws', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error class/className required on compound variant
+			sv('btn', {
+				variants: {
+					size: { sm: 'text-sm', lg: 'text-lg' }
+				},
+				compoundVariants: [{ size: 'lg' }]
+			}),
+		/"class" or "className"/
+	);
+
+	t.end();
+});
+
+t.test('compound slot without class or className throws', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error class/className required on compound slot
+			sv('border', {
+				slots: { header: 'font-bold' },
+				compoundSlots: [{ slots: ['header'] }]
+			}),
+		/"class" or "className"/
+	);
+
+	t.end();
+});
+
+t.test('compound slot with empty slots array throws', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error empty slots tuple not assignable
+			sv('border', {
+				slots: { header: 'font-bold' },
+				compoundSlots: [{ slots: [], class: 'ignored' }]
+			}),
+		/at least one slot/
+	);
+
+	t.end();
+});
+
 // =============================================================================
 // VariantValue type
 // =============================================================================
