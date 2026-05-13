@@ -61,8 +61,10 @@ type CompoundSlots<
 	V extends MaybeVariants<S>
 > = readonly ({
 	slots: readonly SlotKey<S>[];
-} & VariantConditions<S, V> &
-	ClassProp<S, ConfigClassValue>)[];
+} & VariantConditions<S, V> & {
+	class?: ConfigClassValue;
+	className?: ConfigClassValue;
+})[];
 
 type BooleanShorthandKeys<S extends MaybeSlots> =
 	| (S extends Slots ? SlotKey<S> : never)
@@ -176,7 +178,7 @@ type Config<
 	postProcess?: ((className: string) => string) | undefined;
 };
 
-type SlotClasses = { base: ClassValue[] } & Record<string, ClassValue[]>;
+type SlotClasses = Record<string, ConfigClassValue[]>;
 
 type CompoundMatcher = {
 	key: string;
@@ -188,7 +190,9 @@ type CompiledCompoundVariant = {
 	classValue: SlotValue<Slots, ConfigClassValue> | undefined;
 };
 
-type CompiledCompoundSlot = CompiledCompoundVariant & {
+type CompiledCompoundSlot = {
+	matchers: readonly CompoundMatcher[];
+	classValue: ConfigClassValue;
 	slots: readonly string[];
 };
 
@@ -199,12 +203,12 @@ type CompiledConfig = {
 	slotKeys: Set<string>;
 	originalVariants: Variants<MaybeSlots>;
 	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>;
-	variantValueIds: Record<string, Record<string, number>>;
+	variantData: [string, Record<string, number>, Record<string, NormalizedVariantValue>][];
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
 	requiredVariants: readonly string[];
 	presets: Record<string, RuntimeVariantState>;
-	compoundVariants: readonly CompiledCompoundVariant[];
-	compoundSlots: readonly CompiledCompoundSlot[];
+	compoundVariants: CompiledCompoundVariant[];
+	compoundSlots: CompiledCompoundSlot[];
 	cache: Map<string, CacheEntry>;
 	introspection: boolean;
 	cacheReturn: (cacheKey: string, value: CacheEntry) => CacheEntry;
@@ -344,7 +348,7 @@ export type SlotClassProps<
 			>;
 
 const { isArray } = Array;
-const { assign, entries, hasOwn, keys } = Object;
+const { assign, entries, fromEntries, hasOwn, keys } = Object;
 
 /**
  * Compare two values for equality, with string coercion fallback
@@ -595,10 +599,10 @@ const hasOnlySlotKeys = (
 	return true;
 };
 
-const isSlotObjectValue = (
-	value: RuntimeClassValue,
+const isSlotObjectValue = <T>(
+	value: SlotValue<Slots, T>,
 	slotKeys: Set<string>
-): value is Partial<Record<string, ClassValue>> =>
+): value is Partial<Record<string, T>> =>
 	value !== null &&
 	typeof value === 'object' &&
 	!isArray(value) &&
@@ -606,7 +610,7 @@ const isSlotObjectValue = (
 
 const applyValueToSlotClasses = (
 	slotClasses: SlotClasses,
-	value: RuntimeClassValue,
+	value: NormalizedVariantValue,
 	slotKeys: Set<string>
 ) => {
 
@@ -617,7 +621,7 @@ const applyValueToSlotClasses = (
 		return;
 	}
 
-	slotClasses.base.push(value);
+	slotClasses.base?.push(value);
 };
 
 const compileConfig = <
@@ -645,13 +649,19 @@ const compileConfig = <
 		introspection = false
 	} = config;
 
+	const { base: baseSlot, ...otherSlots } = slots;
 	const cache = new Map<string, CacheEntry>();
 	const cacheReturn = createCacheReturn(cache, cacheSize);
-	const baseClassValue = cn(...baseArgs, configBase, slots.base);
-	const normalizedSlots: Slots = { ...slots, base: baseClassValue };
+	const baseClassValue = cn(...baseArgs, configBase, baseSlot);
+	const normalizedSlots: Slots = { base: baseClassValue, ...otherSlots };
 	const slotKeys = new Set<string>(keys(normalizedSlots));
 	const normalizedVariants = createNormalizedVariants(variants, slotKeys);
-	const variantValueIds: Record<string, Record<string, number>> = {};
+
+	const variantData: [
+		string,
+		Record<string, number>,
+		Record<string, NormalizedVariantValue>
+	][] = [];
 
 	for (const [variantKey, variantValues] of entries(normalizedVariants)) {
 
@@ -664,7 +674,7 @@ const compileConfig = <
 			nextId++;
 		}
 
-		variantValueIds[variantKey] = ids;
+		variantData.push([variantKey, ids, variantValues]);
 	}
 
 	assertValidRequiredVariantConfig(
@@ -698,7 +708,7 @@ const compileConfig = <
 		slotKeys,
 		originalVariants: variants,
 		normalizedVariants,
-		variantValueIds,
+		variantData,
 		defaultVariants,
 		requiredVariants,
 		presets,
@@ -764,12 +774,11 @@ const resolveVariantState = (
 	resolvedProps: RuntimeVariantState;
 } => {
 
-	const { variantValueIds } = config;
 	const resolvedProps: RuntimeVariantState = {};
 
 	let cacheKey = '';
 
-	for (const [variantKey, valueIds] of entries(variantValueIds)) {
+	for (const [variantKey, valueIds] of config.variantData) {
 
 		const value = resolveVariantValue(
 			config,
@@ -816,21 +825,6 @@ const assertRequiredVariants = (
 	}
 };
 
-const createSlotClasses = (config: CompiledConfig): SlotClasses => {
-
-	const slotClasses: SlotClasses = {
-		base: [config.baseClassValue]
-	};
-
-	for (const key of config.slotKeys) {
-		if (key !== 'base') {
-			slotClasses[key] = [config.slots[key]];
-		}
-	}
-
-	return slotClasses;
-};
-
 const getVariantClasses = (
 	variantKey: string,
 	variantProp: RuntimeVariantValue,
@@ -854,7 +848,7 @@ const applyResolvedVariantClasses = (
 	resolvedProps: RuntimeVariantState
 ) => {
 
-	for (const [variantKey, variantValues] of entries(config.normalizedVariants)) {
+	for (const [variantKey, , variantValues] of config.variantData) {
 
 		const variantProp = resolvedProps[variantKey];
 
@@ -986,7 +980,9 @@ const buildCacheEntry = (
 
 	assertRequiredVariants(config, resolvedProps);
 
-	const slotClasses = createSlotClasses(config);
+	const slotClasses: SlotClasses = fromEntries(
+		entries(config.normalizedSlots).map(([key, value]) => [key, [value]])
+	);
 
 	applyResolvedVariantClasses(config, slotClasses, resolvedProps);
 	applyCompoundClasses(config, slotClasses, resolvedProps);
