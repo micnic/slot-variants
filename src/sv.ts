@@ -185,7 +185,7 @@ type CompoundMatcher = {
 
 type CompiledCompoundVariant = {
 	matchers: readonly CompoundMatcher[];
-	classValue: ClassValue;
+	classValue: SlotValue<Slots, ConfigClassValue> | undefined;
 };
 
 type CompiledCompoundSlot = CompiledCompoundVariant & {
@@ -193,13 +193,12 @@ type CompiledCompoundSlot = CompiledCompoundVariant & {
 };
 
 type CompiledConfig = {
-	baseClassValue: ClassValue;
+	baseClassValue: string;
 	slots: Slots;
-	otherSlots: Record<string, ConfigClassValue>;
+	normalizedSlots: Slots;
 	slotKeys: Set<string>;
 	originalVariants: Variants<MaybeSlots>;
 	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>;
-	variantKeys: string[];
 	variantValueIds: Record<string, Record<string, number>>;
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
 	requiredVariants: readonly string[];
@@ -442,9 +441,9 @@ const isSlotObjectVariantValue = (
 	const valueKeys = keys(variantValue);
 
 	return (
-		slotKeys.size > 0 &&
+		slotKeys.size > 1 &&
 		valueKeys.length > 0 &&
-		valueKeys.every((key) => key === 'base' || slotKeys.has(key))
+		valueKeys.every((key) => slotKeys.has(key))
 	);
 };
 
@@ -479,7 +478,7 @@ const normalizeVariantValue = (
 	return variantValue;
 };
 
-const coerceBooleanVariantKey = (value: string): string | boolean => {
+const coerceVariantKeyValue = (value: string): string | number | boolean => {
 
 	if (value === 'true') {
 		return true;
@@ -489,25 +488,14 @@ const coerceBooleanVariantKey = (value: string): string | boolean => {
 		return false;
 	}
 
-	return value;
-};
-
-const coerceVariantKeyValue = (value: string): string | number | boolean => {
-
-	const booleanValue = coerceBooleanVariantKey(value);
-
-	if (typeof booleanValue === 'boolean') {
-		return booleanValue;
+	if (value === '') {
+		return value;
 	}
 
-	if (booleanValue === '') {
-		return booleanValue;
-	}
-
-	const numericValue = Number(booleanValue);
+	const numericValue = Number(value);
 
 	if (Number.isNaN(numericValue)) {
-		return booleanValue;
+		return value;
 	}
 
 	return numericValue;
@@ -568,7 +556,7 @@ const createNormalizedVariants = <S extends MaybeSlots>(
 
 const assertValidRequiredVariantConfig = (
 	requiredVariants: readonly string[],
-	variantKeys: readonly string[],
+	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>,
 	defaultVariants: Record<string, RuntimeDefaultVariant>
 ) => {
 
@@ -576,10 +564,8 @@ const assertValidRequiredVariantConfig = (
 		return;
 	}
 
-	const variantKeySet = new Set(variantKeys);
-
 	for (const variant of requiredVariants) {
-		if (!variantKeySet.has(variant)) {
+		if (!hasOwn(normalizedVariants, variant)) {
 			throw new Error(
 				`Required variant "${variant}" is not defined in variants`
 			);
@@ -593,7 +579,7 @@ const assertValidRequiredVariantConfig = (
 	}
 };
 
-const hasOnlyBaseOrSlotKeys = (
+const hasOnlySlotKeys = (
 	value:
 		| Record<string, unknown>
 		| Partial<Record<SlotKey<Slots>, ClassValue>>,
@@ -601,7 +587,7 @@ const hasOnlyBaseOrSlotKeys = (
 ): boolean => {
 
 	for (const key of keys(value)) {
-		if (key !== 'base' && !slotKeys.has(key)) {
+		if (!slotKeys.has(key)) {
 			return false;
 		}
 	}
@@ -616,7 +602,7 @@ const isSlotObjectValue = (
 	value !== null &&
 	typeof value === 'object' &&
 	!isArray(value) &&
-	hasOnlyBaseOrSlotKeys(value, slotKeys);
+	hasOnlySlotKeys(value, slotKeys);
 
 const applyValueToSlotClasses = (
 	slotClasses: SlotClasses,
@@ -661,11 +647,10 @@ const compileConfig = <
 
 	const cache = new Map<string, CacheEntry>();
 	const cacheReturn = createCacheReturn(cache, cacheSize);
-	const { base: baseSlot, ...otherSlots } = slots;
-	const baseClassValue = cn(...baseArgs, configBase, baseSlot);
-	const slotKeys = new Set(keys(otherSlots));
+	const baseClassValue = cn(...baseArgs, configBase, slots.base);
+	const normalizedSlots: Slots = { ...slots, base: baseClassValue };
+	const slotKeys = new Set<string>(keys(normalizedSlots));
 	const normalizedVariants = createNormalizedVariants(variants, slotKeys);
-	const variantKeys = keys(normalizedVariants);
 	const variantValueIds: Record<string, Record<string, number>> = {};
 
 	for (const [variantKey, variantValues] of entries(normalizedVariants)) {
@@ -684,7 +669,7 @@ const compileConfig = <
 
 	assertValidRequiredVariantConfig(
 		requiredVariants,
-		variantKeys,
+		normalizedVariants,
 		defaultVariants
 	);
 
@@ -709,11 +694,10 @@ const compileConfig = <
 	return {
 		baseClassValue,
 		slots,
-		otherSlots,
+		normalizedSlots,
 		slotKeys,
 		originalVariants: variants,
 		normalizedVariants,
-		variantKeys,
 		variantValueIds,
 		defaultVariants,
 		requiredVariants,
@@ -780,12 +764,12 @@ const resolveVariantState = (
 	resolvedProps: RuntimeVariantState;
 } => {
 
-	const { variantKeys, variantValueIds } = config;
+	const { variantValueIds } = config;
 	const resolvedProps: RuntimeVariantState = {};
 
 	let cacheKey = '';
 
-	for (const variantKey of variantKeys) {
+	for (const [variantKey, valueIds] of entries(variantValueIds)) {
 
 		const value = resolveVariantValue(
 			config,
@@ -801,7 +785,7 @@ const resolveVariantState = (
 
 		resolvedProps[variantKey] = value;
 
-		const id = variantValueIds[variantKey]?.[`${value}`];
+		const id = valueIds[`${value}`];
 
 		if (id === undefined) {
 			cacheKey += `.?${value}`;
@@ -821,6 +805,10 @@ const assertRequiredVariants = (
 	resolvedProps: RuntimeVariantState
 ) => {
 
+	if (config.requiredVariants.length === 0) {
+		return;
+	}
+
 	for (const variant of config.requiredVariants) {
 		if (resolvedProps[variant] === undefined) {
 			throw new Error(`Missing required variant: "${variant}"`);
@@ -835,7 +823,9 @@ const createSlotClasses = (config: CompiledConfig): SlotClasses => {
 	};
 
 	for (const key of config.slotKeys) {
-		slotClasses[key] = [config.otherSlots[key]];
+		if (key !== 'base') {
+			slotClasses[key] = [config.slots[key]];
+		}
 	}
 
 	return slotClasses;
@@ -843,11 +833,11 @@ const createSlotClasses = (config: CompiledConfig): SlotClasses => {
 
 const getVariantClasses = (
 	variantKey: string,
-	variantProp: unknown,
+	variantProp: RuntimeVariantValue,
 	variantValues: Record<string, NormalizedVariantValue>
 ): NormalizedVariantValue => {
 
-	const variantClasses = variantValues[String(variantProp)];
+	const variantClasses = variantValues[`${variantProp}`];
 
 	if (variantClasses === undefined) {
 		throw new Error(
@@ -905,12 +895,10 @@ const applyCompoundClasses = (
 	}
 
 	for (const compound of config.compoundSlots) {
-		if (!matchesCompound(resolvedProps, compound.matchers)) {
-			continue;
-		}
-
-		for (const slotName of compound.slots) {
-			slotClasses[slotName]?.push(compound.classValue);
+		if (matchesCompound(resolvedProps, compound.matchers)) {
+			for (const slotName of compound.slots) {
+				slotClasses[slotName]?.push(compound.classValue);
+			}
 		}
 	}
 };
@@ -920,7 +908,7 @@ const finalizeVariantResult = (
 	slotClasses: SlotClasses
 ): CacheValue => {
 
-	if (config.slotKeys.size === 0) {
+	if (config.slotKeys.size === 1) {
 		return cn(slotClasses.base);
 	}
 
@@ -1114,23 +1102,24 @@ export function sv<
 
 	const last = args.at(-1);
 
+	// Return merged class string if no config is provided
 	if (!isConfig<S, V, RV, P, I>(last)) {
 		return cn(...(args as ClassValue[]));
 	}
 
 	const config = compileConfig(args.slice(0, -1) as ClassValue[], last);
-
 	const variantFn = (props: RuntimeProps = {}) => runVariant(config, props);
 
+	// Conditionally add introspection properties if enabled in config
 	if (!config.introspection) {
 		return variantFn as VariantFn<S, V, RV, P, I>;
 	}
 
 	return assign(variantFn, {
 		variants: config.originalVariants,
-		variantKeys: [...config.variantKeys],
+		variantKeys: keys(config.normalizedVariants),
 		slots: config.slots,
-		slotKeys: ['base', ...config.slotKeys],
+		slotKeys: [...config.slotKeys],
 		defaultVariants: config.defaultVariants,
 		requiredVariants: config.requiredVariants,
 		presets: config.presets,
