@@ -404,6 +404,21 @@ const compileCompoundMatchers = (
 			);
 		}
 
+		const variantValues = normalizedVariants[compoundKey];
+		const expectedValues = isArray(value) ? value : [value];
+
+		if (
+			variantValues !== undefined &&
+			expectedValues.some(
+				(expectedValue) =>
+					!hasOwn(variantValues, `${expectedValue}`)
+			)
+		) {
+			throw new Error(
+				`Compound matcher for variant "${compoundKey}" has invalid value "${value}"`
+			);
+		}
+
 		matchers.push({
 			key: compoundKey,
 			expected: value as
