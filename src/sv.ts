@@ -589,6 +589,20 @@ const assertValidRequiredVariantConfig = (
 	}
 };
 
+const assertKnownDefaultVariants = (
+	defaultVariants: Record<string, RuntimeDefaultVariant>,
+	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>
+) => {
+
+	for (const variant of keys(defaultVariants)) {
+		if (!hasOwn(normalizedVariants, variant)) {
+			throw new Error(
+				`Default variant "${variant}" is not defined in variants`
+			);
+		}
+	}
+};
+
 const assertKnownCompoundSlots = (
 	compoundSlots: readonly string[],
 	slotKeys: Set<string>
@@ -705,6 +719,7 @@ const compileConfig = <
 		normalizedVariants,
 		defaultVariants
 	);
+	assertKnownDefaultVariants(defaultVariants, normalizedVariants);
 
 	const compiledCompoundVariants: CompiledCompoundVariant[] = [];
 

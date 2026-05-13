@@ -2592,6 +2592,28 @@ t.test('required variant throws when it has a default', (t) => {
 	t.end();
 });
 
+t.test('default variant throws when not defined in variants', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error - intentionally passing an undefined default variant for the runtime check
+			sv('rounded-lg', {
+				variants: {
+					size: {
+						sm: 'text-sm',
+						lg: 'text-lg'
+					}
+				},
+				defaultVariants: {
+					color: 'primary'
+				}
+			}),
+		{ message: 'Default variant "color" is not defined in variants' },
+		'throws at config time for undefined default variant'
+	);
+
+	t.end();
+});
+
 t.test('multiple required variants all enforced', (t) => {
 	const button = sv('rounded-lg', {
 		variants: {
