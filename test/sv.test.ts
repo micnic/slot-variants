@@ -2614,6 +2614,28 @@ t.test('default variant throws when not defined in variants', (t) => {
 	t.end();
 });
 
+t.test('default variant throws for invalid value at config time', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error - intentionally passing an invalid default variant value for the runtime check
+			sv('rounded-lg', {
+				variants: {
+					size: {
+						sm: 'text-sm',
+						lg: 'text-lg'
+					}
+				},
+				defaultVariants: {
+					size: 'xl'
+				}
+			}),
+		{ message: 'Default variant "size" has invalid value "xl"' },
+		'throws at config time for invalid default variant value'
+	);
+
+	t.end();
+});
+
 t.test('multiple required variants all enforced', (t) => {
 	const button = sv('rounded-lg', {
 		variants: {
@@ -4209,6 +4231,31 @@ t.test('preset throws when it references an unknown variant', (t) => {
 			}),
 		{ message: 'Preset "large" references unknown variant "sze"' },
 		'throws at config time for undefined preset variant'
+	);
+
+	t.end();
+});
+
+t.test('preset throws for invalid variant value at config time', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error - intentionally passing an invalid preset variant value for the runtime check
+			sv('btn', {
+				variants: {
+					size: {
+						sm: 'text-sm',
+						lg: 'text-lg'
+					}
+				},
+				presets: {
+					large: { size: 'xl' }
+				}
+			}),
+		{
+			message:
+				'Preset "large" has invalid value "xl" for variant "size"'
+		},
+		'throws at config time for invalid preset variant value'
 	);
 
 	t.end();

@@ -594,10 +594,23 @@ const assertKnownDefaultVariants = (
 	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>
 ) => {
 
-	for (const variant of keys(defaultVariants)) {
+	for (const [variant, value] of entries(defaultVariants)) {
 		if (!hasOwn(normalizedVariants, variant)) {
 			throw new Error(
 				`Default variant "${variant}" is not defined in variants`
+			);
+		}
+
+		const variantValues = normalizedVariants[variant];
+
+		if (
+			value !== undefined &&
+			typeof value !== 'function' &&
+			variantValues !== undefined &&
+			!hasOwn(variantValues, `${value}`)
+		) {
+			throw new Error(
+				`Default variant "${variant}" has invalid value "${value}"`
 			);
 		}
 	}
@@ -609,10 +622,22 @@ const assertKnownPresetVariants = (
 ) => {
 
 	for (const [presetName, presetValues] of entries(presets)) {
-		for (const variant of keys(presetValues)) {
+		for (const [variant, value] of entries(presetValues)) {
 			if (!hasOwn(normalizedVariants, variant)) {
 				throw new Error(
 					`Preset "${presetName}" references unknown variant "${variant}"`
+				);
+			}
+
+			const variantValues = normalizedVariants[variant];
+
+			if (
+				value !== undefined &&
+				variantValues !== undefined &&
+				!hasOwn(variantValues, `${value}`)
+			) {
+				throw new Error(
+					`Preset "${presetName}" has invalid value "${value}" for variant "${variant}"`
 				);
 			}
 		}
