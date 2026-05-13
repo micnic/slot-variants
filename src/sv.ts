@@ -387,7 +387,8 @@ const isCompoundMetaKey = (compoundKey: string): boolean =>
 	compoundKey === 'slots';
 
 const compileCompoundMatchers = (
-	compound: Record<string, unknown>
+	compound: Record<string, unknown>,
+	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>
 ): readonly CompoundMatcher[] => {
 
 	const matchers: CompoundMatcher[] = [];
@@ -395,6 +396,12 @@ const compileCompoundMatchers = (
 	for (const [compoundKey, value] of entries(compound)) {
 		if (isCompoundMetaKey(compoundKey)) {
 			continue;
+		}
+
+		if (!hasOwn(normalizedVariants, compoundKey)) {
+			throw new Error(
+				`Compound matcher references unknown variant "${compoundKey}"`
+			);
 		}
 
 		matchers.push({
@@ -712,7 +719,8 @@ const compileConfig = <
 
 		compiledCompoundVariants.push({
 			matchers: compileCompoundMatchers(
-				compound as Record<string, unknown>
+				compound as Record<string, unknown>,
+				normalizedVariants
 			),
 			classValue
 		});
@@ -734,7 +742,8 @@ const compileConfig = <
 
 		compiledCompoundSlots.push({
 			matchers: compileCompoundMatchers(
-				compound as Record<string, unknown>
+				compound as Record<string, unknown>,
+				normalizedVariants
 			),
 			classValue,
 			slots: compound.slots

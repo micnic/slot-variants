@@ -4336,6 +4336,22 @@ t.test('compound variant without class or className throws', (t) => {
 	t.end();
 });
 
+t.test('compound variant with unknown matcher throws', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error unknown variant matcher not assignable
+			sv('btn', {
+				variants: {
+					size: { sm: 'text-sm', lg: 'text-lg' }
+				},
+				compoundVariants: [{ sze: 'lg', class: 'uppercase' }]
+			}),
+		{ message: 'Compound matcher references unknown variant "sze"' }
+	);
+
+	t.end();
+});
+
 t.test('compound slot without class or className throws', (t) => {
 	t.throws(
 		() =>
@@ -4345,6 +4361,28 @@ t.test('compound slot without class or className throws', (t) => {
 				compoundSlots: [{ slots: ['header'] }]
 			}),
 		/"class" or "className"/
+	);
+
+	t.end();
+});
+
+t.test('compound slot with unknown matcher throws', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error unknown variant matcher not assignable
+			sv('border', {
+				slots: { header: 'font-bold' },
+				variants: {
+					size: {
+						sm: { header: 'text-sm' },
+						lg: { header: 'text-lg' }
+					}
+				},
+				compoundSlots: [
+					{ slots: ['header'], sze: 'lg', class: 'uppercase' }
+				]
+			}),
+		{ message: 'Compound matcher references unknown variant "sze"' }
 	);
 
 	t.end();
