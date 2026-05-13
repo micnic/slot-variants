@@ -18,6 +18,10 @@ type AnyFn = (...args: any[]) => unknown;
 type RuntimeVariantValue = string | number | boolean;
 
 type RuntimeVariantState = Record<string, RuntimeVariantValue | undefined>;
+type RuntimeVariantMatcher =
+	| RuntimeVariantValue
+	| readonly RuntimeVariantValue[]
+	| undefined;
 
 type MaybeSlots = Slots | undefined;
 
@@ -182,7 +186,7 @@ type SlotClasses = Record<string, ConfigClassValue[]>;
 
 type CompoundMatcher = {
 	key: string;
-	expected: RuntimeVariantValue | readonly RuntimeVariantValue[];
+	expected: RuntimeVariantMatcher;
 };
 
 type CompiledCompoundVariant = {
@@ -357,6 +361,18 @@ const { assign, entries, hasOwn, keys } = Object;
 const looseEquals = (first: unknown, second: unknown) =>
 	first === second || `${first}` === `${second}`;
 
+const isRuntimeVariantValue = (value: unknown): value is RuntimeVariantValue =>
+	typeof value === 'string' ||
+	typeof value === 'number' ||
+	typeof value === 'boolean';
+
+const isRuntimeVariantMatcher = (
+	value: unknown
+): value is RuntimeVariantMatcher =>
+	value === undefined ||
+	isRuntimeVariantValue(value) ||
+	(isArray(value) && value.every(isRuntimeVariantValue));
+
 const createCacheReturn = (
 	cache: Map<string, CacheEntry>,
 	cacheSize: number
@@ -398,32 +414,40 @@ const compileCompoundMatchers = (
 			continue;
 		}
 
-		if (!hasOwn(normalizedVariants, compoundKey)) {
+		const variantValues = normalizedVariants[compoundKey];
+
+		if (variantValues === undefined) {
 			throw new Error(
 				`Compound matcher references unknown variant "${compoundKey}"`
 			);
 		}
 
-		const variantValues = normalizedVariants[compoundKey];
-		const expectedValues = isArray(value) ? value : [value];
+		if (!isRuntimeVariantMatcher(value)) {
+			const invalidValue = isArray(value)
+				? value.find((expectedValue) => !isRuntimeVariantValue(expectedValue))
+				: value;
 
-		if (
-			variantValues !== undefined &&
-			expectedValues.some(
+			throw new Error(
+				`Compound matcher for variant "${compoundKey}" has invalid value "${invalidValue}"`
+			);
+		}
+
+		const expectedValues = isArray(value) ? value : [value];
+		const invalidValue =
+			expectedValues.find(
 				(expectedValue) =>
 					!hasOwn(variantValues, `${expectedValue}`)
-			)
-		) {
+			);
+
+		if (invalidValue !== undefined) {
 			throw new Error(
-				`Compound matcher for variant "${compoundKey}" has invalid value "${value}"`
+				`Compound matcher for variant "${compoundKey}" has invalid value "${invalidValue}"`
 			);
 		}
 
 		matchers.push({
 			key: compoundKey,
-			expected: value as
-				| RuntimeVariantValue
-				| readonly RuntimeVariantValue[]
+			expected: value
 		});
 	}
 

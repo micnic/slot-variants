@@ -4462,6 +4462,46 @@ t.test('compound variant with invalid matcher value throws', (t) => {
 	t.end();
 });
 
+t.test('compound variant with invalid matcher value type throws', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error invalid matcher value not assignable
+			sv('btn', {
+				variants: {
+					size: { sm: 'text-sm', lg: 'text-lg' }
+				},
+				compoundVariants: [{ size: { bad: true }, class: 'uppercase' }]
+			}),
+		{
+			message:
+				'Compound matcher for variant "size" has invalid value "[object Object]"'
+		}
+	);
+
+	t.end();
+});
+
+t.test('compound variant with invalid matcher array value type throws', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error invalid matcher value not assignable
+			sv('btn', {
+				variants: {
+					size: { sm: 'text-sm', lg: 'text-lg' }
+				},
+				compoundVariants: [
+					{ size: ['sm', { bad: true }], class: 'uppercase' }
+				]
+			}),
+		{
+			message:
+				'Compound matcher for variant "size" has invalid value "[object Object]"'
+		}
+	);
+
+	t.end();
+});
+
 t.test('compound slot without class or className throws', (t) => {
 	t.throws(
 		() =>
@@ -4513,10 +4553,10 @@ t.test('compound slot with invalid matcher array value throws', (t) => {
 				compoundSlots: [
 					{ slots: ['header'], size: ['sm', 'xl'], class: 'uppercase' }
 				]
-			}),
+		}),
 		{
 			message:
-				'Compound matcher for variant "size" has invalid value "sm,xl"'
+				'Compound matcher for variant "size" has invalid value "xl"'
 		}
 	);
 
