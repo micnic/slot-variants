@@ -20,8 +20,7 @@ type RuntimeVariantValue = string | number | boolean;
 type RuntimeVariantState = Record<string, RuntimeVariantValue | undefined>;
 type RuntimeVariantMatcher =
 	| RuntimeVariantValue
-	| readonly RuntimeVariantValue[]
-	| undefined;
+	| readonly RuntimeVariantValue[];
 
 type MaybeSlots = Slots | undefined;
 
@@ -113,9 +112,21 @@ type NormalizedVariantValue =
 	| ConfigClassValue
 	| Record<string, ConfigClassValue>;
 
+type NormalizedVariantValues = Record<string, NormalizedVariantValue>;
+
+type NormalizedVariants = Record<string, NormalizedVariantValues>;
+
+type VariantValueIds = Record<string, number>;
+
+type VariantData = {
+	key: string;
+	valueIds: VariantValueIds;
+	values: NormalizedVariantValues;
+};
+
 type RuntimeVariantConfigValue =
 	| ConfigClassValue
-	| Record<string, NormalizedVariantValue>;
+	| NormalizedVariantValues;
 
 type CacheValue = string | Record<string, string>;
 
@@ -207,8 +218,8 @@ type CompiledConfig = {
 	slotEntries: readonly [string, ConfigClassValue][];
 	slotKeys: Set<string>;
 	originalVariants: Variants<MaybeSlots>;
-	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>;
-	variantData: [string, Record<string, number>, Record<string, NormalizedVariantValue>][];
+	normalizedVariants: NormalizedVariants;
+	variantData: VariantData[];
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
 	requiredVariants: readonly string[];
 	presets: Record<string, RuntimeVariantState>;
@@ -366,12 +377,13 @@ const isRuntimeVariantValue = (value: unknown): value is RuntimeVariantValue =>
 	typeof value === 'number' ||
 	typeof value === 'boolean';
 
-const isRuntimeVariantMatcher = (
+const createInvalidCompoundMatcherValueError = (
+	variant: string,
 	value: unknown
-): value is RuntimeVariantMatcher =>
-	value === undefined ||
-	isRuntimeVariantValue(value) ||
-	(isArray(value) && value.every(isRuntimeVariantValue));
+): Error =>
+	new Error(
+		`Compound matcher for variant "${variant}" has invalid value "${value}"`
+	);
 
 const createCacheReturn = (
 	cache: Map<string, CacheEntry>,
@@ -402,52 +414,63 @@ const isCompoundMetaKey = (compoundKey: string): boolean =>
 	compoundKey === 'className' ||
 	compoundKey === 'slots';
 
+const resolveCompoundMatcherExpected = (
+	variant: string,
+	value: unknown,
+	variantValues: NormalizedVariantValues
+): RuntimeVariantMatcher => {
+
+	if (isRuntimeVariantValue(value)) {
+		if (!hasOwn(variantValues, `${value}`)) {
+			throw createInvalidCompoundMatcherValueError(variant, value);
+		}
+		return value;
+	}
+
+	if (!isArray(value)) {
+		throw createInvalidCompoundMatcherValueError(variant, value);
+	}
+
+	for (const item of value) {
+		if (
+			!isRuntimeVariantValue(item) ||
+			!hasOwn(variantValues, `${item}`)
+		) {
+			throw createInvalidCompoundMatcherValueError(variant, item);
+		}
+	}
+
+	return value;
+};
+
 const compileCompoundMatchers = (
-	compound: Record<string, unknown>,
-	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>
+	compoundEntries: readonly [string, unknown][],
+	normalizedVariants: NormalizedVariants
 ): readonly CompoundMatcher[] => {
 
 	const matchers: CompoundMatcher[] = [];
 
-	for (const [compoundKey, value] of entries(compound)) {
+	for (const [compoundKey, value] of compoundEntries) {
 		if (isCompoundMetaKey(compoundKey)) {
 			continue;
 		}
 
-		const variantValues = normalizedVariants[compoundKey];
-
-		if (variantValues === undefined) {
-			throw new Error(
-				`Compound matcher references unknown variant "${compoundKey}"`
-			);
-		}
-
-		if (!isRuntimeVariantMatcher(value)) {
-			const invalidValue = isArray(value)
-				? value.find((expectedValue) => !isRuntimeVariantValue(expectedValue))
-				: value;
-
-			throw new Error(
-				`Compound matcher for variant "${compoundKey}" has invalid value "${invalidValue}"`
-			);
-		}
-
-		const expectedValues = isArray(value) ? value : [value];
-		const invalidValue =
-			expectedValues.find(
-				(expectedValue) =>
-					!hasOwn(variantValues, `${expectedValue}`)
-			);
-
-		if (invalidValue !== undefined) {
-			throw new Error(
-				`Compound matcher for variant "${compoundKey}" has invalid value "${invalidValue}"`
-			);
-		}
+		const variantValues = getKnownVariantValues(
+			normalizedVariants,
+			compoundKey,
+			(unknownVariant) =>
+				new Error(
+					`Compound matcher references unknown variant "${unknownVariant}"`
+				)
+		);
 
 		matchers.push({
 			key: compoundKey,
-			expected: value
+			expected: resolveCompoundMatcherExpected(
+				compoundKey,
+				value,
+				variantValues
+			)
 		});
 	}
 
@@ -480,11 +503,11 @@ const matchesCompound = (
 
 const isObjectRecord = (
 	value: RuntimeVariantConfigValue
-): value is Extract<RuntimeVariantConfigValue, Record<string, unknown>> =>
+): value is NormalizedVariantValues =>
 	value !== null && typeof value === 'object' && !isArray(value);
 
 const isSlotObjectVariantValue = (
-	variantValue: Record<string, NormalizedVariantValue>,
+	variantValue: NormalizedVariantValues,
 	slotKeys: Set<string>
 ): variantValue is Record<string, ConfigClassValue> => {
 	const valueKeys = keys(variantValue);
@@ -497,14 +520,14 @@ const isSlotObjectVariantValue = (
 };
 
 const isBooleanVariantRecord = (
-	variantValue: Record<string, NormalizedVariantValue>
+	variantValue: NormalizedVariantValues
 ): boolean =>
 	keys(variantValue).every((key) => key === 'true' || key === 'false');
 
 const normalizeVariantValue = (
 	variantValue: RuntimeVariantConfigValue,
 	slotKeys: Set<string>
-): Record<string, NormalizedVariantValue> => {
+): NormalizedVariantValues => {
 
 	if (
 		!isObjectRecord(variantValue) ||
@@ -586,12 +609,9 @@ const isConfig = <
 const createNormalizedVariants = <S extends MaybeSlots>(
 	variants: Variants<S>,
 	slotKeys: Set<string>
-): Record<string, Record<string, NormalizedVariantValue>> => {
+): NormalizedVariants => {
 
-	const normalizedVariants: Record<
-		string,
-		Record<string, NormalizedVariantValue>
-	> = {};
+	const normalizedVariants: NormalizedVariants = {};
 
 	for (const [variantKey, variantValue] of entries(variants)) {
 		normalizedVariants[variantKey] = normalizeVariantValue(
@@ -603,9 +623,51 @@ const createNormalizedVariants = <S extends MaybeSlots>(
 	return normalizedVariants;
 };
 
+const createVariantData = (
+	normalizedVariants: NormalizedVariants
+): VariantData[] => {
+
+	const variantData: VariantData[] = [];
+
+	for (const [variantKey, variantValues] of entries(normalizedVariants)) {
+
+		const ids: VariantValueIds = {};
+
+		let nextId = 0;
+
+		for (const valueKey of keys(variantValues)) {
+			ids[valueKey] = nextId;
+			nextId++;
+		}
+
+		variantData.push({
+			key: variantKey,
+			valueIds: ids,
+			values: variantValues
+		});
+	}
+
+	return variantData;
+};
+
+const getKnownVariantValues = (
+	normalizedVariants: NormalizedVariants,
+	variant: string,
+	createError: (variant: string) => Error
+): NormalizedVariantValues => {
+
+	const variantValues = normalizedVariants[variant];
+
+	if (variantValues === undefined) {
+		throw createError(variant);
+	}
+
+	return variantValues;
+};
+
 const assertValidRequiredVariantConfig = (
 	requiredVariants: readonly string[],
-	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>,
+	normalizedVariants: NormalizedVariants,
 	defaultVariants: Record<string, RuntimeDefaultVariant>
 ) => {
 
@@ -630,22 +692,23 @@ const assertValidRequiredVariantConfig = (
 
 const assertKnownDefaultVariants = (
 	defaultVariants: Record<string, RuntimeDefaultVariant>,
-	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>
+	normalizedVariants: NormalizedVariants
 ) => {
 
 	for (const [variant, value] of entries(defaultVariants)) {
-		if (!hasOwn(normalizedVariants, variant)) {
-			throw new Error(
-				`Default variant "${variant}" is not defined in variants`
-			);
-		}
 
-		const variantValues = normalizedVariants[variant];
+		const variantValues = getKnownVariantValues(
+			normalizedVariants,
+			variant,
+			(unknownVariant) =>
+				new Error(
+					`Default variant "${unknownVariant}" is not defined in variants`
+				)
+		);
 
 		if (
 			value !== undefined &&
 			typeof value !== 'function' &&
-			variantValues !== undefined &&
 			!hasOwn(variantValues, `${value}`)
 		) {
 			throw new Error(
@@ -657,22 +720,22 @@ const assertKnownDefaultVariants = (
 
 const assertKnownPresetVariants = (
 	presets: Record<string, RuntimeVariantState>,
-	normalizedVariants: Record<string, Record<string, NormalizedVariantValue>>
+	normalizedVariants: NormalizedVariants
 ) => {
 
 	for (const [presetName, presetValues] of entries(presets)) {
 		for (const [variant, value] of entries(presetValues)) {
-			if (!hasOwn(normalizedVariants, variant)) {
-				throw new Error(
-					`Preset "${presetName}" references unknown variant "${variant}"`
-				);
-			}
-
-			const variantValues = normalizedVariants[variant];
+			const variantValues = getKnownVariantValues(
+				normalizedVariants,
+				variant,
+				(unknownVariant) =>
+					new Error(
+						`Preset "${presetName}" references unknown variant "${unknownVariant}"`
+					)
+			);
 
 			if (
 				value !== undefined &&
-				variantValues !== undefined &&
 				!hasOwn(variantValues, `${value}`)
 			) {
 				throw new Error(
@@ -697,6 +760,22 @@ const assertKnownCompoundSlots = (
 			throw new Error(`Compound slot references unknown slot "${slot}"`);
 		}
 	}
+};
+
+const requireCompoundClassValue = <T>(
+	compound: { class?: T; className?: T },
+	label: string
+): T => {
+
+	const classValue = compound.class ?? compound.className;
+
+	if (classValue === undefined) {
+		throw new Error(
+			`Compound ${label} must define "class" or "className"`
+		);
+	}
+
+	return classValue;
 };
 
 const hasOnlySlotKeys = (
@@ -773,26 +852,7 @@ const compileConfig = <
 	const slotEntries = entries(normalizedSlots);
 	const slotKeys = new Set<string>(keys(normalizedSlots));
 	const normalizedVariants = createNormalizedVariants(variants, slotKeys);
-
-	const variantData: [
-		string,
-		Record<string, number>,
-		Record<string, NormalizedVariantValue>
-	][] = [];
-
-	for (const [variantKey, variantValues] of entries(normalizedVariants)) {
-
-		const ids: Record<string, number> = {};
-
-		let nextId = 0;
-
-		for (const valueKey of keys(variantValues)) {
-			ids[valueKey] = nextId;
-			nextId++;
-		}
-
-		variantData.push([variantKey, ids, variantValues]);
-	}
+	const variantData = createVariantData(normalizedVariants);
 
 	assertValidRequiredVariantConfig(
 		requiredVariants,
@@ -805,17 +865,11 @@ const compileConfig = <
 	const compiledCompoundVariants: CompiledCompoundVariant[] = [];
 
 	for (const compound of compoundVariants) {
-		const classValue = compound.class ?? compound.className;
-
-		if (classValue === undefined) {
-			throw new Error(
-				'Compound variant must define "class" or "className"'
-			);
-		}
+		const classValue = requireCompoundClassValue(compound, 'variant');
 
 		compiledCompoundVariants.push({
 			matchers: compileCompoundMatchers(
-				compound as Record<string, unknown>,
+				entries(compound),
 				normalizedVariants
 			),
 			classValue
@@ -828,17 +882,11 @@ const compileConfig = <
 
 		assertKnownCompoundSlots(compound.slots, slotKeys);
 
-		const classValue = compound.class ?? compound.className;
-
-		if (classValue === undefined) {
-			throw new Error(
-				'Compound slot must define "class" or "className"'
-			);
-		}
+		const classValue = requireCompoundClassValue(compound, 'slot');
 
 		compiledCompoundSlots.push({
 			matchers: compileCompoundMatchers(
-				compound as Record<string, unknown>,
+				entries(compound),
 				normalizedVariants
 			),
 			classValue,
@@ -924,11 +972,11 @@ const resolveVariantState = (
 
 	let cacheKey = '';
 
-	for (const [variantKey, valueIds] of config.variantData) {
+	for (const { key, valueIds } of config.variantData) {
 
 		const value = resolveVariantValue(
 			config,
-			variantKey,
+			key,
 			props,
 			presetValues
 		);
@@ -938,7 +986,7 @@ const resolveVariantState = (
 			continue;
 		}
 
-		resolvedProps[variantKey] = value;
+		resolvedProps[key] = value;
 
 		const id = valueIds[`${value}`];
 
@@ -974,7 +1022,7 @@ const assertRequiredVariants = (
 const getVariantClasses = (
 	variantKey: string,
 	variantProp: RuntimeVariantValue,
-	variantValues: Record<string, NormalizedVariantValue>
+	variantValues: NormalizedVariantValues
 ): NormalizedVariantValue => {
 
 	const variantClasses = variantValues[`${variantProp}`];
@@ -994,18 +1042,18 @@ const applyResolvedVariantClasses = (
 	resolvedProps: RuntimeVariantState
 ) => {
 
-	for (const [variantKey, , variantValues] of config.variantData) {
+	for (const { key, values } of config.variantData) {
 
-		const variantProp = resolvedProps[variantKey];
+		const variantProp = resolvedProps[key];
 
 		if (variantProp === undefined) {
 			continue;
 		}
 
 		const variantClasses = getVariantClasses(
-			variantKey,
+			key,
 			variantProp,
-			variantValues
+			values
 		);
 
 		if (variantClasses !== '') {
@@ -1102,18 +1150,18 @@ const mergeClassPropIntoResult = (
 		return cn(baseResult, classProp);
 	}
 
-	const result: Record<string, string> = { ...baseResult };
-
-	if (classPropIsSlotObject) {
-
-		for (const [slotKey, slotValue] of entries(classProp)) {
-			result[slotKey] = cn(baseResult[slotKey], slotValue);
-		}
-
-		return result;
+	if (!classPropIsSlotObject) {
+		return {
+			...baseResult,
+			base: cn(baseResult.base, classProp)
+		};
 	}
 
-	result.base = cn(baseResult.base, classProp);
+	const result: Record<string, string> = { ...baseResult };
+
+	for (const [slotKey, slotValue] of entries(classProp)) {
+		result[slotKey] = cn(baseResult[slotKey], slotValue);
+	}
 
 	return result;
 };
