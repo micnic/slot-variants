@@ -395,12 +395,7 @@ t.test('no-redundant-spaces', (t) => {
 	t.end();
 });
 
-t.test('no-dynamic-classes', (t) => {
-	const dynamicRule = rules['no-dynamic-classes'];
-
-	t.doesNotThrow(() => {
-		tester.run('no-dynamic-classes', dynamicRule, {
-			valid: [
+const NO_DYNAMIC_CLASSES_VALID = [
 				// Static class strings in cn-style call.
 				IMPORT + "sv('flex', 'items-center');",
 				// Static base in config.
@@ -540,8 +535,9 @@ t.test('no-dynamic-classes', (t) => {
 				IMPORT + "obj.sv(dynamic);",
 				// Unrelated function call when imports are tracked.
 				IMPORT + "console.log('hi'); sv('flex');"
-			],
-			invalid: [
+];
+
+const NO_DYNAMIC_CLASSES_INVALID = [
 				{
 					// Identifier as cn-style argument.
 					code: IMPORT + 'sv(dynamic);',
@@ -831,18 +827,21 @@ t.test('no-dynamic-classes', (t) => {
 					code: IMPORT_CN + 'cn(`flex ${x}`);',
 					errors: 1
 				}
-			]
+];
+
+t.test('no-dynamic-classes', (t) => {
+	const dynamicRule = rules['no-dynamic-classes'];
+
+	t.doesNotThrow(() => {
+		tester.run('no-dynamic-classes', dynamicRule, {
+			valid: NO_DYNAMIC_CLASSES_VALID,
+			invalid: NO_DYNAMIC_CLASSES_INVALID
 		});
 	}, 'rule tester passes');
 	t.end();
 });
 
-t.test('no-empty-classes', (t) => {
-	const emptyRule = rules['no-empty-classes'];
-
-	t.doesNotThrow(() => {
-		tester.run('no-empty-classes', emptyRule, {
-			valid: [
+const NO_EMPTY_CLASSES_VALID = [
 				// Non-empty cn-style call.
 				IMPORT + "sv('flex', 'items-center');",
 				// Non-empty config.
@@ -971,8 +970,9 @@ t.test('no-empty-classes', (t) => {
 				// String-literal property keys throughout.
 				IMPORT +
 					"sv({ 'base': 'flex', 'slots': { 'body': 'p-4' } });"
-			],
-			invalid: [
+];
+
+const NO_EMPTY_CLASSES_INVALID = [
 				{
 					// Empty string as cn-style sv argument.
 					code: IMPORT + "sv('');",
@@ -1189,16 +1189,21 @@ t.test('no-empty-classes', (t) => {
 					code: IMPORT_CN + 'cn();',
 					errors: [{ messageId: 'emptyCall' }]
 				}
-			]
+];
+
+t.test('no-empty-classes', (t) => {
+	const emptyRule = rules['no-empty-classes'];
+
+	t.doesNotThrow(() => {
+		tester.run('no-empty-classes', emptyRule, {
+			valid: NO_EMPTY_CLASSES_VALID,
+			invalid: NO_EMPTY_CLASSES_INVALID
 		});
 	}, 'rule tester passes');
 	t.end();
 });
 
-t.test('no-conflicting-classes (duplicate detection)', (t) => {
-	t.doesNotThrow(() => {
-		tester.run('no-conflicting-classes', rule, {
-			valid: [
+const NO_CONFLICTING_DUP_VALID = [
 				IMPORT +
 					"sv({ base: 'flex items-center', variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });",
 				IMPORT +
@@ -1355,8 +1360,9 @@ t.test('no-conflicting-classes (duplicate detection)', (t) => {
 							{ size: 'lg', className: 'font-bold' }
 						]
 					});`
-			],
-			invalid: [
+];
+
+const NO_CONFLICTING_DUP_INVALID = [
 				{
 					code:
 						IMPORT +
@@ -1572,18 +1578,19 @@ t.test('no-conflicting-classes (duplicate detection)', (t) => {
 						"import { sv, cn } from 'slot-variants'; sv('a'); cn('b', 'b');",
 					errors: 2
 				}
-			]
+];
+
+t.test('no-conflicting-classes (duplicate detection)', (t) => {
+	t.doesNotThrow(() => {
+		tester.run('no-conflicting-classes', rule, {
+			valid: NO_CONFLICTING_DUP_VALID,
+			invalid: NO_CONFLICTING_DUP_INVALID
 		});
 	}, 'rule tester passes');
 	t.end();
 });
 
-t.test('no-conflicting-classes (namespace conflicts)', (t) => {
-	const conflictRule = rules['no-conflicting-classes'];
-
-	t.doesNotThrow(() => {
-		tester.run('no-conflicting-classes', conflictRule, {
-			valid: [
+const NO_CONFLICTING_NS_VALID = [
 				// Single namespaced utility — nothing to conflict with.
 				IMPORT + "sv({ base: 'w-100' });",
 				// Single-word utilities have no namespace and are skipped.
@@ -1601,8 +1608,9 @@ t.test('no-conflicting-classes (namespace conflicts)', (t) => {
 				IMPORT + "sv({ base: 'w-100 h-200' });",
 				// Zero-arg call.
 				IMPORT + 'sv();'
-			],
-			invalid: [
+];
+
+const NO_CONFLICTING_NS_INVALID = [
 				{
 					// Basic conflict in base.
 					code: IMPORT + "sv({ base: 'w-100 w-200' });",
@@ -1680,18 +1688,21 @@ t.test('no-conflicting-classes (namespace conflicts)', (t) => {
 					code: IMPORT_CN + "cn('w-100', 'w-200');",
 					errors: 2
 				}
-			]
+];
+
+t.test('no-conflicting-classes (namespace conflicts)', (t) => {
+	const conflictRule = rules['no-conflicting-classes'];
+
+	t.doesNotThrow(() => {
+		tester.run('no-conflicting-classes', conflictRule, {
+			valid: NO_CONFLICTING_NS_VALID,
+			invalid: NO_CONFLICTING_NS_INVALID
 		});
 	}, 'rule tester passes');
 	t.end();
 });
 
-t.test('no-shared-tokens', (t) => {
-	const sharedRule = rules['no-shared-tokens'];
-
-	t.doesNotThrow(() => {
-		tester.run('no-shared-tokens', sharedRule, {
-			valid: [
+const NO_SHARED_TOKENS_VALID = [
 				// Non-object variants field bails out immediately.
 				IMPORT + 'sv({ variants: dynamic });',
 				// No defaultVariants and no requiredVariants — variant prop
@@ -1834,8 +1845,9 @@ t.test('no-shared-tokens', (t) => {
 					});`,
 				// Empty config — no variants.
 				IMPORT + 'sv({});'
-			],
-			invalid: [
+];
+
+const NO_SHARED_TOKENS_INVALID = [
 				{
 					// Token shared across all values of an exhaustive variant
 					// (via defaultVariants) — flag every occurrence.
@@ -2060,7 +2072,15 @@ t.test('no-shared-tokens', (t) => {
 						}
 					]
 				}
-			]
+];
+
+t.test('no-shared-tokens', (t) => {
+	const sharedRule = rules['no-shared-tokens'];
+
+	t.doesNotThrow(() => {
+		tester.run('no-shared-tokens', sharedRule, {
+			valid: NO_SHARED_TOKENS_VALID,
+			invalid: NO_SHARED_TOKENS_INVALID
 		});
 	}, 'rule tester passes');
 	t.end();
