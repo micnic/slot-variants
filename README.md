@@ -612,6 +612,58 @@ compoundSlots: [
 ]
 ```
 
+### Multi Slots
+
+By default each slot in the result object is a plain class string. The
+`multiSlots` option turns the listed slots into reconfigurable functions
+instead. A slot function accepts variant prop overrides and a
+`class`/`className` override, and returns that slot's class string.
+
+This is designed for cases where a single slot is rendered multiple times
+with different props — for example a list of items where each item needs
+its own variant values — so the same slot can be re-evaluated per use
+without recreating the whole variant function:
+
+```typescript
+const card = sv('border', {
+  slots: {
+    header: 'font-bold',
+    body: 'py-4'
+  },
+  variants: {
+    size: {
+      sm: { base: 'p-2', header: 'text-sm' },
+      lg: { base: 'p-6', header: 'text-lg' }
+    }
+  },
+  multiSlots: ['header']
+});
+
+const result = card({ size: 'sm' });
+// result.base   -> 'border p-2'        (plain string)
+// result.body   -> 'py-4'              (plain string)
+// result.header -> function
+
+result.header();                  // 'font-bold text-sm'
+result.header({ size: 'lg' });    // 'font-bold text-lg'
+result.header({ class: 'mt-2' }); // 'font-bold text-sm mt-2'
+```
+
+Slots not listed in `multiSlots` stay plain strings. Pass `true` to make
+every slot a function, or `false` (the default) to keep them all strings:
+
+```typescript
+const card = sv('border', {
+  slots: { header: 'font-bold', body: 'py-4' },
+  multiSlots: true
+});
+
+const { base, header, body } = card();
+base();   // 'border'
+header(); // 'font-bold'
+body();   // 'py-4'
+```
+
 ### Class Override at Runtime
 
 Append additional classes at call time using `class` or `className`:
@@ -734,6 +786,7 @@ button.slotKeys;                    // ['base', 'icon']
 button.slots;                       // { icon: 'w-4 h-4' }
 button.defaultVariants;             // { size: 'sm' }
 button.requiredVariants;            // ['intent']
+button.multiSlots;                  // [] (slot names exposed as functions)
 button.presetKeys;                  // ['cta']
 button.presets;                     // { cta: { size: 'lg', intent: 'primary' } }
 button.getVariantValues('size');    // ['sm', 'lg']
@@ -900,6 +953,7 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 | `compoundSlots` | `Array` | Classes applied to multiple slots based on variant conditions |
 | `defaultVariants` | `Object` | Default values for variants (static values or functions) |
 | `requiredVariants` | `string[] \| boolean` | Variant names that must be provided at call time; `true` makes every variant required, `false` none |
+| `multiSlots` | `string[] \| boolean` | Slot names exposed as reconfigurable functions instead of strings; `true` makes every slot a function, `false` none |
 | `presets` | `Record<string, Partial<VariantProps>>` | Named combinations of variant values selectable via `preset` prop |
 | `postProcess` | `(className: string) => string` | Custom transformation applied to final class strings |
 | `cacheSize` | `number` | Maximum number of cached results (default: `256`) |
@@ -913,7 +967,7 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 - **`slot-variants/no-conflicting-classes`** — flags class tokens that collide within the output of an `sv()` or `cn()` call: both exact-duplicate tokens that will appear more than once and distinct tokens that target the same Tailwind-style utility namespace (e.g. `w-100` and `w-200`). For `sv()`, detects collisions within `base`, across different variant keys, inside compound variants and compound slots, between `base` and a variant value, and within a single literal. For `cn()` (and the cn-style calling convention of `sv()` without a config), flags collisions across args, inside arrays, template literals, or within a single literal. Tokens with different variant prefixes (`w-100` vs `hover:w-200`) don't conflict, the trailing `!` important marker is ignored when computing the namespace, and tokens that only co-occur across mutually-exclusive variant values are skipped.
 
-- **`slot-variants/no-dynamic-classes`** — flags class-bearing positions in `sv()` and `cn()` calls that aren't statically inferrable. Only string literals, template literals without expressions, flat arrays of those in config, and explicit `undefined` config class values are accepted, and config objects must use static keys (no spreads, no computed keys). Identifiers, member access, calls, spreads, non-string literals, templates with expressions, nested config arrays, and runtime conditional records are reported. Non-class-bearing config keys (`defaultVariants`, `presets`, `requiredVariants`, `cacheSize`, `postProcess`, `introspection`) are not validated, and runtime variant matchers inside compound entries are left alone — only the `class`/`className` value (and the `slots` array of `compoundSlots`) is checked.
+- **`slot-variants/no-dynamic-classes`** — flags class-bearing positions in `sv()` and `cn()` calls that aren't statically inferrable. Only string literals, template literals without expressions, flat arrays of those in config, and explicit `undefined` config class values are accepted, and config objects must use static keys (no spreads, no computed keys). Identifiers, member access, calls, spreads, non-string literals, templates with expressions, nested config arrays, and runtime conditional records are reported. Non-class-bearing config keys (`defaultVariants`, `presets`, `requiredVariants`, `multiSlots`, `cacheSize`, `postProcess`, `introspection`) are not validated, and runtime variant matchers inside compound entries are left alone — only the `class`/`className` value (and the `slots` array of `compoundSlots`) is checked.
 
 - **`slot-variants/no-empty-classes`** — flags empty class values — empty strings, empty arrays, and empty objects — at any class-bearing position reachable from an `sv()` or `cn()` call, plus zero-argument `sv()` / `cn()` calls themselves (which always produce an empty class string). Reports empties in positional arguments (and inside arrays nested in those), in `base`, in variants including slot-keyed variant branches, in the `class`/`className` of `compoundVariants` and `compoundSlots` entries, and in the top-level `slots`, `variants`, `compoundVariants`, and `compoundSlots` containers themselves. Inside an `sv()` config, an empty string is still allowed as a direct `slots[key]` value — declaring a slot with no default classes is a valid use case.
 

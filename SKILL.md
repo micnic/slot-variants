@@ -10,20 +10,20 @@
 import { sv, cn, type VariantProps } from 'slot-variants';
 ```
 
-`sv()` is a drop-in replacement for CVA (`cva` → `sv`) and covers the core feature set of tailwind-variants (`tv`) with a simpler API. Slots return strings directly (not functions like in `tv`). Features not in CVA/TV: `requiredVariants`, `presets`, `cacheSize`, `postProcess`, function-based `defaultVariants`, and variadic base args.
+`sv()` is a drop-in replacement for CVA (`cva` → `sv`) and covers the core feature set of tailwind-variants (`tv`) with a simpler API. Slots return strings directly by default, or reconfigurable functions (like in `tv`) when listed in `multiSlots`. Features not in CVA/TV: `requiredVariants`, `presets`, `cacheSize`, `postProcess`, function-based `defaultVariants`, and variadic base args.
 
 ## Calling Conventions
 
 `sv()` supports three calling conventions:
 
 ```typescript
-// 1. Config-only (like tailwind-variants' tv())
+// 1. Config-only
 const button = sv({
 	base: 'btn font-medium',
 	variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
 });
 
-// 2. Base + config (like CVA's cva())
+// 2. Base + config
 const button = sv('btn font-medium', {
 	variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
 });
@@ -413,7 +413,8 @@ Class values inside the config (`base`, `variants` values, `slots` values, and `
 | `compoundVariants` | `CompoundVariant[]`              | Conditional class combinations    |
 | `compoundSlots`    | `CompoundSlot[]`                 | Multi-slot conditional classes    |
 | `defaultVariants`  | `Record<string, Value>`          | Static or function-based defaults |
-| `requiredVariants` | `string[]`                       | Mandatory variant names           |
+| `requiredVariants` | `string[] \| boolean`            | Mandatory variant names           |
+| `multiSlots`       | `string[] \| boolean`            | Slots exposed as reconfigurable functions |
 | `presets`          | `Record<string, Partial<Props>>` | Named preset combinations         |
 | `postProcess`      | `(className: string) => string`  | Class transformation              |
 | `cacheSize`        | `number`                         | Cache size (default: 256)         |

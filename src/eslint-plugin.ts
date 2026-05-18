@@ -17,6 +17,7 @@ const CONFIG_KEYS = new Set([
 	'compoundSlots',
 	'defaultVariants',
 	'requiredVariants',
+	'multiSlots',
 	'presets',
 	'cacheSize',
 	'postProcess',

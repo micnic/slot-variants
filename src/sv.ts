@@ -84,9 +84,28 @@ type CompiledCompoundSlot = {
 	slots: readonly string[];
 };
 
-type ReturnValue<S extends MaybeSlots> = S extends undefined
+type MultiSlots<S extends MaybeSlots> = readonly SlotKey<S>[] | boolean;
+
+type MultiSlotKeys<
+	S extends MaybeSlots,
+	MS extends MultiSlots<S>
+> = MS extends true
+	? SlotKey<S>
+	: MS extends readonly string[]
+		? MS[number] & SlotKey<S>
+		: never;
+
+type ReturnValue<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
+	MS extends MultiSlots<S>
+> = S extends undefined
 	? string
-	: Prettify<Record<SlotKey<S>, string>>;
+	: Prettify<{
+			[K in SlotKey<S>]: K extends MultiSlotKeys<S, MS>
+				? (props?: MultiSlotFnProps<S, V>) => string
+				: string;
+		}>;
 
 type SlotValue<S extends MaybeSlots, V> = S extends Slots
 	? Partial<Record<SlotKey<S>, V>> | V
@@ -127,6 +146,10 @@ type VariantPropsInternal<S extends MaybeSlots, V extends MaybeVariants<S>> = {
 	[K in StringKeyof<V>]: VariantPropType<V[K], S>;
 };
 
+type MultiSlotFnProps<S extends MaybeSlots, V extends MaybeVariants<S>> =
+	Prettify<PartialUndefined<VariantPropsInternal<S, V>>> &
+		XORClassProp<ClassValue, true>;
+
 type DefaultVariantValue<
 	S extends MaybeSlots,
 	V extends MaybeVariants<S>,
@@ -166,6 +189,7 @@ type CompiledConfig = {
 	variantData: readonly VariantData[];
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
 	requiredVariants: readonly string[];
+	multiSlots: ReadonlySet<string>;
 	presets: Record<string, RuntimeVariantState>;
 	compoundVariants: readonly CompiledCompoundVariant[];
 	compoundSlots: readonly CompiledCompoundSlot[];
@@ -228,6 +252,7 @@ type Config<
 	V extends MaybeVariants<S>,
 	RV extends RequiredVariants<V>,
 	P extends MaybePresets<S, V>,
+	MS extends MultiSlots<S>,
 	I extends boolean = false
 > = {
 	base?: ConfigClassValue;
@@ -237,19 +262,21 @@ type Config<
 	compoundSlots?: CompoundSlots<S, V> | undefined;
 	defaultVariants?: DefaultVariants<S, V, RV> | undefined;
 	requiredVariants?: RV | undefined;
+	multiSlots?: MS | undefined;
 	presets?: P | undefined;
 	cacheSize?: number | undefined;
 	introspection?: I | undefined;
 	postProcess?: ((className: string) => string) | undefined;
 };
 
-type ConfigKey = keyof Config<undefined, undefined, [], undefined>;
+type ConfigKey = keyof Config<undefined, undefined, [], undefined, false>;
 
 type IntrospectionValues<
 	S extends MaybeSlots,
 	V extends MaybeVariants<S>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V>
+	P extends MaybePresets<S, V>,
+	MS extends MultiSlots<S>
 > = {
 	variants: V extends undefined ? Record<string, never> : V;
 	variantKeys: StringKeyof<V>[];
@@ -257,6 +284,7 @@ type IntrospectionValues<
 	slotKeys: SlotKey<S>[];
 	defaultVariants: DefaultVariants<S, V, RV>;
 	requiredVariants: RV extends true ? StringKeyof<V>[] : RV;
+	multiSlots: MS extends true ? SlotKey<S>[] : MS;
 	presets: P extends undefined ? Record<string, never> : P;
 	presetKeys: P extends undefined ? [] : StringKeyof<P>[];
 	getVariantValues: V extends undefined
@@ -271,14 +299,17 @@ type VariantFn<
 	V extends MaybeVariants<S>,
 	RV extends RequiredVariants<V>,
 	P extends MaybePresets<S, V>,
+	MS extends MultiSlots<S>,
 	I extends boolean
 > = {
 	(
 		...args: [RequiredVariantKeys<V, RV>] extends [never]
 			? [props?: Prettify<Props<S, V, RV, P>> | undefined]
 			: [props: Prettify<Props<S, V, RV, P>>]
-	): ReturnValue<S>;
-} & (I extends true ? Prettify<IntrospectionValues<S, V, RV, P>> : unknown);
+	): ReturnValue<S, V, MS>;
+} & (I extends true
+	? Prettify<IntrospectionValues<S, V, RV, P, MS>>
+	: unknown);
 
 type NonConfigClassArg<T> =
 	T extends Record<string, unknown>
@@ -596,6 +627,7 @@ const configKeysRecord: Record<ConfigKey, true> = {
 	compoundSlots: true,
 	defaultVariants: true,
 	requiredVariants: true,
+	multiSlots: true,
 	presets: true,
 	cacheSize: true,
 	postProcess: true,
@@ -609,10 +641,11 @@ const isConfig = <
 	V extends MaybeVariants<S>,
 	RV extends RequiredVariants<V>,
 	P extends MaybePresets<S, V>,
+	MS extends MultiSlots<S>,
 	I extends boolean
 >(
-	value: ClassValue | Config<S, V, RV, P, I>
-): value is Config<S, V, RV, P, I> =>
+	value: ClassValue | Config<S, V, RV, P, MS, I>
+): value is Config<S, V, RV, P, MS, I> =>
 	value !== null &&
 	typeof value === 'object' &&
 	!isArray(value) &&
@@ -681,6 +714,28 @@ const resolveRequiredVariants = (
 	}
 
 	return requiredVariants;
+};
+
+const resolveMultiSlots = (
+	multiSlots: readonly string[] | boolean,
+	slotKeys: ReadonlySet<string>
+): ReadonlySet<string> => {
+
+	if (multiSlots === true) {
+		return slotKeys;
+	}
+
+	if (multiSlots === false) {
+		return new Set();
+	}
+
+	for (const slot of multiSlots) {
+		if (!slotKeys.has(slot)) {
+			throw new Error(`Multi slot references unknown slot "${slot}"`);
+		}
+	}
+
+	return new Set(multiSlots);
 };
 
 const assertValidRequiredVariantConfig = (
@@ -827,10 +882,11 @@ const compileConfig = <
 	V extends MaybeVariants<S>,
 	RV extends RequiredVariants<V>,
 	P extends MaybePresets<S, V>,
+	MS extends MultiSlots<S>,
 	I extends boolean
 >(
 	baseArgs: ClassValue[],
-	config: Config<S, V, RV, P, I>
+	config: Config<S, V, RV, P, MS, I>
 ): CompiledConfig => {
 
 	const {
@@ -841,6 +897,7 @@ const compileConfig = <
 		compoundSlots = [],
 		defaultVariants = {},
 		requiredVariants = [],
+		multiSlots = false,
 		presets = {},
 		cacheSize = 256,
 		postProcess,
@@ -859,6 +916,7 @@ const compileConfig = <
 	const slotKeys: ReadonlySet<string> = new Set(keys(normalizedSlots));
 	const normalizedVariants = createNormalizedVariants(variants, slotKeys);
 	const variantData = createVariantData(normalizedVariants);
+	const resolvedMultiSlots = resolveMultiSlots(multiSlots, slotKeys);
 
 	const resolvedRequiredVariants = resolveRequiredVariants(
 		requiredVariants,
@@ -900,6 +958,7 @@ const compileConfig = <
 		variantData,
 		defaultVariants,
 		requiredVariants: resolvedRequiredVariants,
+		multiSlots: resolvedMultiSlots,
 		presets,
 		compoundVariants: compiledCompoundVariants,
 		compoundSlots: compiledCompoundSlots,
@@ -1229,6 +1288,100 @@ const runVariant = (
 	);
 };
 
+const mergeMultiSlotClass = (
+	slotKeys: ReadonlySet<string>,
+	outerClass: RuntimeClassValue | undefined,
+	innerClass: RuntimeClassValue,
+	slotKey: string
+): RuntimeClassValue => {
+
+	const merged: Record<string, ClassValue> = {};
+
+	if (outerClass !== undefined && isSlotObjectValue(outerClass, slotKeys)) {
+		assign(merged, outerClass);
+	} else {
+		merged.base = outerClass;
+	}
+
+	merged[slotKey] = cn(merged[slotKey], innerClass);
+
+	return merged;
+};
+
+const buildSlotFn =
+	(config: CompiledConfig, outerProps: RuntimeProps, slotKey: string) =>
+	(innerProps: RuntimeProps = {}): string => {
+
+		const outerClass = outerProps.class ?? outerProps.className;
+		const innerClass = innerProps.class ?? innerProps.className;
+
+		const mergedProps: RuntimeProps = { ...outerProps, ...innerProps };
+
+		// A defined inner class takes precedence over the spread `className`
+		if (innerClass !== undefined) {
+			mergedProps.class = mergeMultiSlotClass(
+				config.slotKeys,
+				outerClass,
+				innerClass,
+				slotKey
+			);
+		}
+
+		const result = runVariant(config, mergedProps);
+
+		if (typeof result === 'string') {
+			return result;
+		}
+
+		return cn(result[slotKey]);
+	};
+
+type MultiSlotResult = Record<
+	string,
+	string | ((props?: RuntimeProps) => string)
+>;
+
+const applyMultiSlots = (
+	config: CompiledConfig,
+	props: RuntimeProps,
+	result: CacheValue
+): MultiSlotResult => {
+
+	const record: Record<string, string> = {};
+
+	if (typeof result === 'string') {
+		record.base = result;
+	} else {
+		assign(record, result);
+	}
+
+	const output: MultiSlotResult = {};
+
+	for (const [slotKey, slotValue] of entries(record)) {
+		if (config.multiSlots.has(slotKey)) {
+			output[slotKey] = buildSlotFn(config, props, slotKey);
+		} else {
+			output[slotKey] = slotValue;
+		}
+	}
+
+	return output;
+};
+
+const runVariantResult = (
+	config: CompiledConfig,
+	props: RuntimeProps
+): CacheValue | MultiSlotResult => {
+
+	const result = runVariant(config, props);
+
+	if (config.multiSlots.size === 0) {
+		return result;
+	}
+
+	return applyMultiSlots(config, props, result);
+};
+
 /**
  * Builds a class name string or a variant-based class name generator.
  *
@@ -1280,17 +1433,19 @@ export function sv<
 	V extends MaybeVariants<S> = undefined,
 	RV extends RequiredVariants<V> = false,
 	P extends MaybePresets<S, V> = undefined,
+	MS extends MultiSlots<S> = false,
 	I extends boolean = false
->(config: Config<S, V, RV, P, I>): VariantFn<S, V, RV, P, I>;
+>(config: Config<S, V, RV, P, MS, I>): VariantFn<S, V, RV, P, MS, I>;
 export function sv<
 	S extends MaybeSlots = undefined,
 	V extends MaybeVariants<S> = undefined,
 	RV extends RequiredVariants<V> = false,
 	P extends MaybePresets<S, V> = undefined,
+	MS extends MultiSlots<S> = false,
 	I extends boolean = false
 >(
-	...args: [...ClassValue[], Config<S, V, RV, P, I>]
-): VariantFn<S, V, RV, P, I>;
+	...args: [...ClassValue[], Config<S, V, RV, P, MS, I>]
+): VariantFn<S, V, RV, P, MS, I>;
 export function sv<const T extends ClassValue[]>(
 	...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
 ): string;
@@ -1299,22 +1454,24 @@ export function sv<
 	V extends MaybeVariants<S> = undefined,
 	RV extends RequiredVariants<V> = false,
 	P extends MaybePresets<S, V> = undefined,
+	MS extends MultiSlots<S> = false,
 	I extends boolean = false
->(...args: ClassValue[]): string | VariantFn<S, V, RV, P, I> {
+>(...args: ClassValue[]): string | VariantFn<S, V, RV, P, MS, I> {
 
 	const last = args.at(-1);
 
 	// Return merged class string if no config is provided
-	if (!isConfig<S, V, RV, P, I>(last)) {
+	if (!isConfig<S, V, RV, P, MS, I>(last)) {
 		return cn(...args);
 	}
 
 	const config = compileConfig(args.slice(0, -1), last);
-	const variantFn = (props: RuntimeProps = {}) => runVariant(config, props);
+	const variantFn = (props: RuntimeProps = {}) =>
+		runVariantResult(config, props);
 
 	// Conditionally add introspection properties if enabled in config
 	if (!config.introspection) {
-		return variantFn as VariantFn<S, V, RV, P, I>;
+		return variantFn as unknown as VariantFn<S, V, RV, P, MS, I>;
 	}
 
 	return assign(variantFn, {
@@ -1324,6 +1481,7 @@ export function sv<
 		slotKeys: [...config.slotKeys],
 		defaultVariants: config.defaultVariants,
 		requiredVariants: config.requiredVariants,
+		multiSlots: [...config.multiSlots],
 		presets: config.presets,
 		presetKeys: keys(config.presets),
 		getVariantValues: (key: string) =>
@@ -1332,5 +1490,5 @@ export function sv<
 			),
 		clearCache: () => config.cache.clear(),
 		getCacheSize: () => config.cache.size
-	}) as unknown as VariantFn<S, V, RV, P, I>;
+	}) as unknown as VariantFn<S, V, RV, P, MS, I>;
 }

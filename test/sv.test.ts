@@ -4820,3 +4820,263 @@ void _assertSCPSlotsHasHeader;
 void _assertSCPSlotsHasBody;
 void _assertSCPAllOptional;
 void _assertSCPNoExtraKeys;
+
+// =============================================================================
+// sv() - multiSlots
+// =============================================================================
+
+t.test('multiSlots makes listed slot a reconfigurable function', (t) => {
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold',
+			body: 'py-4'
+		},
+		variants: {
+			size: {
+				sm: { base: 'p-2', header: 'text-sm', body: 'text-xs' },
+				lg: { base: 'p-6', header: 'text-lg', body: 'text-base' }
+			}
+		},
+		multiSlots: ['header']
+	});
+
+	const result = card({ size: 'sm' });
+
+	t.equal(result.base, 'border p-2', 'base stays a string');
+	t.equal(result.body, 'py-4 text-xs', 'non-listed slot stays a string');
+	t.type(result.header, 'function', 'listed slot becomes a function');
+	t.equal(
+		result.header(),
+		'font-bold text-sm',
+		'slot function uses the outer props'
+	);
+	t.equal(
+		result.header({ size: 'lg' }),
+		'font-bold text-lg',
+		'slot function reconfigures variant props'
+	);
+
+	t.end();
+});
+
+t.test('multiSlots: true makes every slot a function', (t) => {
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold',
+			body: 'py-4'
+		},
+		multiSlots: true
+	});
+
+	const result = card();
+
+	t.type(result.base, 'function', 'base becomes a function');
+	t.type(result.header, 'function', 'header becomes a function');
+	t.type(result.body, 'function', 'body becomes a function');
+	t.equal(result.base(), 'border', 'base function returns its classes');
+	t.equal(result.header(), 'font-bold', 'header function returns its classes');
+
+	t.end();
+});
+
+t.test('multiSlots: false keeps every slot a string', (t) => {
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold'
+		},
+		multiSlots: false
+	});
+
+	const result = card();
+
+	t.same(result, { base: 'border', header: 'font-bold' }, 'all strings');
+
+	t.end();
+});
+
+t.test('multiSlots slot function accepts a class override', (t) => {
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold',
+			body: 'py-4'
+		},
+		multiSlots: ['header']
+	});
+
+	const result = card();
+
+	t.equal(
+		result.header({ class: 'mt-2' }),
+		'font-bold mt-2',
+		'class override is appended'
+	);
+	t.equal(
+		result.header({ className: 'mb-2' }),
+		'font-bold mb-2',
+		'className override is appended'
+	);
+
+	t.end();
+});
+
+t.test('multiSlots slot function merges outer slot-object class', (t) => {
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold'
+		},
+		multiSlots: ['header']
+	});
+
+	const result = card({ class: { header: 'ring' } });
+
+	t.equal(
+		result.header({ class: 'mt-2' }),
+		'font-bold ring mt-2',
+		'outer slot-object class and inner class both apply'
+	);
+
+	t.end();
+});
+
+t.test('multiSlots slot function merges outer string class', (t) => {
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold'
+		},
+		multiSlots: ['header']
+	});
+
+	const result = card({ class: 'shadow' });
+
+	t.equal(
+		result.base,
+		'border shadow',
+		'outer string class targets the base slot'
+	);
+	t.equal(
+		result.header({ class: 'mt-2' }),
+		'font-bold mt-2',
+		'inner class applies to the header slot'
+	);
+
+	t.end();
+});
+
+t.test('multiSlots on a base-only config returns a function', (t) => {
+	const box = sv('border rounded-lg', {
+		slots: {},
+		multiSlots: true
+	});
+
+	const result = box();
+
+	t.type(result.base, 'function', 'base becomes a function');
+	t.equal(result.base(), 'border rounded-lg', 'base function returns classes');
+	t.equal(
+		result.base({ class: 'mt-2' }),
+		'border rounded-lg mt-2',
+		'base function accepts a class override'
+	);
+
+	t.end();
+});
+
+t.test('multiSlots throws for an unknown slot', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error - intentionally referencing an unknown slot
+			sv('border', {
+				slots: {
+					header: 'font-bold'
+				},
+				multiSlots: ['footer']
+			}),
+		{ message: 'Multi slot references unknown slot "footer"' },
+		'throws at config time for an unknown slot'
+	);
+
+	t.end();
+});
+
+t.test('multiSlots is exposed via introspection', (t) => {
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold',
+			body: 'py-4'
+		},
+		multiSlots: ['header'],
+		introspection: true
+	});
+
+	t.same(card.multiSlots, ['header'], 'array form is exposed');
+
+	const all = sv('border', {
+		slots: {
+			header: 'font-bold'
+		},
+		multiSlots: true,
+		introspection: true
+	});
+
+	t.same(
+		all.multiSlots,
+		['base', 'header'],
+		'multiSlots: true resolves to every slot key'
+	);
+
+	t.end();
+});
+
+// --- multiSlots type tests ---
+
+const _multiSlotFn = sv('border', {
+	slots: {
+		header: 'font-bold',
+		body: 'py-4'
+	},
+	multiSlots: ['header']
+});
+
+type MultiSlotReturn = ReturnType<typeof _multiSlotFn>;
+
+type AnyFunction = (...args: never[]) => unknown;
+
+// The listed slot is a callable function, the rest stay plain strings
+type AssertHeaderIsFn = MultiSlotReturn['header'] extends AnyFunction
+	? true
+	: false;
+const _assertHeaderIsFn: AssertHeaderIsFn = true;
+
+type AssertBaseIsString = MultiSlotReturn['base'] extends string ? true : false;
+const _assertBaseIsString: AssertBaseIsString = true;
+
+type AssertBodyIsString = MultiSlotReturn['body'] extends string ? true : false;
+const _assertBodyIsString: AssertBodyIsString = true;
+
+// The slot function returns a string
+type AssertHeaderReturn = ReturnType<MultiSlotReturn['header']> extends string
+	? true
+	: false;
+const _assertHeaderReturn: AssertHeaderReturn = true;
+
+const _multiSlotAllFn = sv('border', {
+	slots: {
+		header: 'font-bold'
+	},
+	multiSlots: true
+});
+
+type MultiSlotAllReturn = ReturnType<typeof _multiSlotAllFn>;
+
+type AssertMultiSlotAll = MultiSlotAllReturn['base'] extends AnyFunction
+	? true
+	: false;
+const _assertMultiSlotAll: AssertMultiSlotAll = true;
+
+void _multiSlotFn;
+void _assertHeaderIsFn;
+void _assertBaseIsString;
+void _assertBodyIsString;
+void _assertHeaderReturn;
+void _multiSlotAllFn;
+void _assertMultiSlotAll;
