@@ -495,7 +495,7 @@ Reports class-bearing positions in `sv()` and `cn()` calls that aren't staticall
 - Accepts only string literals, template literals without expressions, and arrays of those as class values. Identifiers, member access, calls, spreads, non-string literals, templates with expressions, and object records are reported.
 - For `sv()` config, validates `base`, `slots` values, `variants` values (both record form and boolean shorthand), and the `class` / `className` of `compoundVariants` / `compoundSlots` entries. The `slots` array of `compoundSlots` must be a static array of string literals.
 - Top-level config keys must be statically known — spreads and computed keys cause the call to fall through to the cn-style path, which then reports the entire object as dynamic.
-- Non-class-bearing config keys (`defaultVariants`, `presets`, `requiredVariants`, `cacheSize`, `postProcess`, `introspection`) are not validated. Runtime variant matchers inside compound entries are also left alone — only the class value (and `compoundSlots`' `slots` array) is checked.
+- Non-class-bearing config keys (`defaultVariants`, `presets`, `requiredVariants`, `multiSlots`, `cacheSize`, `postProcess`, `introspection`) are not validated. Runtime variant matchers inside compound entries are also left alone — only the class value (and `compoundSlots`' `slots` array) is checked.
 - Move dynamic class strings to the runtime `class` / `className` prop on the function returned by `sv()` — that call site is intentionally outside the analyzer's scope.
 
 ### `slot-variants/no-empty-classes`
