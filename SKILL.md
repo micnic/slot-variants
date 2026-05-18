@@ -379,7 +379,7 @@ export const Button = ({ class: className, ...props }: ButtonProps & { class?: s
 // card.ts
 import { sv, type VariantProps } from 'slot-variants';
 
-const card = sv('border rounded-lg shadow-sm', {
+const card = sv('border rounded-lg', {
 	slots: {
 		header: 'font-semibold px-4 py-3 border-b',
 		body: 'px-4 py-4',
@@ -392,7 +392,8 @@ const card = sv('border rounded-lg shadow-sm', {
 			lg: { base: 'p-6', header: 'text-lg', body: 'text-lg' }
 		},
 		elevated: {
-			true: { base: 'shadow-lg' }
+			true: { base: 'shadow-lg' },
+			false: { base: 'shadow-sm' }
 		}
 	},
 	compoundSlots: [{ slots: ['header', 'footer'], class: 'text-gray-600' }]
