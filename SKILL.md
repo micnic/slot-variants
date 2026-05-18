@@ -199,19 +199,24 @@ button({ size: 'lg', class: 'px-2' });
 
 ### 9. Leverage Caching for Performance
 
-The library caches results automatically (default 256 entries). Estimate the cache size based on the number of variant combinations and enlarge it accordingly:
+The library caches results automatically (default 256 entries). Each cache entry is one distinct combination of resolved variant values. The maximum number of combinations is the product, over every variant, of its value count plus one — the `+ 1` counts the variant being left unset:
+
+```
+maxEntries = (values₁ + 1) × (values₂ + 1) × ... × (valuesₙ + 1)
+```
 
 ```typescript
-// Estimate: size * intent * disabled = 2 * 2 * 2 = 8 combinations
+// maxEntries = (2 + 1) * (2 + 1) * (2 + 1) = 27 — well under 256, no cacheSize needed
 const button = sv('btn', {
 	variants: {
 		size: { sm: 'text-sm', lg: 'text-lg' },
 		intent: { primary: 'bg-blue-500', danger: 'bg-red-500' },
 		disabled: 'opacity-50 cursor-not-allowed'
-	},
-	cacheSize: 512 // increase cache for complex components
+	}
 });
 ```
+
+Raise `cacheSize` only when `maxEntries` exceeds the 256 default — below that the cache never evicts, so a larger size has no effect.
 
 Cache inspection methods (`getCacheSize`, `clearCache`) are only exposed when `introspection: true` is set — see rule 11.
 
