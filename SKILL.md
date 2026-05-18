@@ -515,7 +515,8 @@ Reports class strings whose whitespace isn't canonical — that is, whose value 
 - Flags leading or trailing whitespace, repeated spaces, and non-space whitespace (tabs, newlines, etc.) inside any string literal or expressionless template literal reachable from the call's arguments.
 - Walks recursively into arrays and objects, so values nested inside `slots`, `variants` records, `compoundVariants`, `compoundSlots`, `defaultVariants`, `presets`, etc. are all inspected.
 - Bails silently on dynamic expressions and non-string literals — false positives are impossible by construction.
-- Reports once per offending literal at the whole-node location. Fix by trimming and collapsing the string, or by splitting it into array entries.
+- Reports once per offending literal at the whole-node location.
+- **Auto-fixable**: `eslint --fix` rewrites each offending literal in place — trimming and collapsing its whitespace — while preserving the original quote style.
 
 ### `slot-variants/no-shared-tokens`
 
