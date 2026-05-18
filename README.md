@@ -737,6 +737,14 @@ The `postProcess` function is applied to each slot's final class string independ
 
 Results are cached automatically for performance. The default cache size is **256** entries.
 
+Each cache entry corresponds to one distinct combination of resolved variant values. The largest number of combinations a config can produce is the product, over every variant, of its value count plus one — the `+ 1` counts the variant being left unset:
+
+```
+maxEntries = (values₁ + 1) × (values₂ + 1) × ... × (valuesₙ + 1)
+```
+
+For example, four variants with three values each yield `(3 + 1) ** 4 = 256` combinations — exactly the default. A config whose `maxEntries` is at or below its `cacheSize` never evicts, so raising `cacheSize` past that point has no effect.
+
 ```typescript
 const button = sv('btn', {
   variants: {

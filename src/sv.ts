@@ -400,6 +400,12 @@ export type SlotClassProps<T extends AnyFn> =
 const { isArray } = Array;
 const { assign, entries, hasOwn, keys } = Object;
 
+/**
+ * Number of variant results retained by an `sv()` function when `cacheSize` is
+ * not set in its config
+ */
+const defaultCacheSize = 256;
+
 const looseEquals = (
 	first: RuntimeVariantValue,
 	second: RuntimeVariantValue | undefined
@@ -899,7 +905,7 @@ const compileConfig = <
 		requiredVariants = [],
 		multiSlots = false,
 		presets = {},
-		cacheSize = 256,
+		cacheSize = defaultCacheSize,
 		postProcess,
 		introspection = false
 	} = config;
@@ -1347,17 +1353,17 @@ const applyMultiSlots = (
 	result: CacheValue
 ): MultiSlotResult => {
 
-	const record: Record<string, string> = {};
-
-	if (typeof result === 'string') {
-		record.base = result;
-	} else {
-		assign(record, result);
-	}
-
 	const output: MultiSlotResult = {};
 
-	for (const [slotKey, slotValue] of entries(record)) {
+	// A string result means a base-only config; reaching here implies a
+	// non-empty `multiSlots`, which can only be the `base` slot.
+	if (typeof result === 'string') {
+		output.base = buildSlotFn(config, props, 'base');
+
+		return output;
+	}
+
+	for (const [slotKey, slotValue] of entries(result)) {
 		if (config.multiSlots.has(slotKey)) {
 			output[slotKey] = buildSlotFn(config, props, slotKey);
 		} else {
