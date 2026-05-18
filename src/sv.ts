@@ -9,44 +9,98 @@ type PartialUndefined<T> = {
 };
 
 type StringKeyof<T> = Extract<keyof T, string>;
-
 type ConfigClassValue = string | string[] | undefined;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFn = (...args: any[]) => unknown;
 
 type RuntimeVariantValue = string | number | boolean;
-
 type RuntimeVariantState = Record<string, RuntimeVariantValue | undefined>;
+
 type RuntimeVariantMatcher =
 	| RuntimeVariantValue
 	| readonly RuntimeVariantValue[];
-
-type MaybeSlots = Slots | undefined;
-
-type MaybeVariants<S extends MaybeSlots> = Variants<S> | undefined;
-
-type SlotValue<S extends MaybeSlots, V> = S extends Slots
-	? Partial<Record<SlotKey<S>, V>> | V
-	: V;
 
 type XORClassProp<C, O extends boolean = false> = O extends true
 	? { class?: C; className?: never } | { class?: never; className?: C }
 	: { class: C; className?: never } | { class?: never; className: C };
 
-type ClassProp<S extends MaybeSlots, V> = XORClassProp<SlotValue<S, V>, true>;
-
 type Slots = Record<string, ConfigClassValue>;
-
+type MaybeSlots = Slots | undefined;
 type BooleanString<T> = T extends `${boolean}` ? boolean : T;
-
 type SlotKey<S extends MaybeSlots> = 'base' | StringKeyof<S>;
+
+type BooleanShorthandKeys<S extends MaybeSlots> =
+	| (S extends Slots ? SlotKey<S> : never)
+	| 'true'
+	| 'false';
+
+type VariantPropType<T, S extends MaybeSlots> =
+	T extends Record<string | number, unknown>
+		? [Extract<keyof T, number>] extends [never]
+			? StringKeyof<T> extends BooleanShorthandKeys<S>
+				? boolean
+				: BooleanString<StringKeyof<T>>
+			: BooleanString<StringKeyof<T>> | Extract<keyof T, number>
+		: boolean;
+
+type NormalizedVariantValue =
+	| ConfigClassValue
+	| Record<string, ConfigClassValue>;
+
+type NormalizedVariantValues = Record<string, NormalizedVariantValue>;
+type NormalizedVariants = Record<string, NormalizedVariantValues>;
+type VariantValueIds = Record<string, number>;
+
+type VariantData = {
+	key: string;
+	valueIds: VariantValueIds;
+	values: NormalizedVariantValues;
+};
+
+type RuntimeVariantConfigValue = ConfigClassValue | NormalizedVariantValues;
+type CacheValue = string | Record<string, string>;
+
+type CacheEntry = {
+	raw: CacheValue;
+	processed: CacheValue;
+};
+
+type RuntimeDefaultVariant =
+	| RuntimeVariantValue
+	| ((props: RuntimeVariantState) => RuntimeVariantValue | undefined)
+	| undefined;
+
+type SlotClasses = Record<string, ConfigClassValue[]>;
+
+type CompoundMatcher = {
+	key: string;
+	expected: RuntimeVariantMatcher;
+};
+
+type CompiledCompoundSlot = {
+	matchers: readonly CompoundMatcher[];
+	classValue: ConfigClassValue;
+	slots: readonly string[];
+};
+
+type ReturnValue<S extends MaybeSlots> = S extends undefined
+	? string
+	: Prettify<Record<SlotKey<S>, string>>;
+
+type SlotValue<S extends MaybeSlots, V> = S extends Slots
+	? Partial<Record<SlotKey<S>, V>> | V
+	: V;
+
+type ClassProp<S extends MaybeSlots, V> = XORClassProp<SlotValue<S, V>, true>;
 
 type Variants<S extends MaybeSlots> = Record<
 	string,
 	| Record<string | number, SlotValue<S, ConfigClassValue>>
 	| SlotValue<S, ConfigClassValue>
 >;
+
+type MaybeVariants<S extends MaybeSlots> = Variants<S> | undefined;
 
 type VariantConditions<S extends MaybeSlots, V extends MaybeVariants<S>> = {
 	[K in StringKeyof<V>]?:
@@ -69,20 +123,6 @@ type CompoundSlots<
 } & VariantConditions<S, V> &
 	XORClassProp<ConfigClassValue>)[];
 
-type BooleanShorthandKeys<S extends MaybeSlots> =
-	| (S extends Slots ? SlotKey<S> : never)
-	| 'true'
-	| 'false';
-
-type VariantPropType<T, S extends MaybeSlots> =
-	T extends Record<string | number, unknown>
-		? [Extract<keyof T, number>] extends [never]
-			? StringKeyof<T> extends BooleanShorthandKeys<S>
-				? boolean
-				: BooleanString<StringKeyof<T>>
-			: BooleanString<StringKeyof<T>> | Extract<keyof T, number>
-		: boolean;
-
 type VariantPropsInternal<S extends MaybeSlots, V extends MaybeVariants<S>> = {
 	[K in StringKeyof<V>]: VariantPropType<V[K], S>;
 };
@@ -96,66 +136,15 @@ type DefaultVariantValue<
 	| ((props: RuntimeVariantState) => VariantPropType<V[K], S> | undefined)
 	| undefined;
 
-type DefaultVariants<
-	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	RV extends readonly StringKeyof<V>[]
-> = {
-	[K in Exclude<StringKeyof<V>, RV[number]>]?: DefaultVariantValue<S, V, K>;
-};
-
 type RuntimeClassValue = SlotValue<Slots, ClassValue>;
-
-type NormalizedVariantValue =
-	| ConfigClassValue
-	| Record<string, ConfigClassValue>;
-
-type NormalizedVariantValues = Record<string, NormalizedVariantValue>;
-
-type NormalizedVariants = Record<string, NormalizedVariantValues>;
-
-type VariantValueIds = Record<string, number>;
-
-type VariantData = {
-	key: string;
-	valueIds: VariantValueIds;
-	values: NormalizedVariantValues;
-};
-
-type RuntimeVariantConfigValue = ConfigClassValue | NormalizedVariantValues;
-
-type CacheValue = string | Record<string, string>;
-
-type CacheEntry = {
-	raw: CacheValue;
-	processed: CacheValue;
-};
 
 type Presets<S extends MaybeSlots, V extends MaybeVariants<S>> = Record<
 	string,
 	Partial<VariantPropsInternal<S, V>>
 >;
 
-type VariantPropsWithRequired<
-	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	RV extends readonly StringKeyof<V>[]
-> = Pick<VariantPropsInternal<S, V>, RV[number]> &
-	Omit<PartialUndefined<VariantPropsInternal<S, V>>, RV[number]>;
-
-type Props<
-	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	RV extends readonly StringKeyof<V>[],
-	P extends Presets<S, V> | undefined
-> = Prettify<
-	P extends undefined
-		? VariantPropsWithRequired<S, V, RV>
-		: PartialUndefined<VariantPropsInternal<S, V>> & {
-				preset?: StringKeyof<P> | undefined;
-			}
-> &
-	ClassProp<S, ClassValue>;
+type MaybePresets<S extends MaybeSlots, V extends MaybeVariants<S>> =
+	Presets<S, V> | undefined;
 
 type RuntimeProps = RuntimeVariantState & {
 	class?: RuntimeClassValue;
@@ -163,47 +152,9 @@ type RuntimeProps = RuntimeVariantState & {
 	preset?: string;
 };
 
-type RuntimeDefaultVariant =
-	| RuntimeVariantValue
-	| ((props: RuntimeVariantState) => RuntimeVariantValue | undefined)
-	| undefined;
-
-type Config<
-	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	RV extends readonly StringKeyof<V>[],
-	P extends Presets<S, V> | undefined,
-	I extends boolean = false
-> = {
-	base?: ConfigClassValue;
-	variants?: V | undefined;
-	slots?: S | undefined;
-	compoundVariants?: CompoundVariants<S, V> | undefined;
-	compoundSlots?: CompoundSlots<S, V> | undefined;
-	defaultVariants?: DefaultVariants<S, V, RV> | undefined;
-	requiredVariants?: RV | undefined;
-	presets?: P | undefined;
-	cacheSize?: number | undefined;
-	introspection?: I | undefined;
-	postProcess?: ((className: string) => string) | undefined;
-};
-
-type SlotClasses = Record<string, ConfigClassValue[]>;
-
-type CompoundMatcher = {
-	key: string;
-	expected: RuntimeVariantMatcher;
-};
-
 type CompiledCompoundVariant = {
 	matchers: readonly CompoundMatcher[];
 	classValue: SlotValue<Slots, ConfigClassValue>;
-};
-
-type CompiledCompoundSlot = {
-	matchers: readonly CompoundMatcher[];
-	classValue: ConfigClassValue;
-	slots: readonly string[];
 };
 
 type CompiledConfig = {
@@ -224,38 +175,88 @@ type CompiledConfig = {
 	postProcess: ((className: string) => string) | undefined;
 };
 
-type ConfigKey = keyof Config<undefined, undefined, [], undefined>;
+type RequiredVariants<V extends MaybeVariants<MaybeSlots>> =
+	| readonly StringKeyof<V>[]
+	| boolean;
 
-type VariantFn<
+type RequiredVariantKeys<
+	V extends MaybeVariants<MaybeSlots>,
+	RV extends RequiredVariants<V>
+> = RV extends true
+	? StringKeyof<V>
+	: RV extends readonly string[]
+		? RV[number] & StringKeyof<V>
+		: never;
+
+type DefaultVariants<
 	S extends MaybeSlots,
 	V extends MaybeVariants<S>,
-	RV extends readonly StringKeyof<V>[],
-	P extends Presets<S, V> | undefined,
-	I extends boolean
+	RV extends RequiredVariants<V>
 > = {
-	(
-		...args: RV extends readonly []
-			? [props?: Prettify<Props<S, V, RV, P>> | undefined]
-			: [props: Prettify<Props<S, V, RV, P>>]
-	): ReturnValue<S>;
-} & (I extends true ? Prettify<IntrospectionValues<S, V, RV, P>> : unknown);
+	[K in Exclude<
+		StringKeyof<V>,
+		RequiredVariantKeys<V, RV>
+	>]?: DefaultVariantValue<S, V, K>;
+};
 
-type ReturnValue<S extends MaybeSlots> = S extends undefined
-	? string
-	: Prettify<Record<SlotKey<S>, string>>;
+type VariantPropsWithRequired<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
+	RV extends RequiredVariants<V>
+> = Pick<VariantPropsInternal<S, V>, RequiredVariantKeys<V, RV>> &
+	Omit<
+		PartialUndefined<VariantPropsInternal<S, V>>,
+		RequiredVariantKeys<V, RV>
+	>;
+
+type Props<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
+	RV extends RequiredVariants<V>,
+	P extends MaybePresets<S, V>
+> = Prettify<
+	P extends undefined
+		? VariantPropsWithRequired<S, V, RV>
+		: PartialUndefined<VariantPropsInternal<S, V>> & {
+				preset?: StringKeyof<P> | undefined;
+			}
+> &
+	ClassProp<S, ClassValue>;
+
+type Config<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
+	RV extends RequiredVariants<V>,
+	P extends MaybePresets<S, V>,
+	I extends boolean = false
+> = {
+	base?: ConfigClassValue;
+	variants?: V | undefined;
+	slots?: S | undefined;
+	compoundVariants?: CompoundVariants<S, V> | undefined;
+	compoundSlots?: CompoundSlots<S, V> | undefined;
+	defaultVariants?: DefaultVariants<S, V, RV> | undefined;
+	requiredVariants?: RV | undefined;
+	presets?: P | undefined;
+	cacheSize?: number | undefined;
+	introspection?: I | undefined;
+	postProcess?: ((className: string) => string) | undefined;
+};
+
+type ConfigKey = keyof Config<undefined, undefined, [], undefined>;
 
 type IntrospectionValues<
 	S extends MaybeSlots,
 	V extends MaybeVariants<S>,
-	RV extends readonly StringKeyof<V>[],
-	P extends Presets<S, V> | undefined
+	RV extends RequiredVariants<V>,
+	P extends MaybePresets<S, V>
 > = {
 	variants: V extends undefined ? Record<string, never> : V;
 	variantKeys: StringKeyof<V>[];
 	slots: S extends undefined ? Record<string, never> : S;
 	slotKeys: SlotKey<S>[];
 	defaultVariants: DefaultVariants<S, V, RV>;
-	requiredVariants: RV;
+	requiredVariants: RV extends true ? StringKeyof<V>[] : RV;
 	presets: P extends undefined ? Record<string, never> : P;
 	presetKeys: P extends undefined ? [] : StringKeyof<P>[];
 	getVariantValues: V extends undefined
@@ -264,6 +265,20 @@ type IntrospectionValues<
 	clearCache: () => void;
 	getCacheSize: () => number;
 };
+
+type VariantFn<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
+	RV extends RequiredVariants<V>,
+	P extends MaybePresets<S, V>,
+	I extends boolean
+> = {
+	(
+		...args: [RequiredVariantKeys<V, RV>] extends [never]
+			? [props?: Prettify<Props<S, V, RV, P>> | undefined]
+			: [props: Prettify<Props<S, V, RV, P>>]
+	): ReturnValue<S>;
+} & (I extends true ? Prettify<IntrospectionValues<S, V, RV, P>> : unknown);
 
 type NonConfigClassArg<T> =
 	T extends Record<string, unknown>
@@ -592,8 +607,8 @@ const configKeys: ReadonlySet<string> = new Set(keys(configKeysRecord));
 const isConfig = <
 	S extends MaybeSlots,
 	V extends MaybeVariants<S>,
-	RV extends readonly StringKeyof<V>[],
-	P extends Presets<S, V> | undefined,
+	RV extends RequiredVariants<V>,
+	P extends MaybePresets<S, V>,
 	I extends boolean
 >(
 	value: ClassValue | Config<S, V, RV, P, I>
@@ -650,6 +665,22 @@ const getKnownVariantValues = (
 	}
 
 	return variantValues;
+};
+
+const resolveRequiredVariants = (
+	requiredVariants: readonly string[] | boolean,
+	normalizedVariants: NormalizedVariants
+): readonly string[] => {
+
+	if (requiredVariants === true) {
+		return keys(normalizedVariants);
+	}
+
+	if (requiredVariants === false) {
+		return [];
+	}
+
+	return requiredVariants;
 };
 
 const assertValidRequiredVariantConfig = (
@@ -794,8 +825,8 @@ const applyValueToSlotClasses = (
 const compileConfig = <
 	S extends MaybeSlots,
 	V extends MaybeVariants<S>,
-	RV extends readonly StringKeyof<V>[],
-	P extends Presets<S, V> | undefined,
+	RV extends RequiredVariants<V>,
+	P extends MaybePresets<S, V>,
 	I extends boolean
 >(
 	baseArgs: ClassValue[],
@@ -817,18 +848,25 @@ const compileConfig = <
 	} = config;
 
 	const { base: baseSlot, ...otherSlots } = slots;
-	const { cache, cacheReturn } = createCache(cacheSize);
+
 	const normalizedSlots: Slots = {
 		base: cn(...baseArgs, configBase, baseSlot),
 		...otherSlots
 	};
+
+	const { cache, cacheReturn } = createCache(cacheSize);
 	const slotEntries = entries(normalizedSlots);
 	const slotKeys: ReadonlySet<string> = new Set(keys(normalizedSlots));
 	const normalizedVariants = createNormalizedVariants(variants, slotKeys);
 	const variantData = createVariantData(normalizedVariants);
 
-	assertValidRequiredVariantConfig(
+	const resolvedRequiredVariants = resolveRequiredVariants(
 		requiredVariants,
+		normalizedVariants
+	);
+
+	assertValidRequiredVariantConfig(
+		resolvedRequiredVariants,
 		normalizedVariants,
 		defaultVariants
 	);
@@ -861,7 +899,7 @@ const compileConfig = <
 		normalizedVariants,
 		variantData,
 		defaultVariants,
-		requiredVariants,
+		requiredVariants: resolvedRequiredVariants,
 		presets,
 		compoundVariants: compiledCompoundVariants,
 		compoundSlots: compiledCompoundSlots,
@@ -1240,15 +1278,15 @@ const runVariant = (
 export function sv<
 	S extends MaybeSlots = undefined,
 	V extends MaybeVariants<S> = undefined,
-	RV extends readonly StringKeyof<V>[] = [],
-	P extends Presets<S, V> | undefined = undefined,
+	RV extends RequiredVariants<V> = false,
+	P extends MaybePresets<S, V> = undefined,
 	I extends boolean = false
 >(config: Config<S, V, RV, P, I>): VariantFn<S, V, RV, P, I>;
 export function sv<
 	S extends MaybeSlots = undefined,
 	V extends MaybeVariants<S> = undefined,
-	RV extends readonly StringKeyof<V>[] = [],
-	P extends Presets<S, V> | undefined = undefined,
+	RV extends RequiredVariants<V> = false,
+	P extends MaybePresets<S, V> = undefined,
 	I extends boolean = false
 >(
 	...args: [...ClassValue[], Config<S, V, RV, P, I>]
@@ -1259,8 +1297,8 @@ export function sv<const T extends ClassValue[]>(
 export function sv<
 	S extends MaybeSlots = undefined,
 	V extends MaybeVariants<S> = undefined,
-	RV extends readonly StringKeyof<V>[] = [],
-	P extends Presets<S, V> | undefined = undefined,
+	RV extends RequiredVariants<V> = false,
+	P extends MaybePresets<S, V> = undefined,
 	I extends boolean = false
 >(...args: ClassValue[]): string | VariantFn<S, V, RV, P, I> {
 

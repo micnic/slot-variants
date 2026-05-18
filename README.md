@@ -384,6 +384,21 @@ button({ intent: 'primary', size: 'lg' });  // OK
 button({ size: 'lg' });                     // Throws: Missing required variant: "intent"
 ```
 
+Pass `true` to make every variant required, or `false` to require none:
+
+```typescript
+const button = sv('btn', {
+  variants: {
+    size: { sm: 'text-sm', lg: 'text-lg' },
+    intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+  },
+  requiredVariants: true
+});
+
+button({ size: 'sm', intent: 'primary' });  // OK
+button({ size: 'sm' });                     // Throws: Missing required variant: "intent"
+```
+
 ### Presets
 
 Presets are predefined named combinations of variant values. Use them to create reusable variant shortcuts:
@@ -884,7 +899,7 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 | `compoundVariants` | `Array` | Additional classes applied when multiple variant conditions match |
 | `compoundSlots` | `Array` | Classes applied to multiple slots based on variant conditions |
 | `defaultVariants` | `Object` | Default values for variants (static values or functions) |
-| `requiredVariants` | `string[]` | Variant names that must be provided at call time |
+| `requiredVariants` | `string[] \| boolean` | Variant names that must be provided at call time; `true` makes every variant required, `false` none |
 | `presets` | `Record<string, Partial<VariantProps>>` | Named combinations of variant values selectable via `preset` prop |
 | `postProcess` | `(className: string) => string` | Custom transformation applied to final class strings |
 | `cacheSize` | `number` | Maximum number of cached results (default: `256`) |

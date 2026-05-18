@@ -2494,11 +2494,38 @@ type AssertMultiRequired = MultiRequiredProps extends {
 	: false;
 const _assertMultiRequired: AssertMultiRequired = true;
 
+// requiredVariants: true makes every variant required
+const _allRequiredFn = sv('rounded-lg', {
+	variants: {
+		size: {
+			sm: 'text-sm',
+			lg: 'text-lg'
+		},
+		intent: {
+			primary: 'bg-blue-500',
+			danger: 'bg-red-500'
+		}
+	},
+	requiredVariants: true
+});
+
+type AllRequiredBoolProps = VariantProps<typeof _allRequiredFn>;
+
+type AssertAllRequiredBool = AllRequiredBoolProps extends {
+	size: 'sm' | 'lg';
+	intent: 'primary' | 'danger';
+}
+	? true
+	: false;
+const _assertAllRequiredBool: AssertAllRequiredBool = true;
+
 void _requiredFn;
 void _assertRequiredSize;
 void _assertOptionalIntent;
 void _multiRequiredFn;
 void _assertMultiRequired;
+void _allRequiredFn;
+void _assertAllRequiredBool;
 
 t.test('required variant works when provided', (t) => {
 	const button = sv('rounded-lg font-medium', {
@@ -2587,6 +2614,78 @@ t.test('required variant throws when it has a default', (t) => {
 			}),
 		{ message: 'Required variant "size" cannot have a default value' },
 		'throws at config time for variant with default'
+	);
+
+	t.end();
+});
+
+t.test('requiredVariants: true makes all variants required', (t) => {
+	const button = sv('rounded-lg', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		requiredVariants: true
+	});
+
+	t.equal(
+		button({ size: 'sm', intent: 'primary' }),
+		'rounded-lg text-sm bg-blue-500',
+		'all required variants applied'
+	);
+
+	t.throws(
+		// @ts-expect-error - intentionally omitting a required variant
+		() => button({ size: 'sm' }),
+		{ message: 'Missing required variant: "intent"' },
+		'throws when a required variant is missing'
+	);
+
+	t.end();
+});
+
+t.test('requiredVariants: false keeps all variants optional', (t) => {
+	const button = sv('rounded-lg', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			}
+		},
+		requiredVariants: false
+	});
+
+	t.equal(button(), 'rounded-lg', 'works with no variants provided');
+
+	t.end();
+});
+
+t.test('requiredVariants: true exposes all keys via introspection', (t) => {
+	const button = sv('rounded-lg', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		requiredVariants: true,
+		introspection: true
+	});
+
+	t.same(
+		button.requiredVariants,
+		['size', 'intent'],
+		'all variant keys are required'
 	);
 
 	t.end();
