@@ -523,7 +523,7 @@ Reports class strings whose whitespace isn't canonical — that is, whose value 
 Reports class tokens that appear in every value of an exhaustively-covered variant — the token is constant in the rendered output and belongs in `base` or the corresponding `slots[slot]` entry rather than being repeated across every variant value.
 
 - Only analyzes `sv()` calls with a config; `cn()` calls and cn-style `sv()` calls are ignored.
-- Treats a variant as exhaustive when it has a `defaultVariants` entry or is listed in `requiredVariants`.
+- Treats a variant as exhaustive when it has a statically defined default value (a string, boolean, or number literal — a function-based or `undefined` default does not count) or is listed in `requiredVariants`.
 - Compares tokens per slot, so slot-based variants are checked against the specific slot they affect rather than only against `base`.
 - Skips non-exhaustive variants, single-value variants, boolean shorthand, slot-keyed boolean shorthand, and dynamic or partially-uninspectable variant value records.
 - Reports every repeated occurrence that should be lifted out of the variant so each value only contains classes that actually vary.
