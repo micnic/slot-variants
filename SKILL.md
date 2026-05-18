@@ -1,4 +1,4 @@
-# AGENTS.md - AI Agent Guide for slot-variants
+# slot-variants — AI Agent Guide
 
 ## Overview
 
