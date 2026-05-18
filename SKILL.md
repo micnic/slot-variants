@@ -194,7 +194,7 @@ const button = sv('px-4 py-2', {
 
 // tailwind-merge handles conflicting classes
 button({ size: 'lg', class: 'px-2' });
-// Result: 'px-2 py-3 text-lg' (not 'px-4 px-2 py-2')
+// Result: 'py-3 text-lg px-2' — twMerge drops the superseded px-4, px-6, py-2
 ```
 
 ### 9. Leverage Caching for Performance
@@ -341,7 +341,7 @@ This approach ensures variant and slot definitions live in one place, making upd
 ### React Component Pattern
 
 ```typescript
-// button.ts
+// button.tsx
 import { sv, type VariantProps } from 'slot-variants';
 
 const button = sv('btn font-medium rounded-lg', {
