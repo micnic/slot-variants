@@ -745,6 +745,8 @@ maxEntries = (values₁ + 1) × (values₂ + 1) × ... × (valuesₙ + 1)
 
 For example, four variants with three values each yield `(3 + 1) ** 4 = 256` combinations — exactly the default. A config whose `maxEntries` is at or below its `cacheSize` never evicts, so raising `cacheSize` past that point has no effect.
 
+The `+ 1` is dropped for any variant that cannot actually be left unset — one listed in `requiredVariants` (or all of them when `requiredVariants` is `true`), or one with a static `defaultVariants` value that always fills it in. A function-based default keeps the `+ 1`, since it may return `undefined`. The `getMaxEntries()` introspection method computes this exact count for a given config — see [Introspection](#introspection).
+
 ```typescript
 const button = sv('btn', {
   variants: {
@@ -799,6 +801,7 @@ button.presetKeys;                  // ['cta']
 button.presets;                     // { cta: { size: 'lg', intent: 'primary' } }
 button.getVariantValues('size');    // ['sm', 'lg']
 button.getVariantValues('intent');  // ['primary', 'danger']
+button.getMaxEntries();             // 4 — distinct variant combinations
 button.getCacheSize();              // current number of cached entries
 button.clearCache();                // clear all cached entries
 ```

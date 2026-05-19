@@ -290,6 +290,7 @@ type IntrospectionValues<
 	getVariantValues: V extends undefined
 		? (key: never) => never[]
 		: <K extends StringKeyof<V>>(key: K) => VariantPropType<V[K], S>[];
+	getMaxEntries: () => number;
 	clearCache: () => void;
 	getCacheSize: () => number;
 };
@@ -1374,6 +1375,39 @@ const applyMultiSlots = (
 	return output;
 };
 
+/**
+ * Computes the number of distinct variant combinations a config can produce,
+ * which is also the largest number of entries its cache can ever hold.
+ *
+ * Each variant contributes its value count, plus one for the unset state. The
+ * unset state is dropped when the variant cannot actually be left unset — it
+ * is required, or it has a static default value that always fills it in. A
+ * function-based default keeps the `+ 1`, since it may return `undefined`.
+ */
+const countMaxEntries = (config: CompiledConfig): number => {
+
+	const requiredVariants = new Set(config.requiredVariants);
+	const { defaultVariants } = config;
+
+	let count = 1;
+
+	for (const { key, valueIds } of config.variantData) {
+
+		const valueCount = keys(valueIds).length;
+		const defaultValue = defaultVariants[key];
+		const hasStaticDefault =
+			defaultValue !== undefined && typeof defaultValue !== 'function';
+
+		if (requiredVariants.has(key) || hasStaticDefault) {
+			count *= valueCount;
+		} else {
+			count *= valueCount + 1;
+		}
+	}
+
+	return count;
+};
+
 const runVariantResult = (
 	config: CompiledConfig,
 	props: RuntimeProps
@@ -1494,6 +1528,7 @@ export function sv<
 			keys(config.normalizedVariants[key] ?? {}).map(
 				coerceVariantKeyValue
 			),
+		getMaxEntries: () => countMaxEntries(config),
 		clearCache: () => config.cache.clear(),
 		getCacheSize: () => config.cache.size
 	}) as unknown as VariantFn<S, V, RV, P, MS, I>;

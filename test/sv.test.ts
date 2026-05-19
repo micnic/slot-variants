@@ -3810,6 +3810,150 @@ t.test('getVariantValues works when slots are defined', (t) => {
 	t.end();
 });
 
+t.test('getMaxEntries returns 1 when there are no variants', (t) => {
+	const box = sv('flex', { introspection: true });
+
+	t.equal(box.getMaxEntries(), 1, 'single empty combination');
+
+	t.end();
+});
+
+t.test('getMaxEntries multiplies (values + 1) for plain variants', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', md: 'text-base', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+		},
+		introspection: true
+	});
+
+	// size: 3 + 1, intent: 2 + 1
+	t.equal(button.getMaxEntries(), 12, '(3 + 1) * (2 + 1)');
+
+	t.end();
+});
+
+t.test('getMaxEntries matches the README four-variant example', (t) => {
+	const button = sv('btn', {
+		variants: {
+			a: { x: 'a-x', y: 'a-y', z: 'a-z' },
+			b: { x: 'b-x', y: 'b-y', z: 'b-z' },
+			c: { x: 'c-x', y: 'c-y', z: 'c-z' },
+			d: { x: 'd-x', y: 'd-y', z: 'd-z' }
+		},
+		introspection: true
+	});
+
+	t.equal(button.getMaxEntries(), 256, '(3 + 1) ** 4');
+
+	t.end();
+});
+
+t.test('getMaxEntries drops the unset state for a static default', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', md: 'text-base', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+		},
+		defaultVariants: { size: 'md' },
+		introspection: true
+	});
+
+	// size pinned by default: 3, intent: 2 + 1
+	t.equal(button.getMaxEntries(), 9, '3 * (2 + 1)');
+
+	t.end();
+});
+
+t.test('getMaxEntries keeps the unset state for a function default', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', md: 'text-base', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+		},
+		defaultVariants: { size: (props) => (props.intent === 'danger' ? 'lg' : undefined) },
+		introspection: true
+	});
+
+	// function default may return undefined: size still 3 + 1
+	t.equal(button.getMaxEntries(), 12, '(3 + 1) * (2 + 1)');
+
+	t.end();
+});
+
+t.test('getMaxEntries drops the unset state for a required variant', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', md: 'text-base', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+		},
+		requiredVariants: ['intent'],
+		introspection: true
+	});
+
+	// intent required: 2, size: 3 + 1
+	t.equal(button.getMaxEntries(), 8, '(3 + 1) * 2');
+
+	t.end();
+});
+
+t.test('getMaxEntries with requiredVariants: true drops every unset state', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', md: 'text-base', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+		},
+		requiredVariants: true,
+		introspection: true
+	});
+
+	t.equal(button.getMaxEntries(), 6, '3 * 2');
+
+	t.end();
+});
+
+t.test('getMaxEntries counts boolean variants as two values', (t) => {
+	const input = sv('input', {
+		variants: {
+			disabled: 'opacity-50',
+			error: { true: 'border-red-500', false: 'border-gray-300' }
+		},
+		introspection: true
+	});
+
+	t.equal(input.getMaxEntries(), 9, '(2 + 1) * (2 + 1)');
+
+	t.end();
+});
+
+t.test('getMaxEntries bounds the actual cache size', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+		},
+		introspection: true
+	});
+
+	const max = button.getMaxEntries();
+
+	t.equal(max, 9, '(2 + 1) * (2 + 1)');
+
+	button();
+	button({ size: 'sm' });
+	button({ size: 'lg' });
+	button({ intent: 'primary' });
+	button({ intent: 'danger' });
+	button({ size: 'sm', intent: 'primary' });
+	button({ size: 'sm', intent: 'danger' });
+	button({ size: 'lg', intent: 'primary' });
+	button({ size: 'lg', intent: 'danger' });
+
+	t.equal(button.getCacheSize(), max, 'every combination cached, none beyond max');
+
+	t.end();
+});
+
 // --- getVariantValues type tests ---
 
 const _gvvFn = sv('btn', {
@@ -3842,6 +3986,11 @@ type AssertGvvColsValues = typeof _gvvColsValues extends (1 | 2)[]
 	: false;
 const _assertGvvColsValues: AssertGvvColsValues = true;
 
+// getMaxEntries → number
+const _gvvMaxEntries = _gvvFn.getMaxEntries();
+type AssertGvvMaxEntries = typeof _gvvMaxEntries extends number ? true : false;
+const _assertGvvMaxEntries: AssertGvvMaxEntries = true;
+
 void _gvvFn;
 void _gvvSizeValues;
 void _assertGvvSizeValues;
@@ -3849,6 +3998,8 @@ void _gvvDisabledValues;
 void _assertGvvDisabledValues;
 void _gvvColsValues;
 void _assertGvvColsValues;
+void _gvvMaxEntries;
+void _assertGvvMaxEntries;
 
 // =============================================================================
 // sv() - additional type tests
