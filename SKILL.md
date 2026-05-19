@@ -288,7 +288,7 @@ Without `introspection: true`, only the variant function itself is returned — 
 Use introspection to share variant/slot definitions with other parts of your codebase:
 
 ```typescript
-// variants.ts - centralize variant definitions
+// variants.tsx - centralize variant definitions
 export const button = sv('btn font-medium rounded-lg', {
   variants: {
     size: {
@@ -311,7 +311,7 @@ export const button = sv('btn font-medium rounded-lg', {
 
 // Reuse variant keys for form validation
 const validSizes = button.variantKeys.includes('size')
-  ? Object.keys(button.variants.size as Record<string, string>)
+  ? Object.keys(button.variants.size)
   : [];
 // validSizes: ['sm', 'md', 'lg']
 
@@ -436,7 +436,7 @@ Class values inside the config (`base`, `variants` values, `slots` values, and `
 ## Imports
 
 ```typescript
-// Default exports
+// Functions
 import { sv, cn } from 'slot-variants';
 
 // Types only
@@ -508,6 +508,7 @@ Reports empty class values — empty strings, empty arrays, and empty objects �
 - A direct empty string at `slots[key]` is allowed — declaring a slot with no default classes is a real use case (`sv({ slots: { extra: '' } })`). Empty strings inside slot-value arrays are still reported.
 - Reports `sv()` / `cn()` invocations with zero arguments — they always return an empty string and have no effect.
 - Recurses into arrays but not into objects: values inside cn-style `{ cls: condition }` records are conditions, not class values, so they are left alone.
+- **Partially auto-fixable**: `eslint --fix` deletes an empty positional `cn()` / `sv()` argument or empty class-array element, along with its comma, when other items remain in that list. Empty values at other positions — `base`, variant values, compound `class`, or whole containers — are reported without a fix.
 
 ### `slot-variants/no-redundant-spaces`
 

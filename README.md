@@ -977,7 +977,7 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 - **`slot-variants/no-dynamic-classes`** — flags class-bearing positions in `sv()` and `cn()` calls that aren't statically inferrable. Only string literals, template literals without expressions, flat arrays of those in config, and explicit `undefined` config class values are accepted, and config objects must use static keys (no spreads, no computed keys). Identifiers, member access, calls, spreads, non-string literals, templates with expressions, nested config arrays, and runtime conditional records are reported. Non-class-bearing config keys (`defaultVariants`, `presets`, `requiredVariants`, `multiSlots`, `cacheSize`, `postProcess`, `introspection`) are not validated, and runtime variant matchers inside compound entries are left alone — only the `class`/`className` value (and the `slots` array of `compoundSlots`) is checked.
 
-- **`slot-variants/no-empty-classes`** — flags empty class values — empty strings, empty arrays, and empty objects — at any class-bearing position reachable from an `sv()` or `cn()` call, plus zero-argument `sv()` / `cn()` calls themselves (which always produce an empty class string). Reports empties in positional arguments (and inside arrays nested in those), in `base`, in variants including slot-keyed variant branches, in the `class`/`className` of `compoundVariants` and `compoundSlots` entries, and in the top-level `slots`, `variants`, `compoundVariants`, and `compoundSlots` containers themselves. Inside an `sv()` config, an empty string is still allowed as a direct `slots[key]` value — declaring a slot with no default classes is a valid use case.
+- **`slot-variants/no-empty-classes`** — flags empty class values — empty strings, empty arrays, and empty objects — at any class-bearing position reachable from an `sv()` or `cn()` call, plus zero-argument `sv()` / `cn()` calls themselves (which always produce an empty class string). Reports empties in positional arguments (and inside arrays nested in those), in `base`, in variants including slot-keyed variant branches, in the `class`/`className` of `compoundVariants` and `compoundSlots` entries, and in the top-level `slots`, `variants`, `compoundVariants`, and `compoundSlots` containers themselves. Inside an `sv()` config, an empty string is still allowed as a direct `slots[key]` value — declaring a slot with no default classes is a valid use case. **Partially auto-fixable**: `eslint --fix` removes an empty positional argument or empty class-array element, along with its comma, when other items remain in that list; empties at other positions are reported without a fix.
 
 - **`slot-variants/no-redundant-spaces`** — flags class strings whose whitespace isn't canonical. Inside a class string, whitespace is canonical only as a single ASCII space between two non-whitespace tokens, so leading or trailing whitespace, repeated spaces, and non-space whitespace (tabs, newlines, etc.) are reported. The rule walks every string and expressionless template literal reachable from a call's arguments — including values nested inside arrays and objects — and bails silently on dynamic expressions. **Auto-fixable**: `eslint --fix` rewrites each offending literal in place, preserving its original quote style.
 
@@ -1188,11 +1188,11 @@ Key differences to be aware of:
 
 | Feature | tailwind-variants | slot-variants |
 | --- | --- | --- |
-| Slot return type | Functions: `slot({ class: '...' })` | Strings: `slot` is already a `string` |
+| Slot return type | Always functions: `slot({ class: '...' })` | Strings by default; functions for slots listed in `multiSlots` |
 | `extend` (composition) | Supported | Not supported |
 | Built-in `twMerge` | Enabled by default | Use `postProcess: twMerge` |
 
-**Slot return type** is the most significant difference. In `tv()`, each slot returns a function that can accept additional props. In `sv()`, slots resolve to strings directly — use the `class` prop with a slot object for per-slot overrides:
+**Slot return type** is the most significant difference. In `tv()`, each slot returns a function that can accept additional props. In `sv()`, slots resolve to strings directly — use the `class` prop with a slot object for per-slot overrides, or list a slot in [`multiSlots`](#multi-slots) to expose it as a `tv`-style reconfigurable function:
 
 ```typescript
 // tailwind-variants
