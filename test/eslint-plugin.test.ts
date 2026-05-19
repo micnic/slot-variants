@@ -330,6 +330,30 @@ t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 		t.ok(r.meta, `${name}: has meta`);
 		t.ok(r.meta?.messages, `${name}: has messages`);
 		t.ok(r.meta?.schema !== undefined, `${name}: has schema`);
+
+		const type = r.meta?.type;
+
+		t.ok(
+			type === 'problem' ||
+				type === 'suggestion' ||
+				type === 'layout',
+			`${name}: has a valid meta.type`
+		);
+
+		const description = r.meta?.docs?.description;
+
+		t.equal(
+			typeof description,
+			'string',
+			`${name}: has a docs.description`
+		);
+
+		const url = r.meta?.docs?.url;
+
+		t.ok(
+			typeof url === 'string' && url.startsWith('https://'),
+			`${name}: has a docs.url`
+		);
 		t.equal(typeof r.create, 'function', `${name}: has create()`);
 	}
 	t.end();
