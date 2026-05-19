@@ -1631,6 +1631,16 @@ const NO_CONFLICTING_NS_INVALID = [
 					errors: 2
 				},
 				{
+					// Leading `!` important marker (Tailwind v3) is ignored too.
+					code: IMPORT + "sv({ base: '!w-100 w-200' });",
+					errors: 2
+				},
+				{
+					// Leading `!` on a variant-prefixed, negative utility.
+					code: IMPORT + "sv({ base: 'hover:!-mt-2 hover:mt-4' });",
+					errors: 2
+				},
+				{
 					// Same variant prefix — still a conflict.
 					code: IMPORT + "sv({ base: 'hover:w-100 hover:w-200' });",
 					errors: 2

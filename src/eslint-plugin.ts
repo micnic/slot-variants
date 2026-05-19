@@ -1174,8 +1174,9 @@ const noRedundantSpaces: Rule.RuleModule = {
 
 // Returns null for tokens that don't look like a namespaced utility — single
 // words (`flex`), purely-prefixed (`-`), or anything without a `-` after the
-// optional leading negative marker. The `!` important suffix is stripped so
-// `w-200` and `w-200!` share a conflict key.
+// optional leading negative marker. The `!` important marker is stripped —
+// trailing (Tailwind v4 `w-200!`) or leading (Tailwind v3 `!w-200`) — so it
+// doesn't split the conflict key.
 const getConflictKey = (token: string): string | null => {
 	let stripped = token;
 
@@ -1190,6 +1191,10 @@ const getConflictKey = (token: string): string | null => {
 	if (lastColon !== -1) {
 		variantPrefix = stripped.slice(0, lastColon);
 		utility = stripped.slice(lastColon + 1);
+	}
+
+	if (utility.startsWith('!')) {
+		utility = utility.slice(1);
 	}
 
 	let utilStart = 0;
@@ -1297,8 +1302,9 @@ const analyzeCnForRule = (
  * tokens that will appear more than once (including across `base`, variants,
  * compounds, and within a single literal), and distinct tokens that target the
  * same Tailwind-style utility namespace (e.g. `w-100` and `w-200`). Tokens with
- * different variant prefixes (`w-100` vs `hover:w-200`) don't conflict, the
- * trailing `!` important marker is ignored when computing the namespace, and
+ * different variant prefixes (`w-100` vs `hover:w-200`) don't conflict, a
+ * leading or trailing `!` important marker is ignored when computing the
+ * namespace, and
  * tokens that only co-occur across mutually-exclusive variant values are not
  * flagged.
  */
