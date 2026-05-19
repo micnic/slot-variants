@@ -1036,9 +1036,20 @@ const NO_EMPTY_CLASSES_INVALID = [
 					errors: [{ messageId: 'emptyString' }]
 				},
 				{
-					// Empty slots object.
+					// Empty slots object — the whole property is removed.
 					code: IMPORT + "sv({ base: 'flex', slots: {} });",
+					output: IMPORT + "sv({ base: 'flex' });",
 					errors: [{ messageId: 'emptyObject' }]
+				},
+				{
+					// Empty base alongside other keys — the property is dropped.
+					code:
+						IMPORT +
+						"sv({ base: '', variants: { size: { sm: 'a' } } });",
+					output:
+						IMPORT +
+						"sv({  variants: { size: { sm: 'a' } } });",
+					errors: [{ messageId: 'emptyString' }]
 				},
 				{
 					// Empty array as slot value — empty-string exception
@@ -1107,6 +1118,9 @@ const NO_EMPTY_CLASSES_INVALID = [
 					code:
 						IMPORT +
 						"sv({ variants: { size: { sm: 'text-sm' } }, compoundVariants: [] });",
+					output:
+						IMPORT +
+						"sv({ variants: { size: { sm: 'text-sm' } } });",
 					errors: [{ messageId: 'emptyArray' }]
 				},
 				{
@@ -1134,6 +1148,7 @@ const NO_EMPTY_CLASSES_INVALID = [
 					code:
 						IMPORT +
 						"sv({ slots: { body: 'p-4' }, compoundSlots: [] });",
+					output: IMPORT + "sv({ slots: { body: 'p-4' } });",
 					errors: [{ messageId: 'emptyArray' }]
 				},
 				{
@@ -1858,7 +1873,17 @@ const NO_SHARED_TOKENS_VALID = [
 						defaultVariants: { size: 'sm' }
 					});`,
 				// Empty config — no variants.
-				IMPORT + 'sv({});'
+				IMPORT + 'sv({});',
+				// `requiredVariants: false` marks nothing required — without a
+				// default the variant is not exhaustive, so the shared token
+				// is not flagged.
+				IMPORT +
+					`sv({
+						variants: {
+							size: { sm: 'rounded text-sm', lg: 'rounded text-lg' }
+						},
+						requiredVariants: false
+					});`
 ];
 
 const NO_SHARED_TOKENS_INVALID = [
@@ -1948,6 +1973,40 @@ const NO_SHARED_TOKENS_INVALID = [
 							data: {
 								token: 'font-bold',
 								variant: 'intent',
+								slot: 'base'
+							}
+						}
+					]
+				},
+				{
+					// Every variant required via `requiredVariants: true` —
+					// the shared token is flagged just like an array-listed
+					// required variant.
+					code:
+						IMPORT +
+						`sv({
+							variants: {
+								size: {
+									sm: 'rounded text-sm',
+									lg: 'rounded text-lg'
+								}
+							},
+							requiredVariants: true
+						});`,
+					errors: [
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'size',
+								slot: 'base'
+							}
+						},
+						{
+							messageId: 'shared',
+							data: {
+								token: 'rounded',
+								variant: 'size',
 								slot: 'base'
 							}
 						}

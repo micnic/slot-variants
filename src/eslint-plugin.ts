@@ -1380,9 +1380,10 @@ const noConflictingClasses: Rule.RuleModule = {
 	}
 };
 
-// A variant is "exhaustive" when it has a defaultVariants entry or is in
-// requiredVariants. Without coverage the prop can be undefined at runtime,
-// so a shared token isn't guaranteed to render.
+// A variant is "exhaustive" when it has a defaultVariants entry, is listed in
+// requiredVariants, or every variant is required (`requiredVariants: true`).
+// Without coverage the prop can be undefined at runtime, so a shared token
+// isn't guaranteed to render.
 const intersectSharedTokensStep = (
 	sharedTokens: Map<string, Set<string>>,
 	valueMap: TokenEntriesBySlot
@@ -1513,6 +1514,9 @@ const collectDefaultVariantKeys = (
 	return keys;
 };
 
+const isLiteralTrue = (node: Node): boolean =>
+	node.type === 'Literal' && node.value === true;
+
 const collectExhaustiveVariantKeys = (
 	config: ReadonlyMap<string, Node>
 ): Set<string> => {
@@ -1521,11 +1525,22 @@ const collectExhaustiveVariantKeys = (
 	);
 	const requiredVariants = config.get('requiredVariants');
 
-	if (requiredVariants) {
-		forEachStringLiteralElement(requiredVariants, (value) => {
-			exhaustive.add(value);
-		});
+	if (!requiredVariants) {
+		return exhaustive;
 	}
+
+	// `requiredVariants: true` makes every variant required — hence exhaustive.
+	if (isLiteralTrue(requiredVariants)) {
+		for (const key of getProperties(config.get('variants')).keys()) {
+			exhaustive.add(key);
+		}
+
+		return exhaustive;
+	}
+
+	forEachStringLiteralElement(requiredVariants, (value) => {
+		exhaustive.add(value);
+	});
 
 	return exhaustive;
 };
@@ -1637,7 +1652,8 @@ const analyzeSharedTokens = (context: Rule.RuleContext, configNode: Node) => {
  * variant — the token is constant in the rendered output and belongs in `base`
  * (or the corresponding `slots[slot]` entry) rather than being repeated across
  * each variant value. Coverage is treated as exhaustive when the variant has a
- * `defaultVariants` entry or is listed in `requiredVariants`.
+ * `defaultVariants` entry, is listed in `requiredVariants`, or every variant is
+ * required via `requiredVariants: true`.
  */
 const noSharedTokens: Rule.RuleModule = {
 	meta: {
@@ -1675,7 +1691,7 @@ const shouldReportEmptyString = (
 const isEmptyObjectExpression = (node: Node): node is ObjectExpression =>
 	node.type === 'ObjectExpression' && node.properties.length === 0;
 
-type ListItems = ReadonlyArray<Expression | SpreadElement | null>;
+type ListItems = ReadonlyArray<Node | null>;
 
 // Removes `node` (a member of `list`) along with the adjacent comma so the
 // surrounding call/array literal stays syntactically valid. Returns null when
@@ -1716,22 +1732,27 @@ const removeFromList = (
 	return fixer.removeRange([before.range[0], end]);
 };
 
+// A fix that removes the offending node — built by `makeListFix` for an
+// element of a call/array list, or supplied directly for a config property.
+type EmptyFix = (fixer: Rule.RuleFixer) => Rule.Fix | null;
+
+const makeListFix = (
+	context: Rule.RuleContext,
+	node: Node,
+	list: ListItems
+): EmptyFix => {
+	return (fixer) => removeFromList(fixer, context.sourceCode, node, list);
+};
+
 // `allowEmptyString` is set at the top of a `slots[key]` value, where `''`
-// is a meaningful "slot with no default classes" declaration. `list`, when
-// provided, is the parent call/array list `node` belongs to — used to attach
-// an autofix that removes `node` and its adjacent comma.
+// is a meaningful "slot with no default classes" declaration. `fix`, when
+// provided, removes `node` (and its adjacent comma) on `--fix`.
 const visitForEmptyClasses = (
 	context: Rule.RuleContext,
 	node: Node,
 	allowEmptyString: boolean,
-	list?: ListItems
+	fix?: EmptyFix
 ) => {
-	let fix: ((fixer: Rule.RuleFixer) => Rule.Fix | null) | undefined;
-
-	if (list) {
-		fix = (fixer) => removeFromList(fixer, context.sourceCode, node, list);
-	}
-
 	if (shouldReportEmptyString(node, allowEmptyString)) {
 		context.report({ node, messageId: 'emptyString', fix });
 		return;
@@ -1744,7 +1765,12 @@ const visitForEmptyClasses = (
 		}
 
 		forEachStaticItem(node.elements, (element) => {
-			visitForEmptyClasses(context, element, false, node.elements);
+			visitForEmptyClasses(
+				context,
+				element,
+				false,
+				makeListFix(context, element, node.elements)
+			);
 		});
 		return;
 	}
@@ -1756,10 +1782,11 @@ const visitForEmptyClasses = (
 
 const visitVariantRecordForEmpty = (
 	context: Rule.RuleContext,
-	node: ObjectExpression
+	node: ObjectExpression,
+	remove?: EmptyFix
 ) => {
 	if (node.properties.length === 0) {
-		context.report({ node, messageId: 'emptyObject' });
+		context.report({ node, messageId: 'emptyObject', fix: remove });
 		return;
 	}
 
@@ -1780,21 +1807,29 @@ const visitVariantValueForEmpty = (
 	visitForEmptyClasses(context, variantValue, false);
 };
 
-const checkVariantsForEmpty = (context: Rule.RuleContext, value: Node) => {
+const checkVariantsForEmpty = (
+	context: Rule.RuleContext,
+	value: Node,
+	remove: EmptyFix
+) => {
 	if (value.type !== 'ObjectExpression') {
 		return;
 	}
 
-	visitVariantRecordForEmpty(context, value);
+	visitVariantRecordForEmpty(context, value, remove);
 };
 
-const checkCompoundsForEmpty = (context: Rule.RuleContext, value: Node) => {
+const checkCompoundsForEmpty = (
+	context: Rule.RuleContext,
+	value: Node,
+	remove: EmptyFix
+) => {
 	if (value.type !== 'ArrayExpression') {
 		return;
 	}
 
 	if (value.elements.length === 0) {
-		context.report({ node: value, messageId: 'emptyArray' });
+		context.report({ node: value, messageId: 'emptyArray', fix: remove });
 		return;
 	}
 
@@ -1803,13 +1838,17 @@ const checkCompoundsForEmpty = (context: Rule.RuleContext, value: Node) => {
 	});
 };
 
-const checkSlotsForEmpty = (context: Rule.RuleContext, value: Node) => {
+const checkSlotsForEmpty = (
+	context: Rule.RuleContext,
+	value: Node,
+	remove: EmptyFix
+) => {
 	if (value.type !== 'ObjectExpression') {
 		return;
 	}
 
 	if (value.properties.length === 0) {
-		context.report({ node: value, messageId: 'emptyObject' });
+		context.report({ node: value, messageId: 'emptyObject', fix: remove });
 		return;
 	}
 
@@ -1818,14 +1857,50 @@ const checkSlotsForEmpty = (context: Rule.RuleContext, value: Node) => {
 	}
 };
 
-const svEmptyConfigValueCheckers: Record<string, SvConfigValueChecker> = {
-	base: (context, node) => {
-		visitForEmptyClasses(context, node, false);
+type EmptyConfigChecker = (
+	context: Rule.RuleContext,
+	value: Node,
+	remove: EmptyFix
+) => void;
+
+const svEmptyConfigValueCheckers: Record<string, EmptyConfigChecker> = {
+	base: (context, node, remove) => {
+		visitForEmptyClasses(context, node, false, remove);
 	},
 	slots: checkSlotsForEmpty,
 	variants: checkVariantsForEmpty,
 	compoundVariants: checkCompoundsForEmpty,
 	compoundSlots: checkCompoundsForEmpty
+};
+
+// A recognized `sv()` config (see `isConfigLike`) has only plain, statically
+// keyed properties — so an empty top-level class property can be dropped
+// wholesale, removing the property and its comma.
+const checkConfigForEmptyClasses = (
+	context: Rule.RuleContext,
+	config: ObjectExpression
+) => {
+	for (const prop of config.properties) {
+		/* c8 ignore next 3 -- a recognized config has no spread properties */
+		if (prop.type !== 'Property') {
+			continue;
+		}
+
+		const key = getKeyName(prop);
+
+		/* c8 ignore next 3 -- a recognized config has only static, non-computed keys */
+		if (key === null) {
+			continue;
+		}
+
+		const checker = svEmptyConfigValueCheckers[key];
+
+		if (checker) {
+			checker(context, prop.value, (fixer) =>
+				removeFromList(fixer, context.sourceCode, prop, config.properties)
+			);
+		}
+	}
 };
 
 /**
@@ -1861,15 +1936,16 @@ const noEmptyClasses: Rule.RuleModule = {
 			}
 
 			forEachStaticItem(call.args, (arg) => {
-				visitForEmptyClasses(context, arg, false, node.arguments);
+				visitForEmptyClasses(
+					context,
+					arg,
+					false,
+					makeListFix(context, arg, node.arguments)
+				);
 			});
 
 			if (call.config) {
-				dispatchSvConfigCheckers(
-					context,
-					call.config,
-					svEmptyConfigValueCheckers
-				);
+				checkConfigForEmptyClasses(context, call.config);
 			}
 		});
 	}
@@ -1913,6 +1989,9 @@ const plugin = {
  * each rule by hand.
  */
 plugin.configs.recommended = {
+	// A `name` lets the config object be identified in `eslint --inspect-config`
+	// and in config-resolution error messages.
+	name: 'slot-variants/recommended',
 	plugins: { 'slot-variants': plugin },
 	rules: recommendedRules
 };
