@@ -4,8 +4,6 @@
 
 `slot-variants` is a lightweight, zero-dependency, type-safe library for managing CSS class name variants with slots support.
 
-## Quick Reference
-
 ```typescript
 import { sv, cn, type VariantProps } from 'slot-variants';
 ```
@@ -18,15 +16,10 @@ import { sv, cn, type VariantProps } from 'slot-variants';
 
 ```typescript
 // 1. Config-only
-const button = sv({
-	base: 'btn font-medium',
-	variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
-});
+sv({ base: 'btn', variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });
 
 // 2. Base + config
-const button = sv('btn font-medium', {
-	variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
-});
+sv('btn', { variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });
 
 // 3. Class name merging (like cn())
 sv('flex', 'items-center', 'gap-2'); // 'flex items-center gap-2'
@@ -38,68 +31,23 @@ The `base` config field merges with base arguments and `slots.base`: `cn(baseArg
 
 ### 1. Keep CSS Classes Mutually Exclusive
 
-Define classes in base and variants such that they don't overlap. Use compound variants for intersecting classes to avoid duplication:
-
-```typescript
-// GOOD - classes are mutually exclusive
-const button = sv('btn', {
-	variants: {
-		size: { sm: 'text-sm', lg: 'text-lg' },
-		intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
-	},
-	compoundVariants: [{ size: 'lg', intent: 'primary', class: 'font-bold' }]
-});
-
-// AVOID - duplicate classes across variants
-const buttonBad = sv('btn font-medium', {
-	variants: {
-		size: { sm: 'text-sm font-medium', lg: 'text-lg font-medium' }
-	}
-});
-```
+Define classes in base and variants so they don't overlap; use compound variants for intersecting classes. Don't repeat a token across every variant value — lift it into `base`.
 
 ### 2. Use Boolean Shorthand for Simple States
 
-For boolean variants (on/off), use shorthand to reduce boilerplate:
+For boolean variants (on/off), use shorthand instead of a verbose `{ true, false }` record:
 
 ```typescript
-// GOOD - boolean shorthand
 const button = sv('btn', {
-	variants: {
-		disabled: 'opacity-50 cursor-not-allowed',
-		loading: 'animate-spin pointer-events-none'
-	}
+	variants: { disabled: 'opacity-50 cursor-not-allowed' }
 });
 
-button({ disabled: true, loading: false });
-
-// AVOID - verbose boolean record
-const buttonVerbose = sv('btn', {
-	variants: {
-		disabled: {
-			true: 'opacity-50 cursor-not-allowed',
-			false: ''
-		}
-	}
-});
+button({ disabled: true });
 ```
 
 ### 3. Use Required Variants for Mandatory Props
 
-When a variant must always be provided, use `requiredVariants`:
-
-```typescript
-const button = sv('btn', {
-	variants: {
-		size: { sm: 'text-sm', lg: 'text-lg' },
-		intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
-	},
-	requiredVariants: ['intent'] // intent must always be provided
-});
-
-// button() throws: Missing required variant: "intent"
-button({ intent: 'primary' }); // OK
-```
+List a variant in `requiredVariants: ['intent']` to make it mandatory — `button()` throws when it is missing.
 
 ### 4. Use Slots for Multi-Element Components
 
@@ -107,34 +55,19 @@ For components with multiple elements (card, dialog, etc.), use slots:
 
 ```typescript
 const card = sv('border rounded-lg', {
-	slots: {
-		header: 'font-semibold px-4 py-2',
-		body: 'px-4 py-4',
-		footer: 'px-4 py-2 border-t'
-	}
+	slots: { header: 'font-semibold px-4', body: 'px-4 py-4', footer: 'px-4 border-t' }
 });
 
 const { base, header, body, footer } = card();
-// Use: <div class={base}><header class={header}>...</div>
 ```
+
+Variant values can target slots: `size: { sm: { base: 'p-2', header: 'text-sm' } }`. Use `compoundSlots` to apply classes to multiple slots at once.
 
 ### 5. Use VariantProps Type for Component Props
 
-Extract types for React/Preact/Vue component props:
-
 ```typescript
-const button = sv('btn', {
-	variants: {
-		size: { sm: 'text-sm', lg: 'text-lg' },
-		intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
-	},
-	requiredVariants: ['intent']
-});
-
 type ButtonProps = VariantProps<typeof button>;
-// { size?: 'sm' | 'lg' | undefined; intent: 'primary' | 'danger' }
-
-// Exclude internal variants from props
+// Exclude internal variants from props:
 type InternalButtonProps = VariantProps<typeof button, 'internalState'>;
 ```
 
@@ -143,395 +76,125 @@ type InternalButtonProps = VariantProps<typeof button, 'internalState'>;
 Apply classes when multiple conditions are met:
 
 ```typescript
-const button = sv('btn', {
-	variants: {
-		size: { sm: 'text-sm', lg: 'text-lg' },
-		intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
-	},
-	compoundVariants: [
-		{ size: 'lg', intent: 'primary', class: 'font-bold uppercase' }
-	]
-});
-
-button({ size: 'lg', intent: 'primary' });
-// Includes: 'btn text-lg bg-blue-500 font-bold uppercase'
+compoundVariants: [
+	{ size: 'lg', intent: 'primary', class: 'font-bold uppercase' }
+]
 ```
 
 ### 7. Use Function-Based Default Variants for Dynamic Defaults
 
-For defaults that depend on other variant values:
+A default can be a function of the other variant values:
 
 ```typescript
-const button = sv('btn', {
-	variants: {
-		size: { sm: 'text-sm', lg: 'text-lg' },
-		intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
-	},
-	defaultVariants: {
-		size: 'sm',
-		intent: (props) => (props.size === 'lg' ? 'danger' : 'primary')
+defaultVariants: {
+	size: 'sm',
+	intent: (props) => {
+		if (props.size === 'lg') return 'danger';
+		return 'primary';
 	}
-});
+}
 ```
+
+Prefer static defaults — function-based defaults run on every invocation.
 
 ### 8. Use Post-Processing with tailwind-merge
 
-For Tailwind projects, use `postProcess` to handle class conflicts:
+For Tailwind projects, pass `postProcess` to resolve class conflicts:
 
 ```typescript
-import { sv } from 'slot-variants';
 import { twMerge } from 'tailwind-merge';
 
-const button = sv('px-4 py-2', {
-	variants: {
-		size: {
-			sm: 'px-2 py-1 text-sm',
-			lg: 'px-6 py-3 text-lg'
-		}
-	},
-	postProcess: twMerge
-});
-
-// tailwind-merge handles conflicting classes
-button({ size: 'lg', class: 'px-2' });
-// Result: 'py-3 text-lg px-2' — twMerge drops the superseded px-4, px-6, py-2
+sv('px-4 py-2', { variants: { size: { lg: 'px-6 py-3' } }, postProcess: twMerge });
 ```
 
 ### 9. Leverage Caching for Performance
 
-The library caches results automatically (default 256 entries). Each cache entry is one distinct combination of resolved variant values. The maximum number of combinations is the product, over every variant, of its value count plus one — the `+ 1` counts the variant being left unset:
+The library caches results automatically (default 256 entries). Each cache entry is one distinct combination of resolved variant values:
 
 ```
 maxEntries = (values₁ + 1) × (values₂ + 1) × ... × (valuesₙ + 1)
 ```
 
-```typescript
-// maxEntries = (2 + 1) * (2 + 1) * (2 + 1) = 27 — well under 256, no cacheSize needed
-const button = sv('btn', {
-	variants: {
-		size: { sm: 'text-sm', lg: 'text-lg' },
-		intent: { primary: 'bg-blue-500', danger: 'bg-red-500' },
-		disabled: 'opacity-50 cursor-not-allowed'
-	}
-});
-```
-
-Raise `cacheSize` only when `maxEntries` exceeds the 256 default — below that the cache never evicts, so a larger size has no effect.
-
-Cache inspection methods (`getCacheSize`, `clearCache`) are only exposed when `introspection: true` is set — see rule 11.
+The `+ 1` counts the variant being left unset. Raise `cacheSize` only when `maxEntries` exceeds 256 — below that the cache never evicts. Cache inspection methods (`getCacheSize`, `clearCache`) are only exposed when `introspection: true`.
 
 ### 10. Use Presets for Reusable Variant Combinations
 
-Define presets for frequently used combinations of variants (rarely needed):
-
 ```typescript
 const button = sv('btn', {
-	variants: {
-		size: { sm: 'text-sm', lg: 'text-lg' },
-		intent: { primary: 'bg-blue-500', danger: 'bg-red-500' },
-		rounded: { true: 'rounded-full', false: 'rounded-md' }
-	},
-	presets: {
-		primarySm: { size: 'sm', intent: 'primary', rounded: false },
-		cta: { size: 'lg', intent: 'primary', rounded: true }
-	}
+	variants: { size: { sm: 'text-sm', lg: 'text-lg' }, intent: { primary: 'bg-blue-500', danger: 'bg-red-500' } },
+	presets: { cta: { size: 'lg', intent: 'primary' } }
 });
 
-button({ preset: 'cta' });
+button({ preset: 'cta' }); // applies size: 'lg', intent: 'primary'
 ```
 
 ### 11. Use Introspection for Single Source of Truth
 
-Set `introspection: true` in the config to expose configuration properties and cache methods on the returned function. Introspection is **off by default** — opt in only when you need runtime access to variant/slot definitions or cache controls:
+Set `introspection: true` to expose configuration and cache members on the returned function (off by default): `variantKeys`, `variants`, `slotKeys`, `slots`, `defaultVariants`, `requiredVariants`, `presetKeys`, `presets`, `getVariantValues(key)`, `getCacheSize()`, and `clearCache()`.
 
-```typescript
-const button = sv('btn', {
-	slots: {
-		icon: 'w-4 h-4'
-	},
-	variants: {
-		size: {
-			sm: 'text-sm',
-			lg: 'text-lg'
-		},
-		intent: {
-			primary: 'bg-blue-500',
-			danger: 'bg-red-500'
-		}
-	},
-	defaultVariants: {
-		size: 'sm'
-	},
-	requiredVariants: ['intent'],
-	presets: {
-		cta: { size: 'lg', intent: 'primary' }
-	},
-	introspection: true
-});
-
-button.variantKeys;                // ['size', 'intent']
-button.variants;                   // { size: { sm: 'text-sm', lg: 'text-lg' }, intent: { ... } }
-button.slotKeys;                   // ['base', 'icon']
-button.slots;                      // { icon: 'w-4 h-4' }
-button.defaultVariants;            // { size: 'sm' }
-button.requiredVariants;           // ['intent']
-button.presetKeys;                 // ['cta']
-button.presets;                    // { cta: { size: 'lg', intent: 'primary' } }
-button.getVariantValues('size');   // ['sm', 'lg']
-button.getVariantValues('intent'); // ['primary', 'danger']
-button.getCacheSize();             // current cache size
-button.clearCache();               // clear the cache
-```
-
-Without `introspection: true`, only the variant function itself is returned — accessing these properties is a type error.
-
-Use introspection to share variant/slot definitions with other parts of your codebase:
-
-```typescript
-// variants.tsx - centralize variant definitions
-export const button = sv('btn font-medium rounded-lg', {
-  variants: {
-    size: {
-      sm: 'text-sm px-3 py-1.5',
-      md: 'text-base px-4 py-2',
-      lg: 'text-lg px-6 py-3'
-    },
-    intent: {
-      primary: 'bg-blue-500 text-white',
-      secondary: 'bg-gray-200 text-gray-800',
-      danger: 'bg-red-500 text-white'
-    }
-  },
-  defaultVariants: {
-    size: 'md',
-    intent: 'primary'
-  },
-  introspection: true
-});
-
-// Reuse variant keys for form validation
-const validSizes = button.variantKeys.includes('size')
-  ? Object.keys(button.variants.size)
-  : [];
-// validSizes: ['sm', 'md', 'lg']
-
-// Reuse slot keys for component composition
-const card = sv('card', {
-  slots: {
-    header: 'font-bold',
-    body: 'py-4'
-  },
-  introspection: true
-});
-
-// Dynamically render all slots
-function renderCardWithSlots(slotClasses: ReturnType<typeof card>) {
-  return card.slotKeys.map((key) => (
-    <div key={key} className={slotClasses[key as keyof typeof slotClasses]}>
-      {key}
-    </div>
-  ));
-}
-```
-
-This approach ensures variant and slot definitions live in one place, making updates easy and reducing the risk of inconsistencies.
+Without `introspection: true`, accessing these is a type error. Use it to centralize variant/slot definitions and reuse them across the codebase.
 
 ## Common Patterns
 
 ### React Component Pattern
 
 ```typescript
-// button.tsx
 import { sv, type VariantProps } from 'slot-variants';
 
 const button = sv('btn font-medium rounded-lg', {
-  variants: {
-    size: {
-      sm: 'text-sm px-3 py-1.5',
-      md: 'text-base px-4 py-2',
-      lg: 'text-lg px-6 py-3'
-    },
-    intent: {
-      primary: 'bg-blue-500 text-white hover:bg-blue-600',
-      secondary: 'bg-gray-200 text-gray-800 hover:bg-gray-300',
-      danger: 'bg-red-500 text-white hover:bg-red-600'
-    },
-    disabled: {
-      true: 'opacity-50 cursor-not-allowed pointer-events-none'
-    }
-  },
-  defaultVariants: {
-    size: 'md',
-    intent: 'primary'
-  }
+	variants: {
+		size: { sm: 'text-sm px-3', md: 'text-base px-4', lg: 'text-lg px-6' },
+		intent: { primary: 'bg-blue-500 text-white', danger: 'bg-red-500 text-white' }
+	},
+	defaultVariants: { size: 'md', intent: 'primary' }
 });
 
 export type ButtonProps = VariantProps<typeof button>;
 
 export const Button = ({ class: className, ...props }: ButtonProps & { class?: string }) => {
-  return <button className={button({ ...props, class: className })} />;
+	return <button className={button({ ...props, class: className })} />;
 };
 ```
 
 ### Multi-Element Component Pattern
 
 ```typescript
-// card.ts
-import { sv, type VariantProps } from 'slot-variants';
-
 const card = sv('border rounded-lg', {
-	slots: {
-		header: 'font-semibold px-4 py-3 border-b',
-		body: 'px-4 py-4',
-		footer: 'px-4 py-3 border-t bg-gray-50'
-	},
+	slots: { header: 'font-semibold px-4 border-b', body: 'px-4 py-4', footer: 'px-4 border-t' },
 	variants: {
-		size: {
-			sm: { base: 'p-2', header: 'text-sm', body: 'text-sm' },
-			md: { base: 'p-4', header: 'text-base', body: 'text-base' },
-			lg: { base: 'p-6', header: 'text-lg', body: 'text-lg' }
-		},
-		elevated: {
-			true: { base: 'shadow-lg' },
-			false: { base: 'shadow-sm' }
-		}
+		size: { sm: { base: 'p-2', header: 'text-sm' }, md: { base: 'p-4', header: 'text-base' } },
+		elevated: { true: { base: 'shadow-lg' }, false: { base: 'shadow-sm' } }
 	},
 	compoundSlots: [{ slots: ['header', 'footer'], class: 'text-gray-600' }]
 });
 
-type CardProps = VariantProps<typeof card>;
-
-export const Card = (props: CardProps) => {
-	const { base, header, body, footer } = card(props);
-	return { base, header, body, footer };
-};
+const { base, header, body, footer } = card({ size: 'md' });
 ```
 
 ## Configuration Reference
 
 Class values inside the config (`base`, `variants` values, `slots` values, and `compound*` `class`/`className`) accept only `string`, `string[]`, or `undefined`. Dynamic class values (objects, booleans, nested arrays) belong on the `class`/`className` runtime prop, not in the config.
 
-| Option             | Type                             | Description                       |
-| ------------------ | -------------------------------- | --------------------------------- |
-| `base`             | `string \| string[]`             | Additional base classes            |
-| `variants`         | `Record<string, VariantConfig>`  | Variant definitions               |
-| `slots`            | `Record<string, string \| string[]>` | Named slot definitions        |
-| `compoundVariants` | `CompoundVariant[]`              | Conditional class combinations    |
-| `compoundSlots`    | `CompoundSlot[]`                 | Multi-slot conditional classes    |
-| `defaultVariants`  | `Record<string, Value>`          | Static or function-based defaults |
-| `requiredVariants` | `string[] \| boolean`            | Mandatory variant names           |
-| `multiSlots`       | `string[] \| boolean`            | Slots exposed as reconfigurable functions |
-| `presets`          | `Record<string, Partial<Props>>` | Named preset combinations         |
-| `postProcess`      | `(className: string) => string`  | Class transformation              |
-| `cacheSize`        | `number`                         | Cache size (default: 256)         |
-| `introspection`    | `boolean`                        | Expose introspection and cache methods (default: false) |
+| Option             | Type                                 | Description                       |
+| ------------------ | ------------------------------------ | --------------------------------- |
+| `base`             | `string \| string[]`                 | Additional base classes           |
+| `variants`         | `Record<string, VariantConfig>`      | Variant definitions               |
+| `slots`            | `Record<string, string \| string[]>` | Named slot definitions            |
+| `compoundVariants` | `CompoundVariant[]`                  | Conditional class combinations    |
+| `compoundSlots`    | `CompoundSlot[]`                     | Multi-slot conditional classes    |
+| `defaultVariants`  | `Record<string, Value>`              | Static or function-based defaults |
+| `requiredVariants` | `string[] \| boolean`                | Mandatory variant names           |
+| `multiSlots`       | `string[] \| boolean`                | Slots exposed as reconfigurable functions |
+| `presets`          | `Record<string, Partial<Props>>`     | Named preset combinations         |
+| `postProcess`      | `(className: string) => string`      | Class transformation              |
+| `cacheSize`        | `number`                             | Cache size (default: 256)         |
+| `introspection`    | `boolean`                            | Expose introspection and cache methods (default: false) |
 
 ## Exported Types
 
-- `ClassValue` - Valid input for `cn()` (string, array, object, boolean, null, undefined)
-- `VariantProps<T, E>` - Extract variant props from an `sv()` return, optionally excluding keys
-- `VariantValue<T, K>` - Extract the value union for a single variant key, without `undefined`
-- `SlotClassProps<T>` - Extract the per-slot class injection shape from an `sv()` return type
+- `ClassValue` — Valid input for `cn()` (string, array, object, boolean, null, undefined)
+- `VariantProps<T, E>` — Extract variant props from an `sv()` return, optionally excluding keys
+- `VariantValue<T, K>` — Extract the value union for a single variant key, without `undefined`
+- `SlotClassProps<T>` — Extract the per-slot class injection shape from an `sv()` return type
 
-## Imports
-
-```typescript
-// Functions
-import { sv, cn } from 'slot-variants';
-
-// Types only
-import type { VariantProps, VariantValue, SlotClassProps, ClassValue } from 'slot-variants';
-```
-
-## ESLint / oxlint Plugin
-
-Subpath export `slot-variants/eslint-plugin` ships five rules that statically analyze `sv()` and `cn()` calls. Works under ESLint v9+ (flat config) and under oxlint via its `jsPlugins` config. The plugin is a separate entry point — it adds no runtime code to the library bundle.
-
-```js
-// eslint.config.js
-import svPlugin from 'slot-variants/eslint-plugin';
-
-export default [{
-  plugins: { 'slot-variants': svPlugin },
-  rules: {
-    'slot-variants/no-conflicting-classes': 'error',
-    'slot-variants/no-dynamic-classes': 'error',
-    'slot-variants/no-empty-classes': 'error',
-    'slot-variants/no-redundant-spaces': 'error',
-    'slot-variants/no-shared-tokens': 'error'
-  }
-}];
-```
-
-```json
-// .oxlintrc.json
-{
-  "jsPlugins": ["slot-variants/eslint-plugin"],
-  "rules": {
-    "slot-variants/no-conflicting-classes": "error",
-    "slot-variants/no-dynamic-classes": "error",
-    "slot-variants/no-empty-classes": "error",
-    "slot-variants/no-redundant-spaces": "error",
-    "slot-variants/no-shared-tokens": "error"
-  }
-}
-```
-
-All rules only analyze calls where `sv` or `cn` is a **named import** from `'slot-variants'`. Default, namespace, and aliased-to-other-identifier imports are ignored.
-
-### `slot-variants/no-conflicting-classes`
-
-Reports class tokens that collide within the output of an `sv()` or `cn()` call: exact-duplicate tokens that will appear more than once, and distinct tokens that target the same Tailwind-style utility namespace (e.g. `w-100` and `w-200`).
-
-- For `sv()` with a config, flags a collision when two of its sources can both be active at runtime: base + any variant, base + compound, two variants with different keys, two compound entries, or the same literal token repeated inside a single source.
-- Does **not** flag tokens that only co-occur across different values of the **same** variant key (those are mutually exclusive at runtime).
-- For `cn()` (and `sv()` called without a config — the cn-style calling convention), flags collisions across args, inside arrays, template literals without expressions, or within a single literal.
-- Tokens with different variant prefixes (`w-100` vs `hover:w-200`) don't conflict; the trailing `!` important marker is ignored when computing the namespace; single-word utilities (no `-`) participate only in exact-duplicate detection.
-- Bails out silently on dynamic inputs (identifiers, spreads, computed keys, template literals with expressions, cn-style `{ cls: condition }` records) — no false positives for code it can't statically resolve.
-
-### `slot-variants/no-dynamic-classes`
-
-Reports class-bearing positions in `sv()` and `cn()` calls that aren't statically inferrable. Pair this rule with `no-conflicting-classes` to guarantee every call is fully analyzable.
-
-- Accepts only string literals, template literals without expressions, and arrays of those as class values. Identifiers, member access, calls, spreads, non-string literals, templates with expressions, and object records are reported.
-- For `sv()` config, validates `base`, `slots` values, `variants` values (both record form and boolean shorthand), and the `class` / `className` of `compoundVariants` / `compoundSlots` entries. The `slots` array of `compoundSlots` must be a static array of string literals.
-- Top-level config keys must be statically known — spreads and computed keys cause the call to fall through to the cn-style path, which then reports the entire object as dynamic.
-- Non-class-bearing config keys (`defaultVariants`, `presets`, `requiredVariants`, `multiSlots`, `cacheSize`, `postProcess`, `introspection`) are not validated. Runtime variant matchers inside compound entries are also left alone — only the class value (and `compoundSlots`' `slots` array) is checked.
-- Move dynamic class strings to the runtime `class` / `className` prop on the function returned by `sv()` — that call site is intentionally outside the analyzer's scope.
-
-### `slot-variants/no-empty-classes`
-
-Reports empty class values — empty strings, empty arrays, and empty objects — at any class-bearing position reachable from an `sv()` or `cn()` call, plus zero-argument `sv()` / `cn()` calls (which always produce an empty class string).
-
-- Reports empty literals as positional arguments to `cn()` and `sv()` (cn-style or as base args alongside a config), as well as empty literals nested inside class arrays.
-- Inside an `sv()` config, reports empty values at `base`, in `variants` value records and boolean-shorthand values, and in the `class`/`className` of `compoundVariants` / `compoundSlots` entries. Also reports empty top-level `slots`, `variants`, `compoundVariants`, and `compoundSlots` containers.
-- A direct empty string at `slots[key]` is allowed — declaring a slot with no default classes is a real use case (`sv({ slots: { extra: '' } })`). Empty strings inside slot-value arrays are still reported.
-- Reports `sv()` / `cn()` invocations with zero arguments — they always return an empty string and have no effect.
-- Recurses into arrays but not into objects: values inside cn-style `{ cls: condition }` records are conditions, not class values, so they are left alone.
-- **Partially auto-fixable**: `eslint --fix` deletes an empty positional `cn()` / `sv()` argument or empty class-array element, along with its comma, when other items remain in that list. Empty values at other positions — `base`, variant values, compound `class`, or whole containers — are reported without a fix.
-
-### `slot-variants/no-redundant-spaces`
-
-Reports class strings whose whitespace isn't canonical — that is, whose value differs from `value.split(/\s+/).filter(Boolean).join(' ')`.
-
-- Flags leading or trailing whitespace, repeated spaces, and non-space whitespace (tabs, newlines, etc.) inside any string literal or expressionless template literal reachable from the call's arguments.
-- Walks recursively into arrays and objects, so values nested inside `slots`, `variants` records, `compoundVariants`, `compoundSlots`, `defaultVariants`, `presets`, etc. are all inspected.
-- Bails silently on dynamic expressions and non-string literals — false positives are impossible by construction.
-- Reports once per offending literal at the whole-node location.
-- **Auto-fixable**: `eslint --fix` rewrites each offending literal in place — trimming and collapsing its whitespace — while preserving the original quote style.
-
-### `slot-variants/no-shared-tokens`
-
-Reports class tokens that appear in every value of an exhaustively-covered variant — the token is constant in the rendered output and belongs in `base` or the corresponding `slots[slot]` entry rather than being repeated across every variant value.
-
-- Only analyzes `sv()` calls with a config; `cn()` calls and cn-style `sv()` calls are ignored.
-- Treats a variant as exhaustive when it has a statically defined default value (a string, boolean, or number literal — a function-based or `undefined` default does not count) or is listed in `requiredVariants`.
-- Compares tokens per slot, so slot-based variants are checked against the specific slot they affect rather than only against `base`.
-- Skips non-exhaustive variants, single-value variants, boolean shorthand, slot-keyed boolean shorthand, and dynamic or partially-uninspectable variant value records.
-- Reports every repeated occurrence that should be lifted out of the variant so each value only contains classes that actually vary.
-
-## Performance Notes
-
-1. **Caching is automatic** - Results are cached by default
-2. **Complex components benefit from larger cache** - Increase `cacheSize` for components with many variant combinations
-3. **Prefer static defaults** - Function-based defaults are called on every invocation
+Functions are imported as named values; types via `import type { ... } from 'slot-variants'`.
