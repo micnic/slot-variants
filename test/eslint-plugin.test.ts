@@ -58,6 +58,10 @@ const NO_REDUNDANT_SPACES_VALID = [
 			cacheSize: 256,
 			introspection: true
 		});`,
+	// Call inside a nested function scope - still resolved to the import.
+	IMPORT + "function f() { return sv({ base: 'flex items-center' }); }",
+	// A local binding shadowing the cn import is not analyzed.
+	IMPORT_CN + "function f(cn) { return cn('a  b'); }",
 	// Dynamic identifier - walker skips silently.
 	IMPORT + 'sv({ base: dynamic });',
 	// Class-bearing keys with dynamic values - skipped.

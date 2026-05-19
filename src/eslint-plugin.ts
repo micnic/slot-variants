@@ -1,4 +1,4 @@
-import type { Linter, Rule, SourceCode } from 'eslint';
+import type { Linter, Rule, Scope, SourceCode } from 'eslint';
 import type {
 	CallExpression,
 	Expression,
@@ -8,6 +8,10 @@ import type {
 	Property,
 	SpreadElement
 } from 'estree';
+
+// Surfaced by ESLint as each rule's documentation link (editors, the `--format`
+// output, etc.). Points at the plugin's rule reference in the README.
+const DOCS_URL = 'https://github.com/micnic/slot-variants#rules';
 
 const CONFIG_KEYS = new Set([
 	'base',
@@ -945,7 +949,39 @@ const createImportsTracker = () => {
 	return { cnNames, svNames, importsTracker };
 };
 
+// A call whose callee name matches a tracked import could still be a local
+// binding that shadows it (e.g. a function parameter named `cn`). Resolve the
+// callee identifier to its variable and confirm it's an import binding.
+const calleeResolvesToImport = (
+	context: Rule.RuleContext,
+	node: CallExpression
+): boolean => {
+	/* c8 ignore next 3 -- matchSvCnCall only returns a match for an Identifier callee */
+	if (node.callee.type !== 'Identifier') {
+		return false;
+	}
+
+	const { name } = node.callee;
+	let scope: Scope.Scope = context.sourceCode.getScope(node);
+
+	while (true) {
+		const variable = scope.set.get(name);
+
+		if (variable) {
+			return variable.defs.some((def) => def.type === 'ImportBinding');
+		}
+
+		/* c8 ignore next 3 -- a tracked-name callee always resolves before global scope */
+		if (!scope.upper) {
+			return false;
+		}
+
+		scope = scope.upper;
+	}
+};
+
 const createTrackedCallListeners = (
+	context: Rule.RuleContext,
 	onCall: (node: CallExpression, call: CallMatch) => void
 ) => {
 	const { cnNames, svNames, importsTracker } = createImportsTracker();
@@ -961,7 +997,7 @@ const createTrackedCallListeners = (
 
 			const call = matchSvCnCall(node, svNames, cnNames);
 
-			if (call) {
+			if (call && calleeResolvesToImport(context, node)) {
 				onCall(node, call);
 			}
 		}
@@ -980,7 +1016,8 @@ const noDynamicClasses: Rule.RuleModule = {
 		docs: {
 			description:
 				'Disallow dynamic values in sv() and cn() calls — only statically inferrable class values are allowed',
-			recommended: true
+			recommended: true,
+			url: DOCS_URL
 		},
 		schema: [],
 		messages: {
@@ -989,7 +1026,7 @@ const noDynamicClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		return createTrackedCallListeners((_node, call) => {
+		return createTrackedCallListeners(context, (_node, call) => {
 			checkCnArguments(context, call.args);
 
 			if (call.config) {
@@ -1149,7 +1186,8 @@ const noRedundantSpaces: Rule.RuleModule = {
 		docs: {
 			description:
 				'Disallow redundant whitespace inside class strings passed to sv() and cn() calls',
-			recommended: true
+			recommended: true,
+			url: DOCS_URL
 		},
 		fixable: 'code',
 		schema: [],
@@ -1158,7 +1196,7 @@ const noRedundantSpaces: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		return createTrackedCallListeners((_node, call) => {
+		return createTrackedCallListeners(context, (_node, call) => {
 			forEachStaticItem(call.args, (arg) => {
 				visitForRedundantSpaces(context, arg);
 			});
@@ -1316,7 +1354,8 @@ const noConflictingClasses: Rule.RuleModule = {
 		docs: {
 			description:
 				'Disallow duplicate class tokens and tokens targeting the same utility namespace within an sv() or cn() output',
-			recommended: true
+			recommended: true,
+			url: DOCS_URL
 		},
 		schema: [],
 		messages: {
@@ -1331,7 +1370,7 @@ const noConflictingClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		return createTrackedCallListeners((_node, call) => {
+		return createTrackedCallListeners(context, (_node, call) => {
 			if (call.config) {
 				analyzeConfigForRule(context, call.config, call.args);
 			} else {
@@ -1606,7 +1645,8 @@ const noSharedTokens: Rule.RuleModule = {
 		docs: {
 			description:
 				'Disallow class tokens that appear in every value of an exhaustively-covered variant — lift them out of the variant',
-			recommended: true
+			recommended: true,
+			url: DOCS_URL
 		},
 		schema: [],
 		messages: {
@@ -1614,7 +1654,7 @@ const noSharedTokens: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		return createTrackedCallListeners((_node, call) => {
+		return createTrackedCallListeners(context, (_node, call) => {
 			if (!call.config) {
 				return;
 			}
@@ -1801,7 +1841,8 @@ const noEmptyClasses: Rule.RuleModule = {
 		docs: {
 			description:
 				'Disallow empty class values (empty strings, arrays, or objects) and zero-argument calls in sv() and cn()',
-			recommended: true
+			recommended: true,
+			url: DOCS_URL
 		},
 		fixable: 'code',
 		schema: [],
@@ -1813,7 +1854,7 @@ const noEmptyClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		return createTrackedCallListeners((node, call) => {
+		return createTrackedCallListeners(context, (node, call) => {
 			if (node.arguments.length === 0) {
 				context.report({ node, messageId: 'emptyCall' });
 				return;
