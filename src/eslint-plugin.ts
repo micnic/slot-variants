@@ -979,7 +979,8 @@ const noDynamicClasses: Rule.RuleModule = {
 		type: 'problem',
 		docs: {
 			description:
-				'Disallow dynamic values in sv() and cn() calls — only statically inferrable class values are allowed'
+				'Disallow dynamic values in sv() and cn() calls — only statically inferrable class values are allowed',
+			recommended: true
 		},
 		schema: [],
 		messages: {
@@ -1147,7 +1148,8 @@ const noRedundantSpaces: Rule.RuleModule = {
 		type: 'problem',
 		docs: {
 			description:
-				'Disallow redundant whitespace inside class strings passed to sv() and cn() calls'
+				'Disallow redundant whitespace inside class strings passed to sv() and cn() calls',
+			recommended: true
 		},
 		fixable: 'code',
 		schema: [],
@@ -1313,7 +1315,8 @@ const noConflictingClasses: Rule.RuleModule = {
 		type: 'problem',
 		docs: {
 			description:
-				'Disallow duplicate class tokens and tokens targeting the same utility namespace within an sv() or cn() output'
+				'Disallow duplicate class tokens and tokens targeting the same utility namespace within an sv() or cn() output',
+			recommended: true
 		},
 		schema: [],
 		messages: {
@@ -1602,7 +1605,8 @@ const noSharedTokens: Rule.RuleModule = {
 		type: 'problem',
 		docs: {
 			description:
-				'Disallow class tokens that appear in every value of an exhaustively-covered variant — lift them out of the variant'
+				'Disallow class tokens that appear in every value of an exhaustively-covered variant — lift them out of the variant',
+			recommended: true
 		},
 		schema: [],
 		messages: {
@@ -1796,7 +1800,8 @@ const noEmptyClasses: Rule.RuleModule = {
 		type: 'problem',
 		docs: {
 			description:
-				'Disallow empty class values (empty strings, arrays, or objects) and zero-argument calls in sv() and cn()'
+				'Disallow empty class values (empty strings, arrays, or objects) and zero-argument calls in sv() and cn()',
+			recommended: true
 		},
 		fixable: 'code',
 		schema: [],
@@ -1845,13 +1850,15 @@ export const rules = {
  */
 const meta = { name: 'slot-variants' };
 
-const recommendedRules: Record<string, 'error'> = {
-	'slot-variants/no-conflicting-classes': 'error',
-	'slot-variants/no-dynamic-classes': 'error',
-	'slot-variants/no-empty-classes': 'error',
-	'slot-variants/no-redundant-spaces': 'error',
-	'slot-variants/no-shared-tokens': 'error'
-};
+// Derived from each rule's `meta.docs.recommended` flag so adding a rule to
+// the preset is a single edit on the rule itself.
+const recommendedRules: Record<string, 'error'> = {};
+
+for (const [name, rule] of Object.entries(rules)) {
+	if (rule.meta?.docs?.recommended === true) {
+		recommendedRules[`slot-variants/${name}`] = 'error';
+	}
+}
 
 const plugin = {
 	meta,
