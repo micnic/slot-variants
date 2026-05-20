@@ -381,18 +381,11 @@ const pushStringLiteralTokens = (
 	entries: Entry[],
 	sourceCode: SourceCode
 ) => {
-	const { range } = node;
-
-	/* c8 ignore next 3 -- ESLint always populates range on parsed nodes */
-	if (!range) {
-		return;
-	}
-
-	// String/untagged-template delimiters are single-char, so range[0] + 1
-	// is the first inner character.
+	// String/untagged-template delimiters are single-char, so the node's
+	// start offset + 1 is the first inner character.
 	const raw = sourceCode.getText(node);
 	const inner = raw.slice(1, -1);
-	const base = range[0] + 1;
+	const base = sourceCode.getRange(node)[0] + 1;
 
 	for (const match of inner.matchAll(/\S+/g)) {
 		const token = match[0];
