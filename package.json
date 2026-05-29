@@ -1,6 +1,6 @@
 {
 	"name": "slot-variants",
-	"version": "1.4.0",
+	"version": "1.5.0",
 	"description": "Type-safe class name variants with slots",
 	"type": "module",
 	"exports": {
@@ -23,7 +23,7 @@
 	],
 	"scripts": {
 		"bench": "jiti bench/cn.ts && jiti bench/cva.ts && jiti bench/tv.ts",
-		"build": "tsup src/index.ts src/eslint-plugin.ts && rm dist/index.d.cts dist/eslint-plugin.d.cts",
+		"build": "rm -rf dist && tsup src/index.ts src/eslint-plugin.ts && rm -f dist/index.d.cts dist/eslint-plugin.d.cts",
 		"fallow": "npm t && tap report json && node scripts/sanitize-tap-coverage.mjs && fallow health --coverage .tap/report/coverage-final.json",
 		"format": "prettier --write src",
 		"format:check": "prettier --check src",
