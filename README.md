@@ -986,6 +986,8 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 - **`slot-variants/no-shared-tokens`** — flags class tokens that appear in every value of an exhaustively-covered variant, where “exhaustive” means the variant has a statically defined default value, is listed in `requiredVariants`, or `requiredVariants` is `true` (every variant required). Those tokens are constant in the rendered output, so they belong in `base` or the corresponding `slots[slot]` entry rather than being repeated in every variant value. The rule only analyzes `sv()` calls with a config, compares tokens per-slot, skips non-exhaustive variants, single-value variants, boolean shorthand, undefined or dynamic defaults, and dynamic or partially-analyzable variant value records, and reports every repeated occurrence that should be lifted out.
 
+- **`slot-variants/require-top-level-config`** — flags `sv()` calls made with a config object that aren't at the module top level. The config form compiles the variant function and seeds its cache once; nesting it inside a function (a component body, an arrow, an object method, etc.) rebuilds that work — and throws away the variant cache — on every call, so the config form belongs at module scope. The cn-style calling convention of `sv()` (and every `cn()` call) carries no config and is left alone, as are calls inside top-level blocks or conditionals, which still run only at module load.
+
 Only calls where `sv` or `cn` is a named import from `'slot-variants'` are analyzed. `no-conflicting-classes` skips dynamic inputs silently to avoid false positives; `no-dynamic-classes` is the opposite — it flags exactly those positions so the static analyzer can fully reason about every call. `no-shared-tokens` sits between them: it needs a fully statically analyzable, exhaustive variant before it can prove a token is constant across every value. `no-empty-classes` and `no-redundant-spaces` are independent and complement the structural rules: they cover empty and badly-shaped literals reachable from a call's arguments, regardless of whether the surrounding call is fully static.
 
 ### ESLint (flat config)
@@ -1011,7 +1013,8 @@ export default [
       'slot-variants/no-dynamic-classes': 'error',
       'slot-variants/no-empty-classes': 'error',
       'slot-variants/no-redundant-spaces': 'error',
-      'slot-variants/no-shared-tokens': 'error'
+      'slot-variants/no-shared-tokens': 'error',
+      'slot-variants/require-top-level-config': 'error'
     }
   }
 ];
@@ -1027,7 +1030,8 @@ export default [
     "slot-variants/no-dynamic-classes": "error",
     "slot-variants/no-empty-classes": "error",
     "slot-variants/no-redundant-spaces": "error",
-    "slot-variants/no-shared-tokens": "error"
+    "slot-variants/no-shared-tokens": "error",
+    "slot-variants/require-top-level-config": "error"
   }
 }
 ```

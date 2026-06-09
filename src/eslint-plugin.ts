@@ -1944,6 +1944,59 @@ const noEmptyClasses: Rule.RuleModule = {
 	}
 };
 
+// An `sv()` config call compiles the variant function (and seeds its cache)
+// once. Nesting it inside a function rebuilds all of that — and discards the
+// cache — on every call, so the config form belongs at module scope. A
+// function scope anywhere above the call means it isn't top level.
+const isInsideFunctionScope = (scope: Scope.Scope): boolean => {
+	let current: Scope.Scope | null = scope;
+
+	while (current) {
+		if (current.type === 'function') {
+			return true;
+		}
+
+		current = current.upper;
+	}
+
+	return false;
+};
+
+/**
+ * Flags `sv()` calls made with a config object that aren't at the module top
+ * level. The config form compiles the variant function once; nesting it inside
+ * a function recreates that work — and throws away the variant cache — on every
+ * call, so it must live at module scope. The cn-style calling convention of
+ * `sv()` (and every `cn()` call) carries no config and is left alone.
+ */
+const requireTopLevelConfig: Rule.RuleModule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Require sv() calls with a config object to be at the module top level',
+			recommended: true,
+			url: DOCS_URL
+		},
+		schema: [],
+		messages: {
+			nested:
+				'sv() with a config object must be called at the module top level, not nested inside a function — otherwise its compiled config and variant cache are rebuilt on every call.'
+		}
+	},
+	create(context) {
+		return createTrackedCallListeners(context, (node, call) => {
+			if (!call.config) {
+				return;
+			}
+
+			if (isInsideFunctionScope(context.sourceCode.getScope(node))) {
+				context.report({ node, messageId: 'nested' });
+			}
+		});
+	}
+};
+
 /**
  * Rules exported by the plugin.
  */
@@ -1952,7 +2005,8 @@ export const rules = {
 	'no-dynamic-classes': noDynamicClasses,
 	'no-empty-classes': noEmptyClasses,
 	'no-redundant-spaces': noRedundantSpaces,
-	'no-shared-tokens': noSharedTokens
+	'no-shared-tokens': noSharedTokens,
+	'require-top-level-config': requireTopLevelConfig
 };
 
 /**

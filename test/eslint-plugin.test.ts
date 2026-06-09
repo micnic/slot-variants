@@ -2182,3 +2182,84 @@ t.test('no-shared-tokens', (t) => {
 	}, 'rule tester passes');
 	t.end();
 });
+
+const REQUIRE_TOP_LEVEL_CONFIG_VALID = [
+				// Config call at the module top level.
+				IMPORT + "sv({ base: 'flex' });",
+				// Config call assigned to a top-level binding.
+				IMPORT + "const button = sv({ base: 'flex' });",
+				// Config call exported from the top level.
+				IMPORT + "export const button = sv({ base: 'flex' });",
+				// Inside a top-level block — still runs once at module load.
+				IMPORT + "{ const b = sv({ base: 'flex' }); }",
+				// Inside a top-level conditional — runs at most once at load.
+				IMPORT + "if (x) { sv({ base: 'flex' }); }",
+				// cn-style sv() (no config) nested in a function is fine.
+				IMPORT + "function f() { return sv('flex', 'items-center'); }",
+				// Zero-arg sv() nested in a function carries no config.
+				IMPORT + 'function f() { return sv(); }',
+				// cn() nested in a function never carries a config.
+				IMPORT_CN + "function f() { return cn('flex'); }",
+				// Config-shaped last arg in a cn-style call still counts as config,
+				// but here it's at the top level.
+				IMPORT + "sv('flex', { base: 'items-center' });",
+				// Without an import, the rule stays quiet even when nested.
+				"function f() { return sv({ base: 'flex' }); }",
+				// Default-imported sv is not tracked.
+				"import sv from 'slot-variants'; function f() { sv({ base: 'flex' }); }",
+				// Member-expression callee is not tracked.
+				IMPORT + "function f() { return obj.sv({ base: 'flex' }); }"
+];
+
+const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
+				{
+					// Config call inside a function declaration.
+					code: IMPORT + "function f() { return sv({ base: 'flex' }); }",
+					errors: [{ messageId: 'nested' }]
+				},
+				{
+					// Config call inside an arrow function body.
+					code: IMPORT + "const make = () => sv({ base: 'flex' });",
+					errors: [{ messageId: 'nested' }]
+				},
+				{
+					// Config call nested in a block inside a function.
+					code:
+						IMPORT +
+						"function f() { { const b = sv({ base: 'flex' }); } }",
+					errors: [{ messageId: 'nested' }]
+				},
+				{
+					// Config call inside an object method.
+					code:
+						IMPORT +
+						"const o = { make() { return sv({ base: 'flex' }); } };",
+					errors: [{ messageId: 'nested' }]
+				},
+				{
+					// Config call inside a component function body.
+					code:
+						IMPORT +
+						"function Button() { const c = sv({ base: 'flex' }); return c; }",
+					errors: [{ messageId: 'nested' }]
+				},
+				{
+					// cn-style sv() whose last arg is config-shaped, nested.
+					code:
+						IMPORT +
+						"function f() { return sv('flex', { base: 'items-center' }); }",
+					errors: [{ messageId: 'nested' }]
+				}
+];
+
+t.test('require-top-level-config', (t) => {
+	const topLevelRule = rules['require-top-level-config'];
+
+	t.doesNotThrow(() => {
+		tester.run('require-top-level-config', topLevelRule, {
+			valid: REQUIRE_TOP_LEVEL_CONFIG_VALID,
+			invalid: REQUIRE_TOP_LEVEL_CONFIG_INVALID
+		});
+	}, 'rule tester passes');
+	t.end();
+});
