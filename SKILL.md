@@ -107,6 +107,15 @@ import { twMerge } from 'tailwind-merge';
 sv('px-4 py-2', { variants: { size: { lg: 'px-6 py-3' } }, postProcess: twMerge });
 ```
 
+To avoid restating `postProcess` (or any config default) per component, wrap `sv` once with `createSV`. Defaults are shallow merged into every config-based call and a per-call value always wins:
+
+```typescript
+import { createSV } from 'slot-variants';
+import { twMerge } from 'tailwind-merge';
+
+const customSV = createSV({ postProcess: twMerge, cacheSize: 512 });
+```
+
 ### 9. Leverage Caching for Performance
 
 The library caches results automatically (default 256 entries). Each cache entry is one distinct combination of resolved variant values:
@@ -196,5 +205,6 @@ Class values inside the config (`base`, `variants` values, `slots` values, and `
 - `VariantProps<T, E>` — Extract variant props from an `sv()` return, optionally excluding keys
 - `VariantValue<T, K>` — Extract the value union for a single variant key, without `undefined`
 - `SlotClassProps<T>` — Extract the per-slot class injection shape from an `sv()` return type
+- `SV<DI>` — The shape of an `sv()` function (the return type of `createSV()`), carrying the factory's introspection default `DI`
 
 Functions are imported as named values; types via `import type { ... } from 'slot-variants'`.

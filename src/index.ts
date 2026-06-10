@@ -1,2 +1,9 @@
 export { cn, type ClassValue } from './cn.ts';
-export { sv, type VariantProps, type VariantValue, type SlotClassProps } from './sv.ts';
+export {
+	createSV,
+	sv,
+	type VariantProps,
+	type VariantValue,
+	type SlotClassProps,
+	type SV
+} from './sv.ts';

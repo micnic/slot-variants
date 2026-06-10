@@ -320,6 +320,37 @@ type NonConfigClassArg<T> =
 		: T;
 
 /**
+ * The shape of an `sv()` function. Mirrors the overloads of the exported `sv`,
+ * with the introspection default `DI` baked in by `createSV()` so configs that
+ * omit `introspection` inherit the factory default in their return type.
+ */
+export type SV<DI extends boolean = false> = {
+	<
+		S extends MaybeSlots = undefined,
+		V extends MaybeVariants<S> = undefined,
+		RV extends RequiredVariants<V> = false,
+		P extends MaybePresets<S, V> = undefined,
+		MS extends MultiSlots<S> = false,
+		I extends boolean = DI
+	>(
+		config: Config<S, V, RV, P, MS, I>
+	): VariantFn<S, V, RV, P, MS, I>;
+	<
+		S extends MaybeSlots = undefined,
+		V extends MaybeVariants<S> = undefined,
+		RV extends RequiredVariants<V> = false,
+		P extends MaybePresets<S, V> = undefined,
+		MS extends MultiSlots<S> = false,
+		I extends boolean = DI
+	>(
+		...args: [...ClassValue[], Config<S, V, RV, P, MS, I>]
+	): VariantFn<S, V, RV, P, MS, I>;
+	<const T extends ClassValue[]>(
+		...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
+	): string;
+};
+
+/**
  * Extracts the variant props object from an `sv()` return type
  *
  * Omits `class`, `className`, and `preset`. Pass a string literal union as `E`
@@ -1468,50 +1499,43 @@ const runVariantResult = (
  * const { base, header, body } = card();
  * ```
  */
-export function sv<
-	S extends MaybeSlots = undefined,
-	V extends MaybeVariants<S> = undefined,
-	RV extends RequiredVariants<V> = false,
-	P extends MaybePresets<S, V> = undefined,
-	MS extends MultiSlots<S> = false,
-	I extends boolean = false
->(config: Config<S, V, RV, P, MS, I>): VariantFn<S, V, RV, P, MS, I>;
-export function sv<
-	S extends MaybeSlots = undefined,
-	V extends MaybeVariants<S> = undefined,
-	RV extends RequiredVariants<V> = false,
-	P extends MaybePresets<S, V> = undefined,
-	MS extends MultiSlots<S> = false,
-	I extends boolean = false
->(
-	...args: [...ClassValue[], Config<S, V, RV, P, MS, I>]
-): VariantFn<S, V, RV, P, MS, I>;
-export function sv<const T extends ClassValue[]>(
-	...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
-): string;
-export function sv<
-	S extends MaybeSlots = undefined,
-	V extends MaybeVariants<S> = undefined,
-	RV extends RequiredVariants<V> = false,
-	P extends MaybePresets<S, V> = undefined,
-	MS extends MultiSlots<S> = false,
-	I extends boolean = false
->(...args: ClassValue[]): string | VariantFn<S, V, RV, P, MS, I> {
+export const sv: SV = ((...args: ClassValue[]) => {
 
 	const last = args.at(-1);
 
 	// Return merged class string if no config is provided
-	if (!isConfig<S, V, RV, P, MS, I>(last)) {
+	if (!isConfig(last)) {
 		return cn(...args);
 	}
 
 	const config = compileConfig(args.slice(0, -1), last);
+
+	return createVariantFn(config);
+}) as unknown as SV;
+
+// A config whose generic parameters are widened to their constraints. Used as
+// the default bag for createSV(), where each call's own config drives the
+// precise variant types and these defaults are merged in underneath.
+type RawConfig = Config<
+	MaybeSlots,
+	MaybeVariants<MaybeSlots>,
+	RequiredVariants<MaybeVariants<MaybeSlots>>,
+	MaybePresets<MaybeSlots, MaybeVariants<MaybeSlots>>,
+	MultiSlots<MaybeSlots>,
+	boolean
+>;
+
+// Wraps a compiled config in its callable form, attaching the introspection
+// surface only when the config enables it. Operates on the already-compiled
+// (non-generic) config so callers stay free of S/V variance concerns.
+const createVariantFn = (config: CompiledConfig) => {
+
 	const variantFn = (props: RuntimeProps = {}) =>
 		runVariantResult(config, props);
 
 	// Conditionally add introspection properties if enabled in config
 	if (!config.introspection) {
-		return variantFn as unknown as VariantFn<S, V, RV, P, MS, I>;
+		return variantFn;
 	}
 
 	return assign(variantFn, {
@@ -1531,5 +1555,47 @@ export function sv<
 		getMaxEntries: () => countMaxEntries(config),
 		clearCache: () => config.cache.clear(),
 		getCacheSize: () => config.cache.size
-	}) as unknown as VariantFn<S, V, RV, P, MS, I>;
-}
+	});
+};
+
+/**
+ * Builds a pre-configured `sv()` function whose `defaults` are applied to every
+ * config-based call. The defaults accept any config option and are shallow
+ * merged so a per-call value always wins; calls with no config are forwarded
+ * to `cn()`-style merging untouched.
+ *
+ * @example
+ * ```ts
+ * import { twMerge } from 'tailwind-merge';
+ *
+ * const customSV = createSV({ postProcess: twMerge, cacheSize: 512 });
+ *
+ * // twMerge is applied without restating it per component
+ * const button = customSV('px-4 py-2', {
+ *   variants: { size: { sm: 'px-2', lg: 'px-6' } }
+ * });
+ * ```
+ */
+export const createSV = <I extends boolean = false>(
+	defaults: RawConfig & { introspection?: I | undefined } = {}
+): SV<I> => {
+
+	const configuredSv = (...args: ClassValue[]) => {
+
+		const last = args.at(-1);
+
+		// Without a trailing config there is nothing to merge defaults into
+		if (!isConfig(last)) {
+			return cn(...args);
+		}
+
+		const config = compileConfig(args.slice(0, -1), {
+			...defaults,
+			...last
+		});
+
+		return createVariantFn(config);
+	};
+
+	return configuredSv as unknown as SV<I>;
+};

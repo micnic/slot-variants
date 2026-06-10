@@ -12,10 +12,11 @@ npm install slot-variants
 
 ## Overview
 
-`slot-variants` exports two functions:
+`slot-variants` exports three functions:
 
 - **`sv()`** - creates variant-based class name generators with optional slots
 - **`cn()`** - a utility for conditionally merging class names
+- **`createSV()`** - builds a pre-configured `sv()` with shared config defaults
 
 `sv()` is a drop-in replacement for [CVA](https://cva.style/) (just rename `cva` to `sv`) and covers the core feature set of [tailwind-variants](https://www.tailwind-variants.org/) (`tv`) with a simpler API. See [Migrating from CVA / tailwind-variants](#migrating-from-cva--tailwind-variants) for details.
 
@@ -733,6 +734,52 @@ const button = sv('px-4 py-2 bg-blue-500', {
 
 The `postProcess` function is applied to each slot's final class string independently.
 
+### Shared Defaults with `createSV()`
+
+`createSV(defaults)` returns a pre-configured `sv()` that merges `defaults` into every config-based call. This avoids repeating the same options — most commonly `postProcess: twMerge` — across every component:
+
+```typescript
+import { createSV } from 'slot-variants';
+import { twMerge } from 'tailwind-merge';
+
+export const customSV = createSV({
+  postProcess: twMerge,
+  cacheSize: 512
+});
+
+// twMerge is applied without restating it per component
+const button = customSV('px-4 py-2 bg-blue-500', {
+  variants: {
+    size: {
+      sm: 'px-2 py-1 text-sm',
+      lg: 'px-6 py-3 text-lg'
+    }
+  }
+});
+```
+
+`defaults` accepts **any** config option (`base`, `variants`, `slots`, `compoundVariants`, `cacheSize`, `introspection`, `postProcess`, …). The merge is shallow and **a per-call value always wins** over the matching default — there is no deep merging of variants or compound rules:
+
+```typescript
+const customSV = createSV({ postProcess: twMerge });
+
+// This component opts out of twMerge entirely
+const raw = customSV('btn', {
+  variants: { size: { sm: 'text-sm' } },
+  postProcess: (className) => className // overrides the default
+});
+```
+
+Calls with no config object are forwarded straight to `cn()`-style merging and never see the defaults:
+
+```typescript
+const customSV = createSV({ postProcess: (c) => c.toUpperCase() });
+
+customSV('flex', 'items-center'); // 'flex items-center' — defaults are skipped
+```
+
+A factory-level `introspection: true` is reflected in each component's return type, so the [introspection](#introspection) API is available without setting the flag on every config. A per-call `introspection: false` opts an individual component back out.
+
 ### Caching
 
 Results are cached automatically for performance. The default cache size is **256** entries.
@@ -945,6 +992,7 @@ When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{
 | `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E` |
 | `VariantValue<T, K>` | Extracts the value union for a single variant key `K`, without `undefined` |
 | `SlotClassProps<T>` | Extracts the per-slot class injection shape from an `sv()` return type |
+| `SV<DI>` | The shape of an `sv()` function, with the factory's introspection default `DI`; the return type of `createSV()` |
 
 ### Return Type
 
@@ -1197,7 +1245,7 @@ Key differences to be aware of:
 | --- | --- | --- |
 | Slot return type | Always functions: `slot({ class: '...' })` | Strings by default; functions for slots listed in `multiSlots` |
 | `extend` (composition) | Supported | Not supported |
-| Built-in `twMerge` | Enabled by default | Use `postProcess: twMerge` |
+| Built-in `twMerge` | Enabled by default | Use `postProcess: twMerge`, globally via `createSV` |
 
 **Slot return type** is the most significant difference. In `tv()`, each slot returns a function that can accept additional props. In `sv()`, slots resolve to strings directly — use the `class` prop with a slot object for per-slot overrides, or list a slot in [`multiSlots`](#multi-slots) to expose it as a `tv`-style reconfigurable function:
 
@@ -1222,4 +1270,14 @@ const button = sv({
   variants: { size: { sm: 'px-2 py-1' } },
   postProcess: twMerge
 });
+```
+
+To enable it globally — the closest equivalent to `tv`'s default `twMerge` — wrap it once with [`createSV()`](#shared-defaults-with-createsv) and import the result everywhere:
+
+```typescript
+// custom-sv.ts
+import { createSV } from 'slot-variants';
+import { twMerge } from 'tailwind-merge';
+
+export const customSV = createSV({ postProcess: twMerge });
 ```

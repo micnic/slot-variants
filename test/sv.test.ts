@@ -1,5 +1,5 @@
 import t from 'tap';
-import { sv, type SlotClassProps, type VariantProps, type VariantValue } from '../src/index.ts';
+import { createSV, sv, type SlotClassProps, type VariantProps, type VariantValue } from '../src/index.ts';
 
 // =============================================================================
 // sv() - base only (no config)
@@ -5177,6 +5177,233 @@ t.test('multiSlots is exposed via introspection', (t) => {
 
 	t.end();
 });
+
+// =============================================================================
+// createSV() - factory defaults
+// =============================================================================
+
+t.test('createSV applies default postProcess to every config call', (t) => {
+
+	const factorySv = createSV({
+		postProcess: (className) => className.toUpperCase()
+	});
+
+	const button = factorySv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			}
+		}
+	});
+
+	t.equal(button({ size: 'sm' }), 'BTN TEXT-SM', 'default postProcess runs');
+
+	t.end();
+});
+
+t.test('createSV default postProcess applies to each slot', (t) => {
+
+	const factorySv = createSV({
+		postProcess: (className) => `[${className}]`
+	});
+
+	const card = factorySv({
+		slots: {
+			base: 'card',
+			header: 'title'
+		}
+	});
+
+	const result = card();
+
+	t.equal(result.base, '[card]', 'base slot processed');
+	t.equal(result.header, '[title]', 'header slot processed');
+
+	t.end();
+});
+
+t.test('per-call config overrides a factory default', (t) => {
+
+	const factorySv = createSV({
+		postProcess: (className) => className.toUpperCase()
+	});
+
+	const button = factorySv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm'
+			}
+		},
+		postProcess: (className) => `<${className}>`
+	});
+
+	t.equal(
+		button({ size: 'sm' }),
+		'<btn text-sm>',
+		'per-call postProcess wins over factory default'
+	);
+
+	t.end();
+});
+
+t.test('createSV forwards no-config calls to class merging', (t) => {
+
+	const factorySv = createSV({
+		postProcess: (className) => className.toUpperCase()
+	});
+
+	t.equal(
+		factorySv('flex', 'items-center', { gap: true }),
+		'flex items-center gap',
+		'no-config call merges like cn() and skips defaults'
+	);
+	t.equal(factorySv(['a', ['b']]), 'a b', 'nested arrays still flatten');
+
+	t.end();
+});
+
+t.test('createSV default base merges with per-call base args', (t) => {
+
+	const factorySv = createSV({ base: 'box' });
+
+	const stack = factorySv('btn', {
+		variants: {
+			gap: {
+				sm: 'gap-1'
+			}
+		}
+	});
+
+	t.equal(
+		stack({ gap: 'sm' }),
+		'btn box gap-1',
+		'positional base, default base and variant all included'
+	);
+
+	t.end();
+});
+
+t.test('createSV default introspection enables it for every component', (t) => {
+
+	const factorySv = createSV({ introspection: true });
+
+	const button = factorySv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			}
+		}
+	});
+
+	t.same(button.variantKeys, ['size'], 'introspection surface is present');
+	t.equal(typeof button.clearCache, 'function', 'clearCache exposed');
+
+	t.end();
+});
+
+t.test('per-call introspection: false overrides factory default', (t) => {
+
+	const factorySv = createSV({ introspection: true });
+
+	const button = factorySv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm'
+			}
+		},
+		introspection: false
+	});
+
+	t.equal(
+		'variantKeys' in button,
+		false,
+		'introspection surface is absent when disabled per call'
+	);
+
+	t.end();
+});
+
+t.test('createSV default cacheSize bounds the cache', (t) => {
+
+	const factorySv = createSV({ cacheSize: 2, introspection: true });
+
+	const button = factorySv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				md: 'text-base',
+				lg: 'text-lg'
+			}
+		}
+	});
+
+	button({ size: 'sm' });
+	button({ size: 'md' });
+	button({ size: 'lg' });
+
+	t.equal(button.getCacheSize(), 2, 'cache never exceeds default cacheSize');
+
+	t.end();
+});
+
+t.test('createSV with no defaults behaves like sv', (t) => {
+
+	const factorySv = createSV();
+
+	t.equal(factorySv('flex', 'gap-2'), 'flex gap-2', 'string merging works');
+
+	const button = factorySv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm'
+			}
+		}
+	});
+
+	t.equal(button({ size: 'sm' }), 'btn text-sm', 'variant resolution works');
+
+	t.end();
+});
+
+// --- createSV type tests ---
+
+const _factorySv = createSV({ introspection: true });
+
+const _factoryButton = _factorySv('btn', {
+	variants: {
+		size: {
+			sm: 'text-sm',
+			lg: 'text-lg'
+		}
+	}
+});
+
+// A default of introspection: true surfaces the introspection API in the type
+type AssertFactoryIntrospection =
+	typeof _factoryButton extends { variantKeys: string[] } ? true : false;
+const _assertFactoryIntrospection: AssertFactoryIntrospection = true;
+
+// Per-call config still drives the precise variant prop types
+type FactoryButtonProps = VariantProps<typeof _factoryButton>;
+type AssertFactoryProps = FactoryButtonProps extends {
+	size?: 'sm' | 'lg' | undefined;
+}
+	? true
+	: false;
+const _assertFactoryProps: AssertFactoryProps = true;
+
+// A no-config call resolves to a plain string
+const _factoryString = _factorySv('flex', 'gap-2');
+type AssertFactoryString = typeof _factoryString extends string ? true : false;
+const _assertFactoryString: AssertFactoryString = true;
+
+void _factoryButton;
+void _assertFactoryIntrospection;
+void _assertFactoryProps;
+void _factoryString;
+void _assertFactoryString;
 
 // --- multiSlots type tests ---
 
