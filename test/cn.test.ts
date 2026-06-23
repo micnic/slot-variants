@@ -117,7 +117,7 @@ t.test('combination of all argument types', (t) => {
 			undefined,
 			false
 		),
-		'flex bg-white items-center gap-2',
+		'flex items-center gap-2 bg-white',
 		'all argument types together'
 	);
 
@@ -127,7 +127,7 @@ t.test('combination of all argument types', (t) => {
 t.test('string and array combination', (t) => {
 	t.equal(
 		cn('flex', ['items-center', 'gap-2'], 'text-sm'),
-		'flex text-sm items-center gap-2',
+		'flex items-center gap-2 text-sm',
 		'strings around array'
 	);
 
@@ -151,7 +151,7 @@ t.test('string and object combination', (t) => {
 t.test('array and object combination', (t) => {
 	t.equal(
 		cn(['flex', 'gap-2'], { 'text-white': true, 'font-bold': false }),
-		'text-white flex gap-2',
+		'flex gap-2 text-white',
 		'array and object'
 	);
 
@@ -166,7 +166,7 @@ t.test('nested array with objects', (t) => {
 	);
 	t.equal(
 		cn(['flex', ['items-center', { 'bg-white': true }], 'p-4']),
-		'flex p-4 items-center bg-white',
+		'flex items-center bg-white p-4',
 		'object inside deeply nested array'
 	);
 

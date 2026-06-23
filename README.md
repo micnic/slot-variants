@@ -69,7 +69,7 @@ cn(['foo', ['bar', 'baz']]);                  // 'foo bar baz'
 cn({ foo: true, bar: false, baz: true });     // 'foo baz'
 
 // Mixed
-cn('base', ['responsive'], { active: true }); // 'base active responsive'
+cn('base', ['responsive'], { active: true }); // 'base responsive active'
 
 // Falsy values are filtered out
 cn('foo', null, undefined, false, 'bar');     // 'foo bar'

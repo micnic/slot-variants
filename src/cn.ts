@@ -55,16 +55,10 @@ const appendRecord = (result: string, record: ClassRecord): string => {
  */
 export function cn(...args: ClassValue[]): string {
 
-	let index = 0;
 	let result = '';
 
 	// Process args iteratively to avoid deep recursion
-	while (index < args.length) {
-
-		const item = args[index];
-
-		// Increment index before processing for early continue statements
-		index++;
+	for (const item of args) {
 
 		// Skip falsy values
 		if (!item) {
@@ -79,7 +73,7 @@ export function cn(...args: ClassValue[]): string {
 
 		// Handle array values by flattening them into the main args list
 		if (isArray(item)) {
-			args.push(...item);
+			result = append(result, cn(...item));
 			continue;
 		}
 
