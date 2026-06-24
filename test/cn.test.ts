@@ -30,6 +30,17 @@ t.test('array argument', (t) => {
 		'deeply nested array'
 	);
 	t.equal(cn([]), '', 'empty array');
+	t.equal(cn('foo', []), 'foo', 'empty array does not add trailing space');
+	t.equal(
+		cn('foo', [], 'bar'),
+		'foo bar',
+		'empty array between strings does not add double space'
+	);
+	t.equal(
+		cn('foo', [false, null]),
+		'foo',
+		'array of only falsy values does not add trailing space'
+	);
 
 	t.end();
 });

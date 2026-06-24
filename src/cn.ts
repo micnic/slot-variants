@@ -31,6 +31,21 @@ const append = (result: string, value: string): string => {
 };
 
 /**
+ * Appends the flattened result of an array to the result string
+ */
+const appendArray = (result: string, array: ClassArray): string => {
+
+	const flattened = cn(...array);
+
+	// Skip arrays that reduce to an empty string to avoid stray spaces
+	if (flattened) {
+		return append(result, flattened);
+	}
+
+	return result;
+};
+
+/**
  * Appends record keys to the result string when their values are truthy
  */
 const appendRecord = (result: string, record: ClassRecord): string => {
@@ -57,7 +72,7 @@ export function cn(...args: ClassValue[]): string {
 
 	let result = '';
 
-	// Process args iteratively to avoid deep recursion
+	// Process each argument in order
 	for (const item of args) {
 
 		// Skip falsy values
@@ -71,9 +86,9 @@ export function cn(...args: ClassValue[]): string {
 			continue;
 		}
 
-		// Handle array values by flattening them into the main args list
+		// Handle array values by flattening them recursively
 		if (isArray(item)) {
-			result = append(result, cn(...item));
+			result = appendArray(result, item);
 			continue;
 		}
 
