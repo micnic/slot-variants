@@ -121,10 +121,10 @@ const customSV = createSV({ postProcess: twMerge, cacheSize: 512 });
 The library caches results automatically (default 256 entries). Each cache entry is one distinct combination of resolved variant values:
 
 ```
-maxEntries = (values₁ + 1) × (values₂ + 1) × ... × (valuesₙ + 1)
+maxEntries = factor₁ × factor₂ × ... × factorₙ
 ```
 
-The `+ 1` counts the variant being left unset. Raise `cacheSize` only when `maxEntries` exceeds 256 — below that the cache never evicts. Cache inspection methods (`getCacheSize`, `clearCache`) are only exposed when `introspection: true`.
+A variant's factor is its value count `+ 1` (the `+ 1` counts the variant being left unset). The `+ 1` is dropped — factor is just the value count — when the variant is required or has a static default, since it can never be unset. Function-based defaults still count as unset-able, so they keep the `+ 1`. Raise `cacheSize` only when `maxEntries` exceeds 256 — below that the cache never evicts. With `introspection: true`, `getMaxEntries()` returns this exact number, and `getCacheSize()`/`clearCache()` inspect the live cache.
 
 ### 10. Use Presets for Reusable Variant Combinations
 
@@ -139,7 +139,7 @@ button({ preset: 'cta' }); // applies size: 'lg', intent: 'primary'
 
 ### 11. Use Introspection for Single Source of Truth
 
-Set `introspection: true` to expose configuration and cache members on the returned function (off by default): `variantKeys`, `variants`, `slotKeys`, `slots`, `defaultVariants`, `requiredVariants`, `presetKeys`, `presets`, `getVariantValues(key)`, `getCacheSize()`, and `clearCache()`.
+Set `introspection: true` to expose configuration and cache members on the returned function (off by default): `variantKeys`, `variants`, `slotKeys`, `slots`, `defaultVariants`, `requiredVariants`, `multiSlots`, `presetKeys`, `presets`, `getVariantValues(key)`, `getMaxEntries()`, `getCacheSize()`, and `clearCache()`.
 
 Without `introspection: true`, accessing these is a type error. Use it to centralize variant/slot definitions and reuse them across the codebase.
 
@@ -201,7 +201,7 @@ Class values inside the config (`base`, `variants` values, `slots` values, and `
 
 ## Exported Types
 
-- `ClassValue` — Valid input for `cn()` (string, array, object, boolean, null, undefined)
+- `ClassValue` — Valid input for `cn()` (string, number, bigint, array, object, boolean, null, undefined)
 - `VariantProps<T, E>` — Extract variant props from an `sv()` return, optionally excluding keys
 - `VariantValue<T, K>` — Extract the value union for a single variant key, without `undefined`
 - `SlotClassProps<T>` — Extract the per-slot class injection shape from an `sv()` return type
