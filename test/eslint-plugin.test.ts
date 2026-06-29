@@ -13,6 +13,30 @@ const rule = rules['no-conflicting-classes'];
 const IMPORT = "import { sv } from 'slot-variants';\n";
 const IMPORT_CN = "import { cn } from 'slot-variants';\n";
 
+// RuleTester fires one report per offending token, so the multi-token
+// fixtures below expect the same messageId/data several times over. `repeat`
+// clones a descriptor `count` times, and the per-rule builders below keep the
+// expectations on a single line while still asserting the reported data.
+const err = (messageId: string, data: Record<string, string>) => ({
+	messageId,
+	data
+});
+
+const repeat = <T>(value: T, count: number): T[] =>
+	Array.from({ length: count }, () => value);
+
+const shared = (token: string, variant: string, slot = 'base') =>
+	err('shared', { token, variant, slot });
+
+const dup = (token: string, slot = 'base') => err('duplicate', { token, slot });
+
+const dupCn = (token: string) => err('duplicateCn', { token });
+
+const conflict = (tokens: string, slot = 'base') =>
+	err('conflict', { tokens, slot });
+
+const conflictCn = (tokens: string) => err('conflictCn', { tokens });
+
 const NO_REDUNDANT_SPACES_VALID = [
 	// Single token, no whitespace.
 	IMPORT + "sv({ base: 'flex' });",
@@ -880,6 +904,11 @@ const NO_DYNAMIC_CLASSES_INVALID = [
 		errors: 1
 	},
 	{
+		// Logical-AND ending in a template literal with an expression.
+		code: IMPORT_CN + 'cn(cond && `px-${x}`);',
+		errors: 1
+	},
+	{
 		// Conditional class values are a cn-style affordance only —
 		// an sv() config object stays disallowed.
 		code: IMPORT + "sv({ base: isActive && 'px-4' });",
@@ -963,23 +992,12 @@ const NO_EMPTY_CLASSES_VALID = [
 	IMPORT_CN + 'cn(`flex ${x}`);',
 	// Spread argument — skipped.
 	IMPORT_CN + "cn(...rest, 'flex');",
-	// Without an import, the rule is silent.
+	// Without an import, the rule is silent (import tracking and callee
+	// resolution are covered exhaustively by the no-dynamic-classes suite).
 	'sv();',
 	'cn();',
 	"sv('');",
 	'cn({});',
-	// Default-imported sv is not tracked.
-	"import sv from 'slot-variants'; sv('');",
-	// Namespace-imported sv is not tracked.
-	"import * as mod from 'slot-variants'; mod.sv('');",
-	// Side-effect import — no specifiers tracked.
-	"import 'slot-variants'; sv('');",
-	// Named import that is neither sv nor cn is ignored.
-	"import { VariantProps } from 'slot-variants'; sv('');",
-	// Import from a different module is ignored.
-	"import { sv } from 'other'; sv('');",
-	// Member-expression callee is not tracked.
-	IMPORT + "obj.sv('');",
 	// Non-class config keys — not validated.
 	IMPORT +
 		`sv({
@@ -1358,21 +1376,9 @@ const NO_CONFLICTING_DUP_VALID = [
 	IMPORT + "sv({ slots: { body: 'p-4' }, base: { [k]: 'z' } });",
 	// Template literal with an interpolation — skipped.
 	IMPORT + 'sv({ base: `foo ${dynamic} bar` });',
-	// Import from a different module is ignored by the rule.
-	IMPORT + "import path from 'node:path'; sv({ base: 'flex' });",
-	// Default and namespace imports aren't tracked as `sv`.
-	"import sv from 'slot-variants'; sv({ base: 'flex flex' });",
-	"import * as mod from 'slot-variants'; mod.sv({ base: 'flex flex' });",
-	// Side-effect import of slot-variants — no specifiers.
-	"import 'slot-variants'; sv({ base: 'flex flex' });",
-	// Named import that is neither `sv` nor `cn` is ignored.
-	"import { VariantProps } from 'slot-variants'; sv('flex flex');",
-	// cn from a different module is ignored.
-	"import { cn } from 'other'; cn('flex', 'flex');",
-	// Default-imported cn is not tracked.
-	"import cn from 'slot-variants'; cn('flex', 'flex');",
-	// Namespace-imported cn is not tracked.
-	"import * as mod from 'slot-variants'; mod.cn('flex', 'flex');",
+	// Import tracking and callee resolution (default/namespace/side-effect
+	// imports, foreign modules, member-expression callees) are covered
+	// exhaustively by the no-dynamic-classes suite.
 	// cn with no duplicates.
 	IMPORT_CN + "cn('flex', 'items-center');",
 	// cn with only an array — no duplicates.
@@ -1427,20 +1433,7 @@ const NO_CONFLICTING_DUP_INVALID = [
 				},
 				defaultVariants: { orientation: 'row' }
 			});`,
-		errors: [
-			{
-				messageId: 'duplicate',
-				data: { token: 'flex', slot: 'base' }
-			},
-			{
-				messageId: 'duplicate',
-				data: { token: 'flex', slot: 'base' }
-			},
-			{
-				messageId: 'duplicate',
-				data: { token: 'flex', slot: 'base' }
-			}
-		]
+		errors: repeat(dup('flex'), 3)
 	},
 	{
 		// Duplicate within a single literal — each occurrence
@@ -1487,16 +1480,7 @@ const NO_CONFLICTING_DUP_INVALID = [
 				slots: { body: 'flex' },
 				variants: { disabled: { body: 'flex' } }
 			});`,
-		errors: [
-			{
-				messageId: 'duplicate',
-				data: { token: 'flex', slot: 'body' }
-			},
-			{
-				messageId: 'duplicate',
-				data: { token: 'flex', slot: 'body' }
-			}
-		]
+		errors: repeat(dup('flex', 'body'), 2)
 	},
 	{
 		// compoundSlots duplicates a class that's already on the slot.
@@ -1554,30 +1538,12 @@ const NO_CONFLICTING_DUP_INVALID = [
 	{
 		// sv without config, duplicate across args.
 		code: IMPORT + "sv('flex', 'flex');",
-		errors: [
-			{
-				messageId: 'duplicateCn',
-				data: { token: 'flex' }
-			},
-			{
-				messageId: 'duplicateCn',
-				data: { token: 'flex' }
-			}
-		]
+		errors: repeat(dupCn('flex'), 2)
 	},
 	{
 		// cn() duplicate across args.
 		code: IMPORT_CN + "cn('flex', 'flex');",
-		errors: [
-			{
-				messageId: 'duplicateCn',
-				data: { token: 'flex' }
-			},
-			{
-				messageId: 'duplicateCn',
-				data: { token: 'flex' }
-			}
-		]
+		errors: repeat(dupCn('flex'), 2)
 	},
 	{
 		// String-literal import specifier for cn is tracked.
@@ -1587,16 +1553,7 @@ const NO_CONFLICTING_DUP_INVALID = [
 	{
 		// cn() duplicate within a single literal.
 		code: IMPORT_CN + "cn('flex flex');",
-		errors: [
-			{
-				messageId: 'duplicateCn',
-				data: { token: 'flex' }
-			},
-			{
-				messageId: 'duplicateCn',
-				data: { token: 'flex' }
-			}
-		]
+		errors: repeat(dupCn('flex'), 2)
 	},
 	{
 		// cn() duplicate inside an array.
@@ -1658,16 +1615,7 @@ const NO_CONFLICTING_NS_INVALID = [
 	{
 		// Basic conflict in base.
 		code: IMPORT + "sv({ base: 'w-100 w-200' });",
-		errors: [
-			{
-				messageId: 'conflict',
-				data: { tokens: 'w-100, w-200', slot: 'base' }
-			},
-			{
-				messageId: 'conflict',
-				data: { tokens: 'w-100, w-200', slot: 'base' }
-			}
-		]
+		errors: repeat(conflict('w-100, w-200'), 2)
 	},
 	{
 		// Important suffix is ignored when computing the conflict key.
@@ -1710,30 +1658,12 @@ const NO_CONFLICTING_NS_INVALID = [
 	{
 		// Slot-scoped conflict — namespace duplicated within a slot.
 		code: IMPORT + "sv({ slots: { body: 'w-100 w-200' } });",
-		errors: [
-			{
-				messageId: 'conflict',
-				data: { tokens: 'w-100, w-200', slot: 'body' }
-			},
-			{
-				messageId: 'conflict',
-				data: { tokens: 'w-100, w-200', slot: 'body' }
-			}
-		]
+		errors: repeat(conflict('w-100, w-200', 'body'), 2)
 	},
 	{
 		// sv used as cn (no config) — uses the cn message.
 		code: IMPORT + "sv('w-100', 'w-200');",
-		errors: [
-			{
-				messageId: 'conflictCn',
-				data: { tokens: 'w-100, w-200' }
-			},
-			{
-				messageId: 'conflictCn',
-				data: { tokens: 'w-100, w-200' }
-			}
-		]
+		errors: repeat(conflictCn('w-100, w-200'), 2)
 	},
 	{
 		// cn() conflict across args.
@@ -1925,32 +1855,7 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { size: 'md' }
 			});`,
-		errors: [
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'size',
-					slot: 'base'
-				}
-			},
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'size',
-					slot: 'base'
-				}
-			},
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'size',
-					slot: 'base'
-				}
-			}
-		]
+		errors: repeat(shared('rounded', 'size'), 3)
 	},
 	{
 		// Two-value variant, exhaustive via requiredVariants —
@@ -1967,38 +1872,10 @@ const NO_SHARED_TOKENS_INVALID = [
 				requiredVariants: [\`intent\`]
 			});`,
 		errors: [
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'intent',
-					slot: 'base'
-				}
-			},
-			{
-				messageId: 'shared',
-				data: {
-					token: 'font-bold',
-					variant: 'intent',
-					slot: 'base'
-				}
-			},
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'intent',
-					slot: 'base'
-				}
-			},
-			{
-				messageId: 'shared',
-				data: {
-					token: 'font-bold',
-					variant: 'intent',
-					slot: 'base'
-				}
-			}
+			shared('rounded', 'intent'),
+			shared('font-bold', 'intent'),
+			shared('rounded', 'intent'),
+			shared('font-bold', 'intent')
 		]
 	},
 	{
@@ -2016,24 +1893,7 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				requiredVariants: true
 			});`,
-		errors: [
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'size',
-					slot: 'base'
-				}
-			},
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'size',
-					slot: 'base'
-				}
-			}
-		]
+		errors: repeat(shared('rounded', 'size'), 2)
 	},
 	{
 		// Shared token in a non-base slot — must be flagged for
@@ -2050,24 +1910,7 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { size: 'sm' }
 			});`,
-		errors: [
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'size',
-					slot: 'root'
-				}
-			},
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'size',
-					slot: 'root'
-				}
-			}
-		]
+		errors: repeat(shared('rounded', 'size', 'root'), 2)
 	},
 	{
 		// Variant value as an array of strings — extractor walks
@@ -2083,24 +1926,7 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { size: 'sm' }
 			});`,
-		errors: [
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'size',
-					slot: 'base'
-				}
-			},
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'size',
-					slot: 'base'
-				}
-			}
-		]
+		errors: repeat(shared('rounded', 'size'), 2)
 	},
 	{
 		// Boolean record (true/false keys) with a shared token,
@@ -2116,24 +1942,7 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { on: false }
 			});`,
-		errors: [
-			{
-				messageId: 'shared',
-				data: {
-					token: 'highlight',
-					variant: 'on',
-					slot: 'base'
-				}
-			},
-			{
-				messageId: 'shared',
-				data: {
-					token: 'highlight',
-					variant: 'on',
-					slot: 'base'
-				}
-			}
-		]
+		errors: repeat(shared('highlight', 'on'), 2)
 	},
 	{
 		// Numeric variant value keys are parsed as literal property keys
@@ -2149,24 +1958,7 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { size: 1 }
 			});`,
-		errors: [
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'size',
-					slot: 'base'
-				}
-			},
-			{
-				messageId: 'shared',
-				data: {
-					token: 'rounded',
-					variant: 'size',
-					slot: 'base'
-				}
-			}
-		]
+		errors: repeat(shared('rounded', 'size'), 2)
 	}
 ];
 
