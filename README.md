@@ -711,7 +711,9 @@ card({ class: { base: 'shadow-xl', header: 'text-blue-700', body: 'min-h-24' } }
 // base: 'border shadow-xl', header: 'font-bold text-blue-700', body: 'py-4 min-h-24'
 ```
 
-Both `class` and `className` are supported, but `class` is prioritized when both are used in the same time.
+Both `class` and `className` are supported, but `class` takes priority when both are passed at the same time.
+
+The runtime `class`/`className` override is not part of the cache key — it is merged on top of the cached variant result on every call (and `postProcess`, if set, is re-applied to the merged output). Two calls with identical variants but different `class` values therefore share the same cached base result.
 
 ### Post-Processing
 
@@ -733,6 +735,10 @@ const button = sv('px-4 py-2 bg-blue-500', {
 ```
 
 The `postProcess` function is applied to each slot's final class string independently.
+
+`sv()` and `cn()` concatenate classes in order without deduplicating or resolving conflicts — a class repeated across `base` and a variant value appears twice in the output, and conflicting Tailwind utilities are both kept. Use `postProcess: twMerge` when you need duplicates collapsed and later utilities to win at runtime.
+
+For statically-defined classes, the bundled [ESLint / oxlint plugin](#eslint--oxlint-plugin) catches most duplication at lint time — before it ever reaches the output: `no-conflicting-classes` flags duplicate and same-namespace tokens within a call, and `no-shared-tokens` flags a class repeated across every value of a variant (which belongs in `base` instead). The two approaches complement each other — the plugin keeps your source clean, while `postProcess: twMerge` handles duplicates that only arise from dynamic, runtime-supplied classes.
 
 ### Shared Defaults with `createSV()`
 
@@ -806,6 +812,8 @@ const button = sv('btn', {
 });
 ```
 
+Setting `cacheSize` to `0` (or a negative number) disables caching entirely — every call recomputes its result. This is useful when variant combinations are effectively unbounded and you'd rather not retain any entries.
+
 Cache inspection and control methods (`getCacheSize`, `clearCache`) are exposed on the returned function only when `introspection: true` is set — see [Introspection](#introspection).
 
 ### Introspection
@@ -855,6 +863,36 @@ button.clearCache();                // clear all cached entries
 
 Without `introspection: true`, only the variant function itself is returned — accessing introspection or cache properties is a type error.
 
+### Errors & Validation
+
+`sv()` validates both the config and the runtime props, throwing an `Error` on misconfiguration. TypeScript prevents most of these statically, but they still guard against untyped runtime input (e.g. a value coming from a form or API).
+
+**Config-time** — thrown when `sv(config)` is evaluated (at module load, when the variant function is built):
+
+| Message | Cause |
+| --- | --- |
+| `Required variant "X" is not defined in variants` | `requiredVariants` lists a variant that doesn't exist |
+| `Required variant "X" cannot have a default value` | A variant is both in `requiredVariants` and `defaultVariants` |
+| `Default variant "X" is not defined in variants` | `defaultVariants` references an unknown variant |
+| `Default variant "X" has invalid value "V"` | A static default value isn't one of the variant's values |
+| `Preset "P" references unknown variant "X"` | A preset references an unknown variant |
+| `Preset "P" has invalid value "V" for variant "X"` | A preset value isn't one of the variant's values |
+| `Compound matcher references unknown variant "X"` | A compound variant/slot matches on an unknown variant |
+| `Compound matcher for variant "X" has invalid value "V"` | A compound matcher value isn't one of the variant's values |
+| `Compound variant must define "class" or "className"` | A `compoundVariants` entry has no class value |
+| `Compound slot must define "class" or "className"` | A `compoundSlots` entry has no class value |
+| `Compound slot must define at least one slot` | A `compoundSlots` entry has an empty `slots` array |
+| `Compound slot references unknown slot "S"` | A `compoundSlots` entry targets an undefined slot |
+| `Multi slot references unknown slot "S"` | `multiSlots` lists a slot that doesn't exist |
+
+**Runtime** — thrown when the returned variant function is called:
+
+| Message | Cause |
+| --- | --- |
+| `Missing required variant: "X"` | A required variant wasn't provided (by prop or preset) |
+| `Invalid value "V" for variant "X"` | A prop value isn't one of the variant's defined values |
+| `Invalid preset "P"` | The `preset` prop names a preset that doesn't exist |
+
 ## TypeScript
 
 `slot-variants` is fully typed. Variant props are inferred from your config:
@@ -876,7 +914,7 @@ const button = sv('btn', {
   requiredVariants: ['intent']
 });
 
-// Extract the variant props type (excludes class/className)
+// Extract the variant props type (excludes class, className, and preset)
 type ButtonProps = VariantProps<typeof button>;
 // { size?: 'sm' | 'lg' | undefined; intent: 'primary' | 'danger' }
 ```
@@ -1015,7 +1053,7 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 | `multiSlots` | `string[] \| boolean` | Slot names exposed as reconfigurable functions instead of strings; `true` makes every slot a function, `false` none |
 | `presets` | `Record<string, Partial<VariantProps>>` | Named combinations of variant values selectable via `preset` prop |
 | `postProcess` | `(className: string) => string` | Custom transformation applied to final class strings |
-| `cacheSize` | `number` | Maximum number of cached results (default: `256`) |
+| `cacheSize` | `number` | Maximum number of cached results (default: `256`); `0` or a negative value disables caching |
 | `introspection` | `boolean` | When `true`, exposes variant/slot/preset introspection and cache methods on the returned function (default: `false`) |
 
 ## ESLint / oxlint Plugin
