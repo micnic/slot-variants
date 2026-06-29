@@ -6,7 +6,7 @@ import {
 	createManyVariantsConfig,
 	createSimpleButtonConfig
 } from './fixtures.ts';
-import { printBenchResults } from './report.ts';
+import { assertSameOutput, printBenchResults } from './report.ts';
 
 const bench = new Bench({ warmupIterations: 1000 });
 
@@ -73,6 +73,32 @@ bench.add('sv - many variants with props', () => {
 });
 bench.add('cva - many variants with props', () => {
 	cvaMany({ size: 'lg', color: 'danger', rounded: 'full', shadow: 'lg' });
+});
+
+// Validate that sv and cva produce identical output for each case
+assertSameOutput('simple defaults', {
+	sv: svButton(),
+	cva: cvaButton()
+});
+assertSameOutput('simple with props', {
+	sv: svButton({ color: 'secondary', size: 'lg' }),
+	cva: cvaButton({ color: 'secondary', size: 'lg' })
+});
+assertSameOutput('compound match', {
+	sv: svCompound({ color: 'primary', size: 'lg' }),
+	cva: cvaCompound({ color: 'primary', size: 'lg' })
+});
+assertSameOutput('compound no match', {
+	sv: svCompound({ color: 'primary', size: 'sm' }),
+	cva: cvaCompound({ color: 'primary', size: 'sm' })
+});
+assertSameOutput('many variants defaults', {
+	sv: svMany(),
+	cva: cvaMany()
+});
+assertSameOutput('many variants with props', {
+	sv: svMany({ size: 'lg', color: 'danger', rounded: 'full', shadow: 'lg' }),
+	cva: cvaMany({ size: 'lg', color: 'danger', rounded: 'full', shadow: 'lg' })
 });
 
 await bench.run();

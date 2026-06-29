@@ -7,7 +7,7 @@ import {
 	createSimpleButtonConfig,
 	createSlotsCardConfig
 } from './fixtures.ts';
-import { printBenchResults } from './report.ts';
+import { assertSameOutput, printBenchResults } from './report.ts';
 
 const tvNoMerge = createTV({ twMerge: false });
 
@@ -176,6 +176,60 @@ bench.add('tv (no merge) - slots with props', () => {
 	header();
 	body();
 	footer();
+});
+
+// Materializes a tailwind-variants slots result into a plain record of strings
+// so it can be compared against sv's slot output.
+const materializeTvSlots = (slots: {
+	base: () => string;
+	header: () => string;
+	body: () => string;
+	footer: () => string;
+}) => ({
+	base: slots.base(),
+	header: slots.header(),
+	body: slots.body(),
+	footer: slots.footer()
+});
+
+// Validate that sv and tailwind-variants produce identical output per case
+assertSameOutput('simple defaults', {
+	sv: svButton(),
+	'sv + twMerge': svButtonMerge(),
+	tv: tvButton(),
+	'tv (no merge)': tvButtonNoMerge()
+});
+assertSameOutput('simple with props', {
+	sv: svButton({ color: 'secondary', size: 'lg' }),
+	'sv + twMerge': svButtonMerge({ color: 'secondary', size: 'lg' }),
+	tv: tvButton({ color: 'secondary', size: 'lg' }),
+	'tv (no merge)': tvButtonNoMerge({ color: 'secondary', size: 'lg' })
+});
+assertSameOutput('compound match', {
+	sv: svCompound({ color: 'primary', size: 'lg' }),
+	'sv + twMerge': svCompoundMerge({ color: 'primary', size: 'lg' }),
+	tv: tvCompound({ color: 'primary', size: 'lg' }),
+	'tv (no merge)': tvCompoundNoMerge({ color: 'primary', size: 'lg' })
+});
+assertSameOutput('compound no match', {
+	sv: svCompound({ color: 'primary', size: 'sm' }),
+	'sv + twMerge': svCompoundMerge({ color: 'primary', size: 'sm' }),
+	tv: tvCompound({ color: 'primary', size: 'sm' }),
+	'tv (no merge)': tvCompoundNoMerge({ color: 'primary', size: 'sm' })
+});
+assertSameOutput('slots defaults', {
+	sv: svSlots(),
+	'sv + twMerge': svSlotsMerge(),
+	tv: materializeTvSlots(tvSlots()),
+	'tv (no merge)': materializeTvSlots(tvSlotsNoMerge())
+});
+assertSameOutput('slots with props', {
+	sv: svSlots({ size: 'lg', variant: 'filled' }),
+	'sv + twMerge': svSlotsMerge({ size: 'lg', variant: 'filled' }),
+	tv: materializeTvSlots(tvSlots({ size: 'lg', variant: 'filled' })),
+	'tv (no merge)': materializeTvSlots(
+		tvSlotsNoMerge({ size: 'lg', variant: 'filled' })
+	)
 });
 
 await bench.run();
