@@ -604,9 +604,15 @@ const reportDynamic = (context: Rule.RuleContext, node: Node) => {
 const isUndefinedIdentifier = (node: Node): boolean =>
 	node.type === 'Identifier' && node.name === 'undefined';
 
+const isLogicalClassStaticString = (node: Node): boolean =>
+	node.type === 'LogicalExpression' &&
+	node.operator === '&&' &&
+	isStaticStringNode(node.right);
+
 type StaticClassValueOptions = {
 	allowNestedArrays?: boolean;
 	allowUndefined?: boolean;
+	allowLogicalString?: boolean;
 };
 
 // Validator counterpart to forEachStaticItem: spreads are reported as dynamic
@@ -643,6 +649,10 @@ const checkClassValueIsStatic = (
 		return;
 	}
 
+	if (options.allowLogicalString && isLogicalClassStaticString(node)) {
+		return;
+	}
+
 	if (node.type === 'ArrayExpression') {
 		forEachItemReportingSpread(context, node.elements, (element) => {
 			if (options.allowNestedArrays === false) {
@@ -652,7 +662,9 @@ const checkClassValueIsStatic = (
 				}
 			}
 
-			checkClassValueIsStatic(context, element);
+			checkClassValueIsStatic(context, element, {
+				allowLogicalString: options.allowLogicalString === true
+			});
 		});
 
 		return;
@@ -888,7 +900,7 @@ const checkCnArguments = (
 	args: ReadonlyArray<Expression | SpreadElement>
 ) => {
 	forEachItemReportingSpread(context, args, (arg) => {
-		checkClassValueIsStatic(context, arg);
+		checkClassValueIsStatic(context, arg, { allowLogicalString: true });
 	});
 };
 
