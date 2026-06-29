@@ -613,6 +613,7 @@ type StaticClassValueOptions = {
 	allowNestedArrays?: boolean;
 	allowUndefined?: boolean;
 	allowLogicalString?: boolean;
+	allowClassRecord?: boolean;
 };
 
 // Validator counterpart to forEachStaticItem: spreads are reported as dynamic
@@ -663,10 +664,16 @@ const checkClassValueIsStatic = (
 			}
 
 			checkClassValueIsStatic(context, element, {
-				allowLogicalString: options.allowLogicalString === true
+				allowLogicalString: options.allowLogicalString === true,
+				allowClassRecord: options.allowClassRecord === true
 			});
 		});
 
+		return;
+	}
+
+	if (options.allowClassRecord && node.type === 'ObjectExpression') {
+		checkClassRecordKeys(context, node);
 		return;
 	}
 
@@ -701,6 +708,17 @@ const forEachStaticProperty = (
 
 		visit(prop);
 	}
+};
+
+// In cn-style arguments an ObjectExpression is a clsx-style record: its keys
+// are class names and its values are runtime conditions. Only the keys must be
+// statically known — spreads and computed keys make the class name dynamic, so
+// forEachStaticProperty reports them; the condition values are left alone.
+const checkClassRecordKeys = (
+	context: Rule.RuleContext,
+	node: ObjectExpression
+) => {
+	forEachStaticProperty(context, node, () => {});
 };
 
 const checkClassValueRecord = (context: Rule.RuleContext, node: Node) => {
@@ -900,7 +918,10 @@ const checkCnArguments = (
 	args: ReadonlyArray<Expression | SpreadElement>
 ) => {
 	forEachItemReportingSpread(context, args, (arg) => {
-		checkClassValueIsStatic(context, arg, { allowLogicalString: true });
+		checkClassValueIsStatic(context, arg, {
+			allowLogicalString: true,
+			allowClassRecord: true
+		});
 	});
 };
 

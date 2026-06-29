@@ -582,6 +582,14 @@ const NO_DYNAMIC_CLASSES_VALID = [
 	IMPORT_CN + "cn(isActive && isLarge && 'px-4');",
 	// Conditional inside a cn array argument.
 	IMPORT_CN + "cn(['flex', isActive && 'px-4']);",
+	// clsx-style record: keys are class names, values are runtime conditions.
+	IMPORT_CN + "cn({ 'text-red-500': hasError });",
+	// Record mixed with other static cn arguments.
+	IMPORT_CN + "cn('px-2 py-1', isActive && 'px-4', { 'text-red-500': hasError });",
+	// Record nested inside a cn array argument.
+	IMPORT_CN + "cn(['flex', { active: isActive }]);",
+	// Record as an sv() cn-style leading argument.
+	IMPORT + "sv({ active: isActive }, { base: 'flex' });",
 	// Conditional in an sv() cn-style leading argument.
 	IMPORT + "sv(isActive && 'px-4', { base: 'flex' });",
 	// Without an import, the rule is silent.
@@ -884,8 +892,18 @@ const NO_DYNAMIC_CLASSES_INVALID = [
 		errors: 1
 	},
 	{
-		// cn() with an object record (not statically inferrable).
-		code: IMPORT_CN + 'cn({ foo: true });',
+		// cn() object record with a computed key — the class name is dynamic.
+		code: IMPORT_CN + 'cn({ [k]: true });',
+		errors: 1
+	},
+	{
+		// cn() object record with a spread — the keys aren't statically known.
+		code: IMPORT_CN + 'cn({ ...rest, foo: true });',
+		errors: 1
+	},
+	{
+		// Computed key in an object record nested inside a cn array argument.
+		code: IMPORT_CN + 'cn(["flex", { [k]: cond }]);',
 		errors: 1
 	},
 	{
