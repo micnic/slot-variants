@@ -1409,8 +1409,13 @@ const NO_CONFLICTING_DUP_VALID = [
 	IMPORT_CN + "cn(...extra, 'flex');",
 	// cn with a number literal — non-string literal ignored.
 	IMPORT_CN + "cn(42, 'flex');",
-	// cn with a cn-style record — opaque, skipped.
+	// cn-style record keys become tokens, but `foo` and `bar` are unrelated
+	// single-word utilities — no namespace, nothing to conflict with.
 	IMPORT_CN + "cn({ foo: true }, 'bar');",
+	// Logical-AND and record-key tokens that don't collide with the statics.
+	IMPORT_CN + "cn('flex', isActive && 'px-4', { 'text-red-500': hasError });",
+	// Record key inside a cn array — distinct namespace from the array string.
+	IMPORT_CN + "cn(['mt-2', { 'gap-4': cond }]);",
 	// cn with a template literal containing an expression — skipped.
 	IMPORT_CN + 'cn(`flex ${x}`, `items-center`);',
 	// Unrelated call under a cn-only import is a no-op.
@@ -1597,6 +1602,21 @@ const NO_CONFLICTING_DUP_INVALID = [
 		// Both sv and cn imported — cn call flagged independently.
 		code: "import { sv, cn } from 'slot-variants'; sv('a'); cn('b', 'b');",
 		errors: 2
+	},
+	{
+		// cn() duplicate across a static string and a logical-AND string.
+		code: IMPORT_CN + "cn('flex', isActive && 'flex');",
+		errors: repeat(dupCn('flex'), 2)
+	},
+	{
+		// cn() duplicate across a static string and a clsx record key.
+		code: IMPORT_CN + "cn('flex', { flex: cond });",
+		errors: repeat(dupCn('flex'), 2)
+	},
+	{
+		// cn() duplicate within a multi-token record key.
+		code: IMPORT_CN + "cn({ 'flex flex': cond });",
+		errors: repeat(dupCn('flex'), 2)
 	}
 ];
 
@@ -1687,6 +1707,32 @@ const NO_CONFLICTING_NS_INVALID = [
 		// cn() conflict across args.
 		code: IMPORT_CN + "cn('w-100', 'w-200');",
 		errors: 2
+	},
+	{
+		// cn() conflict between a static string and a logical-AND string.
+		code: IMPORT_CN + "cn('px-2 py-1', isActive && 'px-4', { 'text-red-500': hasError });",
+		errors: repeat(conflictCn('px-2, px-4'), 2)
+	},
+	{
+		// cn() conflict between two clsx-style record keys.
+		code: IMPORT_CN + "cn({ 'w-100': a, 'w-200': b });",
+		errors: repeat(conflictCn('w-100, w-200'), 2)
+	},
+	{
+		// cn() conflict between a record key and a static string.
+		code: IMPORT_CN + "cn('w-100', { 'w-200': cond });",
+		errors: 2
+	},
+	{
+		// Multi-token record key contributes each token to conflict detection.
+		code: IMPORT_CN + "cn('w-100', { 'shrink-0 w-200': cond });",
+		errors: 2
+	},
+	{
+		// Logical-AND string conflict in an sv() cn-style leading argument —
+		// reported against the base slot since the call carries a config.
+		code: IMPORT + "sv('w-100', isLarge && 'w-200', { base: 'flex' });",
+		errors: repeat(conflict('w-100, w-200'), 2)
 	}
 ];
 

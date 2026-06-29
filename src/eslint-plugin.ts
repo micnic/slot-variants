@@ -3,6 +3,7 @@ import type {
 	CallExpression,
 	Expression,
 	ImportDeclaration,
+	LogicalExpression,
 	Node,
 	ObjectExpression,
 	Property,
@@ -405,23 +406,93 @@ const pushStringLiteralTokens = (
 const isStaticStringNode = (node: Node): boolean =>
 	getStaticStringText(node) !== null;
 
+// A clsx-style record key is itself a class string: the key is appended verbatim
+// when its (runtime) value is truthy, so a multi-token key like `'px-2 py-1'`
+// contributes each of its tokens. String-literal keys are tokenized like any
+// class string; identifier/numeric keys are a single, space-free token.
+const pushRecordKeyTokens = (
+	prop: Property,
+	slot: string,
+	source: Source,
+	entries: Entry[],
+	sourceCode: SourceCode
+) => {
+	const { key } = prop;
+
+	if (key.type === 'Literal' && typeof key.value === 'string') {
+		pushStringLiteralTokens(key, slot, source, entries, sourceCode);
+		return;
+	}
+
+	const token = getKeyName(prop);
+
+	/* c8 ignore next 3 -- a non-computed key is parser-emitted as Identifier or Literal */
+	if (token === null) {
+		return;
+	}
+
+	const [start, end] = sourceCode.getRange(key);
+
+	entries.push({ source, slot, token, start, end });
+};
+
+// Keys of a clsx-style record become tokens; spreads and computed keys carry an
+// unknowable class name and are skipped (the no-dynamic-classes rule flags them).
+const extractRecordTokens = (
+	node: ObjectExpression,
+	slot: string,
+	source: Source,
+	entries: Entry[],
+	sourceCode: SourceCode
+) => {
+	for (const prop of node.properties) {
+		if (prop.type !== 'Property' || prop.computed) {
+			continue;
+		}
+
+		pushRecordKeyTokens(prop, slot, source, entries, sourceCode);
+	}
+};
+
+// `cnStyle` toggles the cn() calling-convention forms — a `cond && 'static'`
+// logical-AND (contributing the right operand's tokens) and a clsx-style record.
+// In an sv() config's class positions an object is instead a slot-keyed record.
 const extractTokens = (
 	node: Node,
 	slot: string,
 	source: Source,
 	slotNames: Set<string>,
 	entries: Entry[],
-	sourceCode: SourceCode
+	sourceCode: SourceCode,
+	cnStyle = false
 ) => {
 	if (isStaticStringNode(node)) {
 		pushStringLiteralTokens(node, slot, source, entries, sourceCode);
 		return;
 	}
 
+	if (cnStyle && isLogicalClassStaticString(node)) {
+		pushStringLiteralTokens(node.right, slot, source, entries, sourceCode);
+		return;
+	}
+
 	if (node.type === 'ArrayExpression') {
 		forEachStaticItem(node.elements, (element) => {
-			extractTokens(element, slot, source, slotNames, entries, sourceCode);
+			extractTokens(
+				element,
+				slot,
+				source,
+				slotNames,
+				entries,
+				sourceCode,
+				cnStyle
+			);
 		});
+		return;
+	}
+
+	if (cnStyle && node.type === 'ObjectExpression') {
+		extractRecordTokens(node, slot, source, entries, sourceCode);
 		return;
 	}
 
@@ -573,8 +644,10 @@ const collectConfigEntries = (
 		extract(slotValue, slotKey, baseSource);
 	}
 
+	// Leading args use the cn() calling convention, so logical-AND strings and
+	// clsx-style records contribute tokens (slots don't apply to them).
 	for (const arg of baseArgs) {
-		extract(arg, 'base', baseSource);
+		extractTokens(arg, 'base', baseSource, slotNames, entries, sourceCode, true);
 	}
 
 	const base = config.get('base');
@@ -604,7 +677,7 @@ const reportDynamic = (context: Rule.RuleContext, node: Node) => {
 const isUndefinedIdentifier = (node: Node): boolean =>
 	node.type === 'Identifier' && node.name === 'undefined';
 
-const isLogicalClassStaticString = (node: Node): boolean =>
+const isLogicalClassStaticString = (node: Node): node is LogicalExpression =>
 	node.type === 'LogicalExpression' &&
 	node.operator === '&&' &&
 	isStaticStringNode(node.right);
@@ -1351,7 +1424,8 @@ const analyzeCnForRule = (
 			baseSource,
 			EMPTY_SLOT_NAMES,
 			entries,
-			context.sourceCode
+			context.sourceCode,
+			true
 		);
 	}
 
