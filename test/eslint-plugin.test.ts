@@ -582,6 +582,25 @@ const NO_DYNAMIC_CLASSES_VALID = [
 	IMPORT_CN + "cn(isActive && isLarge && 'px-4');",
 	// Conditional inside a cn array argument.
 	IMPORT_CN + "cn(['flex', isActive && 'px-4']);",
+	// Ternary whose branches are both static strings.
+	IMPORT_CN + "cn(isActive ? 'px-4' : 'px-2');",
+	// Ternary branches may be expression-free template literals.
+	IMPORT_CN + 'cn(isActive ? `px-4` : `px-2`);',
+	// Ternary nested inside a cn array argument.
+	IMPORT_CN + "cn(['flex', isActive ? 'px-4' : 'px-2']);",
+	// Ternary in an sv() cn-style leading argument.
+	IMPORT + "sv(isActive ? 'px-4' : 'px-2', { base: 'flex' });",
+	// Ternary substitution inside a template literal — whitespace-isolated.
+	IMPORT_CN + "cn(`items-center ${col ? 'flex-col' : 'flex-row'}`);",
+	// Ternary substitution at the start of a template literal.
+	IMPORT_CN + "cn(`${col ? 'flex-col' : 'flex-row'} items-center`);",
+	// Multiple ternary substitutions in one template literal.
+	IMPORT_CN +
+		"cn(`${a ? 'flex-col' : 'flex-row'} ${b ? 'gap-2' : 'gap-4'}`);",
+	// Template-literal ternary nested inside a cn array argument.
+	IMPORT_CN + "cn(['flex', `items-center ${col ? 'flex-col' : 'flex-row'}`]);",
+	// Ternary branch may itself be an expression-free template literal.
+	IMPORT_CN + 'cn(`gap-2 ${col ? `flex-col` : `flex-row`}`);',
 	// clsx-style record: keys are class names, values are runtime conditions.
 	IMPORT_CN + "cn({ 'text-red-500': hasError });",
 	// Record mixed with other static cn arguments.
@@ -930,6 +949,43 @@ const NO_DYNAMIC_CLASSES_INVALID = [
 		// Conditional class values are a cn-style affordance only —
 		// an sv() config object stays disallowed.
 		code: IMPORT + "sv({ base: isActive && 'px-4' });",
+		errors: 1
+	},
+	{
+		// Ternary with a dynamic branch — the class isn't fully known.
+		code: IMPORT_CN + "cn(isActive ? 'px-4' : other);",
+		errors: 1
+	},
+	{
+		// Ternary with a dynamic consequent branch.
+		code: IMPORT_CN + "cn(isActive ? other : 'px-2');",
+		errors: 1
+	},
+	{
+		// Ternary is a cn-style affordance only — disallowed in an sv() config.
+		code: IMPORT + "sv({ base: isActive ? 'px-4' : 'px-2' });",
+		errors: 1
+	},
+	{
+		// Template ternary whose substitution isn't whitespace-isolated — a
+		// token would straddle the boundary, so it stays dynamic.
+		code: IMPORT_CN + "cn(`p-${x ? '2' : '4'}`);",
+		errors: 1
+	},
+	{
+		// Template with a ternary that has a dynamic branch.
+		code: IMPORT_CN + "cn(`flex ${x ? 'a' : other}`);",
+		errors: 1
+	},
+	{
+		// Template ternary whose trailing quasi isn't whitespace-separated — a
+		// token straddles the boundary after the substitution.
+		code: IMPORT_CN + "cn(`${x ? 'a' : 'b'}-tail`);",
+		errors: 1
+	},
+	{
+		// Template ternary is a cn-style affordance — disallowed in a config.
+		code: IMPORT + "sv({ base: `flex ${c ? 'a' : 'b'}` });",
 		errors: 1
 	}
 ];
@@ -1309,6 +1365,15 @@ const NO_CONFLICTING_DUP_VALID = [
 	// Same token across values of the same variant — mutually exclusive.
 	IMPORT +
 		"sv({ variants: { state: { on: 'highlight', off: 'highlight' } } });",
+	// Same token across a ternary's branches — only one branch renders.
+	IMPORT_CN + "cn(isActive ? 'flex' : 'flex');",
+	// Ternary branches with conflicting namespaces are mutually exclusive.
+	IMPORT_CN + "cn(isActive ? 'w-100' : 'w-200');",
+	// Ternary in an sv() cn-style leading argument — branches are exclusive.
+	IMPORT + "sv(isActive ? 'w-100' : 'w-200', { base: 'flex' });",
+	// Template ternary — branch namespaces are mutually exclusive, quasi
+	// token appears once.
+	IMPORT_CN + "cn(`items-center ${col ? 'w-100' : 'w-200'}`);",
 	// Dynamic base — can't analyze, don't false-flag.
 	IMPORT + "sv({ base: dynamic, variants: { size: { sm: 'text-sm' } } });",
 	// Without the import the rule stays quiet.
@@ -1462,6 +1527,23 @@ const NO_CONFLICTING_DUP_INVALID = [
 		// Duplicate within a single literal — each occurrence
 		// gets its own report pointing at the token.
 		code: IMPORT + "sv({ base: 'flex flex' });",
+		errors: 2
+	},
+	{
+		// Duplicate within one ternary branch — that branch renders both.
+		code: IMPORT_CN + "cn(isActive ? 'flex flex' : 'block');",
+		errors: 2
+	},
+	{
+		// Duplicate between a static string and a ternary branch — when the
+		// branch renders, the token appears twice.
+		code: IMPORT_CN + "cn('flex', isActive ? 'flex' : 'block');",
+		errors: 2
+	},
+	{
+		// Duplicate between a template quasi (always present) and a ternary
+		// branch of that same template.
+		code: IMPORT_CN + "cn(`flex ${c ? 'flex' : 'block'}`);",
 		errors: 2
 	},
 	{
@@ -1733,6 +1815,23 @@ const NO_CONFLICTING_NS_INVALID = [
 		// reported against the base slot since the call carries a config.
 		code: IMPORT + "sv('w-100', isLarge && 'w-200', { base: 'flex' });",
 		errors: repeat(conflict('w-100, w-200'), 2)
+	},
+	{
+		// Two independent ternaries can both render, so a conflict across
+		// their branches is flagged.
+		code: IMPORT_CN + "cn(a ? 'w-100' : 'block', b ? 'w-200' : 'flex');",
+		errors: repeat(conflictCn('w-100, w-200'), 2)
+	},
+	{
+		// Conflict between a static string and a ternary branch.
+		code: IMPORT_CN + "cn('w-100', cond ? 'w-200' : 'block');",
+		errors: 2
+	},
+	{
+		// Conflict between a template quasi and a ternary branch of the same
+		// template — the quasi always renders.
+		code: IMPORT_CN + "cn(`w-100 ${cond ? 'w-200' : 'block'}`);",
+		errors: 2
 	}
 ];
 

@@ -1,13 +1,16 @@
 import type { Linter, Rule, Scope, SourceCode } from 'eslint';
 import type {
 	CallExpression,
+	ConditionalExpression,
 	Expression,
 	ImportDeclaration,
 	LogicalExpression,
 	Node,
 	ObjectExpression,
 	Property,
-	SpreadElement
+	SpreadElement,
+	TemplateElement,
+	TemplateLiteral
 } from 'estree';
 
 // Surfaced by ESLint as each rule's documentation link (editors, the `--format`
@@ -375,20 +378,14 @@ const reportDuplicateTokens = (
 	}
 };
 
-const pushStringLiteralTokens = (
-	node: Node,
+const pushTokensFromText = (
+	text: string,
+	base: number,
 	slot: string,
 	source: Source,
-	entries: Entry[],
-	sourceCode: SourceCode
+	entries: Entry[]
 ) => {
-	// String/untagged-template delimiters are single-char, so the node's
-	// start offset + 1 is the first inner character.
-	const raw = sourceCode.getText(node);
-	const inner = raw.slice(1, -1);
-	const base = sourceCode.getRange(node)[0] + 1;
-
-	for (const match of inner.matchAll(/\S+/g)) {
+	for (const match of text.matchAll(/\S+/g)) {
 		const token = match[0];
 		const start = base + match.index;
 		const end = start + token.length;
@@ -401,6 +398,49 @@ const pushStringLiteralTokens = (
 			end
 		});
 	}
+};
+
+const pushStringLiteralTokens = (
+	node: Node,
+	slot: string,
+	source: Source,
+	entries: Entry[],
+	sourceCode: SourceCode
+) => {
+	// String/untagged-template delimiters are single-char, so the node's
+	// start offset + 1 is the first inner character.
+	const raw = sourceCode.getText(node);
+	const base = sourceCode.getRange(node)[0] + 1;
+
+	pushTokensFromText(raw.slice(1, -1), base, slot, source, entries);
+};
+
+// Each branch of a static-string ternary renders exclusively, so its tokens are
+// modelled as distinct values of a synthetic per-ternary variant key. This lets
+// the mutual-exclusivity logic treat cross-branch tokens as non-conflicting
+// while still flagging duplicates within a single branch.
+const pushConditionalTokens = (
+	node: ConditionalExpression,
+	slot: string,
+	entries: Entry[],
+	sourceCode: SourceCode
+) => {
+	const ternaryKey = `ternary:${sourceCode.getRange(node)[0]}`;
+
+	pushStringLiteralTokens(
+		node.consequent,
+		slot,
+		{ kind: 'variant', key: ternaryKey, value: 'consequent' },
+		entries,
+		sourceCode
+	);
+	pushStringLiteralTokens(
+		node.alternate,
+		slot,
+		{ kind: 'variant', key: ternaryKey, value: 'alternate' },
+		entries,
+		sourceCode
+	);
 };
 
 const isStaticStringNode = (node: Node): boolean =>
@@ -473,6 +513,37 @@ const extractTokens = (
 
 	if (cnStyle && isLogicalClassStaticString(node)) {
 		pushStringLiteralTokens(node.right, slot, source, entries, sourceCode);
+		return;
+	}
+
+	if (cnStyle && isConditionalClassStaticString(node)) {
+		pushConditionalTokens(node, slot, entries, sourceCode);
+		return;
+	}
+
+	// A ternary embedded in a template literal contributes tokens when every
+	// substitution is a whitespace-isolated static-string ternary: the quasis
+	// carry always-present tokens and each ternary its exclusive branch tokens.
+	if (cnStyle && isStaticTernaryTemplate(node)) {
+		for (const quasi of node.quasis) {
+			pushTokensFromText(
+				quasi.value.raw,
+				sourceCode.getRange(quasi)[0] + 1,
+				slot,
+				source,
+				entries
+			);
+		}
+
+		for (const expression of node.expressions) {
+			/* c8 ignore next 3 -- isStaticTernaryTemplate guarantees every expression is a static ternary */
+			if (!isConditionalClassStaticString(expression)) {
+				continue;
+			}
+
+			pushConditionalTokens(expression, slot, entries, sourceCode);
+		}
+
 		return;
 	}
 
@@ -682,10 +753,59 @@ const isLogicalClassStaticString = (node: Node): node is LogicalExpression =>
 	node.operator === '&&' &&
 	isStaticStringNode(node.right);
 
+// A ternary contributes a statically-known class only when both branches are
+// themselves static strings — exactly one branch renders, so the set of
+// possible class names is fully known at lint time.
+const isConditionalClassStaticString = (
+	node: Node
+): node is ConditionalExpression =>
+	node.type === 'ConditionalExpression' &&
+	isStaticStringNode(node.consequent) &&
+	isStaticStringNode(node.alternate);
+
+// A template substitution is only statically tokenizable when whitespace (or a
+// template edge) separates it from the surrounding quasi text — otherwise a
+// class token would straddle the boundary (e.g. `p-${x ? '2' : '4'}`), which
+// we deliberately don't attempt to enumerate.
+const quasiIsolatesExpression = (
+	quasi: TemplateElement,
+	index: number,
+	quasis: ReadonlyArray<TemplateElement>
+): boolean => {
+	const raw = quasi.value.raw;
+	const hasLeftExpression = index > 0;
+	const hasRightExpression = index < quasis.length - 1;
+
+	// An empty quasi only isolates at a template edge; an interior empty quasi
+	// means two expressions sit adjacent with nothing between them.
+	if (raw.length === 0) {
+		return !hasLeftExpression || !hasRightExpression;
+	}
+
+	if (hasLeftExpression && !/^\s/.test(raw)) {
+		return false;
+	}
+
+	if (hasRightExpression && !/\s$/.test(raw)) {
+		return false;
+	}
+
+	return true;
+};
+
+// A template literal whose every substitution is a whitespace-isolated
+// static-string ternary: its full set of possible outputs is statically known,
+// so it's treated as a static class value.
+const isStaticTernaryTemplate = (node: Node): node is TemplateLiteral =>
+	node.type === 'TemplateLiteral' &&
+	node.expressions.every(isConditionalClassStaticString) &&
+	node.quasis.every(quasiIsolatesExpression);
+
 type StaticClassValueOptions = {
 	allowNestedArrays?: boolean;
 	allowUndefined?: boolean;
 	allowLogicalString?: boolean;
+	allowConditionalString?: boolean;
 	allowClassRecord?: boolean;
 };
 
@@ -727,6 +847,13 @@ const checkClassValueIsStatic = (
 		return;
 	}
 
+	if (
+		options.allowConditionalString &&
+		(isConditionalClassStaticString(node) || isStaticTernaryTemplate(node))
+	) {
+		return;
+	}
+
 	if (node.type === 'ArrayExpression') {
 		forEachItemReportingSpread(context, node.elements, (element) => {
 			if (options.allowNestedArrays === false) {
@@ -738,6 +865,7 @@ const checkClassValueIsStatic = (
 
 			checkClassValueIsStatic(context, element, {
 				allowLogicalString: options.allowLogicalString === true,
+				allowConditionalString: options.allowConditionalString === true,
 				allowClassRecord: options.allowClassRecord === true
 			});
 		});
@@ -993,6 +1121,7 @@ const checkCnArguments = (
 	forEachItemReportingSpread(context, args, (arg) => {
 		checkClassValueIsStatic(context, arg, {
 			allowLogicalString: true,
+			allowConditionalString: true,
 			allowClassRecord: true
 		});
 	});
