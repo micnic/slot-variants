@@ -1556,11 +1556,26 @@ const noRedundantSpaces: Rule.RuleModule = {
 	}
 };
 
+// The value name that marks a Tailwind color utility (`text-red-500`,
+// `bg-white`, `border-transparent`). A color utility targets a different CSS
+// property than a same-prefixed size/scale utility (`text-sm`, `border-2`), so
+// it gets its own conflict key — otherwise a font size and a text color, or a
+// border width and a border color, would be flagged as conflicting. This is the
+// default Tailwind palette plus its special keywords; a custom palette color
+// isn't listed and falls back to the coarser prefix grouping.
+const COLOR_UTILITY_VALUES = new Set([
+	'slate', 'gray', 'zinc', 'neutral', 'stone', 'red', 'orange', 'amber',
+	'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue',
+	'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose',
+	'black', 'white', 'transparent', 'current', 'inherit'
+]);
+
 // Returns null for tokens that don't look like a namespaced utility — single
 // words (`flex`), purely-prefixed (`-`), or anything without a `-` after the
 // optional leading negative marker. The `!` important marker is stripped —
 // trailing (Tailwind v4 `w-200!`) or leading (Tailwind v3 `!w-200`) — so it
-// doesn't split the conflict key.
+// doesn't split the conflict key. Color utilities get a `|color` suffix so they
+// don't collide with same-prefixed non-color utilities.
 const getConflictKey = (token: string): string | null => {
 	let stripped = token;
 
@@ -1593,7 +1608,20 @@ const getConflictKey = (token: string): string | null => {
 		return null;
 	}
 
-	return `${variantPrefix}|${utility.slice(utilStart, firstDash)}`;
+	const namespace = `${variantPrefix}|${utility.slice(utilStart, firstDash)}`;
+	const valueStart = firstDash + 1;
+	const nextDash = utility.indexOf('-', valueStart);
+	let valueEnd = utility.length;
+
+	if (nextDash !== -1) {
+		valueEnd = nextDash;
+	}
+
+	if (COLOR_UTILITY_VALUES.has(utility.slice(valueStart, valueEnd))) {
+		return `${namespace}|color`;
+	}
+
+	return namespace;
 };
 
 type ConflictGroup = { tokens: Set<string>; entries: Entry[] };

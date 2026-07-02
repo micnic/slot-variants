@@ -1825,6 +1825,14 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT_CN + 'cn(dynamic);',
 	// Different namespace prefixes don't conflict.
 	IMPORT + "sv({ base: 'w-100 h-200' });",
+	// A color utility and a same-prefixed size utility target different CSS
+	// properties, so they don't conflict.
+	IMPORT + "sv({ base: 'text-sm text-red-500' });",
+	// Border width and border color don't conflict.
+	IMPORT + "sv({ base: 'border-2 border-red-500' });",
+	// A single-segment color keyword is still recognized as a color, so it
+	// doesn't conflict with a same-prefixed non-color utility.
+	IMPORT + "sv({ base: 'bg-cover bg-white' });",
 	// Zero-arg call.
 	IMPORT + 'sv();'
 ];
@@ -1859,6 +1867,17 @@ const NO_CONFLICTING_NS_INVALID = [
 		// Multi-segment namespace conflict (bg-red-500 vs bg-blue-500).
 		code: IMPORT + "sv({ base: 'bg-red-500 bg-blue-500' });",
 		errors: 2
+	},
+	{
+		// A named color keyword and a shaded color are both colors — they still
+		// conflict.
+		code: IMPORT + "sv({ base: 'bg-white bg-red-500' });",
+		errors: 2
+	},
+	{
+		// Two text-color utilities conflict (same color property).
+		code: IMPORT_CN + "cn('text-red-500', 'text-blue-500');",
+		errors: repeat(conflictCn('text-blue-500, text-red-500'), 2)
 	},
 	{
 		// Negative utility shares namespace with positive sibling.
