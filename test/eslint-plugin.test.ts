@@ -137,6 +137,12 @@ const NO_REDUNDANT_SPACES_INVALID = [
 		errors: 1
 	},
 	{
+		// Redundant spaces in a hoisted `const` string are fixed at the const.
+		code: IMPORT_CN + "const base = 'flex  gap-2';\ncn(base);",
+		output: IMPORT_CN + "const base = 'flex gap-2';\ncn(base);",
+		errors: 1
+	},
+	{
 		// Trailing whitespace.
 		code: IMPORT + "sv({ base: 'flex ' });",
 		output: IMPORT + "sv({ base: 'flex' });",
@@ -644,7 +650,17 @@ const NO_DYNAMIC_CLASSES_VALID = [
 	// Member-expression callee is not tracked.
 	IMPORT + 'obj.sv(dynamic);',
 	// Unrelated function call when imports are tracked.
-	IMPORT + "console.log('hi'); sv('flex');"
+	IMPORT + "console.log('hi'); sv('flex');",
+	// A hoisted `const` class string is read through to its value.
+	IMPORT_CN + "const BASE = 'flex-1 gap-2';\ncn(BASE);",
+	// A `const` class array is read through too.
+	IMPORT_CN + "const BASE = ['flex-1', 'gap-2'];\ncn(BASE);",
+	// A chain of `const` bindings is followed to the value.
+	IMPORT_CN + "const A = 'flex';\nconst B = A;\ncn(B);",
+	// A `const` reference inside an sv() config value is resolved.
+	IMPORT + "const SM = 'text-sm';\nsv({ variants: { size: { sm: SM } } });",
+	// A `const` reference nested inside a ternary branch is resolved.
+	IMPORT_CN + "const X = 'px-4';\ncn(cond ? X : 'px-2');"
 ];
 
 const NO_DYNAMIC_CLASSES_INVALID = [
@@ -1014,6 +1030,36 @@ const NO_DYNAMIC_CLASSES_INVALID = [
 		// A logical-AND is unsafe as a template substitution (it stringifies to
 		// "false" when skipped), so the template stays dynamic.
 		code: IMPORT_CN + "cn(`flex ${x && 'a'}`);",
+		errors: 1
+	},
+	{
+		// `let` can be reassigned, so its binding isn't read through.
+		code: IMPORT_CN + "let base = 'flex';\ncn(base);",
+		errors: 1
+	},
+	{
+		// A redeclared `var` has multiple definitions — not a safe single value.
+		code: IMPORT_CN + "var base = 'a';\nvar base = 'b';\ncn(base);",
+		errors: 1
+	},
+	{
+		// An imported binding lives in another module — its value is unknown.
+		code: "import { cn } from 'slot-variants';\nimport { base } from 'x';\ncn(base);",
+		errors: 1
+	},
+	{
+		// A destructuring binding isn't a plain `const name = value`.
+		code: IMPORT_CN + "const { base } = obj;\ncn(base);",
+		errors: 1
+	},
+	{
+		// A `const` whose initializer is dynamic is reported at the initializer.
+		code: IMPORT_CN + "const base = make();\ncn(base);",
+		errors: 1
+	},
+	{
+		// A reference cycle terminates and is reported as dynamic.
+		code: IMPORT_CN + "const a = b;\nconst b = a;\ncn(a);",
 		errors: 1
 	}
 ];
@@ -1407,6 +1453,8 @@ const NO_CONFLICTING_DUP_VALID = [
 	IMPORT_CN + "cn(a ? 'w-100' : b ? 'w-200' : 'w-300');",
 	// Same token across chained-ternary leaves — only one leaf renders.
 	IMPORT_CN + "cn(a ? 'flex' : b ? 'flex' : 'block');",
+	// A hoisted `const` contributes its tokens without self-conflict.
+	IMPORT_CN + "const BASE = 'flex gap-2';\ncn(BASE, 'items-center');",
 	// Dynamic base — can't analyze, don't false-flag.
 	IMPORT + "sv({ base: dynamic, variants: { size: { sm: 'text-sm' } } });",
 	// Without the import the rule stays quiet.
@@ -1583,6 +1631,11 @@ const NO_CONFLICTING_DUP_INVALID = [
 		// Duplicate within a single ternary branch array — that branch renders
 		// both tokens together.
 		code: IMPORT_CN + "cn(cond ? ['flex', 'flex'] : 'block');",
+		errors: 2
+	},
+	{
+		// Duplicate between a hoisted `const` token and a literal argument.
+		code: IMPORT_CN + "const BASE = 'flex';\ncn(BASE, 'flex');",
 		errors: 2
 	},
 	{
