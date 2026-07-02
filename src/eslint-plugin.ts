@@ -1570,13 +1570,81 @@ const COLOR_UTILITY_VALUES = new Set([
 	'black', 'white', 'transparent', 'current', 'inherit'
 ]);
 
+// Curated sets of Tailwind utilities that set the same CSS property and so are
+// mutually exclusive, but which the dash-namespace heuristic can't group —
+// single words (`flex`, `absolute`) or hyphenated siblings that don't share a
+// first segment (`inline-block` vs `flex`). Opt-in via the rule's
+// `exclusiveGroups: true` option, since a project's own single-word class names
+// would otherwise be flagged.
+const TAILWIND_EXCLUSIVE_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
+	// display
+	[
+		'block', 'inline-block', 'inline', 'flex', 'inline-flex', 'table',
+		'inline-table', 'table-caption', 'table-cell', 'table-column',
+		'table-column-group', 'table-footer-group', 'table-header-group',
+		'table-row-group', 'table-row', 'flow-root', 'grid', 'inline-grid',
+		'contents', 'list-item', 'hidden'
+	],
+	// position
+	['static', 'fixed', 'absolute', 'relative', 'sticky'],
+	// visibility
+	['visible', 'invisible', 'collapse']
+];
+
+// `true` enables the built-in Tailwind groups; an array supplies custom groups
+// (replacing the built-ins); anything else (including the default `undefined`)
+// leaves single-word grouping off.
+type ExclusiveGroupsOption =
+	| boolean
+	| ReadonlyArray<ReadonlyArray<string>>
+	| undefined;
+
+const resolveExclusiveGroups = (
+	option: ExclusiveGroupsOption
+): ReadonlyArray<ReadonlyArray<string>> => {
+	if (option === true) {
+		return TAILWIND_EXCLUSIVE_GROUPS;
+	}
+
+	if (Array.isArray(option)) {
+		return option;
+	}
+
+	return [];
+};
+
+// A lookup from each grouped utility to a stable per-group id, so tokens in the
+// same exclusive group share a conflict key. Empty when grouping is disabled,
+// in which case getConflictKey behaves exactly as before.
+const buildExclusiveGroupMap = (
+	option: ExclusiveGroupsOption
+): ReadonlyMap<string, string> => {
+	const map = new Map<string, string>();
+	let index = 0;
+
+	for (const group of resolveExclusiveGroups(option)) {
+		const groupId = String(index);
+
+		for (const token of group) {
+			map.set(token, groupId);
+		}
+
+		index += 1;
+	}
+
+	return map;
+};
+
 // Returns null for tokens that don't look like a namespaced utility — single
 // words (`flex`), purely-prefixed (`-`), or anything without a `-` after the
 // optional leading negative marker. The `!` important marker is stripped —
 // trailing (Tailwind v4 `w-200!`) or leading (Tailwind v3 `!w-200`) — so it
 // doesn't split the conflict key. Color utilities get a `|color` suffix so they
 // don't collide with same-prefixed non-color utilities.
-const getConflictKey = (token: string): string | null => {
+const getConflictKey = (
+	token: string,
+	exclusiveGroups: ReadonlyMap<string, string>
+): string | null => {
 	let stripped = token;
 
 	if (token.endsWith('!')) {
@@ -1600,6 +1668,15 @@ const getConflictKey = (token: string): string | null => {
 
 	if (utility.startsWith('-')) {
 		utilStart = 1;
+	}
+
+	// An opted-in exclusive group takes precedence — it can unify utilities that
+	// the dash-namespace heuristic can't (single words like `flex`/`block`, or
+	// hyphenated siblings like `inline-block`/`flex` that don't share a prefix).
+	const groupId = exclusiveGroups.get(utility.slice(utilStart));
+
+	if (groupId !== undefined) {
+		return `${variantPrefix}|#${groupId}`;
 	}
 
 	const firstDash = utility.indexOf('-', utilStart + 1);
@@ -1627,12 +1704,13 @@ const getConflictKey = (token: string): string | null => {
 type ConflictGroup = { tokens: Set<string>; entries: Entry[] };
 
 const groupEntriesByConflictKey = (
-	tokenMap: Map<string, Entry[]>
+	tokenMap: Map<string, Entry[]>,
+	exclusiveGroups: ReadonlyMap<string, string>
 ): Map<string, ConflictGroup> => {
 	const groups = new Map<string, ConflictGroup>();
 
 	for (const [token, list] of tokenMap) {
-		const key = getConflictKey(token);
+		const key = getConflictKey(token, exclusiveGroups);
 
 		if (key === null) {
 			continue;
@@ -1654,9 +1732,13 @@ const reportConflicts = (
 	context: Rule.RuleContext,
 	tokenMap: Map<string, Entry[]>,
 	messageId: string,
-	data: Record<string, string>
+	data: Record<string, string>,
+	exclusiveGroups: ReadonlyMap<string, string>
 ) => {
-	for (const group of groupEntriesByConflictKey(tokenMap).values()) {
+	for (const group of groupEntriesByConflictKey(
+		tokenMap,
+		exclusiveGroups
+	).values()) {
 		if (group.tokens.size < 2 || isMutuallyExclusiveVariants(group.entries)) {
 			continue;
 		}
@@ -1670,7 +1752,8 @@ const reportConflicts = (
 const analyzeConfigForRule = (
 	context: Rule.RuleContext,
 	configNode: Node,
-	baseArgs: ReadonlyArray<Expression | SpreadElement>
+	baseArgs: ReadonlyArray<Expression | SpreadElement>,
+	exclusiveGroups: ReadonlyMap<string, string>
 ) => {
 	const config = getProperties(configNode);
 	const slotNames = getConfigSlotNames(config);
@@ -1680,13 +1763,14 @@ const analyzeConfigForRule = (
 
 	for (const [slot, tokenMap] of bySlot) {
 		reportDuplicateTokens(context, tokenMap, 'duplicate', { slot });
-		reportConflicts(context, tokenMap, 'conflict', { slot });
+		reportConflicts(context, tokenMap, 'conflict', { slot }, exclusiveGroups);
 	}
 };
 
 const analyzeCnForRule = (
 	context: Rule.RuleContext,
-	args: ReadonlyArray<Expression | SpreadElement>
+	args: ReadonlyArray<Expression | SpreadElement>,
+	exclusiveGroups: ReadonlyMap<string, string>
 ) => {
 	const entries: Entry[] = [];
 
@@ -1706,7 +1790,7 @@ const analyzeCnForRule = (
 
 	if (tokenMap) {
 		reportDuplicateTokens(context, tokenMap, 'duplicateCn', {});
-		reportConflicts(context, tokenMap, 'conflictCn', {});
+		reportConflicts(context, tokenMap, 'conflictCn', {}, exclusiveGroups);
 	}
 };
 
@@ -1730,7 +1814,27 @@ const noConflictingClasses: Rule.RuleModule = {
 			recommended: true,
 			url: DOCS_URL
 		},
-		schema: [],
+		schema: [
+			{
+				type: 'object',
+				properties: {
+					exclusiveGroups: {
+						oneOf: [
+							{ type: 'boolean' },
+							{
+								type: 'array',
+								items: {
+									type: 'array',
+									items: { type: 'string' },
+									minItems: 2
+								}
+							}
+						]
+					}
+				},
+				additionalProperties: false
+			}
+		],
 		messages: {
 			duplicate:
 				'Class "{{token}}" will appear more than once in the "{{slot}}" slot output.',
@@ -1743,11 +1847,20 @@ const noConflictingClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
+		const exclusiveGroups = buildExclusiveGroupMap(
+			context.options[0]?.exclusiveGroups
+		);
+
 		return createTrackedCallListeners(context, (_node, call) => {
 			if (call.config) {
-				analyzeConfigForRule(context, call.config, call.args);
+				analyzeConfigForRule(
+					context,
+					call.config,
+					call.args,
+					exclusiveGroups
+				);
 			} else {
-				analyzeCnForRule(context, call.args);
+				analyzeCnForRule(context, call.args, exclusiveGroups);
 			}
 		});
 	}

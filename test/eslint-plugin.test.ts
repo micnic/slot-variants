@@ -1833,6 +1833,33 @@ const NO_CONFLICTING_NS_VALID = [
 	// A single-segment color keyword is still recognized as a color, so it
 	// doesn't conflict with a same-prefixed non-color utility.
 	IMPORT + "sv({ base: 'bg-cover bg-white' });",
+	// With grouping on, a grouped utility still doesn't conflict with an
+	// unrelated namespaced utility.
+	{
+		code: IMPORT_CN + "cn('flex', 'w-100');",
+		options: [{ exclusiveGroups: true }]
+	},
+	// With grouping on, the same group across different variant prefixes is not
+	// a conflict.
+	{
+		code: IMPORT_CN + "cn('hover:flex', 'block');",
+		options: [{ exclusiveGroups: true }]
+	},
+	// A single grouped utility on its own has nothing to conflict with.
+	{
+		code: IMPORT_CN + "cn('flex');",
+		options: [{ exclusiveGroups: true }]
+	},
+	// Custom groups replace the built-ins, so built-in members aren't grouped.
+	{
+		code: IMPORT_CN + "cn('flex', 'block');",
+		options: [{ exclusiveGroups: [['on', 'off']] }]
+	},
+	// The option can be explicitly disabled.
+	{
+		code: IMPORT_CN + "cn('flex', 'block');",
+		options: [{ exclusiveGroups: false }]
+	},
 	// Zero-arg call.
 	IMPORT + 'sv();'
 ];
@@ -1878,6 +1905,37 @@ const NO_CONFLICTING_NS_INVALID = [
 		// Two text-color utilities conflict (same color property).
 		code: IMPORT_CN + "cn('text-red-500', 'text-blue-500');",
 		errors: repeat(conflictCn('text-blue-500, text-red-500'), 2)
+	},
+	{
+		// Opt-in: two single-word display utilities are mutually exclusive.
+		code: IMPORT_CN + "cn('flex', 'block');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('block, flex'), 2)
+	},
+	{
+		// Opt-in: single-word position utilities.
+		code: IMPORT_CN + "cn('absolute', 'relative');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('absolute, relative'), 2)
+	},
+	{
+		// Opt-in: a hyphenated display utility conflicts with a single-word one
+		// even though they share no dash-namespace.
+		code: IMPORT_CN + "cn('flex', 'inline-block');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('flex, inline-block'), 2)
+	},
+	{
+		// Opt-in grouping is respected inside an sv() config too, per slot.
+		code: IMPORT + "sv({ base: 'absolute fixed' });",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflict('absolute, fixed'), 2)
+	},
+	{
+		// Custom groups flag project-specific mutually-exclusive utilities.
+		code: IMPORT_CN + "cn('on', 'off');",
+		options: [{ exclusiveGroups: [['on', 'off', 'auto']] }],
+		errors: repeat(conflictCn('off, on'), 2)
 	},
 	{
 		// Negative utility shares namespace with positive sibling.
