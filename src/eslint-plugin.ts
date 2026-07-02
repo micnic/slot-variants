@@ -1,10 +1,8 @@
 import type { Linter, Rule, Scope, SourceCode } from 'eslint';
 import type {
 	CallExpression,
-	ConditionalExpression,
 	Expression,
 	ImportDeclaration,
-	LogicalExpression,
 	Node,
 	ObjectExpression,
 	Property,
@@ -415,32 +413,18 @@ const pushStringLiteralTokens = (
 	pushTokensFromText(raw.slice(1, -1), base, slot, source, entries);
 };
 
-// Each branch of a static-string ternary renders exclusively, so its tokens are
-// modelled as distinct values of a synthetic per-ternary variant key. This lets
-// the mutual-exclusivity logic treat cross-branch tokens as non-conflicting
-// while still flagging duplicates within a single branch.
-const pushConditionalTokens = (
-	node: ConditionalExpression,
-	slot: string,
-	entries: Entry[],
-	sourceCode: SourceCode
-) => {
-	const ternaryKey = `ternary:${sourceCode.getRange(node)[0]}`;
+// Flattens a ternary — including a chained one like `a ? x : b ? y : z` — into
+// its leaf branches. A branch that is itself a ternary is recursed into; any
+// other node (string, array, record, logical-AND, …) is a leaf. Exactly one
+// leaf renders, so each is a mutually-exclusive alternative.
+const collectBranchLeaves = (node: Node, leaves: Node[]) => {
+	if (node.type === 'ConditionalExpression') {
+		collectBranchLeaves(node.consequent, leaves);
+		collectBranchLeaves(node.alternate, leaves);
+		return;
+	}
 
-	pushStringLiteralTokens(
-		node.consequent,
-		slot,
-		{ kind: 'variant', key: ternaryKey, value: 'consequent' },
-		entries,
-		sourceCode
-	);
-	pushStringLiteralTokens(
-		node.alternate,
-		slot,
-		{ kind: 'variant', key: ternaryKey, value: 'alternate' },
-		entries,
-		sourceCode
-	);
+	leaves.push(node);
 };
 
 const isStaticStringNode = (node: Node): boolean =>
@@ -494,9 +478,10 @@ const extractRecordTokens = (
 	}
 };
 
-// `cnStyle` toggles the cn() calling-convention forms — a `cond && 'static'`
-// logical-AND (contributing the right operand's tokens) and a clsx-style record.
-// In an sv() config's class positions an object is instead a slot-keyed record.
+// `cnStyle` toggles the cn() calling-convention forms — logical-AND (`cond &&
+// value`), ternaries (`cond ? a : b`, chained or nested), ternary templates, and
+// clsx-style records, each of which may nest the others. In an sv() config's
+// class positions an object is instead a slot-keyed record.
 const extractTokens = (
 	node: Node,
 	slot: string,
@@ -511,19 +496,43 @@ const extractTokens = (
 		return;
 	}
 
-	if (cnStyle && isLogicalClassStaticString(node)) {
-		pushStringLiteralTokens(node.right, slot, source, entries, sourceCode);
+	// The right operand of a `&&` is the only class it can contribute; the left
+	// is a runtime condition. It renders alongside everything else, so it keeps
+	// the incoming source.
+	if (cnStyle && node.type === 'LogicalExpression' && node.operator === '&&') {
+		extractTokens(node.right, slot, source, slotNames, entries, sourceCode, cnStyle);
 		return;
 	}
 
-	if (cnStyle && isConditionalClassStaticString(node)) {
-		pushConditionalTokens(node, slot, entries, sourceCode);
+	// A ternary renders exactly one leaf branch, so every leaf shares one
+	// synthetic exclusivity key with a distinct per-leaf value: tokens within a
+	// leaf co-occur, tokens across leaves are mutually exclusive.
+	if (cnStyle && node.type === 'ConditionalExpression') {
+		const ternaryKey = `ternary:${sourceCode.getRange(node)[0]}`;
+		const leaves: Node[] = [];
+
+		collectBranchLeaves(node, leaves);
+
+		let index = 0;
+
+		for (const leaf of leaves) {
+			extractTokens(
+				leaf,
+				slot,
+				{ kind: 'variant', key: ternaryKey, value: `branch${index}` },
+				slotNames,
+				entries,
+				sourceCode,
+				cnStyle
+			);
+			index += 1;
+		}
+
 		return;
 	}
 
-	// A ternary embedded in a template literal contributes tokens when every
-	// substitution is a whitespace-isolated static-string ternary: the quasis
-	// carry always-present tokens and each ternary its exclusive branch tokens.
+	// A whitespace-isolated ternary template: the quasis carry always-present
+	// tokens and each substitution its own exclusive branch tokens.
 	if (cnStyle && isStaticTernaryTemplate(node)) {
 		for (const quasi of node.quasis) {
 			pushTokensFromText(
@@ -536,12 +545,15 @@ const extractTokens = (
 		}
 
 		for (const expression of node.expressions) {
-			/* c8 ignore next 3 -- isStaticTernaryTemplate guarantees every expression is a static ternary */
-			if (!isConditionalClassStaticString(expression)) {
-				continue;
-			}
-
-			pushConditionalTokens(expression, slot, entries, sourceCode);
+			extractTokens(
+				expression,
+				slot,
+				source,
+				slotNames,
+				entries,
+				sourceCode,
+				cnStyle
+			);
 		}
 
 		return;
@@ -748,20 +760,15 @@ const reportDynamic = (context: Rule.RuleContext, node: Node) => {
 const isUndefinedIdentifier = (node: Node): boolean =>
 	node.type === 'Identifier' && node.name === 'undefined';
 
-const isLogicalClassStaticString = (node: Node): node is LogicalExpression =>
-	node.type === 'LogicalExpression' &&
-	node.operator === '&&' &&
-	isStaticStringNode(node.right);
-
-// A ternary contributes a statically-known class only when both branches are
-// themselves static strings — exactly one branch renders, so the set of
-// possible class names is fully known at lint time.
-const isConditionalClassStaticString = (
-	node: Node
-): node is ConditionalExpression =>
-	node.type === 'ConditionalExpression' &&
-	isStaticStringNode(node.consequent) &&
-	isStaticStringNode(node.alternate);
+// A ternary whose every (possibly nested) branch is a static string. Each
+// possible output is a complete, statically-known class string, so it is safe
+// as a template-literal substitution — unlike a logical-AND (which stringifies
+// to "false" when skipped) or an array (whose comma-join leaks into the text).
+const isStaticStringConditional = (node: Node): boolean =>
+	isStaticStringNode(node) ||
+	(node.type === 'ConditionalExpression' &&
+		isStaticStringConditional(node.consequent) &&
+		isStaticStringConditional(node.alternate));
 
 // A template substitution is only statically tokenizable when whitespace (or a
 // template edge) separates it from the surrounding quasi text — otherwise a
@@ -798,7 +805,7 @@ const quasiIsolatesExpression = (
 // so it's treated as a static class value.
 const isStaticTernaryTemplate = (node: Node): node is TemplateLiteral =>
 	node.type === 'TemplateLiteral' &&
-	node.expressions.every(isConditionalClassStaticString) &&
+	node.expressions.every(isStaticStringConditional) &&
 	node.quasis.every(quasiIsolatesExpression);
 
 type StaticClassValueOptions = {
@@ -808,6 +815,17 @@ type StaticClassValueOptions = {
 	allowConditionalString?: boolean;
 	allowClassRecord?: boolean;
 };
+
+// The cn-style affordances that propagate into nested positions (array items,
+// `&&` right operands, ternary branches). `allowNestedArrays`/`allowUndefined`
+// are top-level-only concerns and deliberately dropped.
+const branchOptions = (
+	options: StaticClassValueOptions
+): StaticClassValueOptions => ({
+	allowLogicalString: options.allowLogicalString === true,
+	allowConditionalString: options.allowConditionalString === true,
+	allowClassRecord: options.allowClassRecord === true
+});
 
 // Validator counterpart to forEachStaticItem: spreads are reported as dynamic
 // rather than skipped.
@@ -843,15 +861,27 @@ const checkClassValueIsStatic = (
 		return;
 	}
 
-	if (options.allowLogicalString && isLogicalClassStaticString(node)) {
+	// Only the `&&` right operand is a class contribution; the left is a runtime
+	// condition. Its branches are validated with the same affordances.
+	if (
+		options.allowLogicalString &&
+		node.type === 'LogicalExpression' &&
+		node.operator === '&&'
+	) {
+		checkClassValueIsStatic(context, node.right, branchOptions(options));
 		return;
 	}
 
-	if (
-		options.allowConditionalString &&
-		(isConditionalClassStaticString(node) || isStaticTernaryTemplate(node))
-	) {
-		return;
+	if (options.allowConditionalString) {
+		if (node.type === 'ConditionalExpression') {
+			checkClassValueIsStatic(context, node.consequent, branchOptions(options));
+			checkClassValueIsStatic(context, node.alternate, branchOptions(options));
+			return;
+		}
+
+		if (isStaticTernaryTemplate(node)) {
+			return;
+		}
 	}
 
 	if (node.type === 'ArrayExpression') {
@@ -863,11 +893,7 @@ const checkClassValueIsStatic = (
 				}
 			}
 
-			checkClassValueIsStatic(context, element, {
-				allowLogicalString: options.allowLogicalString === true,
-				allowConditionalString: options.allowConditionalString === true,
-				allowClassRecord: options.allowClassRecord === true
-			});
+			checkClassValueIsStatic(context, element, branchOptions(options));
 		});
 
 		return;
