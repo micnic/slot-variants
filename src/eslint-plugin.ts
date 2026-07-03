@@ -1556,20 +1556,6 @@ const noRedundantSpaces: Rule.RuleModule = {
 	}
 };
 
-// The value name that marks a Tailwind color utility (`text-red-500`,
-// `bg-white`, `border-transparent`). A color utility targets a different CSS
-// property than a same-prefixed size/scale utility (`text-sm`, `border-2`), so
-// it gets its own conflict key — otherwise a font size and a text color, or a
-// border width and a border color, would be flagged as conflicting. This is the
-// default Tailwind palette plus its special keywords; a custom palette color
-// isn't listed and falls back to the coarser prefix grouping.
-const COLOR_UTILITY_VALUES = new Set([
-	'slate', 'gray', 'zinc', 'neutral', 'stone', 'red', 'orange', 'amber',
-	'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue',
-	'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose',
-	'black', 'white', 'transparent', 'current', 'inherit'
-]);
-
 // Curated sets of Tailwind utilities that set the same CSS property and so are
 // mutually exclusive, but which the dash-namespace heuristic can't group —
 // single words (`flex`, `absolute`) or hyphenated siblings that don't share a
@@ -1588,7 +1574,22 @@ const TAILWIND_EXCLUSIVE_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
 	// position
 	['static', 'fixed', 'absolute', 'relative', 'sticky'],
 	// visibility
-	['visible', 'invisible', 'collapse']
+	['visible', 'invisible', 'collapse'],
+	// text-transform
+	['uppercase', 'lowercase', 'capitalize', 'normal-case'],
+	// text-decoration-line
+	['underline', 'overline', 'line-through', 'no-underline'],
+	// font-style
+	['italic', 'not-italic'],
+	// font-smoothing
+	['antialiased', 'subpixel-antialiased'],
+	// isolation
+	['isolate', 'isolation-auto'],
+	// screen-reader visibility
+	['sr-only', 'not-sr-only'],
+	// text-overflow (`truncate` forces ellipsis, so it's exclusive with the
+	// explicit `text-ellipsis`/`text-clip` utilities)
+	['truncate', 'text-ellipsis', 'text-clip']
 ];
 
 // `true` enables the built-in Tailwind groups; an array supplies custom groups
@@ -1635,16 +1636,480 @@ const buildExclusiveGroupMap = (
 	return map;
 };
 
+// --- Property classification for overloaded prefixes ------------------------
+//
+// A dash count alone can't separate utilities that share a first segment and
+// dash count but set different CSS properties (`bg-white` color vs `bg-cover`
+// size, `text-white` color vs `text-sm` size). For a curated set of such
+// prefixes we classify the value into a coarse property category and key on
+// that instead. Unlisted prefixes keep the plain dash-count category, and an
+// unmatched value falls back to a `short` (single value segment) or `long`
+// (multi-segment) bucket — so a custom color like `text-brand-500` still groups
+// with the built-in colors via `long: 'color'`, without any color palette.
+
+type PrefixSpec = {
+	keywords: ReadonlyMap<string, string>;
+	// A keyword that introduces a sub-property classified from the remaining
+	// segments (`ring-offset-2` width vs `ring-offset-red-500` color).
+	nested?: ReadonlyMap<string, PrefixSpec>;
+	short?: string;
+	long?: string;
+	// A trailing `reverse` segment is a composing flag, not a value — it sets a
+	// CSS variable (`space-x-reverse`, `divide-x-reverse`) rather than replacing
+	// the base utility, so it gets its own category and doesn't conflict with it.
+	reverseComposes?: boolean;
+	fallback: string;
+};
+
+const categoryMap = (
+	groups: ReadonlyArray<readonly [string, ReadonlyArray<string>]>
+): ReadonlyMap<string, string> => {
+	const map = new Map<string, string>();
+
+	for (const [category, tokens] of groups) {
+		for (const token of tokens) {
+			map.set(token, category);
+		}
+	}
+
+	return map;
+};
+
+// Maps each token to a category named after itself — for axes (`x`/`y`), grid
+// lines (`span`/`start`), sides, and filter functions the segment itself names
+// the sub-property.
+const selfMap = (tokens: ReadonlyArray<string>): ReadonlyMap<string, string> =>
+	categoryMap(tokens.map((token) => [token, [token]] as const));
+
+const COLOR_KEYWORDS = ['inherit', 'current', 'transparent', 'black', 'white'];
+const SIDES = ['t', 'r', 'b', 'l', 'x', 'y', 's', 'e'];
+const CORNERS = [
+	't', 'r', 'b', 'l', 's', 'e',
+	'tl', 'tr', 'bl', 'br', 'ss', 'se', 'es', 'ee'
+];
+
+// x/y/z axis utilities (`gap-x`, `translate-y`, …); a bare value sets all axes.
+const axisSpec: PrefixSpec = {
+	keywords: selfMap(['x', 'y', 'z']),
+	fallback: 'all'
+};
+
+// `space-x-*` is an axis utility that also has a composing `space-x-reverse`.
+const spaceSpec: PrefixSpec = { ...axisSpec, reverseComposes: true };
+
+// `ring-offset-*` is both a width (`ring-offset-2`) and a color
+// (`ring-offset-red-500`), classified from the segments after `offset`.
+const offsetSpec: PrefixSpec = {
+	keywords: categoryMap([['color', COLOR_KEYWORDS]]),
+	short: 'width',
+	long: 'color',
+	fallback: 'color'
+};
+
+// `touch-pan-*` directions compose (`touch-pan-x touch-pan-y` is valid), so each
+// direction is its own category and never collides with a sibling.
+const panSpec: PrefixSpec = {
+	keywords: selfMap(['x', 'y', 'left', 'right', 'up', 'down']),
+	fallback: 'other'
+};
+
+// Single-property color utilities (`fill`, `accent`, `caret`): every value is a
+// color, so they all share one category regardless of shape.
+const colorSpec: PrefixSpec = {
+	keywords: new Map<string, string>(),
+	short: 'color',
+	long: 'color',
+	fallback: 'color'
+};
+
+// Gradient color stops (`from`/`via`/`to`): a color, or a `%`/number stop
+// position, which is a distinct property that composes with the color.
+const gradientStopSpec: PrefixSpec = {
+	keywords: categoryMap([['color', COLOR_KEYWORDS]]),
+	short: 'position',
+	long: 'color',
+	fallback: 'color'
+};
+
+// Single-property utilities whose values simply replace one another (`ease-*`
+// timing function, `cursor-*`, `origin-*`, `align-*` vertical-align,
+// `whitespace-*`): every value collapses to one category regardless of shape,
+// so a one-segment value collides with a hyphenated one (`ease-in`/`ease-in-out`).
+const unifiedSpec: PrefixSpec = {
+	keywords: new Map<string, string>(),
+	short: 'value',
+	long: 'value',
+	fallback: 'value'
+};
+
+const PREFIX_SPECS: Record<string, PrefixSpec> = {
+	text: {
+		keywords: categoryMap([
+			['align', ['left', 'center', 'right', 'justify', 'start', 'end']],
+			['wrap', ['wrap', 'nowrap', 'balance', 'pretty']],
+			['overflow', ['ellipsis', 'clip']],
+			['color', COLOR_KEYWORDS],
+			['opacity', ['opacity']]
+		]),
+		short: 'size',
+		long: 'color',
+		fallback: 'color'
+	},
+	bg: {
+		keywords: categoryMap([
+			['color', COLOR_KEYWORDS],
+			['size', ['auto', 'cover', 'contain']],
+			['position', ['bottom', 'center', 'left', 'right', 'top']],
+			['repeat', ['repeat', 'no']],
+			['attach', ['fixed', 'local', 'scroll']],
+			['image', ['none', 'gradient', 'linear', 'radial', 'conic']],
+			['clip', ['clip']],
+			['origin', ['origin']],
+			['blend', ['blend']],
+			['opacity', ['opacity']]
+		]),
+		fallback: 'color'
+	},
+	border: {
+		keywords: categoryMap([
+			['style', ['solid', 'dashed', 'dotted', 'double', 'hidden', 'none']],
+			['color', COLOR_KEYWORDS],
+			['collapse', ['collapse', 'separate']],
+			['opacity', ['opacity']],
+			...SIDES.map((side) => [`width-${side}`, [side]] as const)
+		]),
+		// `border-spacing-x`/`-y` compose into the single `border-spacing`
+		// property, so they're keyed per axis rather than lumped together.
+		nested: new Map([['spacing', axisSpec]]),
+		short: 'width',
+		long: 'color',
+		fallback: 'color'
+	},
+	ring: {
+		keywords: categoryMap([
+			['inset', ['inset']],
+			['color', COLOR_KEYWORDS],
+			['opacity', ['opacity']]
+		]),
+		nested: new Map([['offset', offsetSpec]]),
+		short: 'width',
+		long: 'color',
+		fallback: 'color'
+	},
+	outline: {
+		keywords: categoryMap([
+			['style', ['none', 'dashed', 'dotted', 'double', 'solid', 'hidden']],
+			['offset', ['offset']],
+			['color', COLOR_KEYWORDS]
+		]),
+		short: 'width',
+		long: 'color',
+		fallback: 'color'
+	},
+	divide: {
+		keywords: categoryMap([
+			['style', ['solid', 'dashed', 'dotted', 'double', 'none']],
+			['color', COLOR_KEYWORDS],
+			['width-x', ['x']],
+			['width-y', ['y']],
+			['opacity', ['opacity']]
+		]),
+		reverseComposes: true,
+		long: 'color',
+		fallback: 'color'
+	},
+	decoration: {
+		keywords: categoryMap([
+			['style', ['solid', 'double', 'dotted', 'dashed', 'wavy']],
+			['color', COLOR_KEYWORDS],
+			['thickness', ['from', 'auto']]
+		]),
+		short: 'thickness',
+		long: 'color',
+		fallback: 'color'
+	},
+	stroke: {
+		keywords: categoryMap([['color', COLOR_KEYWORDS]]),
+		short: 'width',
+		long: 'color',
+		fallback: 'color'
+	},
+	shadow: {
+		keywords: categoryMap([['color', COLOR_KEYWORDS]]),
+		short: 'box',
+		long: 'color',
+		fallback: 'color'
+	},
+	fill: colorSpec,
+	accent: colorSpec,
+	caret: colorSpec,
+	placeholder: {
+		keywords: categoryMap([['opacity', ['opacity']]]),
+		short: 'color',
+		long: 'color',
+		fallback: 'color'
+	},
+	from: gradientStopSpec,
+	via: gradientStopSpec,
+	to: gradientStopSpec,
+	// `table-auto`/`table-fixed` are `table-layout`; every other `table-*`
+	// (`table-cell`, `table-row`, `table-header-group`, …) is a `display` value.
+	table: {
+		keywords: categoryMap([['layout', ['auto', 'fixed']]]),
+		fallback: 'display'
+	},
+	content: {
+		keywords: categoryMap([
+			[
+				'align',
+				[
+					'center', 'start', 'end', 'between', 'around',
+					'evenly', 'normal', 'stretch', 'baseline'
+				]
+			]
+		]),
+		fallback: 'prop'
+	},
+	flex: {
+		keywords: categoryMap([
+			['direction', ['row', 'col']],
+			['wrap', ['wrap', 'nowrap']]
+		]),
+		fallback: 'flex'
+	},
+	font: {
+		keywords: categoryMap([
+			[
+				'weight',
+				[
+					'thin', 'extralight', 'light', 'normal', 'medium',
+					'semibold', 'bold', 'extrabold', 'black'
+				]
+			]
+		]),
+		fallback: 'family'
+	},
+	grid: { keywords: selfMap(['cols', 'rows', 'flow']), fallback: 'other' },
+	auto: { keywords: selfMap(['cols', 'rows']), fallback: 'other' },
+	object: {
+		keywords: categoryMap([
+			['fit', ['contain', 'cover', 'fill', 'none', 'scale']],
+			['position', ['bottom', 'center', 'left', 'right', 'top']]
+		]),
+		fallback: 'other'
+	},
+	list: {
+		keywords: categoryMap([
+			['position', ['inside', 'outside']],
+			['image', ['image']]
+		]),
+		fallback: 'type'
+	},
+	place: { keywords: selfMap(['items', 'content', 'self']), fallback: 'other' },
+	justify: { keywords: selfMap(['items', 'self']), fallback: 'content' },
+	col: { keywords: selfMap(['span', 'start', 'end', 'auto']), fallback: 'other' },
+	row: { keywords: selfMap(['span', 'start', 'end', 'auto']), fallback: 'other' },
+	min: { keywords: selfMap(['w', 'h']), fallback: 'other' },
+	max: { keywords: selfMap(['w', 'h']), fallback: 'other' },
+	rounded: { keywords: selfMap(CORNERS), fallback: 'all' },
+	backdrop: {
+		keywords: selfMap([
+			'blur', 'brightness', 'contrast', 'grayscale', 'hue',
+			'invert', 'opacity', 'saturate', 'sepia'
+		]),
+		fallback: 'other'
+	},
+	scroll: {
+		keywords: categoryMap([
+			['behavior', ['smooth', 'auto']],
+			...[
+				'm', 'mt', 'mr', 'mb', 'ml', 'mx', 'my', 'ms', 'me',
+				'p', 'pt', 'pr', 'pb', 'pl', 'px', 'py', 'ps', 'pe'
+			].map((side) => [side, [side]] as const)
+		]),
+		fallback: 'other'
+	},
+	snap: {
+		keywords: categoryMap([
+			['axis', ['x', 'y', 'both', 'none']],
+			['strict', ['mandatory', 'proximity']],
+			['align', ['start', 'center', 'end', 'align']],
+			['stop', ['normal', 'always']]
+		]),
+		fallback: 'other'
+	},
+	break: {
+		keywords: categoryMap([
+			['wrap', ['words']],
+			['word', ['all', 'keep']],
+			['before', ['before']],
+			['after', ['after']],
+			['inside', ['inside']]
+		]),
+		fallback: 'other'
+	},
+	touch: {
+		keywords: categoryMap([
+			['base', ['auto', 'none', 'manipulation']],
+			['pinch', ['pinch']]
+		]),
+		nested: new Map([['pan', panSpec]]),
+		fallback: 'base'
+	},
+	ease: unifiedSpec,
+	origin: unifiedSpec,
+	cursor: unifiedSpec,
+	align: unifiedSpec,
+	whitespace: unifiedSpec,
+	// Every `drop-shadow-*` (including the bare `drop-shadow`) sets the single
+	// drop-shadow filter, so collapse them all to one category.
+	drop: unifiedSpec,
+	gap: axisSpec,
+	space: spaceSpec,
+	translate: axisSpec,
+	scale: axisSpec,
+	skew: axisSpec,
+	rotate: axisSpec,
+	inset: axisSpec,
+	overflow: axisSpec,
+	overscroll: axisSpec
+};
+
+const COLOR_FUNCTIONS = [
+	'rgb', 'rgba', 'hsl', 'hsla', 'hwb',
+	'lab', 'lch', 'oklab', 'oklch', 'color'
+];
+
+// Detects an arbitrary color value (`text-[#f00]`, `bg-[rgb(0,0,0)]`,
+// `text-[color:var(--x)]`) so it classifies as a color rather than falling into
+// the size/width bucket. A bracketed length (`text-[16px]`) or otherwise
+// un-hinted value is left alone.
+const isArbitraryColorValue = (segment: string): boolean => {
+	if (!segment.startsWith('[')) {
+		return false;
+	}
+
+	const inner = segment.slice(1);
+
+	if (inner.startsWith('#') || inner.startsWith('color:')) {
+		return true;
+	}
+
+	return COLOR_FUNCTIONS.some((fn) => inner.startsWith(`${fn}(`));
+};
+
+const baseCategory = (
+	spec: PrefixSpec,
+	value: ReadonlyArray<string>,
+	head: string
+): string => {
+	const keyworded = spec.keywords.get(head);
+
+	if (keyworded !== undefined) {
+		return keyworded;
+	}
+
+	// A color-capable prefix keys an arbitrary color to `color` regardless of
+	// segment count, so `text-[#f00]` groups with `text-red-500` and not
+	// `text-sm`.
+	if (spec.long === 'color' && isArbitraryColorValue(head)) {
+		return 'color';
+	}
+
+	if (value.length === 1 && spec.short !== undefined) {
+		return spec.short;
+	}
+
+	if (value.length >= 2 && spec.long !== undefined) {
+		return spec.long;
+	}
+
+	return spec.fallback;
+};
+
+const categorizeWithSpec = (
+	spec: PrefixSpec,
+	value: ReadonlyArray<string>
+): string => {
+	const [head = ''] = value;
+
+	// A nested keyword introduces its own sub-property, classified from the
+	// remaining segments (`ring-offset-2` → `offset-width`, `ring-offset-red-500`
+	// → `offset-color`).
+	const nested = spec.nested?.get(head);
+
+	if (nested) {
+		return `${head}-${categorizeWithSpec(nested, value.slice(1))}`;
+	}
+
+	const category = baseCategory(spec, value, head);
+
+	// A composing `reverse` flag (`space-x-reverse`) sits alongside the width, so
+	// it gets a distinct — but still axis-aware — category from `space-x-2`.
+	if (spec.reverseComposes && value[value.length - 1] === 'reverse') {
+		return `${category}-reverse`;
+	}
+
+	return category;
+};
+
+// The property category for a token's value (the segments after the first),
+// or the dash count as a string for prefixes we don't classify.
+const categorize = (
+	firstSegment: string,
+	value: ReadonlyArray<string>
+): string => {
+	const spec = PREFIX_SPECS[firstSegment];
+
+	if (!spec) {
+		return String(value.length);
+	}
+
+	return categorizeWithSpec(spec, value);
+};
+
+// Bare single-word utilities that are the unsuffixed default of a wider family
+// (`rounded` is `rounded-DEFAULT`, `border` is `border-1`, `transition` is
+// `transition-DEFAULT`, …). Each maps to a representative dashed value so it
+// resolves to the very same conflict key as its sibling — `rounded` collides
+// with `rounded-lg`, `transition` with `transition-none` — while `border` still
+// stays clear of `border-gray-200` (a color, not a width).
+const BARE_UTILITIES: Record<string, ReadonlyArray<string>> = {
+	rounded: ['lg'],
+	border: ['2'],
+	ring: ['2'],
+	outline: ['2'],
+	shadow: ['md'],
+	blur: ['sm'],
+	grow: ['0'],
+	shrink: ['0'],
+	transition: ['all'],
+	transform: ['none'],
+	filter: ['none'],
+	resize: ['none'],
+	grayscale: ['0'],
+	invert: ['0'],
+	sepia: ['0']
+};
+
+// The conflict key plus the pieces a shorthand overlap needs: the variant
+// prefix and first segment the key was built from (`segment` is null for
+// exclusive-group keys, which have no single owning segment).
+type ConflictKeyInfo = {
+	key: string;
+	variantPrefix: string;
+	segment: string | null;
+};
+
 // Returns null for tokens that don't look like a namespaced utility — single
 // words (`flex`), purely-prefixed (`-`), or anything without a `-` after the
 // optional leading negative marker. The `!` important marker is stripped —
 // trailing (Tailwind v4 `w-200!`) or leading (Tailwind v3 `!w-200`) — so it
-// doesn't split the conflict key. Color utilities get a `|color` suffix so they
-// don't collide with same-prefixed non-color utilities.
+// doesn't split the conflict key.
 const getConflictKey = (
 	token: string,
 	exclusiveGroups: ReadonlyMap<string, string>
-): string | null => {
+): ConflictKeyInfo | null => {
 	let stripped = token;
 
 	if (token.endsWith('!')) {
@@ -1670,38 +2135,56 @@ const getConflictKey = (
 		utilStart = 1;
 	}
 
+	const bare = utility.slice(utilStart);
+
 	// An opted-in exclusive group takes precedence — it can unify utilities that
-	// the dash-namespace heuristic can't (single words like `flex`/`block`, or
-	// hyphenated siblings like `inline-block`/`flex` that don't share a prefix).
-	const groupId = exclusiveGroups.get(utility.slice(utilStart));
+	// the heuristic can't (single words like `flex`/`block`, or hyphenated
+	// siblings like `inline-block`/`flex` that don't share a prefix).
+	const groupId = exclusiveGroups.get(bare);
 
 	if (groupId !== undefined) {
-		return `${variantPrefix}|#${groupId}`;
+		return {
+			key: `${variantPrefix}|#${groupId}`,
+			variantPrefix,
+			segment: null
+		};
 	}
 
-	const firstDash = utility.indexOf('-', utilStart + 1);
+	const firstDash = bare.indexOf('-');
 
 	if (firstDash === -1) {
-		return null;
+		const bareValue = BARE_UTILITIES[bare];
+
+		if (bareValue === undefined) {
+			return null;
+		}
+
+		return {
+			key: `${variantPrefix}|${bare}|${categorize(bare, bareValue)}`,
+			variantPrefix,
+			segment: bare
+		};
 	}
 
-	const namespace = `${variantPrefix}|${utility.slice(utilStart, firstDash)}`;
-	const valueStart = firstDash + 1;
-	const nextDash = utility.indexOf('-', valueStart);
-	let valueEnd = utility.length;
+	// Tokens collide when they share a first segment and resolve to the same
+	// property category (see `categorize`): `text-sm` (size) and `text-red-500`
+	// (color) don't, while `text-red-500` and `text-blue-500` do.
+	const firstSegment = bare.slice(0, firstDash);
+	const value = bare.slice(firstDash + 1).split('-');
 
-	if (nextDash !== -1) {
-		valueEnd = nextDash;
-	}
-
-	if (COLOR_UTILITY_VALUES.has(utility.slice(valueStart, valueEnd))) {
-		return `${namespace}|color`;
-	}
-
-	return namespace;
+	return {
+		key: `${variantPrefix}|${firstSegment}|${categorize(firstSegment, value)}`,
+		variantPrefix,
+		segment: firstSegment
+	};
 };
 
-type ConflictGroup = { tokens: Set<string>; entries: Entry[] };
+type ConflictGroup = {
+	tokens: Set<string>;
+	entries: Entry[];
+	variantPrefix: string;
+	segment: string | null;
+};
 
 const groupEntriesByConflictKey = (
 	tokenMap: Map<string, Entry[]>,
@@ -1710,15 +2193,17 @@ const groupEntriesByConflictKey = (
 	const groups = new Map<string, ConflictGroup>();
 
 	for (const [token, list] of tokenMap) {
-		const key = getConflictKey(token, exclusiveGroups);
+		const info = getConflictKey(token, exclusiveGroups);
 
-		if (key === null) {
+		if (info === null) {
 			continue;
 		}
 
-		const group = getOrCreate(groups, key, () => ({
+		const group = getOrCreate(groups, info.key, () => ({
 			tokens: new Set<string>(),
-			entries: []
+			entries: [],
+			variantPrefix: info.variantPrefix,
+			segment: info.segment
 		}));
 
 		group.tokens.add(token);
@@ -1728,6 +2213,92 @@ const groupEntriesByConflictKey = (
 	return groups;
 };
 
+// A shorthand utility overrides several longhand axes at once (`size-*` sets
+// both width and height). It can't simply share a conflict key with them —
+// that would also make the longhands conflict with each other (`w-4`/`h-4`) —
+// so instead its group is merged with each present longhand group under the
+// same variant prefix. The longhands still never merge with one another.
+const SHORTHAND_AXES: Record<string, ReadonlyArray<string>> = {
+	size: ['w', 'h']
+};
+
+const OVERLAP_SEGMENTS = new Set<string>(
+	Object.entries(SHORTHAND_AXES).flatMap(([short, axes]) => [short, ...axes])
+);
+
+const mergeShorthandGroups = (
+	groups: Map<string, ConflictGroup>
+): ConflictGroup[] => {
+	const result: ConflictGroup[] = [];
+	// variant prefix -> overlap-eligible segment (`size`/`w`/`h`) -> its group.
+	const overlap = new Map<string, Map<string, ConflictGroup>>();
+
+	for (const group of groups.values()) {
+		const segment = group.segment;
+
+		if (segment !== null && OVERLAP_SEGMENTS.has(segment)) {
+			const bySegment = getOrCreate(
+				overlap,
+				group.variantPrefix,
+				() => new Map<string, ConflictGroup>()
+			);
+
+			bySegment.set(segment, group);
+		} else {
+			result.push(group);
+		}
+	}
+
+	const consumed = new Set<ConflictGroup>();
+
+	for (const bySegment of overlap.values()) {
+		for (const [segment, group] of bySegment) {
+			const axes = SHORTHAND_AXES[segment];
+
+			// A longhand axis group (`w`/`h`) has no shorthand axes of its own; it
+			// is only ever merged into a co-occurring shorthand, or emitted as-is.
+			if (axes === undefined) {
+				continue;
+			}
+
+			const combined: ConflictGroup = {
+				tokens: new Set(group.tokens),
+				entries: [...group.entries],
+				variantPrefix: group.variantPrefix,
+				segment
+			};
+
+			for (const axis of axes) {
+				const longhand = bySegment.get(axis);
+
+				if (longhand === undefined) {
+					continue;
+				}
+
+				for (const token of longhand.tokens) {
+					combined.tokens.add(token);
+				}
+
+				combined.entries.push(...longhand.entries);
+				consumed.add(longhand);
+			}
+
+			consumed.add(group);
+			result.push(combined);
+		}
+	}
+
+	for (const bySegment of overlap.values()) {
+		for (const group of bySegment.values()) {
+			if (!consumed.has(group)) {
+				result.push(group);
+			}
+		}
+	}
+
+	return result;
+};
+
 const reportConflicts = (
 	context: Rule.RuleContext,
 	tokenMap: Map<string, Entry[]>,
@@ -1735,10 +2306,9 @@ const reportConflicts = (
 	data: Record<string, string>,
 	exclusiveGroups: ReadonlyMap<string, string>
 ) => {
-	for (const group of groupEntriesByConflictKey(
-		tokenMap,
-		exclusiveGroups
-	).values()) {
+	const groups = groupEntriesByConflictKey(tokenMap, exclusiveGroups);
+
+	for (const group of mergeShorthandGroups(groups)) {
 		if (group.tokens.size < 2 || isMutuallyExclusiveVariants(group.entries)) {
 			continue;
 		}

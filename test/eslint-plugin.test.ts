@@ -1825,14 +1825,77 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT_CN + 'cn(dynamic);',
 	// Different namespace prefixes don't conflict.
 	IMPORT + "sv({ base: 'w-100 h-200' });",
-	// A color utility and a same-prefixed size utility target different CSS
-	// properties, so they don't conflict.
+	// A font size and a text color target different properties, so they don't
+	// conflict — even when the color is a single-word keyword.
 	IMPORT + "sv({ base: 'text-sm text-red-500' });",
-	// Border width and border color don't conflict.
-	IMPORT + "sv({ base: 'border-2 border-red-500' });",
-	// A single-segment color keyword is still recognized as a color, so it
-	// doesn't conflict with a same-prefixed non-color utility.
-	IMPORT + "sv({ base: 'bg-cover bg-white' });",
+	IMPORT + "sv({ base: 'text-lg text-white' });",
+	// A font size and text alignment don't conflict.
+	IMPORT + "sv({ base: 'text-sm text-center' });",
+	// Border width, style, and color are distinct properties.
+	IMPORT + "sv({ base: 'border-2 border-solid border-red-500' });",
+	// A bare default utility stays clear of siblings on other properties:
+	// `border` is a width, distinct from a border color or style.
+	IMPORT + "sv({ base: 'border border-red-500 border-solid' });",
+	// Bare `rounded` (border-radius) is unrelated to a shadow.
+	IMPORT + "sv({ base: 'rounded shadow-md' });",
+	// Bare `outline` is a width, distinct from an outline style or color.
+	IMPORT + "sv({ base: 'outline outline-dashed outline-red-500' });",
+	// Bare `transition` groups only with its own family, not the separate
+	// transition-duration utility.
+	IMPORT + "sv({ base: 'transition duration-100' });",
+	// Distinct filter functions compose, so bare toggles don't cross-conflict.
+	IMPORT + "sv({ base: 'grayscale invert sepia' });",
+	// `w-*` and `h-*` are independent axes — they only conflict through a
+	// co-occurring `size-*` shorthand, never with each other.
+	IMPORT + "sv({ base: 'w-4 h-4' });",
+	// `min-w`/`max-w` are their own segments, so `size-*` doesn't overlap them.
+	IMPORT + "sv({ base: 'min-w-0 size-4' });",
+	// The shorthand overlap is scoped per variant prefix.
+	IMPORT_CN + "cn('hover:w-4', 'size-4');",
+	// A custom-palette color still classifies as a color (no palette needed).
+	IMPORT + "sv({ base: 'text-brand-500 text-sm' });",
+	// An arbitrary color value classifies as a color, not a size.
+	IMPORT + "sv({ base: 'text-[#fff] text-sm' });",
+	// An arbitrary length value stays a size, distinct from a color.
+	IMPORT + "sv({ base: 'text-[16px] text-red-500' });",
+	// Ring offset width vs ring offset color are distinct sub-properties.
+	IMPORT + "sv({ base: 'ring-offset-2 ring-offset-red-500' });",
+	// Ring width vs ring offset width are distinct properties.
+	IMPORT + "sv({ base: 'ring-2 ring-offset-2' });",
+	// touch-action pan directions compose, so they don't conflict.
+	IMPORT + "sv({ base: 'touch-pan-x touch-pan-y' });",
+	// Pan and pinch-zoom also compose.
+	IMPORT + "sv({ base: 'touch-pan-x touch-pinch-zoom' });",
+	// A composing `-reverse` flag sits alongside the width, so it doesn't
+	// conflict with it.
+	IMPORT + "sv({ base: 'space-x-2 space-x-reverse' });",
+	IMPORT + "sv({ base: 'divide-x-2 divide-x-reverse' });",
+	// A gradient color stop and its position are distinct, composing properties.
+	IMPORT + "sv({ base: 'from-10% from-red-500' });",
+	// background-blend-mode is distinct from background-color.
+	IMPORT + "sv({ base: 'bg-blend-multiply bg-red-500' });",
+	// grid-auto-columns vs grid-auto-rows are independent.
+	IMPORT + "sv({ base: 'auto-cols-max auto-rows-min' });",
+	// Placeholder opacity composes with the placeholder color.
+	IMPORT + "sv({ base: 'placeholder-opacity-50 placeholder-red-500' });",
+	// border-spacing x and y compose into the single border-spacing property.
+	IMPORT + "sv({ base: 'border-spacing-x-2 border-spacing-y-4' });",
+	// table-layout vs a table display value are distinct properties.
+	IMPORT + "sv({ base: 'table-auto table-cell' });",
+	// v3 opacity utilities compose with their color rather than conflict.
+	IMPORT + "sv({ base: 'bg-opacity-50 bg-red-500' });",
+	IMPORT + "sv({ base: 'ring-opacity-50 ring-red-500' });",
+	IMPORT + "sv({ base: 'divide-opacity-50 divide-red-500' });",
+	// Background color vs background size/position.
+	IMPORT + "sv({ base: 'bg-white bg-cover bg-center' });",
+	// Axis utilities on independent axes don't conflict.
+	IMPORT + "sv({ base: 'gap-x-4 gap-y-2' });",
+	// Grid columns vs rows.
+	IMPORT + "sv({ base: 'grid-cols-3 grid-rows-2' });",
+	// Flex direction vs wrap.
+	IMPORT + "sv({ base: 'flex-col flex-wrap' });",
+	// Font family vs weight.
+	IMPORT + "sv({ base: 'font-sans font-bold' });",
 	// With grouping on, a grouped utility still doesn't conflict with an
 	// unrelated namespaced utility.
 	{
@@ -1896,15 +1959,223 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: 2
 	},
 	{
-		// A named color keyword and a shaded color are both colors — they still
-		// conflict.
-		code: IMPORT + "sv({ base: 'bg-white bg-red-500' });",
-		errors: 2
-	},
-	{
-		// Two text-color utilities conflict (same color property).
+		// Two text-color utilities share a first segment and dash count, so they
+		// conflict — including when one uses a custom-palette color name.
 		code: IMPORT_CN + "cn('text-red-500', 'text-blue-500');",
 		errors: repeat(conflictCn('text-blue-500, text-red-500'), 2)
+	},
+	{
+		// A custom-palette color conflicts with a built-in one (same shape).
+		code: IMPORT_CN + "cn('text-brand-500', 'text-red-500');",
+		errors: repeat(conflictCn('text-brand-500, text-red-500'), 2)
+	},
+	{
+		// A single-word color keyword and a shaded color both classify as color.
+		code: IMPORT + "sv({ base: 'bg-white bg-red-500' });",
+		errors: repeat(conflict('bg-red-500, bg-white'), 2)
+	},
+	{
+		// An arbitrary hex color conflicts with a palette color of the same
+		// property (both classify as color).
+		code: IMPORT_CN + "cn('text-[#fff]', 'text-red-500');",
+		errors: repeat(conflictCn('text-[#fff], text-red-500'), 2)
+	},
+	{
+		// An arbitrary color function is recognized too.
+		code: IMPORT_CN + "cn('bg-[rgb(0,0,0)]', 'bg-red-500');",
+		errors: repeat(conflictCn('bg-[rgb(0,0,0)], bg-red-500'), 2)
+	},
+	{
+		// Two ring offset widths conflict (same nested sub-property).
+		code: IMPORT_CN + "cn('ring-offset-2', 'ring-offset-4');",
+		errors: repeat(conflictCn('ring-offset-2, ring-offset-4'), 2)
+	},
+	{
+		// Two ring offset colors conflict.
+		code: IMPORT_CN + "cn('ring-offset-red-500', 'ring-offset-blue-500');",
+		errors: repeat(conflictCn('ring-offset-blue-500, ring-offset-red-500'), 2)
+	},
+	{
+		// Exclusive touch-action keywords conflict (they replace each other).
+		code: IMPORT_CN + "cn('touch-auto', 'touch-none');",
+		errors: repeat(conflictCn('touch-auto, touch-none'), 2)
+	},
+	{
+		// `reverse` composition is opt-in: `flex-row-reverse` is a direction
+		// value, not a flag, so it still conflicts with `flex-row`.
+		code: IMPORT_CN + "cn('flex-row', 'flex-row-reverse');",
+		errors: repeat(conflictCn('flex-row, flex-row-reverse'), 2)
+	},
+	{
+		// A single-property color utility collides across value shapes (keyword
+		// vs shaded color).
+		code: IMPORT_CN + "cn('fill-current', 'fill-red-500');",
+		errors: repeat(conflictCn('fill-current, fill-red-500'), 2)
+	},
+	{
+		// A gradient color keyword collides with a shaded gradient color.
+		code: IMPORT_CN + "cn('from-transparent', 'from-red-500');",
+		errors: repeat(conflictCn('from-red-500, from-transparent'), 2)
+	},
+	{
+		// scroll-snap-type: none conflicts with an axis value.
+		code: IMPORT_CN + "cn('snap-x', 'snap-none');",
+		errors: repeat(conflictCn('snap-none, snap-x'), 2)
+	},
+	{
+		// Two background-blend-modes conflict.
+		code: IMPORT_CN + "cn('bg-blend-multiply', 'bg-blend-screen');",
+		errors: repeat(conflictCn('bg-blend-multiply, bg-blend-screen'), 2)
+	},
+	{
+		// Two grid-auto-columns values conflict.
+		code: IMPORT_CN + "cn('auto-cols-max', 'auto-cols-min');",
+		errors: repeat(conflictCn('auto-cols-max, auto-cols-min'), 2)
+	},
+	{
+		// Same-axis border-spacing values conflict; different axes (above) don't.
+		code: IMPORT_CN + "cn('border-spacing-x-2', 'border-spacing-x-4');",
+		errors: repeat(conflictCn('border-spacing-x-2, border-spacing-x-4'), 2)
+	},
+	{
+		// Two table-layout values conflict; layout vs display (above) does not.
+		code: IMPORT_CN + "cn('table-auto', 'table-fixed');",
+		errors: repeat(conflictCn('table-auto, table-fixed'), 2)
+	},
+	{
+		// Two table display values conflict regardless of segment count.
+		code: IMPORT_CN + "cn('table-cell', 'table-header-group');",
+		errors: repeat(conflictCn('table-cell, table-header-group'), 2)
+	},
+	{
+		// A single-property utility collides across value shapes (one segment vs
+		// hyphenated).
+		code: IMPORT_CN + "cn('ease-in', 'ease-in-out');",
+		errors: repeat(conflictCn('ease-in, ease-in-out'), 2)
+	},
+	{
+		// text-overflow utilities conflict by default via the classifier, with no
+		// exclusiveGroups opt-in needed.
+		code: IMPORT_CN + "cn('text-ellipsis', 'text-clip');",
+		errors: repeat(conflictCn('text-clip, text-ellipsis'), 2)
+	},
+	{
+		// Two font sizes conflict (same size category, short bucket).
+		code: IMPORT_CN + "cn('text-sm', 'text-lg');",
+		errors: repeat(conflictCn('text-lg, text-sm'), 2)
+	},
+	{
+		// Border widths conflict (same width category).
+		code: IMPORT_CN + "cn('border-2', 'border-4');",
+		errors: repeat(conflictCn('border-2, border-4'), 2)
+	},
+	{
+		// Same flex direction values conflict.
+		code: IMPORT_CN + "cn('flex-row', 'flex-col');",
+		errors: repeat(conflictCn('flex-col, flex-row'), 2)
+	},
+	{
+		// Same-side border widths conflict; different sides (above) do not.
+		code: IMPORT_CN + "cn('border-t-2', 'border-t-4');",
+		errors: repeat(conflictCn('border-t-2, border-t-4'), 2)
+	},
+	{
+		// A bare default utility conflicts with its sized sibling: `rounded` is
+		// `rounded-DEFAULT`, so it collides with `rounded-lg`.
+		code: IMPORT_CN + "cn('rounded', 'rounded-lg');",
+		errors: repeat(conflictCn('rounded, rounded-lg'), 2)
+	},
+	{
+		// Bare `border` is a border-width, so it collides with `border-2`.
+		code: IMPORT_CN + "cn('border', 'border-2');",
+		errors: repeat(conflictCn('border, border-2'), 2)
+	},
+	{
+		// Bare `ring` is a ring-width, colliding with `ring-2`.
+		code: IMPORT_CN + "cn('ring', 'ring-2');",
+		errors: repeat(conflictCn('ring, ring-2'), 2)
+	},
+	{
+		// Bare `outline` is an outline-width, colliding with `outline-2`.
+		code: IMPORT_CN + "cn('outline', 'outline-2');",
+		errors: repeat(conflictCn('outline, outline-2'), 2)
+	},
+	{
+		// Bare `shadow` is a box-shadow, colliding with `shadow-md`.
+		code: IMPORT_CN + "cn('shadow', 'shadow-md');",
+		errors: repeat(conflictCn('shadow, shadow-md'), 2)
+	},
+	{
+		// Bare utilities of unclassified families collide with their sized
+		// siblings too (`blur`/`blur-sm`, `grow`/`grow-0`, `shrink`/`shrink-0`).
+		code: IMPORT_CN + "cn('blur', 'blur-sm');",
+		errors: repeat(conflictCn('blur, blur-sm'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('grow', 'grow-0');",
+		errors: repeat(conflictCn('grow, grow-0'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('shrink', 'shrink-0');",
+		errors: repeat(conflictCn('shrink, shrink-0'), 2)
+	},
+	{
+		// Bare feature-toggle utilities collide with any dashed member of their
+		// family (all set the same single property).
+		code: IMPORT_CN + "cn('transition', 'transition-none');",
+		errors: repeat(conflictCn('transition, transition-none'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('transform', 'transform-gpu');",
+		errors: repeat(conflictCn('transform, transform-gpu'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('filter', 'filter-none');",
+		errors: repeat(conflictCn('filter, filter-none'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('resize', 'resize-x');",
+		errors: repeat(conflictCn('resize, resize-x'), 2)
+	},
+	{
+		// Bare filter toggles collide with their `-0` reset sibling (same filter
+		// sub-property).
+		code: IMPORT_CN + "cn('grayscale', 'grayscale-0');",
+		errors: repeat(conflictCn('grayscale, grayscale-0'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('invert', 'invert-0');",
+		errors: repeat(conflictCn('invert, invert-0'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('sepia', 'sepia-0');",
+		errors: repeat(conflictCn('sepia, sepia-0'), 2)
+	},
+	{
+		// Bare `drop-shadow` and its sized variants are one drop-shadow filter.
+		code: IMPORT_CN + "cn('drop-shadow', 'drop-shadow-md');",
+		errors: repeat(conflictCn('drop-shadow, drop-shadow-md'), 2)
+	},
+	{
+		// `size-*` sets width, so it overlaps `w-*` (value-independent).
+		code: IMPORT_CN + "cn('w-4', 'size-4');",
+		errors: repeat(conflictCn('size-4, w-4'), 2)
+	},
+	{
+		// …and height, so it overlaps `h-*` too.
+		code: IMPORT_CN + "cn('h-full', 'size-4');",
+		errors: repeat(conflictCn('h-full, size-4'), 2)
+	},
+	{
+		// With both axes present, `size-*` merges the width and height groups into
+		// one conflict — but `w-*`/`h-*` only reach each other through `size`.
+		code: IMPORT_CN + "cn('w-4', 'h-4', 'size-8');",
+		errors: repeat(conflictCn('h-4, size-8, w-4'), 3)
+	},
+	{
+		// Two `size-*` utilities conflict directly (same property).
+		code: IMPORT_CN + "cn('size-4', 'size-8');",
+		errors: repeat(conflictCn('size-4, size-8'), 2)
 	},
 	{
 		// Opt-in: two single-word display utilities are mutually exclusive.
@@ -1924,6 +2195,55 @@ const NO_CONFLICTING_NS_INVALID = [
 		code: IMPORT_CN + "cn('flex', 'inline-block');",
 		options: [{ exclusiveGroups: true }],
 		errors: repeat(conflictCn('flex, inline-block'), 2)
+	},
+	{
+		// Opt-in: single-word text-transform utilities are mutually exclusive.
+		code: IMPORT_CN + "cn('uppercase', 'capitalize');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('capitalize, uppercase'), 2)
+	},
+	{
+		// Opt-in: text-decoration-line utilities, including the hyphenated
+		// `line-through`/`no-underline` members.
+		code: IMPORT_CN + "cn('underline', 'line-through');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('line-through, underline'), 2)
+	},
+	{
+		// Opt-in: font-style utilities.
+		code: IMPORT_CN + "cn('italic', 'not-italic');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('italic, not-italic'), 2)
+	},
+	{
+		// Opt-in: font-smoothing utilities.
+		code: IMPORT_CN + "cn('antialiased', 'subpixel-antialiased');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('antialiased, subpixel-antialiased'), 2)
+	},
+	{
+		// Opt-in: isolation utilities.
+		code: IMPORT_CN + "cn('isolate', 'isolation-auto');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('isolate, isolation-auto'), 2)
+	},
+	{
+		// Opt-in: screen-reader visibility utilities.
+		code: IMPORT_CN + "cn('sr-only', 'not-sr-only');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('not-sr-only, sr-only'), 2)
+	},
+	{
+		// Opt-in: `truncate` joins the text-overflow group, so it conflicts with
+		// the explicit `text-ellipsis`/`text-clip` utilities across prefixes.
+		code: IMPORT_CN + "cn('truncate', 'text-ellipsis');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('text-ellipsis, truncate'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('truncate', 'text-clip');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('text-clip, truncate'), 2)
 	},
 	{
 		// Opt-in grouping is respected inside an sv() config too, per slot.
