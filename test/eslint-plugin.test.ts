@@ -12,6 +12,7 @@ const tester = new RuleTester({
 const rule = rules['no-conflicting-classes'];
 const IMPORT = "import { sv } from 'slot-variants';\n";
 const IMPORT_CN = "import { cn } from 'slot-variants';\n";
+const IMPORT_CREATE_SV = "import { createSV } from 'slot-variants';\n";
 
 // RuleTester fires one report per offending token, so the multi-token
 // fixtures below expect the same messageId/data several times over. `repeat`
@@ -126,7 +127,19 @@ const NO_REDUNDANT_SPACES_VALID = [
 	// Bare identifier call that isn't sv or cn.
 	IMPORT + "foo(' x  '); sv('flex');",
 	// Both sv and cn in one import.
-	"import { sv, cn } from 'slot-variants'; sv('flex'); cn('items-center');"
+	"import { sv, cn } from 'slot-variants'; sv('flex'); cn('items-center');",
+	// A clsx-style record key is a class string — a clean key is fine.
+	IMPORT_CN + "cn({ 'px-2 py-1': cond });",
+	// An identifier record key can't contain whitespace.
+	IMPORT_CN + 'cn({ flex: cond });',
+	// A numeric record key is not a string — skipped.
+	IMPORT_CN + 'cn({ 5: cond });',
+	// A computed record key is dynamic — skipped.
+	IMPORT_CN + 'cn({ [k]: cond });',
+	// A spread in a clsx record is skipped; other keys are still checked.
+	IMPORT_CN + "cn({ ...rest, 'px-2 py-1': cond });",
+	// A clsx record as an sv() cn-style leading argument — key is checked.
+	IMPORT + "sv({ 'px-2 py-1': isActive }, { base: 'flex' });"
 ];
 
 const NO_REDUNDANT_SPACES_INVALID = [
@@ -280,6 +293,18 @@ const NO_REDUNDANT_SPACES_INVALID = [
 		// sv() called cn-style with redundant whitespace.
 		code: IMPORT + "sv('flex  items-center');",
 		output: IMPORT + "sv('flex items-center');",
+		errors: 1
+	},
+	{
+		// Redundant whitespace inside a clsx-style record key (a class string).
+		code: IMPORT_CN + "cn({ 'px-2  py-1': cond });",
+		output: IMPORT_CN + "cn({ 'px-2 py-1': cond });",
+		errors: 1
+	},
+	{
+		// Redundant whitespace in a record key nested inside a cn array argument.
+		code: IMPORT_CN + "cn(['flex', { 'a  b': x }]);",
+		output: IMPORT_CN + "cn(['flex', { 'a b': x }]);",
 		errors: 1
 	}
 ];
@@ -530,6 +555,17 @@ const NO_DYNAMIC_CLASSES_VALID = [
 			variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
 			compoundVariants: [{ size: 'lg', className: 'font-bold' }]
 		});`,
+	// Slot-keyed compoundVariants class record — same shape as a variant
+	// branch, including arrays as slot values.
+	IMPORT +
+		`sv({
+			slots: { body: 'p-4', icon: 'size-4' },
+			variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+			compoundVariants: [
+				{ size: 'sm', class: { base: 'font-bold', icon: 'shrink-0' } },
+				{ size: 'lg', className: { body: ['gap-1', 'font-mono'] } }
+			]
+		});`,
 	// compoundVariants slots matcher is ignored outside compoundSlots.
 	IMPORT +
 		`sv({
@@ -660,7 +696,36 @@ const NO_DYNAMIC_CLASSES_VALID = [
 	// A `const` reference inside an sv() config value is resolved.
 	IMPORT + "const SM = 'text-sm';\nsv({ variants: { size: { sm: SM } } });",
 	// A `const` reference nested inside a ternary branch is resolved.
-	IMPORT_CN + "const X = 'px-4';\ncn(cond ? X : 'px-2');"
+	IMPORT_CN + "const X = 'px-4';\ncn(cond ? X : 'px-2');",
+	// A hoisted `const` config is read through and validated as a config.
+	IMPORT + "const config = { base: 'flex' };\nsv(config);",
+	// A `const` alias of a tracked import stays tracked.
+	IMPORT_CN + "const cx = cn;\ncx('flex');",
+	// An alias of an untracked identifier is ignored.
+	IMPORT_CN + 'const cx = other;\ncx(dynamic);',
+	// An alias of a non-identifier value is ignored.
+	IMPORT_CN + "const cx = () => '';\ncx(dynamic);",
+	// A `createSV()`-derived binding is analyzed like `sv` — static config.
+	IMPORT_CREATE_SV +
+		"const customSV = createSV({ cacheSize: 512 });\ncustomSV({ base: 'flex' });",
+	// A `createSV()`-derived binding used cn-style is analyzed like `sv`.
+	IMPORT_CREATE_SV +
+		"const customSV = createSV({ cacheSize: 512 });\ncustomSV('flex', 'items-center');",
+	// A `const` alias of a `createSV()`-derived binding stays tracked.
+	IMPORT_CREATE_SV +
+		"const customSV = createSV({ cacheSize: 512 });\nconst cx = customSV;\ncx({ base: 'flex' });",
+	// A binding initialized by a member-expression call is not a factory.
+	IMPORT_CREATE_SV + 'const c = obj.make();\nc(dynamic);',
+	// A binding initialized by an untracked call is not a factory.
+	IMPORT_CREATE_SV + 'const c = other();\nc(dynamic);',
+	// A binding whose factory alias resolves to a non-identifier is ignored.
+	IMPORT_CREATE_SV +
+		"const factory = () => () => '';\nconst c = factory({});\nc(dynamic);",
+	// A `createSV` shadowed by a local binding is not tracked.
+	IMPORT_CREATE_SV +
+		'function f(createSV) {\n\tconst c = createSV({});\n\treturn c(dynamic);\n}',
+	// A non-object argument to createSV() leaves nothing to analyze.
+	IMPORT_CREATE_SV + 'createSV(dynamic);'
 ];
 
 const NO_DYNAMIC_CLASSES_INVALID = [
@@ -929,6 +994,48 @@ const NO_DYNAMIC_CLASSES_INVALID = [
 		errors: 1
 	},
 	{
+		// Dynamic value inside a slot-keyed compoundVariants class record.
+		code:
+			IMPORT +
+			`sv({
+				slots: { body: 'p-4' },
+				variants: { size: { sm: 'text-sm' } },
+				compoundVariants: [{ size: 'sm', class: { body: dynamic } }]
+			});`,
+		errors: 1
+	},
+	{
+		// Unknown slot key makes a compoundVariants class record dynamic.
+		code:
+			IMPORT +
+			`sv({
+				slots: { body: 'p-4' },
+				variants: { size: { sm: 'text-sm' } },
+				compoundVariants: [{ size: 'sm', class: { header: 'font-bold' } }]
+			});`,
+		errors: 1
+	},
+	{
+		// Without slots a compoundVariants class can't be a record.
+		code:
+			IMPORT +
+			`sv({
+				variants: { size: { sm: 'text-sm' } },
+				compoundVariants: [{ size: 'sm', class: { base: 'font-bold' } }]
+			});`,
+		errors: 1
+	},
+	{
+		// A compoundSlots class already targets slots — records stay dynamic.
+		code:
+			IMPORT +
+			`sv({
+				slots: { body: 'p-4' },
+				compoundSlots: [{ slots: ['body'], class: { body: 'font-bold' } }]
+			});`,
+		errors: 1
+	},
+	{
 		// cn() with a dynamic identifier.
 		code: IMPORT_CN + 'cn(dynamic);',
 		errors: 1
@@ -1061,6 +1168,77 @@ const NO_DYNAMIC_CLASSES_INVALID = [
 		// A reference cycle terminates and is reported as dynamic.
 		code: IMPORT_CN + "const a = b;\nconst b = a;\ncn(a);",
 		errors: 1
+	},
+	{
+		// A hoisted `const` config is validated as a config — dynamic values
+		// inside it are reported.
+		code: IMPORT + 'const config = { base: dynamic };\nsv(config);',
+		errors: 1
+	},
+	{
+		// A hoisted config after cn-style leading arguments — the config is
+		// still detached and the dynamic leading argument is reported.
+		code:
+			IMPORT + "const config = { base: 'flex' };\nsv(dynamic, config);",
+		errors: 1
+	},
+	{
+		// A `const` alias of a tracked cn import stays tracked.
+		code: IMPORT_CN + 'const cx = cn;\ncx(dynamic);',
+		errors: 1
+	},
+	{
+		// A chain of `const` aliases is followed to the import.
+		code: IMPORT_CN + 'const a = cn;\nconst b = a;\nb(dynamic);',
+		errors: 1
+	},
+	{
+		// A `const` alias of a tracked sv import is validated as sv.
+		code: IMPORT + 'const styled = sv;\nstyled({ base: dynamic });',
+		errors: 1
+	},
+	{
+		// A `createSV()`-derived binding is validated as sv (dynamic config).
+		code:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV({ cacheSize: 512 });\ncustomSV({ base: dynamic });",
+		errors: 1
+	},
+	{
+		// A `createSV()`-derived binding used cn-style is validated as sv.
+		code:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV({ cacheSize: 512 });\ncustomSV(dynamic);",
+		errors: 1
+	},
+	{
+		// A `createSV` import alias produces a tracked binding.
+		code:
+			"import { createSV as factory } from 'slot-variants';\n" +
+			'const customSV = factory({});\ncustomSV({ base: dynamic });',
+		errors: 1
+	},
+	{
+		// A `const` alias of a `createSV()`-derived binding stays tracked.
+		code:
+			IMPORT_CREATE_SV +
+			'const customSV = createSV({});\nconst cx = customSV;\ncx({ base: dynamic });',
+		errors: 1
+	},
+	{
+		// The defaults of a createSV() factory call are validated like a config.
+		code: IMPORT_CREATE_SV + 'createSV({ base: dynamic });',
+		errors: 1
+	},
+	{
+		// A spread in a createSV() factory config is dynamic.
+		code: IMPORT_CREATE_SV + "createSV({ ...rest, base: 'flex' });",
+		errors: 1
+	},
+	{
+		// A computed key in a createSV() factory config is dynamic.
+		code: IMPORT_CREATE_SV + "createSV({ [k]: 'flex' });",
+		errors: 1
 	}
 ];
 
@@ -1118,6 +1296,13 @@ const NO_EMPTY_CLASSES_VALID = [
 			variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
 			compoundVariants: [{ size: 'lg', class: 'font-bold' }]
 		});`,
+	// Slot-keyed compoundVariants class record with non-empty values.
+	IMPORT +
+		`sv({
+			slots: { body: 'p-4' },
+			variants: { size: { sm: 'text-sm' } },
+			compoundVariants: [{ size: 'sm', class: { body: 'font-bold' } }]
+		});`,
 	// compoundVariants entry without class — not flagged.
 	IMPORT +
 		`sv({
@@ -1132,6 +1317,12 @@ const NO_EMPTY_CLASSES_VALID = [
 		});`,
 	// cn-style record with non-empty keys.
 	IMPORT_CN + 'cn({ foo: true, bar: false });',
+	// cn-style record with a non-empty string-literal key.
+	IMPORT_CN + "cn({ 'px-2': cond });",
+	// cn-style record with a computed key — skipped, not an empty class.
+	IMPORT_CN + 'cn({ [k]: cond });',
+	// Spread in a clsx record is skipped; other keys are still checked.
+	IMPORT_CN + 'cn({ ...rest, foo: true });',
 	// Non-string literal as cn argument — not an empty class.
 	IMPORT_CN + 'cn(0, false, null, undefined);',
 	// Non-empty values in nested arrays.
@@ -1188,7 +1379,17 @@ const NO_EMPTY_CLASSES_VALID = [
 			compoundVariants: [{ [k]: 'lg', class: 'font-bold' }]
 		});`,
 	// String-literal property keys throughout.
-	IMPORT + "sv({ 'base': 'flex', 'slots': { 'body': 'p-4' } });"
+	IMPORT + "sv({ 'base': 'flex', 'slots': { 'body': 'p-4' } });",
+	// createSV() with no defaults is a valid factory call, not an empty call.
+	IMPORT_CREATE_SV + 'createSV();',
+	// createSV() with an empty defaults object carries no class value.
+	IMPORT_CREATE_SV + 'createSV({});',
+	// A createSV() factory config with non-empty class values.
+	IMPORT_CREATE_SV + "createSV({ base: 'flex' });",
+	// A spread in a createSV() factory config is skipped (dynamic, not empty).
+	IMPORT_CREATE_SV + "createSV({ ...rest, base: 'flex' });",
+	// A computed key in a createSV() factory config is skipped.
+	IMPORT_CREATE_SV + "createSV({ [k]: 'x', base: 'flex' });"
 ];
 
 const NO_EMPTY_CLASSES_INVALID = [
@@ -1353,6 +1554,28 @@ const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
+		// Empty record as a compoundVariants class.
+		code:
+			IMPORT +
+			`sv({
+				slots: { body: 'p-4' },
+				variants: { size: { sm: 'text-sm' } },
+				compoundVariants: [{ size: 'sm', class: {} }]
+			});`,
+		errors: [{ messageId: 'emptyObject' }]
+	},
+	{
+		// Empty string inside a slot-keyed compoundVariants class record.
+		code:
+			IMPORT +
+			`sv({
+				slots: { body: 'p-4' },
+				variants: { size: { sm: 'text-sm' } },
+				compoundVariants: [{ size: 'sm', class: { body: '' } }]
+			});`,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
 		// Empty array as compoundSlots.
 		code: IMPORT + "sv({ slots: { body: 'p-4' }, compoundSlots: [] });",
 		output: IMPORT + "sv({ slots: { body: 'p-4' } });",
@@ -1414,6 +1637,21 @@ const NO_EMPTY_CLASSES_INVALID = [
 		// Zero-arg cn() — produces an empty class string.
 		code: IMPORT_CN + 'cn();',
 		errors: [{ messageId: 'emptyCall' }]
+	},
+	{
+		// Empty string key in a clsx-style record — an empty class string.
+		code: IMPORT_CN + "cn({ '': cond });",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// Empty record key nested inside a cn array argument.
+		code: IMPORT_CN + "cn(['flex', { '': x }]);",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// An empty class value in a createSV() factory config is flagged.
+		code: IMPORT_CREATE_SV + "createSV({ base: '' });",
+		errors: [{ messageId: 'emptyString' }]
 	}
 ];
 
@@ -1439,8 +1677,32 @@ const NO_CONFLICTING_DUP_VALID = [
 	// Same token across values of the same variant — mutually exclusive.
 	IMPORT +
 		"sv({ variants: { state: { on: 'highlight', off: 'highlight' } } });",
+	// Same token in different slots of a compound class record — tokens are
+	// attributed per slot, so they never collide.
+	IMPORT +
+		`sv({
+			slots: { body: 'p-4', icon: 'shrink-0' },
+			variants: { size: { sm: 'text-sm' } },
+			compoundVariants: [
+				{ size: 'sm', class: { body: 'font-bold', icon: 'font-bold' } }
+			]
+		});`,
 	// Same token across a ternary's branches — only one branch renders.
 	IMPORT_CN + "cn(isActive ? 'flex' : 'flex');",
+	// Same token across compounds matching different values of one variant —
+	// they can never co-occur.
+	IMPORT +
+		`sv({
+			variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+			compoundVariants: [
+				{ size: 'sm', class: 'font-bold' },
+				{ size: 'lg', class: 'font-bold' }
+			]
+		});`,
+	// Same token across complementary conditionals — `cond` and `!cond` are
+	// opposite branches of one condition.
+	IMPORT_CN + "cn(isActive && 'flex', !isActive && 'flex');",
+	IMPORT_CN + "cn(isActive ? 'flex' : '', isActive ? '' : 'flex');",
 	// Ternary branches with conflicting namespaces are mutually exclusive.
 	IMPORT_CN + "cn(isActive ? 'w-100' : 'w-200');",
 	// Ternary in an sv() cn-style leading argument — branches are exclusive.
@@ -1611,6 +1873,28 @@ const NO_CONFLICTING_DUP_INVALID = [
 		errors: 2
 	},
 	{
+		// A hoisted `const` config is read through and analyzed as a config.
+		code: IMPORT + "const config = { base: 'flex flex' };\nsv(config);",
+		errors: 2
+	},
+	{
+		// Duplicate inside a slot-keyed compoundVariants class record — the
+		// tokens land on the record's slot.
+		code:
+			IMPORT +
+			`sv({
+				slots: { body: 'p-4' },
+				variants: { size: { sm: 'text-sm' } },
+				compoundVariants: [{ size: 'sm', class: { body: 'flex flex' } }]
+			});`,
+		errors: repeat(dup('flex', 'body'), 2)
+	},
+	{
+		// A `const` alias of the sv import is tracked through to the config.
+		code: IMPORT + "const styled = sv;\nstyled({ base: 'flex flex' });",
+		errors: 2
+	},
+	{
 		// Duplicate within one ternary branch — that branch renders both.
 		code: IMPORT_CN + "cn(isActive ? 'flex flex' : 'block');",
 		errors: 2
@@ -1620,6 +1904,26 @@ const NO_CONFLICTING_DUP_INVALID = [
 		// branch renders, the token appears twice.
 		code: IMPORT_CN + "cn('flex', isActive ? 'flex' : 'block');",
 		errors: 2
+	},
+	{
+		// Duplicate across same-branch conditionals — both render together
+		// whenever the shared condition is truthy.
+		code: IMPORT_CN + "cn(isActive && 'flex', isActive && 'flex');",
+		errors: repeat(dupCn('flex'), 2)
+	},
+	{
+		// Duplicate across compounds matching the same variant value — both
+		// apply together.
+		code:
+			IMPORT +
+			`sv({
+				variants: { size: { sm: 'text-sm' }, tone: { red: 'text-red-500' } },
+				compoundVariants: [
+					{ size: 'sm', class: 'font-bold' },
+					{ size: 'sm', tone: 'red', class: 'font-bold' }
+				]
+			});`,
+		errors: repeat(dup('font-bold'), 2)
 	},
 	{
 		// Duplicate between a template quasi (always present) and a ternary
@@ -1797,6 +2101,13 @@ const NO_CONFLICTING_DUP_INVALID = [
 		// cn() duplicate within a multi-token record key.
 		code: IMPORT_CN + "cn({ 'flex flex': cond });",
 		errors: repeat(dupCn('flex'), 2)
+	},
+	{
+		// A `createSV()`-derived binding's config is analyzed like sv.
+		code:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV({ cacheSize: 512 });\nconst c = customSV({ base: 'flex flex' });",
+		errors: repeat(dup('flex'), 2)
 	}
 ];
 
@@ -1852,6 +2163,88 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'min-w-0 size-4' });",
 	// The shorthand overlap is scoped per variant prefix.
 	IMPORT_CN + "cn('hover:w-4', 'size-4');",
+	IMPORT_CN + "cn('hover:m-4', 'mt-2');",
+	// Spacing sides and axes are independent without their shorthand present.
+	IMPORT + "sv({ base: 'mt-2 mr-2 mb-2 ml-2' });",
+	IMPORT + "sv({ base: 'mx-2 my-2' });",
+	IMPORT + "sv({ base: 'px-4 pt-2' });",
+	// Logical spacing sides are leaves — they only merge through the bare form.
+	IMPORT + "sv({ base: 'px-4 ps-2' });",
+	// `inset-x` covers left/right only, not top.
+	IMPORT + "sv({ base: 'inset-x-0 top-0' });",
+	// Independent transform axes; `translate-z` has no overlap node at all.
+	IMPORT + "sv({ base: 'translate-x-2 translate-z-10' });",
+	// Corner sides and sibling corners don't overlap without their shorthand.
+	IMPORT + "sv({ base: 'rounded-t-lg rounded-b-sm' });",
+	IMPORT + "sv({ base: 'rounded-tl-lg rounded-tr-sm' });",
+	// `border-x` covers left/right widths only, not the top width.
+	IMPORT + "sv({ base: 'border-x-2 border-t-4' });",
+	// A border width doesn't overlap a per-side border color.
+	IMPORT + "sv({ base: 'border-2 border-t-red-500' });",
+	// Per-side border width vs color are distinct sub-properties — including
+	// the single-word color keywords.
+	IMPORT + "sv({ base: 'border-t-2 border-t-red-500' });",
+	IMPORT + "sv({ base: 'border-t-2 border-t-current' });",
+	// scroll-behavior is unrelated to the scroll-margin family.
+	IMPORT + "sv({ base: 'scroll-smooth scroll-mt-4' });",
+	// A shorthand overlap across mutually-exclusive variant values is fine.
+	IMPORT + "sv({ variants: { pad: { sm: 'p-2', lg: 'pt-8' } } });",
+	// Compounds matching different values of one variant can never co-occur.
+	IMPORT +
+		`sv({
+			variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+			compoundVariants: [
+				{ size: 'sm', class: 'p-2' },
+				{ size: 'lg', class: 'p-4' }
+			]
+		});`,
+	// A compound is exclusive with a value of a variant it matches differently.
+	IMPORT +
+		`sv({
+			variants: { size: { sm: 'p-2', lg: 'font-bold' } },
+			compoundVariants: [{ size: 'lg', class: 'p-4' }]
+		});`,
+	// Boolean and numeric matchers align with variant value keys.
+	IMPORT +
+		`sv({
+			variants: { disabled: 'opacity-50' },
+			compoundVariants: [{ disabled: false, class: 'opacity-100' }]
+		});`,
+	IMPORT +
+		`sv({
+			variants: { cols: { 1: 'w-4', 2: 'w-8' } },
+			compoundVariants: [
+				{ cols: 1, class: 'gap-2' },
+				{ cols: 2, class: 'gap-4' }
+			]
+		});`,
+	// Multi-matcher compounds only need to disagree on one shared key.
+	IMPORT +
+		`sv({
+			variants: { size: { sm: '' }, tone: { red: '', blue: '' } },
+			compoundVariants: [
+				{ size: 'sm', tone: 'red', class: 'p-2' },
+				{ size: 'sm', tone: 'blue', class: 'p-4' }
+			]
+		});`,
+	// compoundSlots matchers get the same exclusivity treatment, per slot.
+	IMPORT +
+		`sv({
+			slots: { icon: 'shrink-0' },
+			compoundSlots: [
+				{ slots: ['icon'], size: 'sm', class: 'w-2' },
+				{ slots: ['icon'], size: 'lg', class: 'w-4' }
+			]
+		});`,
+	// Complementary conditionals — `cond` and `!cond` are opposite branches of
+	// one condition, whether spelled as ternaries or logical-ANDs.
+	IMPORT_CN + "cn(active ? 'p-2' : 'm-2', !active ? 'p-4' : 'm-4');",
+	IMPORT_CN + "cn(active && 'p-2', !active && 'p-4');",
+	// Opposite branches of the same condition across two ternaries.
+	IMPORT_CN + "cn(active ? 'p-2' : '', active ? '' : 'p-4');",
+	// Nested conditionals accumulate their outer condition, so the inner
+	// branches stay exclusive to each other.
+	IMPORT_CN + "cn(active && (dense ? 'p-2' : 'p-4'));",
 	// A custom-palette color still classifies as a color (no palette needed).
 	IMPORT + "sv({ base: 'text-brand-500 text-sm' });",
 	// An arbitrary color value classifies as a color, not a size.
@@ -1888,6 +2281,26 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'divide-opacity-50 divide-red-500' });",
 	// Background color vs background size/position.
 	IMPORT + "sv({ base: 'bg-white bg-cover bg-center' });",
+	// Arbitrary image values are a background-image, not a color — including
+	// when the value contains colons or dashes inside the brackets.
+	IMPORT + "sv({ base: 'bg-[url(data:image/png;base64,abc)] bg-red-500' });",
+	IMPORT + "sv({ base: 'bg-[linear-gradient(to_right,red,blue)] bg-white' });",
+	IMPORT + "sv({ base: 'bg-[image:var(--hero)] bg-red-500' });",
+	// A dashed arbitrary value is one segment, so a hinted `text-[length:…]`
+	// stays in the short (font-size) bucket instead of misreading as a color.
+	IMPORT + "sv({ base: 'text-[length:var(--x-y)] text-red-500' });",
+	// Different stacked-variant sets don't conflict in any order.
+	IMPORT_CN + "cn('sm:hover:w-4', 'sm:focus:w-8');",
+	// grow/shrink/basis are independent without a `flex-*` sizing shorthand.
+	IMPORT + "sv({ base: 'grow-0 shrink-0 basis-auto' });",
+	// Flex direction and wrap don't take part in the sizing overlap.
+	IMPORT + "sv({ base: 'flex-row flex-1 flex-wrap' });",
+	// `truncate` is unrelated to a font size, and overflow/white-space don't
+	// reach each other without the `truncate` bridge.
+	IMPORT + "sv({ base: 'truncate text-sm' });",
+	IMPORT + "sv({ base: 'overflow-visible whitespace-normal' });",
+	// The truncate overlap is scoped per variant prefix.
+	IMPORT_CN + "cn('hover:truncate', 'overflow-visible');",
 	// Axis utilities on independent axes don't conflict.
 	IMPORT + "sv({ base: 'gap-x-4 gap-y-2' });",
 	// Grid columns vs rows.
@@ -2178,6 +2591,192 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('size-4, size-8'), 2)
 	},
 	{
+		// `m-*` sets every margin side, so it overlaps a side utility.
+		code: IMPORT_CN + "cn('m-4', 'mt-2');",
+		errors: repeat(conflictCn('m-4, mt-2'), 2)
+	},
+	{
+		// …and a spacing axis overlaps its physical sides.
+		code: IMPORT_CN + "cn('px-4', 'pl-2');",
+		errors: repeat(conflictCn('pl-2, px-4'), 2)
+	},
+	{
+		// The whole chain merges when the shorthand bridges it.
+		code: IMPORT_CN + "cn('m-4', 'mx-2', 'ml-1');",
+		errors: repeat(conflictCn('m-4, ml-1, mx-2'), 3)
+	},
+	{
+		// An arbitrary value is one segment regardless of inner dashes, so it
+		// resolves to the very same conflict key as its sized sibling.
+		code: IMPORT_CN + "cn('mt-4', 'mt-[calc(100%-1px)]');",
+		errors: repeat(conflictCn('mt-4, mt-[calc(100%-1px)]'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('w-4', 'w-[calc(100%-2rem)]');",
+		errors: repeat(conflictCn('w-4, w-[calc(100%-2rem)]'), 2)
+	},
+	{
+		// Values with different segment counts land in different conflict keys
+		// but still share the segment's overlap node.
+		code: IMPORT_CN + "cn('mt-4', 'mt-safe-bottom');",
+		errors: repeat(conflictCn('mt-4, mt-safe-bottom'), 2)
+	},
+	{
+		// Stacked variants are order-insensitive: both orders share one
+		// canonical prefix.
+		code: IMPORT_CN + "cn('hover:focus:w-4', 'focus:hover:w-8');",
+		errors: repeat(conflictCn('focus:hover:w-8, hover:focus:w-4'), 2)
+	},
+	{
+		code: IMPORT + "sv({ base: 'md:hover:w-4 hover:md:w-8' });",
+		errors: repeat(conflict('hover:md:w-8, md:hover:w-4'), 2)
+	},
+	{
+		// A colon inside an arbitrary variant doesn't split the prefix.
+		code:
+			IMPORT_CN +
+			"cn('supports-[display:grid]:w-4', 'supports-[display:grid]:w-8');",
+		errors: repeat(
+			conflictCn(
+				'supports-[display:grid]:w-4, supports-[display:grid]:w-8'
+			),
+			2
+		)
+	},
+	{
+		// Two background-images conflict — an arbitrary url() is an image.
+		code: IMPORT_CN + "cn('bg-[url(/hero.png)]', 'bg-none');",
+		errors: repeat(conflictCn('bg-[url(/hero.png)], bg-none'), 2)
+	},
+	{
+		// `inset-*` covers the individual offset utilities.
+		code: IMPORT_CN + "cn('inset-0', 'top-4');",
+		errors: repeat(conflictCn('inset-0, top-4'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('inset-x-0', 'left-2');",
+		errors: repeat(conflictCn('inset-x-0, left-2'), 2)
+	},
+	{
+		// A bare axis utility covers its per-axis forms.
+		code: IMPORT_CN + "cn('gap-4', 'gap-x-2');",
+		errors: repeat(conflictCn('gap-4, gap-x-2'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('overflow-hidden', 'overflow-x-auto');",
+		errors: repeat(conflictCn('overflow-hidden, overflow-x-auto'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('scale-105', 'scale-x-110');",
+		errors: repeat(conflictCn('scale-105, scale-x-110'), 2)
+	},
+	{
+		// `rounded-*` covers corner sides, which cover their corners.
+		code: IMPORT_CN + "cn('rounded-lg', 'rounded-t-sm');",
+		errors: repeat(conflictCn('rounded-lg, rounded-t-sm'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('rounded-t-lg', 'rounded-tl-sm');",
+		errors: repeat(conflictCn('rounded-t-lg, rounded-tl-sm'), 2)
+	},
+	{
+		// The bare `rounded` default participates in the overlap too.
+		code: IMPORT_CN + "cn('rounded', 'rounded-tl-sm');",
+		errors: repeat(conflictCn('rounded, rounded-tl-sm'), 2)
+	},
+	{
+		// A border width covers the per-side widths, and the width axes cover
+		// their physical sides.
+		code: IMPORT_CN + "cn('border-2', 'border-t-4');",
+		errors: repeat(conflictCn('border-2, border-t-4'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('border-x-2', 'border-l-4');",
+		errors: repeat(conflictCn('border-l-4, border-x-2'), 2)
+	},
+	{
+		// Bare `border-t` is the 1px top width, colliding with `border-t-2`.
+		code: IMPORT_CN + "cn('border-t', 'border-t-2');",
+		errors: repeat(conflictCn('border-t, border-t-2'), 2)
+	},
+	{
+		// Two per-side border colors conflict.
+		code: IMPORT_CN + "cn('border-t-red-500', 'border-t-blue-500');",
+		errors: repeat(conflictCn('border-t-blue-500, border-t-red-500'), 2)
+	},
+	{
+		// Bare `border-spacing` covers its per-axis forms.
+		code: IMPORT_CN + "cn('border-spacing-2', 'border-spacing-x-4');",
+		errors: repeat(conflictCn('border-spacing-2, border-spacing-x-4'), 2)
+	},
+	{
+		// The scroll-margin family overlaps like the plain spacing one.
+		code: IMPORT_CN + "cn('scroll-m-4', 'scroll-mt-2');",
+		errors: repeat(conflictCn('scroll-m-4, scroll-mt-2'), 2)
+	},
+	{
+		// Compounds matching the same variant value apply together.
+		code:
+			IMPORT +
+			`sv({
+				variants: { size: { sm: 'text-sm' } },
+				compoundVariants: [
+					{ size: 'sm', class: 'p-2' },
+					{ size: 'sm', tone: 'red', class: 'p-4' }
+				]
+			});`,
+		errors: repeat(conflict('p-2, p-4'), 2)
+	},
+	{
+		// Compounds with no shared matcher key can co-occur.
+		code:
+			IMPORT +
+			`sv({
+				compoundVariants: [
+					{ size: 'sm', class: 'p-2' },
+					{ tone: 'red', class: 'p-4' }
+				]
+			});`,
+		errors: repeat(conflict('p-2, p-4'), 2)
+	},
+	{
+		// A dynamic matcher can't prove exclusivity — stays flagged.
+		code:
+			IMPORT +
+			`sv({
+				compoundVariants: [
+					{ size: dyn, class: 'p-2' },
+					{ size: 'lg', class: 'p-4' }
+				]
+			});`,
+		errors: repeat(conflict('p-2, p-4'), 2)
+	},
+	{
+		// A compound applies together with the variant value it matches.
+		code:
+			IMPORT +
+			`sv({
+				variants: { size: { sm: 'p-2' } },
+				compoundVariants: [{ size: 'sm', class: 'p-4' }]
+			});`,
+		errors: repeat(conflict('p-2, p-4'), 2)
+	},
+	{
+		// Same-branch conditionals render together.
+		code: IMPORT_CN + "cn(active && 'p-2', active && 'p-4');",
+		errors: repeat(conflictCn('p-2, p-4'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn(active ? 'p-2' : '', active ? 'p-4' : '');",
+		errors: repeat(conflictCn('p-2, p-4'), 2)
+	},
+	{
+		// A nested conditional shares its outer condition with a plain
+		// same-condition token — they co-occur whenever both conditions hold.
+		code: IMPORT_CN + "cn(active && 'p-2', active && (dense ? 'p-4' : ''));",
+		errors: repeat(conflictCn('p-2, p-4'), 2)
+	},
+	{
 		// Opt-in: two single-word display utilities are mutually exclusive.
 		code: IMPORT_CN + "cn('flex', 'block');",
 		options: [{ exclusiveGroups: true }],
@@ -2234,16 +2833,46 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('not-sr-only, sr-only'), 2)
 	},
 	{
-		// Opt-in: `truncate` joins the text-overflow group, so it conflicts with
-		// the explicit `text-ellipsis`/`text-clip` utilities across prefixes.
+		// `truncate` forces text-overflow, so it conflicts with the explicit
+		// `text-ellipsis`/`text-clip` utilities by default — no opt-in needed.
 		code: IMPORT_CN + "cn('truncate', 'text-ellipsis');",
-		options: [{ exclusiveGroups: true }],
 		errors: repeat(conflictCn('text-ellipsis, truncate'), 2)
 	},
 	{
 		code: IMPORT_CN + "cn('truncate', 'text-clip');",
-		options: [{ exclusiveGroups: true }],
 		errors: repeat(conflictCn('text-clip, truncate'), 2)
+	},
+	{
+		// `truncate` also sets overflow (both axes) and white-space.
+		code: IMPORT_CN + "cn('truncate', 'overflow-visible');",
+		errors: repeat(conflictCn('overflow-visible, truncate'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('truncate', 'overflow-x-auto');",
+		errors: repeat(conflictCn('overflow-x-auto, truncate'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('truncate', 'whitespace-normal');",
+		errors: repeat(conflictCn('truncate, whitespace-normal'), 2)
+	},
+	{
+		// `flex-1`/`flex-auto`/`flex-none` set grow, shrink, and basis at once.
+		code: IMPORT_CN + "cn('flex-1', 'grow-0');",
+		errors: repeat(conflictCn('flex-1, grow-0'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('flex-auto', 'basis-4');",
+		errors: repeat(conflictCn('basis-4, flex-auto'), 2)
+	},
+	{
+		// The bare `grow`/`shrink` defaults participate in the overlap too.
+		code: IMPORT_CN + "cn('flex-none', 'shrink');",
+		errors: repeat(conflictCn('flex-none, shrink'), 2)
+	},
+	{
+		// The sizing shorthand bridges every present longhand into one group.
+		code: IMPORT_CN + "cn('flex-1', 'grow-0', 'shrink-0');",
+		errors: repeat(conflictCn('flex-1, grow-0, shrink-0'), 3)
 	},
 	{
 		// Opt-in grouping is respected inside an sv() config too, per slot.
@@ -2667,7 +3296,10 @@ const REQUIRE_TOP_LEVEL_CONFIG_VALID = [
 	// Default-imported sv is not tracked.
 	"import sv from 'slot-variants'; function f() { sv({ base: 'flex' }); }",
 	// Member-expression callee is not tracked.
-	IMPORT + "function f() { return obj.sv({ base: 'flex' }); }"
+	IMPORT + "function f() { return obj.sv({ base: 'flex' }); }",
+	// A createSV() factory call compiles nothing, so nesting it is fine.
+	IMPORT_CREATE_SV +
+		"function f() { return createSV({ base: 'flex' }); }"
 ];
 
 const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
@@ -2703,6 +3335,14 @@ const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
 		code:
 			IMPORT +
 			"function f() { return sv('flex', { base: 'items-center' }); }",
+		errors: [{ messageId: 'nested' }]
+	},
+	{
+		// A createSV()-derived binding's config call is still bound by the rule.
+		code:
+			IMPORT_CREATE_SV +
+			'const customSV = createSV({ cacheSize: 512 });\n' +
+			"function f() { return customSV({ base: 'flex' }); }",
 		errors: [{ messageId: 'nested' }]
 	}
 ];

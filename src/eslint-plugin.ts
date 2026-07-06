@@ -2,6 +2,7 @@ import type { Linter, Rule, Scope, SourceCode } from 'eslint';
 import type {
 	CallExpression,
 	Expression,
+	Identifier,
 	ImportDeclaration,
 	Node,
 	ObjectExpression,
@@ -64,13 +65,18 @@ const getOrCreate = <K, V>(map: Map<K, V>, key: K, make: () => V): V => {
 
 const EMPTY_PROPERTIES: ReadonlyMap<string, Node> = new Map();
 
-const propertiesCache = new WeakMap<ObjectExpression, ReadonlyMap<string, Node>>();
+const propertiesCache = new WeakMap<
+	ObjectExpression,
+	ReadonlyMap<string, Node>
+>();
 const strictPropertiesCache = new WeakMap<
 	ObjectExpression,
 	ReadonlyMap<string, Node> | null
 >();
 
-const buildPropertiesMap = (obj: ObjectExpression): ReadonlyMap<string, Node> => {
+const buildPropertiesMap = (
+	obj: ObjectExpression
+): ReadonlyMap<string, Node> => {
 	const map = new Map<string, Node>();
 
 	for (const prop of obj.properties) {
@@ -194,40 +200,44 @@ const collectSlotKeyedProperties = (
 type CallMatch = {
 	config: ObjectExpression | null;
 	args: ReadonlyArray<Expression | SpreadElement>;
+	// True for a `createSV(defaults)` factory call itself, whose sole argument is
+	// validated like an sv() config but which compiles no variant function — so
+	// it is exempt from require-top-level-config and the empty-call check.
+	isFactoryConfig?: boolean;
 };
 
-const getIdentifierCalleeName = (node: CallExpression): string | null => {
-	if (node.callee.type === 'Identifier') {
-		return node.callee.name;
-	}
-
-	return null;
-};
-
-const matchSvCall = (node: CallExpression): CallMatch => {
+// The last argument is read through a hoisted `const` binding so
+// `const config = {...}; sv(config)` is analyzed as a config call rather than
+// a cn-style argument list.
+const matchSvCall = (
+	node: CallExpression,
+	sourceCode: SourceCode
+): CallMatch => {
 	const args = node.arguments;
 	const last = args[args.length - 1];
 
-	if (!isConfigLike(last)) {
+	if (!last) {
 		return { config: null, args };
 	}
 
-	return { config: last, args: args.slice(0, -1) };
+	const resolved = resolveStaticValue(last, sourceCode);
+
+	if (!isConfigLike(resolved)) {
+		return { config: null, args };
+	}
+
+	return { config: resolved, args: args.slice(0, -1) };
 };
 
 const matchSvCnCall = (
 	node: CallExpression,
+	calleeName: string,
 	svNames: Set<string>,
-	cnNames: Set<string>
+	cnNames: Set<string>,
+	sourceCode: SourceCode
 ): CallMatch | null => {
-	const calleeName = getIdentifierCalleeName(node);
-
-	if (calleeName === null) {
-		return null;
-	}
-
 	if (svNames.has(calleeName)) {
-		return matchSvCall(node);
+		return matchSvCall(node, sourceCode);
 	}
 
 	if (cnNames.has(calleeName)) {
@@ -257,13 +267,39 @@ const isConfigLike = (node: Node | undefined): node is ObjectExpression => {
 	return hasOnlyConfigKeys(properties);
 };
 
+// A variant source carries every condition its tokens render under, as
+// key -> required-value matchers: a variant value is a single matcher, a
+// compound entry one per readable matcher property, a cn-style conditional a
+// synthetic `cond:`/`ternary@` matcher — and nested conditionals accumulate.
+type VariantMatchers = ReadonlyMap<string, string>;
+
 type Source =
 	| { kind: 'base' }
-	| { kind: 'variant'; key: string; value: string }
+	| { kind: 'variant'; matchers: VariantMatchers }
 	| { kind: 'compound' };
 
 const baseSource: Source = { kind: 'base' };
+// A compound entry with no readable matcher — never exclusive with anything.
 const compoundSource: Source = { kind: 'compound' };
+
+const variantSource = (key: string, value: string): Source => ({
+	kind: 'variant',
+	matchers: new Map([[key, value]])
+});
+
+// Adds a matcher to a source, accumulating on top of an existing variant
+// source so nested conditionals keep their outer conditions.
+const withMatcher = (source: Source, key: string, value: string): Source => {
+	if (source.kind !== 'variant') {
+		return variantSource(key, value);
+	}
+
+	const matchers = new Map(source.matchers);
+
+	matchers.set(key, value);
+
+	return { kind: 'variant', matchers };
+};
 
 type Entry = {
 	source: Source;
@@ -274,45 +310,54 @@ type Entry = {
 };
 
 type TokenEntriesBySlot = Map<string, Map<string, Entry[]>>;
-type VariantSource = Extract<Source, { kind: 'variant' }>;
 
-const getVariantSource = (entry: Entry): VariantSource | null => {
+const getEntryMatchers = (entry: Entry): VariantMatchers | null => {
 	if (entry.source.kind === 'variant') {
-		return entry.source;
+		return entry.source.matchers;
 	}
 
 	return null;
 };
 
-const sharesVariantKey = (
-	sharedKey: string | null,
-	source: VariantSource
-): boolean => sharedKey === null || sharedKey === source.key;
+// Two matcher sets are exclusive when some key they both constrain requires
+// different values — no render can satisfy both.
+const areExclusiveMatchers = (
+	a: VariantMatchers,
+	b: VariantMatchers
+): boolean => {
+	for (const [key, value] of a) {
+		const other = b.get(key);
 
-const isExclusiveVariantSource = (
-	source: VariantSource | null,
-	sharedKey: string | null,
-	seenValues: Set<string>
-): source is VariantSource =>
-	source !== null &&
-	sharesVariantKey(sharedKey, source) &&
-	!seenValues.has(source.value);
+		if (other !== undefined && other !== value) {
+			return true;
+		}
+	}
 
-// Entries can't co-occur when they all come from different values of a single
-// variant key — only one branch fires per render.
+	return false;
+};
+
+// Entries can't co-occur when every pair disagrees on at least one shared
+// matcher key — different values of one variant, opposite branches of one
+// condition, or compound matchers requiring different values.
 const isMutuallyExclusiveVariants = (list: Entry[]): boolean => {
-	const seenValues = new Set<string>();
-	let sharedKey: string | null = null;
+	const matchers: VariantMatchers[] = [];
 
 	for (const entry of list) {
-		const source = getVariantSource(entry);
+		const entryMatchers = getEntryMatchers(entry);
 
-		if (!isExclusiveVariantSource(source, sharedKey, seenValues)) {
+		if (entryMatchers === null) {
 			return false;
 		}
 
-		sharedKey = source.key;
-		seenValues.add(source.value);
+		matchers.push(entryMatchers);
+	}
+
+	for (const [index, current] of matchers.entries()) {
+		for (const other of matchers.slice(index + 1)) {
+			if (!areExclusiveMatchers(current, other)) {
+				return false;
+			}
+		}
 	}
 
 	return true;
@@ -511,6 +556,32 @@ const collectBranchLeaves = (node: Node, leaves: Node[]) => {
 	leaves.push(node);
 };
 
+// The exclusivity matcher for a condition, keyed on the condition's source
+// text so the same condition spelled in two places resolves to one matcher.
+// Leading `!` negations flip the branch instead of changing the key —
+// `cond && a` and `!cond && b` land on opposite values of one key.
+const conditionMatcher = (
+	test: Node,
+	truthyBranch: boolean,
+	sourceCode: SourceCode
+): readonly [string, string] => {
+	let condition = test;
+	let truthy = truthyBranch;
+
+	while (condition.type === 'UnaryExpression' && condition.operator === '!') {
+		condition = condition.argument;
+		truthy = !truthy;
+	}
+
+	const key = `cond:${sourceCode.getText(condition)}`;
+
+	if (truthy) {
+		return [key, 'truthy'];
+	}
+
+	return [key, 'falsy'];
+};
+
 const isStaticStringNode = (node: Node): boolean =>
 	getStaticStringText(node) !== null;
 
@@ -583,18 +654,71 @@ const extractTokens = (
 	}
 
 	// The right operand of a `&&` is the only class it can contribute; the left
-	// is a runtime condition. It renders alongside everything else, so it keeps
-	// the incoming source.
-	if (cnStyle && node.type === 'LogicalExpression' && node.operator === '&&') {
-		extractTokens(node.right, slot, source, slotNames, entries, sourceCode, cnStyle);
+	// is a runtime condition, recorded as a truthy-branch matcher so a
+	// complementary `!cond && …` elsewhere resolves as mutually exclusive.
+	if (
+		cnStyle &&
+		node.type === 'LogicalExpression' &&
+		node.operator === '&&'
+	) {
+		const [key, branch] = conditionMatcher(node.left, true, sourceCode);
+
+		extractTokens(
+			node.right,
+			slot,
+			withMatcher(source, key, branch),
+			slotNames,
+			entries,
+			sourceCode,
+			cnStyle
+		);
 		return;
 	}
 
-	// A ternary renders exactly one leaf branch, so every leaf shares one
-	// synthetic exclusivity key with a distinct per-leaf value: tokens within a
-	// leaf co-occur, tokens across leaves are mutually exclusive.
+	// A ternary renders exactly one branch, so its branches are mutually
+	// exclusive. A simple two-branch ternary is keyed on its condition text
+	// (via conditionMatcher), letting complementary conditionals across
+	// arguments — `cond ? a : ''` with `cond ? '' : b` or `!cond ? b : ''` —
+	// resolve as exclusive too. A chained ternary keeps a position-based key:
+	// its leaves are only exclusive to one another.
 	if (cnStyle && node.type === 'ConditionalExpression') {
-		const ternaryKey = `ternary:${sourceCode.getRange(node)[0]}`;
+		const { consequent, alternate } = node;
+
+		if (
+			consequent.type !== 'ConditionalExpression' &&
+			alternate.type !== 'ConditionalExpression'
+		) {
+			const [key, thenBranch] = conditionMatcher(
+				node.test,
+				true,
+				sourceCode
+			);
+			const [, elseBranch] = conditionMatcher(
+				node.test,
+				false,
+				sourceCode
+			);
+			const branches: ReadonlyArray<readonly [Node, string]> = [
+				[consequent, thenBranch],
+				[alternate, elseBranch]
+			];
+
+			for (const [leaf, branch] of branches) {
+				extractTokens(
+					leaf,
+					slot,
+					withMatcher(source, key, branch),
+					slotNames,
+					entries,
+					sourceCode,
+					cnStyle
+				);
+			}
+
+			return;
+		}
+
+		const ternaryKey = `ternary@${sourceCode.getRange(node)[0]}`;
 		const leaves: Node[] = [];
 
 		collectBranchLeaves(node, leaves);
@@ -605,7 +729,7 @@ const extractTokens = (
 			extractTokens(
 				leaf,
 				slot,
-				{ kind: 'variant', key: ternaryKey, value: `branch${index}` },
+				withMatcher(source, ternaryKey, `branch${index}`),
 				slotNames,
 				entries,
 				sourceCode,
@@ -760,22 +884,66 @@ const extractVariantTokens = (
 ) => {
 	for (const [variantKey, variantValue] of variantsMap.entries()) {
 		if (isBooleanShorthandVariant(variantValue, slotNames)) {
-			extract(variantValue, 'base', {
-				kind: 'variant',
-				key: variantKey,
-				value: 'true'
-			});
+			extract(variantValue, 'base', variantSource(variantKey, 'true'));
 			continue;
 		}
 
 		for (const [valueKey, valueNode] of getProperties(variantValue)) {
-			extract(valueNode, 'base', {
-				kind: 'variant',
-				key: variantKey,
-				value: valueKey
-			});
+			extract(valueNode, 'base', variantSource(variantKey, valueKey));
 		}
 	}
+};
+
+// Keys of a compound entry that aren't variant matchers.
+const COMPOUND_NON_MATCHER_KEYS = new Set(['class', 'className', 'slots']);
+
+// The canonical string form of a static compound matcher value — strings,
+// booleans, and numbers align with variant value keys (`{ true: … }`,
+// `{ 2: … }`), which getKeyName also reads as strings.
+const getStaticMatcherValue = (node: Node): string | null => {
+	const text = getStaticStringText(node);
+
+	if (text !== null) {
+		return text;
+	}
+
+	if (
+		node.type === 'Literal' &&
+		(typeof node.value === 'boolean' || typeof node.value === 'number')
+	) {
+		return String(node.value);
+	}
+
+	return null;
+};
+
+// Derives an exclusivity source from a compound entry's matcher properties,
+// so two compounds requiring different values of one variant — or a compound
+// and a variant value it can't co-occur with — aren't reported as conflicts.
+// Only statically-known scalar matchers count; a dynamic or array matcher is
+// skipped, which can only under-suppress, never wrongly suppress. With no
+// readable matcher left the entry falls back to the never-exclusive compound
+// source.
+const getCompoundSource = (compound: ReadonlyMap<string, Node>): Source => {
+	const matchers = new Map<string, string>();
+
+	for (const [key, value] of compound) {
+		if (COMPOUND_NON_MATCHER_KEYS.has(key)) {
+			continue;
+		}
+
+		const matcherValue = getStaticMatcherValue(value);
+
+		if (matcherValue !== null) {
+			matchers.set(key, matcherValue);
+		}
+	}
+
+	if (matchers.size === 0) {
+		return compoundSource;
+	}
+
+	return { kind: 'variant', matchers };
 };
 
 const extractCompoundTokens = (
@@ -783,16 +951,18 @@ const extractCompoundTokens = (
 	compoundSlots: Node | undefined,
 	extract: ExtractFn
 ) => {
-	forEachCompoundClass(compoundVariants, (cls) => {
-		extract(cls, 'base', compoundSource);
+	forEachCompoundClass(compoundVariants, (cls, compound) => {
+		extract(cls, 'base', getCompoundSource(compound));
 	});
 
 	forEachCompoundClass(compoundSlots, (cls, compound) => {
 		const targetSlots = compound.get('slots');
 
 		if (targetSlots) {
+			const source = getCompoundSource(compound);
+
 			forEachStringLiteralElement(targetSlots, (slot) => {
-				extract(cls, slot, compoundSource);
+				extract(cls, slot, source);
 			});
 		}
 	});
@@ -816,7 +986,15 @@ const collectConfigEntries = (
 	// Leading args use the cn() calling convention, so logical-AND strings and
 	// clsx-style records contribute tokens (slots don't apply to them).
 	for (const arg of baseArgs) {
-		extractTokens(arg, 'base', baseSource, slotNames, entries, sourceCode, true);
+		extractTokens(
+			arg,
+			'base',
+			baseSource,
+			slotNames,
+			entries,
+			sourceCode,
+			true
+		);
 	}
 
 	const base = config.get('base');
@@ -962,8 +1140,16 @@ const checkClassValueIsStatic = (
 
 	if (options.allowConditionalString) {
 		if (node.type === 'ConditionalExpression') {
-			checkClassValueIsStatic(context, node.consequent, branchOptions(options));
-			checkClassValueIsStatic(context, node.alternate, branchOptions(options));
+			checkClassValueIsStatic(
+				context,
+				node.consequent,
+				branchOptions(options)
+			);
+			checkClassValueIsStatic(
+				context,
+				node.alternate,
+				branchOptions(options)
+			);
 			return;
 		}
 
@@ -1136,7 +1322,8 @@ const checkCompoundSlotsArray = (context: Rule.RuleContext, value: Node) => {
 const checkCompoundEntries = (
 	context: Rule.RuleContext,
 	node: Node,
-	hasSlotsKey: boolean
+	hasSlotsKey: boolean,
+	slotNames: Set<string>
 ) => {
 	if (node.type !== 'ArrayExpression') {
 		reportDynamic(context, node);
@@ -1150,7 +1337,7 @@ const checkCompoundEntries = (
 		}
 
 		forEachStaticProperty(context, element, (prop) => {
-			checkCompoundEntryProperty(context, prop, hasSlotsKey);
+			checkCompoundEntryProperty(context, prop, hasSlotsKey, slotNames);
 		});
 	});
 };
@@ -1159,10 +1346,20 @@ type SvConfigValueChecker = (context: Rule.RuleContext, node: Node) => void;
 
 const getCompoundEntryValueChecker = (
 	key: string | null,
-	hasSlotsKey: boolean
+	hasSlotsKey: boolean,
+	slotNames: Set<string>
 ): SvConfigValueChecker | null => {
 	if (key === 'class' || key === 'className') {
-		return checkConfigClassValueIsStatic;
+		// A compoundSlots entry already targets specific slots, so its class
+		// value is a plain class value; a compoundVariants class follows the
+		// same shape as a variant branch — it may be a slot-keyed record.
+		if (hasSlotsKey) {
+			return checkConfigClassValueIsStatic;
+		}
+
+		return (context, node) => {
+			checkVariantBranchValue(context, node, slotNames);
+		};
 	}
 
 	if (key === 'slots') {
@@ -1179,9 +1376,14 @@ const getCompoundEntryValueChecker = (
 const checkCompoundEntryProperty = (
 	context: Rule.RuleContext,
 	prop: Property,
-	hasSlotsKey: boolean
+	hasSlotsKey: boolean,
+	slotNames: Set<string>
 ) => {
-	const checker = getCompoundEntryValueChecker(getKeyName(prop), hasSlotsKey);
+	const checker = getCompoundEntryValueChecker(
+		getKeyName(prop),
+		hasSlotsKey,
+		slotNames
+	);
 
 	if (checker) {
 		checker(context, prop.value);
@@ -1190,13 +1392,7 @@ const checkCompoundEntryProperty = (
 
 const svConfigValueCheckers: Record<string, SvConfigValueChecker> = {
 	base: checkConfigClassValueIsStatic,
-	slots: checkClassValueRecord,
-	compoundVariants: (context, node) => {
-		checkCompoundEntries(context, node, false);
-	},
-	compoundSlots: (context, node) => {
-		checkCompoundEntries(context, node, true);
-	}
+	slots: checkClassValueRecord
 };
 
 const checkSvConfigProperty = (
@@ -1208,6 +1404,16 @@ const checkSvConfigProperty = (
 
 	if (key === 'variants') {
 		checkVariants(context, prop.value, slotNames);
+		return;
+	}
+
+	if (key === 'compoundVariants') {
+		checkCompoundEntries(context, prop.value, false, slotNames);
+		return;
+	}
+
+	if (key === 'compoundSlots') {
+		checkCompoundEntries(context, prop.value, true, slotNames);
 		return;
 	}
 
@@ -1273,9 +1479,11 @@ const trackNamedImport = (
 const createImportsTracker = () => {
 	const cnNames = new Set<string>();
 	const svNames = new Set<string>();
+	const createSvNames = new Set<string>();
 	const trackedNamesByImport: Record<string, Set<string>> = {
 		cn: cnNames,
-		sv: svNames
+		sv: svNames,
+		createSV: createSvNames
 	};
 
 	const importsTracker = (node: ImportDeclaration) => {
@@ -1288,58 +1496,181 @@ const createImportsTracker = () => {
 		}
 	};
 
-	return { cnNames, svNames, importsTracker };
+	return { cnNames, svNames, createSvNames, importsTracker };
 };
 
-// A call whose callee name matches a tracked import could still be a local
-// binding that shadows it (e.g. a function parameter named `cn`). Resolve the
-// callee identifier to its variable and confirm it's an import binding.
-const calleeResolvesToImport = (
+// An identifier that resolves to a tracked name could still be a local
+// binding that shadows the import (e.g. a function parameter named `cn`).
+// Resolve it to its variable and confirm it's an import binding.
+const identifierResolvesToImport = (
 	context: Rule.RuleContext,
-	node: CallExpression
+	identifier: Identifier
 ): boolean => {
-	/* c8 ignore next 3 -- matchSvCnCall only returns a match for an Identifier callee */
-	if (node.callee.type !== 'Identifier') {
+	const variable = findVariable(
+		context.sourceCode.getScope(identifier),
+		identifier.name
+	);
+
+	/* c8 ignore next 3 -- a tracked-name identifier always resolves to a binding */
+	if (!variable) {
 		return false;
 	}
 
-	const { name } = node.callee;
-	let scope: Scope.Scope = context.sourceCode.getScope(node);
+	return variable.defs.some((def) => def.type === 'ImportBinding');
+};
 
-	while (true) {
-		const variable = scope.set.get(name);
-
-		if (variable) {
-			return variable.defs.some((def) => def.type === 'ImportBinding');
-		}
-
-		/* c8 ignore next 3 -- a tracked-name callee always resolves before global scope */
-		if (!scope.upper) {
-			return false;
-		}
-
-		scope = scope.upper;
+// Reads the callee through same-file `const` aliases (`const cx = cn`) so
+// aliased sv/cn bindings stay tracked. Returns the identifier naming the
+// underlying binding, or null when the callee is not an identifier or is an
+// alias of a non-identifier value.
+const resolveCalleeIdentifier = (
+	context: Rule.RuleContext,
+	node: CallExpression
+): Identifier | null => {
+	if (node.callee.type !== 'Identifier') {
+		return null;
 	}
+
+	const resolved = resolveStaticValue(node.callee, context.sourceCode);
+
+	if (resolved.type !== 'Identifier') {
+		return null;
+	}
+
+	return resolved;
+};
+
+// A `createSV(...)` factory call whose callee resolves to a tracked createSV
+// import (respecting shadowing and same-file `const` aliases). The `const`
+// binding it initializes is a pre-configured `sv()`, so its call sites are
+// analyzed exactly like `sv()` calls.
+const isCreateSvFactoryCall = (
+	context: Rule.RuleContext,
+	node: CallExpression,
+	createSvNames: Set<string>
+): boolean => {
+	const factoryCallee = resolveCalleeIdentifier(context, node);
+
+	if (!factoryCallee) {
+		return false;
+	}
+
+	return (
+		createSvNames.has(factoryCallee.name) &&
+		identifierResolvesToImport(context, factoryCallee)
+	);
+};
+
+// The `createSV(defaults)` call itself: its sole argument is unambiguously the
+// shared config, validated like an sv() config. Unlike `sv()`, whose last arg
+// might be a cn-style class list, any object argument here is the config — so a
+// spread or computed key is reported (by the config checkers) as dynamic rather
+// than gating the whole object out. A missing or non-object argument leaves
+// nothing to analyze. `isFactoryConfig` exempts the call from
+// require-top-level-config and the empty-call check.
+const matchFactoryCall = (
+	node: CallExpression,
+	sourceCode: SourceCode
+): CallMatch => {
+	const [defaults] = node.arguments;
+
+	if (!defaults) {
+		return { config: null, args: [], isFactoryConfig: true };
+	}
+
+	const resolved = resolveStaticValue(defaults, sourceCode);
+
+	if (resolved.type === 'ObjectExpression') {
+		return { config: resolved, args: [], isFactoryConfig: true };
+	}
+
+	return { config: null, args: [], isFactoryConfig: true };
+};
+
+// Classifies a call as sv/cn-style, reading the callee through same-file
+// `const` aliases. A callee that resolves to a binding initialized by
+// `createSV(...)` is treated like `sv`; a direct `createSV` import names a
+// factory call whose defaults are validated like an sv() config; a direct sv/cn
+// import name uses the sv/cn convention. Returns null for anything untracked.
+const matchTrackedCall = (
+	context: Rule.RuleContext,
+	node: CallExpression,
+	svNames: Set<string>,
+	cnNames: Set<string>,
+	createSvNames: Set<string>
+): CallMatch | null => {
+	if (node.callee.type !== 'Identifier') {
+		return null;
+	}
+
+	const resolved = resolveStaticValue(node.callee, context.sourceCode);
+
+	// A `const button = createSV(...)(…)` binding behaves like `sv`.
+	if (resolved.type === 'CallExpression') {
+		if (isCreateSvFactoryCall(context, resolved, createSvNames)) {
+			return matchSvCall(node, context.sourceCode);
+		}
+
+		return null;
+	}
+
+	if (resolved.type !== 'Identifier') {
+		return null;
+	}
+
+	// The `createSV(defaults)` factory call itself — validate its defaults.
+	if (createSvNames.has(resolved.name)) {
+		if (identifierResolvesToImport(context, resolved)) {
+			return matchFactoryCall(node, context.sourceCode);
+		}
+
+		return null;
+	}
+
+	const call = matchSvCnCall(
+		node,
+		resolved.name,
+		svNames,
+		cnNames,
+		context.sourceCode
+	);
+
+	if (call && identifierResolvesToImport(context, resolved)) {
+		return call;
+	}
+
+	return null;
 };
 
 const createTrackedCallListeners = (
 	context: Rule.RuleContext,
 	onCall: (node: CallExpression, call: CallMatch) => void
 ) => {
-	const { cnNames, svNames, importsTracker } = createImportsTracker();
+	const { cnNames, svNames, createSvNames, importsTracker } =
+		createImportsTracker();
 
 	return {
 		ImportDeclaration(node: ImportDeclaration) {
 			importsTracker(node);
 		},
 		CallExpression(node: CallExpression) {
-			if (svNames.size === 0 && cnNames.size === 0) {
+			if (
+				svNames.size === 0 &&
+				cnNames.size === 0 &&
+				createSvNames.size === 0
+			) {
 				return;
 			}
 
-			const call = matchSvCnCall(node, svNames, cnNames);
+			const call = matchTrackedCall(
+				context,
+				node,
+				svNames,
+				cnNames,
+				createSvNames
+			);
 
-			if (call && calleeResolvesToImport(context, node)) {
+			if (call) {
 				onCall(node, call);
 			}
 		}
@@ -1458,7 +1789,31 @@ const visitObjectForRedundantSpaces = (
 	}
 };
 
-const visitForRedundantSpaces = (context: Rule.RuleContext, node: Node) => {
+// In cn-style position an ObjectExpression is a clsx-style record whose keys are
+// the class strings, so a string-literal key is checked for redundant whitespace
+// (identifier/numeric keys can't contain whitespace; computed keys are dynamic).
+const visitRecordKeysForRedundantSpaces = (
+	context: Rule.RuleContext,
+	node: ObjectExpression
+) => {
+	for (const prop of node.properties) {
+		if (prop.type !== 'Property' || prop.computed) {
+			continue;
+		}
+
+		const { key } = prop;
+
+		if (key.type === 'Literal' && typeof key.value === 'string') {
+			reportRedundantSpaces(context, key, key.value);
+		}
+	}
+};
+
+const visitForRedundantSpaces = (
+	context: Rule.RuleContext,
+	node: Node,
+	cnStyle = false
+) => {
 	node = resolveStaticValue(node, context.sourceCode);
 
 	const text = getStaticStringText(node);
@@ -1470,12 +1825,17 @@ const visitForRedundantSpaces = (context: Rule.RuleContext, node: Node) => {
 
 	if (node.type === 'ArrayExpression') {
 		forEachStaticItem(node.elements, (element) => {
-			visitForRedundantSpaces(context, element);
+			visitForRedundantSpaces(context, element, cnStyle);
 		});
 		return;
 	}
 
 	if (node.type === 'ObjectExpression') {
+		if (cnStyle) {
+			visitRecordKeysForRedundantSpaces(context, node);
+			return;
+		}
+
 		visitObjectForRedundantSpaces(context, node);
 	}
 };
@@ -1542,7 +1902,7 @@ const noRedundantSpaces: Rule.RuleModule = {
 	create(context) {
 		return createTrackedCallListeners(context, (_node, call) => {
 			forEachStaticItem(call.args, (arg) => {
-				visitForRedundantSpaces(context, arg);
+				visitForRedundantSpaces(context, arg, true);
 			});
 
 			if (call.config) {
@@ -1565,11 +1925,27 @@ const noRedundantSpaces: Rule.RuleModule = {
 const TAILWIND_EXCLUSIVE_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
 	// display
 	[
-		'block', 'inline-block', 'inline', 'flex', 'inline-flex', 'table',
-		'inline-table', 'table-caption', 'table-cell', 'table-column',
-		'table-column-group', 'table-footer-group', 'table-header-group',
-		'table-row-group', 'table-row', 'flow-root', 'grid', 'inline-grid',
-		'contents', 'list-item', 'hidden'
+		'block',
+		'inline-block',
+		'inline',
+		'flex',
+		'inline-flex',
+		'table',
+		'inline-table',
+		'table-caption',
+		'table-cell',
+		'table-column',
+		'table-column-group',
+		'table-footer-group',
+		'table-header-group',
+		'table-row-group',
+		'table-row',
+		'flow-root',
+		'grid',
+		'inline-grid',
+		'contents',
+		'list-item',
+		'hidden'
 	],
 	// position
 	['static', 'fixed', 'absolute', 'relative', 'sticky'],
@@ -1586,10 +1962,7 @@ const TAILWIND_EXCLUSIVE_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
 	// isolation
 	['isolate', 'isolation-auto'],
 	// screen-reader visibility
-	['sr-only', 'not-sr-only'],
-	// text-overflow (`truncate` forces ellipsis, so it's exclusive with the
-	// explicit `text-ellipsis`/`text-clip` utilities)
-	['truncate', 'text-ellipsis', 'text-clip']
+	['sr-only', 'not-sr-only']
 ];
 
 // `true` enables the built-in Tailwind groups; an array supplies custom groups
@@ -1658,6 +2031,10 @@ type PrefixSpec = {
 	// CSS variable (`space-x-reverse`, `divide-x-reverse`) rather than replacing
 	// the base utility, so it gets its own category and doesn't conflict with it.
 	reverseComposes?: boolean;
+	// The prefix has arbitrary image values (`bg-[url(...)]`,
+	// `bg-[linear-gradient(...)]`) that classify as an image rather than
+	// falling into the color fallback.
+	arbitraryImage?: boolean;
 	fallback: string;
 };
 
@@ -1684,8 +2061,20 @@ const selfMap = (tokens: ReadonlyArray<string>): ReadonlyMap<string, string> =>
 const COLOR_KEYWORDS = ['inherit', 'current', 'transparent', 'black', 'white'];
 const SIDES = ['t', 'r', 'b', 'l', 'x', 'y', 's', 'e'];
 const CORNERS = [
-	't', 'r', 'b', 'l', 's', 'e',
-	'tl', 'tr', 'bl', 'br', 'ss', 'se', 'es', 'ee'
+	't',
+	'r',
+	'b',
+	'l',
+	's',
+	'e',
+	'tl',
+	'tr',
+	'bl',
+	'br',
+	'ss',
+	'se',
+	'es',
+	'ee'
 ];
 
 // x/y/z axis utilities (`gap-x`, `translate-y`, …); a bare value sets all axes.
@@ -1704,6 +2093,16 @@ const offsetSpec: PrefixSpec = {
 	short: 'width',
 	long: 'color',
 	fallback: 'color'
+};
+
+// A per-side border utility is both a width (`border-t-2`, bare `border-t`)
+// and a color (`border-t-red-500`), classified from the segments after the
+// side; an empty remainder is the bare 1px width form.
+const borderSideSpec: PrefixSpec = {
+	keywords: categoryMap([['color', COLOR_KEYWORDS]]),
+	short: 'width',
+	long: 'color',
+	fallback: 'width'
 };
 
 // `touch-pan-*` directions compose (`touch-pan-x touch-pan-y` is valid), so each
@@ -1768,19 +2167,26 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 			['blend', ['blend']],
 			['opacity', ['opacity']]
 		]),
+		arbitraryImage: true,
 		fallback: 'color'
 	},
 	border: {
 		keywords: categoryMap([
-			['style', ['solid', 'dashed', 'dotted', 'double', 'hidden', 'none']],
+			[
+				'style',
+				['solid', 'dashed', 'dotted', 'double', 'hidden', 'none']
+			],
 			['color', COLOR_KEYWORDS],
 			['collapse', ['collapse', 'separate']],
-			['opacity', ['opacity']],
-			...SIDES.map((side) => [`width-${side}`, [side]] as const)
+			['opacity', ['opacity']]
 		]),
 		// `border-spacing-x`/`-y` compose into the single `border-spacing`
-		// property, so they're keyed per axis rather than lumped together.
-		nested: new Map([['spacing', axisSpec]]),
+		// property, so they're keyed per axis rather than lumped together; each
+		// side introduces its own width/color sub-properties.
+		nested: new Map<string, PrefixSpec>([
+			['spacing', axisSpec],
+			...SIDES.map((side): [string, PrefixSpec] => [side, borderSideSpec])
+		]),
 		short: 'width',
 		long: 'color',
 		fallback: 'color'
@@ -1798,7 +2204,10 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	},
 	outline: {
 		keywords: categoryMap([
-			['style', ['none', 'dashed', 'dotted', 'double', 'solid', 'hidden']],
+			[
+				'style',
+				['none', 'dashed', 'dotted', 'double', 'solid', 'hidden']
+			],
 			['offset', ['offset']],
 			['color', COLOR_KEYWORDS]
 		]),
@@ -1863,8 +2272,15 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 			[
 				'align',
 				[
-					'center', 'start', 'end', 'between', 'around',
-					'evenly', 'normal', 'stretch', 'baseline'
+					'center',
+					'start',
+					'end',
+					'between',
+					'around',
+					'evenly',
+					'normal',
+					'stretch',
+					'baseline'
 				]
 			]
 		]),
@@ -1882,8 +2298,15 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 			[
 				'weight',
 				[
-					'thin', 'extralight', 'light', 'normal', 'medium',
-					'semibold', 'bold', 'extrabold', 'black'
+					'thin',
+					'extralight',
+					'light',
+					'normal',
+					'medium',
+					'semibold',
+					'bold',
+					'extrabold',
+					'black'
 				]
 			]
 		]),
@@ -1905,17 +2328,33 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		]),
 		fallback: 'type'
 	},
-	place: { keywords: selfMap(['items', 'content', 'self']), fallback: 'other' },
+	place: {
+		keywords: selfMap(['items', 'content', 'self']),
+		fallback: 'other'
+	},
 	justify: { keywords: selfMap(['items', 'self']), fallback: 'content' },
-	col: { keywords: selfMap(['span', 'start', 'end', 'auto']), fallback: 'other' },
-	row: { keywords: selfMap(['span', 'start', 'end', 'auto']), fallback: 'other' },
+	col: {
+		keywords: selfMap(['span', 'start', 'end', 'auto']),
+		fallback: 'other'
+	},
+	row: {
+		keywords: selfMap(['span', 'start', 'end', 'auto']),
+		fallback: 'other'
+	},
 	min: { keywords: selfMap(['w', 'h']), fallback: 'other' },
 	max: { keywords: selfMap(['w', 'h']), fallback: 'other' },
 	rounded: { keywords: selfMap(CORNERS), fallback: 'all' },
 	backdrop: {
 		keywords: selfMap([
-			'blur', 'brightness', 'contrast', 'grayscale', 'hue',
-			'invert', 'opacity', 'saturate', 'sepia'
+			'blur',
+			'brightness',
+			'contrast',
+			'grayscale',
+			'hue',
+			'invert',
+			'opacity',
+			'saturate',
+			'sepia'
 		]),
 		fallback: 'other'
 	},
@@ -1923,8 +2362,24 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		keywords: categoryMap([
 			['behavior', ['smooth', 'auto']],
 			...[
-				'm', 'mt', 'mr', 'mb', 'ml', 'mx', 'my', 'ms', 'me',
-				'p', 'pt', 'pr', 'pb', 'pl', 'px', 'py', 'ps', 'pe'
+				'm',
+				'mt',
+				'mr',
+				'mb',
+				'ml',
+				'mx',
+				'my',
+				'ms',
+				'me',
+				'p',
+				'pt',
+				'pr',
+				'pb',
+				'pl',
+				'px',
+				'py',
+				'ps',
+				'pe'
 			].map((side) => [side, [side]] as const)
 		]),
 		fallback: 'other'
@@ -1976,8 +2431,16 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 };
 
 const COLOR_FUNCTIONS = [
-	'rgb', 'rgba', 'hsl', 'hsla', 'hwb',
-	'lab', 'lch', 'oklab', 'oklch', 'color'
+	'rgb',
+	'rgba',
+	'hsl',
+	'hsla',
+	'hwb',
+	'lab',
+	'lch',
+	'oklab',
+	'oklch',
+	'color'
 ];
 
 // Detects an arbitrary color value (`text-[#f00]`, `bg-[rgb(0,0,0)]`,
@@ -1998,6 +2461,14 @@ const isArbitraryColorValue = (segment: string): boolean => {
 	return COLOR_FUNCTIONS.some((fn) => inner.startsWith(`${fn}(`));
 };
 
+// Detects an arbitrary image value (`bg-[url(/hero.png)]`,
+// `bg-[image:var(--x)]`, `bg-[linear-gradient(...)]`) so it classifies as an
+// image on prefixes that opt in via `arbitraryImage`.
+const isArbitraryImageValue = (segment: string): boolean =>
+	segment.startsWith('[url(') ||
+	segment.startsWith('[image:') ||
+	/^\[(?:repeating-)?(?:linear|radial|conic)-gradient\(/.test(segment);
+
 const baseCategory = (
 	spec: PrefixSpec,
 	value: ReadonlyArray<string>,
@@ -2007,6 +2478,10 @@ const baseCategory = (
 
 	if (keyworded !== undefined) {
 		return keyworded;
+	}
+
+	if (spec.arbitraryImage === true && isArbitraryImageValue(head)) {
+		return 'image';
 	}
 
 	// A color-capable prefix keys an arbitrary color to `color` regardless of
@@ -2092,20 +2567,303 @@ const BARE_UTILITIES: Record<string, ReadonlyArray<string>> = {
 	sepia: ['0']
 };
 
-// The conflict key plus the pieces a shorthand overlap needs: the variant
-// prefix and first segment the key was built from (`segment` is null for
-// exclusive-group keys, which have no single owning segment).
+// --- Shorthand/longhand overlap nodes ----------------------------------------
+//
+// A shorthand utility overrides several longhand utilities at once: `size-*`
+// sets width and height, `m-*` sets every margin side, `inset-x-*` sets left
+// and right, `rounded-t-*` sets both top corners. Related utilities can't
+// simply share a conflict key — that would also make the longhand siblings
+// conflict with each other (`w-4`/`h-4`, `mt-2`/`mb-2`) — so each conflict
+// group is instead tagged with an overlap node, and groups whose nodes are
+// connected through the covers relation below (under the same variant prefix)
+// are merged before reporting. Siblings never touch without their shorthand.
+
+// The side nodes of a spacing-style family (`m`, `p`, `scroll-m`, `scroll-p`):
+// the bare prefix covers every side, the axes cover their physical sides. The
+// logical `s`/`e` sides are leaves — they only merge through the bare prefix.
+const sideOverlapCovers = (
+	prefix: string
+): ReadonlyArray<readonly [string, ReadonlyArray<string>]> => [
+	[prefix, SIDES.map((side) => `${prefix}${side}`)],
+	[`${prefix}x`, [`${prefix}r`, `${prefix}l`]],
+	[`${prefix}y`, [`${prefix}t`, `${prefix}b`]]
+];
+
+// An axis family (`gap`, `overflow`, `translate`, …): the bare form sets all
+// axes, so it covers the per-axis forms; the axes stay independent otherwise.
+const axisOverlapCovers = (
+	prefix: string
+): readonly [string, ReadonlyArray<string>] => [
+	prefix,
+	[`${prefix}-x`, `${prefix}-y`]
+];
+
+const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
+	string,
+	ReadonlyArray<string>
+>([
+	['size', ['w', 'h']],
+	...sideOverlapCovers('m'),
+	...sideOverlapCovers('p'),
+	...sideOverlapCovers('scroll-m'),
+	...sideOverlapCovers('scroll-p'),
+	[
+		'inset',
+		['inset-x', 'inset-y', 'top', 'right', 'bottom', 'left', 'start', 'end']
+	],
+	['inset-x', ['right', 'left']],
+	['inset-y', ['top', 'bottom']],
+	axisOverlapCovers('gap'),
+	axisOverlapCovers('overflow'),
+	axisOverlapCovers('overscroll'),
+	axisOverlapCovers('translate'),
+	axisOverlapCovers('scale'),
+	axisOverlapCovers('skew'),
+	axisOverlapCovers('border-spacing'),
+	['rounded', CORNERS.map((corner) => `rounded-${corner}`)],
+	['rounded-t', ['rounded-tl', 'rounded-tr']],
+	['rounded-r', ['rounded-tr', 'rounded-br']],
+	['rounded-b', ['rounded-bl', 'rounded-br']],
+	['rounded-l', ['rounded-tl', 'rounded-bl']],
+	['rounded-s', ['rounded-ss', 'rounded-es']],
+	['rounded-e', ['rounded-se', 'rounded-ee']],
+	['border-w', SIDES.map((side) => `border-w-${side}`)],
+	['border-w-x', ['border-w-r', 'border-w-l']],
+	['border-w-y', ['border-w-t', 'border-w-b']],
+	// `flex-1`/`flex-auto`/`flex-none` set flex-grow, flex-shrink, and
+	// flex-basis at once.
+	['flex-sizing', ['grow', 'shrink', 'basis']],
+	// `truncate` sets overflow (both axes), text-overflow, and white-space.
+	[
+		'truncate',
+		['overflow', 'overflow-x', 'overflow-y', 'text-overflow', 'whitespace']
+	]
+]);
+
+// The undirected adjacency of the covers relation, so component merging can
+// walk from a shorthand down to its longhands and from a longhand back up.
+const buildOverlapNeighborsMap = (): ReadonlyMap<
+	string,
+	ReadonlyArray<string>
+> => {
+	const map = new Map<string, string[]>();
+
+	for (const [node, covered] of OVERLAP_COVERS) {
+		for (const target of covered) {
+			getOrCreate(map, node, () => []).push(target);
+			getOrCreate(map, target, () => []).push(node);
+		}
+	}
+
+	return map;
+};
+
+const OVERLAP_NEIGHBORS = buildOverlapNeighborsMap();
+
+const EMPTY_NODE_LIST: ReadonlyArray<string> = [];
+
+const overlapNeighbors = (node: string): ReadonlyArray<string> => {
+	const neighbors = OVERLAP_NEIGHBORS.get(node);
+
+	/* c8 ignore next 3 -- every node getOverlapNode emits appears in the covers table */
+	if (neighbors === undefined) {
+		return EMPTY_NODE_LIST;
+	}
+
+	return neighbors;
+};
+
+// Segments that are an overlap node by themselves: every value of these
+// prefixes sets the same property regardless of value shape (`w-4`, `w-[…]`,
+// `mt-2`, `top-1/2`), so the value category is irrelevant to the node.
+const SEGMENT_OVERLAP_NODES: ReadonlySet<string> = new Set([
+	'size',
+	'w',
+	'h',
+	'top',
+	'right',
+	'bottom',
+	'left',
+	'start',
+	'end',
+	'grow',
+	'shrink',
+	'basis',
+	'whitespace',
+	'm',
+	...SIDES.map((side) => `m${side}`),
+	'p',
+	...SIDES.map((side) => `p${side}`)
+]);
+
+// Prefixes classified by axisSpec whose bare form sets all axes: the category
+// picks between the whole-property node and a per-axis node.
+const AXIS_OVERLAP_PREFIXES: ReadonlySet<string> = new Set([
+	'inset',
+	'gap',
+	'overflow',
+	'overscroll',
+	'translate',
+	'scale',
+	'skew'
+]);
+
+// The scroll-margin/scroll-padding categories of the `scroll` prefix spec —
+// the only `scroll-*` utilities with a shorthand overlap.
+const SCROLL_SPACING_CATEGORIES: ReadonlySet<string> = new Set([
+	'm',
+	...SIDES.map((side) => `m${side}`),
+	'p',
+	...SIDES.map((side) => `p${side}`)
+]);
+
+const getAxisOverlapNode = (
+	segment: string,
+	category: string
+): string | null => {
+	if (category === 'all') {
+		return segment;
+	}
+
+	if (category === 'x' || category === 'y') {
+		return `${segment}-${category}`;
+	}
+
+	return null;
+};
+
+const getRoundedOverlapNode = (category: string): string => {
+	if (category === 'all') {
+		return 'rounded';
+	}
+
+	// The remaining rounded categories are the corner names themselves.
+	return `rounded-${category}`;
+};
+
+const getBorderOverlapNode = (category: string): string | null => {
+	if (category === 'width') {
+		return 'border-w';
+	}
+
+	// A per-side width category is `${side}-width` (see `borderSideSpec`).
+	if (category.endsWith('-width')) {
+		return `border-w-${category.slice(0, -'-width'.length)}`;
+	}
+
+	if (category.startsWith('spacing-')) {
+		return getAxisOverlapNode(
+			'border-spacing',
+			category.slice('spacing-'.length)
+		);
+	}
+
+	return null;
+};
+
+// The overlap node for a token's conflict group, or null when the token takes
+// part in no shorthand/longhand relation.
+const getOverlapNode = (segment: string, category: string): string | null => {
+	if (SEGMENT_OVERLAP_NODES.has(segment)) {
+		return segment;
+	}
+
+	if (AXIS_OVERLAP_PREFIXES.has(segment)) {
+		return getAxisOverlapNode(segment, category);
+	}
+
+	if (segment === 'rounded') {
+		return getRoundedOverlapNode(category);
+	}
+
+	if (segment === 'border') {
+		return getBorderOverlapNode(category);
+	}
+
+	if (segment === 'scroll' && SCROLL_SPACING_CATEGORIES.has(category)) {
+		return `scroll-${category}`;
+	}
+
+	// The `flex` sizing values (`flex-1`, `flex-auto`, `flex-none`) overlap
+	// grow/shrink/basis; the direction and wrap categories don't.
+	if (segment === 'flex' && category === 'flex') {
+		return 'flex-sizing';
+	}
+
+	if (segment === 'text' && category === 'overflow') {
+		return 'text-overflow';
+	}
+
+	return null;
+};
+
+// Single-word utilities that set the properties of several other namespaces
+// (`truncate` is overflow + text-overflow + white-space at once) take part in
+// the overlap graph through a node of their own, despite having no dashed
+// family — so they get a conflict key even without an exclusive-groups opt-in.
+const SINGLE_WORD_OVERLAP_NODES: Record<string, string> = {
+	truncate: 'truncate'
+};
+
+// The conflict key plus the pieces an overlap merge needs: the variant prefix
+// and the overlap node the token belongs to (null for tokens outside every
+// overlap family, including exclusive-group keys).
 type ConflictKeyInfo = {
 	key: string;
 	variantPrefix: string;
-	segment: string | null;
+	overlap: string | null;
+};
+
+// Splits `text` on `separator` characters that sit outside square brackets,
+// so arbitrary values keep their content intact as a single segment —
+// `[calc(100%-2rem)]` isn't split on its inner dash, `[url(data:image/png)]`
+// isn't split on its inner colon.
+const splitOutsideBrackets = (text: string, separator: string): string[] => {
+	const segments: string[] = [];
+	let depth = 0;
+	let start = 0;
+
+	for (let index = 0; index < text.length; index += 1) {
+		const char = text.charAt(index);
+
+		if (char === '[') {
+			depth += 1;
+		} else if (char === ']') {
+			depth -= 1;
+		} else if (char === separator && depth === 0) {
+			segments.push(text.slice(start, index));
+			start = index + 1;
+		}
+	}
+
+	segments.push(text.slice(start));
+
+	return segments;
+};
+
+// Splits a token into its variant prefix and utility on the top-level colons.
+// Variant segments are sorted so stacked variants in any order
+// (`hover:focus:w-2` vs `focus:hover:w-2`) share one canonical prefix — the
+// prefix only ever feeds the conflict key, never a report message.
+const splitVariantPrefix = (
+	token: string
+): { variantPrefix: string; utility: string } => {
+	const segments = splitOutsideBrackets(token, ':');
+	const utility = segments.pop();
+
+	/* c8 ignore next 3 -- splitOutsideBrackets always returns at least one segment */
+	if (utility === undefined) {
+		return { variantPrefix: '', utility: token };
+	}
+
+	return { variantPrefix: segments.sort().join(':'), utility };
 };
 
 // Returns null for tokens that don't look like a namespaced utility — single
-// words (`flex`), purely-prefixed (`-`), or anything without a `-` after the
-// optional leading negative marker. The `!` important marker is stripped —
-// trailing (Tailwind v4 `w-200!`) or leading (Tailwind v3 `!w-200`) — so it
-// doesn't split the conflict key.
+// words (`flex`), purely-prefixed (`-`), or anything without a top-level `-`
+// after the optional leading negative marker. The `!` important marker is
+// stripped — trailing (Tailwind v4 `w-200!`) or leading (Tailwind v3
+// `!w-200`) — so it doesn't split the conflict key.
 const getConflictKey = (
 	token: string,
 	exclusiveGroups: ReadonlyMap<string, string>
@@ -2116,26 +2874,16 @@ const getConflictKey = (
 		stripped = token.slice(0, -1);
 	}
 
-	const lastColon = stripped.lastIndexOf(':');
-	let variantPrefix = '';
-	let utility = stripped;
+	const { variantPrefix, utility } = splitVariantPrefix(stripped);
+	let bare = utility;
 
-	if (lastColon !== -1) {
-		variantPrefix = stripped.slice(0, lastColon);
-		utility = stripped.slice(lastColon + 1);
+	if (bare.startsWith('!')) {
+		bare = bare.slice(1);
 	}
 
-	if (utility.startsWith('!')) {
-		utility = utility.slice(1);
+	if (bare.startsWith('-')) {
+		bare = bare.slice(1);
 	}
-
-	let utilStart = 0;
-
-	if (utility.startsWith('-')) {
-		utilStart = 1;
-	}
-
-	const bare = utility.slice(utilStart);
 
 	// An opted-in exclusive group takes precedence — it can unify utilities that
 	// the heuristic can't (single words like `flex`/`block`, or hyphenated
@@ -2146,36 +2894,53 @@ const getConflictKey = (
 		return {
 			key: `${variantPrefix}|#${groupId}`,
 			variantPrefix,
-			segment: null
+			overlap: null
 		};
 	}
 
-	const firstDash = bare.indexOf('-');
+	const value = splitOutsideBrackets(bare, '-');
+	const firstSegment = value.shift();
 
-	if (firstDash === -1) {
-		const bareValue = BARE_UTILITIES[bare];
+	/* c8 ignore next 3 -- splitOutsideBrackets always returns at least one segment */
+	if (firstSegment === undefined) {
+		return null;
+	}
+
+	if (value.length === 0) {
+		const bareValue = BARE_UTILITIES[firstSegment];
 
 		if (bareValue === undefined) {
-			return null;
+			const overlap = SINGLE_WORD_OVERLAP_NODES[firstSegment];
+
+			if (overlap === undefined) {
+				return null;
+			}
+
+			return {
+				key: `${variantPrefix}|${overlap}`,
+				variantPrefix,
+				overlap
+			};
 		}
 
+		const category = categorize(firstSegment, bareValue);
+
 		return {
-			key: `${variantPrefix}|${bare}|${categorize(bare, bareValue)}`,
+			key: `${variantPrefix}|${firstSegment}|${category}`,
 			variantPrefix,
-			segment: bare
+			overlap: getOverlapNode(firstSegment, category)
 		};
 	}
 
 	// Tokens collide when they share a first segment and resolve to the same
 	// property category (see `categorize`): `text-sm` (size) and `text-red-500`
 	// (color) don't, while `text-red-500` and `text-blue-500` do.
-	const firstSegment = bare.slice(0, firstDash);
-	const value = bare.slice(firstDash + 1).split('-');
+	const category = categorize(firstSegment, value);
 
 	return {
-		key: `${variantPrefix}|${firstSegment}|${categorize(firstSegment, value)}`,
+		key: `${variantPrefix}|${firstSegment}|${category}`,
 		variantPrefix,
-		segment: firstSegment
+		overlap: getOverlapNode(firstSegment, category)
 	};
 };
 
@@ -2183,7 +2948,7 @@ type ConflictGroup = {
 	tokens: Set<string>;
 	entries: Entry[];
 	variantPrefix: string;
-	segment: string | null;
+	overlap: string | null;
 };
 
 const groupEntriesByConflictKey = (
@@ -2203,7 +2968,7 @@ const groupEntriesByConflictKey = (
 			tokens: new Set<string>(),
 			entries: [],
 			variantPrefix: info.variantPrefix,
-			segment: info.segment
+			overlap: info.overlap
 		}));
 
 		group.tokens.add(token);
@@ -2213,86 +2978,88 @@ const groupEntriesByConflictKey = (
 	return groups;
 };
 
-// A shorthand utility overrides several longhand axes at once (`size-*` sets
-// both width and height). It can't simply share a conflict key with them —
-// that would also make the longhands conflict with each other (`w-4`/`h-4`) —
-// so instead its group is merged with each present longhand group under the
-// same variant prefix. The longhands still never merge with one another.
-const SHORTHAND_AXES: Record<string, ReadonlyArray<string>> = {
-	size: ['w', 'h']
+const mergeGroupInto = (target: ConflictGroup, source: ConflictGroup) => {
+	for (const token of source.tokens) {
+		target.tokens.add(token);
+	}
+
+	target.entries.push(...source.entries);
 };
 
-const OVERLAP_SEGMENTS = new Set<string>(
-	Object.entries(SHORTHAND_AXES).flatMap(([short, axes]) => [short, ...axes])
-);
+// Folds every group reachable from `node` through present covers edges into
+// `combined`: `m` pulls in a present `mt`; `w` and `h` only reach each other
+// when a bridging `size` is present.
+const mergeOverlapNeighbors = (
+	combined: ConflictGroup,
+	node: string,
+	byNode: ReadonlyMap<string, ConflictGroup>,
+	visited: Set<string>
+) => {
+	for (const neighbor of overlapNeighbors(node)) {
+		if (visited.has(neighbor)) {
+			continue;
+		}
 
-const mergeShorthandGroups = (
+		const group = byNode.get(neighbor);
+
+		if (group === undefined) {
+			continue;
+		}
+
+		visited.add(neighbor);
+		mergeGroupInto(combined, group);
+		mergeOverlapNeighbors(combined, neighbor, byNode, visited);
+	}
+};
+
+// Merges conflict groups related through a shorthand/longhand overlap. Groups
+// are bucketed per variant prefix and overlap node (distinct conflict keys of
+// one node collapse here — `mt-4` vs `mt-[calc(100%-1px)]` differ only in dash
+// count), then each connected component of present nodes is reported as a
+// single group. Longhand siblings without their shorthand stay separate.
+const mergeOverlappingGroups = (
 	groups: Map<string, ConflictGroup>
 ): ConflictGroup[] => {
 	const result: ConflictGroup[] = [];
-	// variant prefix -> overlap-eligible segment (`size`/`w`/`h`) -> its group.
+	// variant prefix -> overlap node -> the merged group for that node.
 	const overlap = new Map<string, Map<string, ConflictGroup>>();
 
 	for (const group of groups.values()) {
-		const segment = group.segment;
-
-		if (segment !== null && OVERLAP_SEGMENTS.has(segment)) {
-			const bySegment = getOrCreate(
-				overlap,
-				group.variantPrefix,
-				() => new Map<string, ConflictGroup>()
-			);
-
-			bySegment.set(segment, group);
-		} else {
+		if (group.overlap === null) {
 			result.push(group);
+			continue;
 		}
-	}
 
-	const consumed = new Set<ConflictGroup>();
+		const byNode = getOrCreate(
+			overlap,
+			group.variantPrefix,
+			() => new Map<string, ConflictGroup>()
+		);
+		const existing = byNode.get(group.overlap);
 
-	for (const bySegment of overlap.values()) {
-		for (const [segment, group] of bySegment) {
-			const axes = SHORTHAND_AXES[segment];
-
-			// A longhand axis group (`w`/`h`) has no shorthand axes of its own; it
-			// is only ever merged into a co-occurring shorthand, or emitted as-is.
-			if (axes === undefined) {
-				continue;
-			}
-
-			const combined: ConflictGroup = {
+		if (existing) {
+			mergeGroupInto(existing, group);
+		} else {
+			byNode.set(group.overlap, {
 				tokens: new Set(group.tokens),
 				entries: [...group.entries],
 				variantPrefix: group.variantPrefix,
-				segment
-			};
-
-			for (const axis of axes) {
-				const longhand = bySegment.get(axis);
-
-				if (longhand === undefined) {
-					continue;
-				}
-
-				for (const token of longhand.tokens) {
-					combined.tokens.add(token);
-				}
-
-				combined.entries.push(...longhand.entries);
-				consumed.add(longhand);
-			}
-
-			consumed.add(group);
-			result.push(combined);
+				overlap: group.overlap
+			});
 		}
 	}
 
-	for (const bySegment of overlap.values()) {
-		for (const group of bySegment.values()) {
-			if (!consumed.has(group)) {
-				result.push(group);
+	for (const byNode of overlap.values()) {
+		const visited = new Set<string>();
+
+		for (const [node, group] of byNode) {
+			if (visited.has(node)) {
+				continue;
 			}
+
+			visited.add(node);
+			mergeOverlapNeighbors(group, node, byNode, visited);
+			result.push(group);
 		}
 	}
 
@@ -2308,8 +3075,11 @@ const reportConflicts = (
 ) => {
 	const groups = groupEntriesByConflictKey(tokenMap, exclusiveGroups);
 
-	for (const group of mergeShorthandGroups(groups)) {
-		if (group.tokens.size < 2 || isMutuallyExclusiveVariants(group.entries)) {
+	for (const group of mergeOverlappingGroups(groups)) {
+		if (
+			group.tokens.size < 2 ||
+			isMutuallyExclusiveVariants(group.entries)
+		) {
 			continue;
 		}
 
@@ -2333,7 +3103,13 @@ const analyzeConfigForRule = (
 
 	for (const [slot, tokenMap] of bySlot) {
 		reportDuplicateTokens(context, tokenMap, 'duplicate', { slot });
-		reportConflicts(context, tokenMap, 'conflict', { slot }, exclusiveGroups);
+		reportConflicts(
+			context,
+			tokenMap,
+			'conflict',
+			{ slot },
+			exclusiveGroups
+		);
 	}
 };
 
@@ -2367,13 +3143,20 @@ const analyzeCnForRule = (
 /**
  * Flags class tokens that collide within the same slot output: exact-duplicate
  * tokens that will appear more than once (including across `base`, variants,
- * compounds, and within a single literal), and distinct tokens that target the
- * same Tailwind-style utility namespace (e.g. `w-100` and `w-200`). Tokens with
- * different variant prefixes (`w-100` vs `hover:w-200`) don't conflict, a
+ * compounds, and within a single literal), distinct tokens that target the
+ * same Tailwind-style utility namespace (e.g. `w-100` and `w-200`), and
+ * shorthand/longhand overlaps where one token sets a property the other also
+ * sets (`size-4`/`w-8`, `m-4`/`mt-2`, `inset-0`/`top-4`, `flex-1`/`grow-0`,
+ * `truncate`/`overflow-x-auto`). Tokens with
+ * different variant prefixes (`w-100` vs `hover:w-200`) don't conflict —
+ * stacked variants are compared as a set, so `hover:focus:` and `focus:hover:`
+ * are the same prefix — a
  * leading or trailing `!` important marker is ignored when computing the
  * namespace, and
- * tokens that only co-occur across mutually-exclusive variant values are not
- * flagged.
+ * mutually-exclusive positions are not flagged: different values of one
+ * variant, compound entries whose matchers require different values, and
+ * opposite branches of one condition (ternaries and logical-ANDs, with
+ * complementary `cond`/`!cond` conditions matched by source text).
  */
 const noConflictingClasses: Rule.RuleModule = {
 	meta: {
@@ -2576,9 +3359,7 @@ const isLiteralTrue = (node: Node): boolean =>
 const collectExhaustiveVariantKeys = (
 	config: ReadonlyMap<string, Node>
 ): Set<string> => {
-	const exhaustive = collectDefaultVariantKeys(
-		config.get('defaultVariants')
-	);
+	const exhaustive = collectDefaultVariantKeys(config.get('defaultVariants'));
 	const requiredVariants = config.get('requiredVariants');
 
 	if (!requiredVariants) {
@@ -2615,7 +3396,7 @@ const collectVariantTokensByValue = (
 		extractTokens(
 			valueNode,
 			'base',
-			{ kind: 'variant', key: variantKey, value: valueKey },
+			variantSource(variantKey, valueKey),
 			slotNames,
 			entries,
 			sourceCode
@@ -2744,9 +3525,6 @@ const shouldReportEmptyString = (
 	allowEmptyString: boolean
 ): boolean => !allowEmptyString && isEmptyStringNode(node);
 
-const isEmptyObjectExpression = (node: Node): node is ObjectExpression =>
-	node.type === 'ObjectExpression' && node.properties.length === 0;
-
 type ListItems = ReadonlyArray<Node | null>;
 
 // Removes `node` (a member of `list`) along with the adjacent comma so the
@@ -2800,14 +3578,35 @@ const makeListFix = (
 	return (fixer) => removeFromList(fixer, context.sourceCode, node, list);
 };
 
+// In cn-style position an ObjectExpression is a clsx-style record whose keys are
+// the class strings, so an empty string-literal key is an empty class value.
+const checkRecordKeysForEmpty = (
+	context: Rule.RuleContext,
+	node: ObjectExpression
+) => {
+	for (const prop of node.properties) {
+		if (prop.type !== 'Property' || prop.computed) {
+			continue;
+		}
+
+		const { key } = prop;
+
+		if (key.type === 'Literal' && key.value === '') {
+			context.report({ node: key, messageId: 'emptyString' });
+		}
+	}
+};
+
 // `allowEmptyString` is set at the top of a `slots[key]` value, where `''`
 // is a meaningful "slot with no default classes" declaration. `fix`, when
-// provided, removes `node` (and its adjacent comma) on `--fix`.
+// provided, removes `node` (and its adjacent comma) on `--fix`. `cnStyle` marks
+// a cn-style position, where an ObjectExpression is a clsx-style record.
 const visitForEmptyClasses = (
 	context: Rule.RuleContext,
 	node: Node,
 	allowEmptyString: boolean,
-	fix?: EmptyFix
+	fix?: EmptyFix,
+	cnStyle = false
 ) => {
 	if (shouldReportEmptyString(node, allowEmptyString)) {
 		context.report({ node, messageId: 'emptyString', fix });
@@ -2825,14 +3624,22 @@ const visitForEmptyClasses = (
 				context,
 				element,
 				false,
-				makeListFix(context, element, node.elements)
+				makeListFix(context, element, node.elements),
+				cnStyle
 			);
 		});
 		return;
 	}
 
-	if (isEmptyObjectExpression(node)) {
-		context.report({ node, messageId: 'emptyObject', fix });
+	if (node.type === 'ObjectExpression') {
+		if (node.properties.length === 0) {
+			context.report({ node, messageId: 'emptyObject', fix });
+			return;
+		}
+
+		if (cnStyle) {
+			checkRecordKeysForEmpty(context, node);
+		}
 	}
 };
 
@@ -2890,6 +3697,16 @@ const checkCompoundsForEmpty = (
 	}
 
 	forEachCompoundClass(value, (cls) => {
+		// A slot-keyed compound class record — check each slot's class value;
+		// an empty record still falls through to the emptyObject report.
+		if (cls.type === 'ObjectExpression' && cls.properties.length > 0) {
+			for (const slotClass of getProperties(cls).values()) {
+				visitForEmptyClasses(context, slotClass, false);
+			}
+
+			return;
+		}
+
 		visitForEmptyClasses(context, cls, false);
 	});
 };
@@ -2929,22 +3746,22 @@ const svEmptyConfigValueCheckers: Record<string, EmptyConfigChecker> = {
 	compoundSlots: checkCompoundsForEmpty
 };
 
-// A recognized `sv()` config (see `isConfigLike`) has only plain, statically
-// keyed properties — so an empty top-level class property can be dropped
-// wholesale, removing the property and its comma.
+// An `sv()` config (see `isConfigLike`) has only plain, statically keyed
+// properties, so an empty top-level class property can be dropped wholesale,
+// removing the property and its comma. A `createSV()` factory config may also
+// carry a spread or computed key (reported as dynamic by no-dynamic-classes);
+// those aren't class-bearing, so they're skipped here.
 const checkConfigForEmptyClasses = (
 	context: Rule.RuleContext,
 	config: ObjectExpression
 ) => {
 	for (const prop of config.properties) {
-		/* c8 ignore next 3 -- a recognized config has no spread properties */
 		if (prop.type !== 'Property') {
 			continue;
 		}
 
 		const key = getKeyName(prop);
 
-		/* c8 ignore next 3 -- a recognized config has only static, non-computed keys */
 		if (key === null) {
 			continue;
 		}
@@ -2953,7 +3770,12 @@ const checkConfigForEmptyClasses = (
 
 		if (checker) {
 			checker(context, prop.value, (fixer) =>
-				removeFromList(fixer, context.sourceCode, prop, config.properties)
+				removeFromList(
+					fixer,
+					context.sourceCode,
+					prop,
+					config.properties
+				)
 			);
 		}
 	}
@@ -2987,7 +3809,11 @@ const noEmptyClasses: Rule.RuleModule = {
 	create(context) {
 		return createTrackedCallListeners(context, (node, call) => {
 			if (node.arguments.length === 0) {
-				context.report({ node, messageId: 'emptyCall' });
+				// `createSV()` with no defaults is a valid factory call.
+				if (call.isFactoryConfig !== true) {
+					context.report({ node, messageId: 'emptyCall' });
+				}
+
 				return;
 			}
 
@@ -2996,7 +3822,8 @@ const noEmptyClasses: Rule.RuleModule = {
 					context,
 					arg,
 					false,
-					makeListFix(context, arg, node.arguments)
+					makeListFix(context, arg, node.arguments),
+					true
 				);
 			});
 
@@ -3043,13 +3870,14 @@ const requireTopLevelConfig: Rule.RuleModule = {
 		},
 		schema: [],
 		messages: {
-			nested:
-				'sv() with a config object must be called at the module top level, not nested inside a function — otherwise its compiled config and variant cache are rebuilt on every call.'
+			nested: 'sv() with a config object must be called at the module top level, not nested inside a function — otherwise its compiled config and variant cache are rebuilt on every call.'
 		}
 	},
 	create(context) {
 		return createTrackedCallListeners(context, (node, call) => {
-			if (!call.config) {
+			// A `createSV()` factory call compiles no variant function, so it is
+			// exempt — only the returned function's config calls must be top level.
+			if (!call.config || call.isFactoryConfig === true) {
 				return;
 			}
 
