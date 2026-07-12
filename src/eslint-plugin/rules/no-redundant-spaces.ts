@@ -1,0 +1,1 @@
+export { noRedundantSpaces as default } from '../analyzer.ts';

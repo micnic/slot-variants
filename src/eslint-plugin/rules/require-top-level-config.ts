@@ -1,0 +1,1 @@
+export { requireTopLevelConfig as default } from '../analyzer.ts';

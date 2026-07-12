@@ -1,0 +1,1 @@
+export { noDynamicClasses as default } from '../analyzer.ts';

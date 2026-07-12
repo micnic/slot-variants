@@ -1,0 +1,1 @@
+export { noEmptyClasses as default } from '../analyzer.ts';

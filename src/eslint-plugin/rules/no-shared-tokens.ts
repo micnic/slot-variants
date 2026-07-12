@@ -1,0 +1,1 @@
+export { noSharedTokens as default } from '../analyzer.ts';

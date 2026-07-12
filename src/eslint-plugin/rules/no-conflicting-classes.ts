@@ -1,0 +1,1 @@
+export { noConflictingClasses as default } from '../analyzer.ts';
