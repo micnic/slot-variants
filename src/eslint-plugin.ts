@@ -1,6 +1,7 @@
 import type { Linter, Rule, Scope, SourceCode } from 'eslint';
 import type {
 	CallExpression,
+	ConditionalExpression,
 	Expression,
 	Identifier,
 	ImportDeclaration,
@@ -633,6 +634,93 @@ const extractRecordTokens = (
 	}
 };
 
+type TokenExtractionContext = {
+	slot: string;
+	source: Source;
+	slotNames: Set<string>;
+	entries: Entry[];
+	sourceCode: SourceCode;
+};
+
+const extractConditionalTokens = (
+	node: ConditionalExpression,
+	context: TokenExtractionContext
+) => {
+	const { consequent, alternate } = node;
+	const { slot, source, slotNames, entries, sourceCode } = context;
+
+	if (
+		consequent.type !== 'ConditionalExpression' &&
+		alternate.type !== 'ConditionalExpression'
+	) {
+		const [key, thenBranch] = conditionMatcher(node.test, true, sourceCode);
+		const [, elseBranch] = conditionMatcher(node.test, false, sourceCode);
+		const branches: ReadonlyArray<readonly [Node, string]> = [
+			[consequent, thenBranch],
+			[alternate, elseBranch]
+		];
+
+		for (const [leaf, branch] of branches) {
+			extractTokens(
+				leaf,
+				slot,
+				withMatcher(source, key, branch),
+				slotNames,
+				entries,
+				sourceCode,
+				true
+			);
+		}
+		return;
+	}
+
+	const ternaryKey = `ternary@${sourceCode.getRange(node)[0]}`;
+	const leaves: Node[] = [];
+
+	collectBranchLeaves(node, leaves);
+
+	for (const [index, leaf] of leaves.entries()) {
+		extractTokens(
+			leaf,
+			slot,
+			withMatcher(source, ternaryKey, `branch${index}`),
+			slotNames,
+			entries,
+			sourceCode,
+			true
+		);
+	}
+};
+
+const extractTernaryTemplateTokens = (
+	node: TemplateLiteral,
+	context: TokenExtractionContext
+) => {
+	const { slot, source, slotNames, entries, sourceCode } = context;
+
+	for (const quasi of node.quasis) {
+		pushTokensFromText(
+			quasi.value.raw,
+			sourceCode.getRange(quasi)[0] + 1,
+			slot,
+			source,
+			entries
+		);
+	}
+
+	for (const expression of node.expressions) {
+		extractTokens(
+			expression,
+			slot,
+			source,
+			slotNames,
+			entries,
+			sourceCode,
+			true
+		);
+	}
+};
+
 // `cnStyle` toggles the cn() calling-convention forms — logical-AND (`cond &&
 // value`), ternaries (`cond ? a : b`, chained or nested), ternary templates, and
 // clsx-style records, each of which may nest the others. In an sv() config's
@@ -647,6 +735,7 @@ const extractTokens = (
 	cnStyle = false
 ) => {
 	node = resolveStaticValue(node, sourceCode);
+	const context = { slot, source, slotNames, entries, sourceCode };
 
 	if (isStaticStringNode(node)) {
 		pushStringLiteralTokens(node, slot, source, entries, sourceCode);
@@ -682,90 +771,14 @@ const extractTokens = (
 	// resolve as exclusive too. A chained ternary keeps a position-based key:
 	// its leaves are only exclusive to one another.
 	if (cnStyle && node.type === 'ConditionalExpression') {
-		const { consequent, alternate } = node;
-
-		if (
-			consequent.type !== 'ConditionalExpression' &&
-			alternate.type !== 'ConditionalExpression'
-		) {
-			const [key, thenBranch] = conditionMatcher(
-				node.test,
-				true,
-				sourceCode
-			);
-			const [, elseBranch] = conditionMatcher(
-				node.test,
-				false,
-				sourceCode
-			);
-			const branches: ReadonlyArray<readonly [Node, string]> = [
-				[consequent, thenBranch],
-				[alternate, elseBranch]
-			];
-
-			for (const [leaf, branch] of branches) {
-				extractTokens(
-					leaf,
-					slot,
-					withMatcher(source, key, branch),
-					slotNames,
-					entries,
-					sourceCode,
-					cnStyle
-				);
-			}
-
-			return;
-		}
-
-		const ternaryKey = `ternary@${sourceCode.getRange(node)[0]}`;
-		const leaves: Node[] = [];
-
-		collectBranchLeaves(node, leaves);
-
-		let index = 0;
-
-		for (const leaf of leaves) {
-			extractTokens(
-				leaf,
-				slot,
-				withMatcher(source, ternaryKey, `branch${index}`),
-				slotNames,
-				entries,
-				sourceCode,
-				cnStyle
-			);
-			index += 1;
-		}
-
+		extractConditionalTokens(node, context);
 		return;
 	}
 
 	// A whitespace-isolated ternary template: the quasis carry always-present
 	// tokens and each substitution its own exclusive branch tokens.
 	if (cnStyle && isStaticTernaryTemplate(node)) {
-		for (const quasi of node.quasis) {
-			pushTokensFromText(
-				quasi.value.raw,
-				sourceCode.getRange(quasi)[0] + 1,
-				slot,
-				source,
-				entries
-			);
-		}
-
-		for (const expression of node.expressions) {
-			extractTokens(
-				expression,
-				slot,
-				source,
-				slotNames,
-				entries,
-				sourceCode,
-				cnStyle
-			);
-		}
-
+		extractTernaryTemplateTokens(node, context);
 		return;
 	}
 
