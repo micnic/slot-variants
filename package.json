@@ -24,9 +24,10 @@
 	"scripts": {
 		"bench": "jiti bench/cn.ts && jiti bench/cva.ts && jiti bench/tv.ts",
 		"build": "rm -rf dist && tsup src/index.ts src/eslint-plugin.ts --tsconfig tsconfig.build.json && rm -f dist/index.d.cts dist/eslint-plugin.d.cts",
+		"check": "npm run lint && npm run typecheck && npm test && npm run build && npm run test:package",
 		"fallow": "npm t && tap report json && node scripts/sanitize-tap-coverage.mjs && fallow health --coverage .tap/report/coverage-final.json",
 		"lint": "eslint src test bench scripts eslint.config.ts",
-		"prepublishOnly": "npm run build",
+		"prepublishOnly": "npm run check",
 		"test": "tap --show-full-coverage test/**/*.test.ts",
 		"test:package": "node scripts/test-package.mjs",
 		"typecheck": "tsc --project tsconfig.test.json"
