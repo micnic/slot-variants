@@ -28,6 +28,7 @@
 		"lint": "eslint src test bench scripts eslint.config.ts",
 		"prepublishOnly": "npm run build",
 		"test": "tap --show-full-coverage test/**/*.test.ts",
+		"test:package": "node scripts/test-package.mjs",
 		"typecheck": "tsc --project tsconfig.test.json"
 	},
 	"repository": {
@@ -47,6 +48,14 @@
 	],
 	"author": "Nicu Micleușanu",
 	"license": "MIT",
+	"peerDependencies": {
+		"eslint": ">=9"
+	},
+	"peerDependenciesMeta": {
+		"eslint": {
+			"optional": true
+		}
+	},
 	"devDependencies": {
 		"@eslint/js": "10.0.1",
 		"@stylistic/eslint-plugin": "5.10.0",
