@@ -5,17 +5,12 @@
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"lib": ["ES2022"],
-		"declaration": true,
 		"strict": true,
 		"exactOptionalPropertyTypes": true,
 		"noUncheckedIndexedAccess": true,
-		"rootDir": ".",
-		"outDir": "dist",
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
 		"allowImportingTsExtensions": true,
-		"emitDeclarationOnly": true
-	},
-	"include": ["src", "test"],
-	"exclude": ["node_modules", "dist"]
+		"noEmit": true
+	}
 }

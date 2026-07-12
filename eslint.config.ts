@@ -19,5 +19,15 @@ export default [
 			'no-cond-assign': ['error', 'always'],
 			'no-implicit-coercion': 'error'
 		}
+	},
+	{
+		files: ['scripts/*.mjs'],
+		languageOptions: {
+			globals: {
+				console: 'readonly',
+				process: 'readonly',
+				URL: 'readonly'
+			}
+		}
 	}
 ];

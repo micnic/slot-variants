@@ -23,11 +23,12 @@
 	],
 	"scripts": {
 		"bench": "jiti bench/cn.ts && jiti bench/cva.ts && jiti bench/tv.ts",
-		"build": "rm -rf dist && tsup src/index.ts src/eslint-plugin.ts && rm -f dist/index.d.cts dist/eslint-plugin.d.cts",
+		"build": "rm -rf dist && tsup src/index.ts src/eslint-plugin.ts --tsconfig tsconfig.build.json && rm -f dist/index.d.cts dist/eslint-plugin.d.cts",
 		"fallow": "npm t && tap report json && node scripts/sanitize-tap-coverage.mjs && fallow health --coverage .tap/report/coverage-final.json",
-		"lint": "eslint src",
+		"lint": "eslint src test bench scripts eslint.config.ts",
 		"prepublishOnly": "npm run build",
-		"test": "tap --show-full-coverage test/*.test.ts"
+		"test": "tap --show-full-coverage test/**/*.test.ts",
+		"typecheck": "tsc --project tsconfig.test.json"
 	},
 	"repository": {
 		"type": "git",
