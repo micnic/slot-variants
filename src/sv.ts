@@ -102,7 +102,7 @@ type ReturnValue<
 > = S extends undefined
 	? string
 	: Prettify<{
-			[K in SlotKey<S>]: K extends MultiSlotKeys<S, MS>
+			readonly [K in SlotKey<S>]: K extends MultiSlotKeys<S, MS>
 				? (props?: MultiSlotFnProps<S, V>) => string
 				: string;
 		}>;
