@@ -1,5 +1,6 @@
 import t from 'tap';
 import { Linter, RuleTester } from 'eslint';
+import pkg from '../package.json' with { type: 'json' };
 import plugin, { rules } from '../src/eslint-plugin.ts';
 
 const tester = new RuleTester({
@@ -388,6 +389,7 @@ t.test('shared plugin run reuses cached property analysis', (t) => {
 t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 	t.ok(plugin.meta, 'meta is present');
 	t.equal(plugin.meta.name, 'slot-variants', 'meta.name is set');
+	t.equal(plugin.meta.version, pkg.version, 'meta.version matches package.json');
 	t.ok(plugin.rules, 'rules object present');
 	for (const [name, r] of Object.entries(plugin.rules)) {
 		t.ok(r.meta, `${name}: has meta`);
