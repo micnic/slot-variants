@@ -1171,6 +1171,7 @@ const applyCompoundClasses = (
 };
 
 const finalizeVariantResult = (
+	slotEntries: readonly [string, ConfigClassValue][],
 	slotKeys: ReadonlySet<string>,
 	slotClasses: SlotClasses
 ): CacheValue => {
@@ -1181,8 +1182,8 @@ const finalizeVariantResult = (
 
 	const result: Record<string, string> = {};
 
-	for (const [slotKey, slotValues] of entries(slotClasses)) {
-		result[slotKey] = cn(slotValues);
+	for (const [slotKey] of slotEntries) {
+		result[slotKey] = cn(slotClasses[slotKey]);
 	}
 
 	return result;
@@ -1283,7 +1284,7 @@ const buildCacheEntry = (
 		resolvedProps
 	);
 
-	const raw = finalizeVariantResult(slotKeys, slotClasses);
+	const raw = finalizeVariantResult(slotEntries, slotKeys, slotClasses);
 	const processed = applyPostProcess(postProcess, raw);
 
 	return cacheReturn(cacheKey, { raw, processed });
