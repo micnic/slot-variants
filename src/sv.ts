@@ -1051,17 +1051,12 @@ const resolveVariantValue = (
 	return defaultValue;
 };
 
-const resolveVariantState = (
+const buildCacheKey = (
 	variantData: readonly VariantData[],
 	defaultVariants: Record<string, RuntimeDefaultVariant>,
 	props: RuntimeProps,
 	presetValues: RuntimeVariantState | undefined
-): {
-	cacheKey: string;
-	resolvedProps: RuntimeVariantState;
-} => {
-
-	const resolvedProps: RuntimeVariantState = {};
+): string => {
 
 	let cacheKey = '';
 
@@ -1078,8 +1073,6 @@ const resolveVariantState = (
 			continue;
 		}
 
-		resolvedProps[key] = value;
-
 		const id = valueIds[`${value}`];
 
 		if (id === undefined) {
@@ -1089,10 +1082,32 @@ const resolveVariantState = (
 		}
 	}
 
-	return {
-		cacheKey,
-		resolvedProps
-	};
+	return cacheKey;
+};
+
+const resolveVariantState = (
+	variantData: readonly VariantData[],
+	defaultVariants: Record<string, RuntimeDefaultVariant>,
+	props: RuntimeProps,
+	presetValues: RuntimeVariantState | undefined
+): RuntimeVariantState => {
+
+	const resolvedProps: RuntimeVariantState = {};
+
+	for (const { key } of variantData) {
+		const value = resolveVariantValue(
+			defaultVariants,
+			key,
+			props,
+			presetValues
+		);
+
+		if (value !== undefined) {
+			resolvedProps[key] = value;
+		}
+	}
+
+	return resolvedProps;
 };
 
 const assertRequiredVariants = (
@@ -1307,15 +1322,26 @@ const runVariant = (
 	const classProp = props.class ?? props.className;
 	const presetValues = resolvePresetValues(presets, props.preset);
 
-	const { cacheKey, resolvedProps } = resolveVariantState(
+	const cacheKey = buildCacheKey(
 		variantData,
 		defaultVariants,
 		props,
 		presetValues
 	);
 
-	const entry =
-		cache.get(cacheKey) ?? buildCacheEntry(config, cacheKey, resolvedProps);
+	let entry = cache.get(cacheKey);
+
+	if (entry === undefined) {
+
+		const resolvedProps = resolveVariantState(
+			variantData,
+			defaultVariants,
+			props,
+			presetValues
+		);
+
+		entry = buildCacheEntry(config, cacheKey, resolvedProps);
+	}
 
 	if (!classProp) {
 		return entry.processed;
