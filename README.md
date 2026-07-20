@@ -278,6 +278,12 @@ Passing `undefined` for a prop falls back to the default:
 button({ size: undefined }); // 'btn text-base rounded-md'
 ```
 
+Passing `null` instead explicitly opts out of the variant — its default (and any [preset](#presets) value) is skipped entirely, so no classes for that variant are applied:
+
+```typescript
+button({ size: null }); // 'btn rounded-md' (no size classes at all)
+```
+
 #### Function-Based Default Variants
 
 Default variants can be functions that receive the current props and return a value dynamically. Return `undefined` to skip the variant entirely:
@@ -445,6 +451,13 @@ button({ preset: 'cta', size: 'sm' });
 ```
 
 Presets can satisfy required variants at runtime — if a preset provides a required variant, it does not need to be passed explicitly.
+
+Passing `null` for a variant prop overrides the preset's value for that variant too, skipping it entirely:
+
+```typescript
+button({ preset: 'cta', size: null });
+// 'btn bg-blue-500 rounded-full' (preset's size is skipped, no default either)
+```
 
 An invalid preset name throws an error:
 

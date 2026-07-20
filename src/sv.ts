@@ -4,8 +4,8 @@ type Prettify<T> = {
 	[K in keyof T]: T[K];
 } & {};
 
-type PartialUndefined<T> = {
-	[K in keyof T]?: T[K] | undefined;
+type PartialNullable<T> = {
+	[K in keyof T]?: T[K] | null | undefined;
 };
 
 type StringKeyof<T> = Extract<keyof T, string>;
@@ -15,7 +15,13 @@ type ConfigClassValue = string | string[] | undefined;
 type AnyFn = (...args: any[]) => unknown;
 
 type RuntimeVariantValue = string | number | boolean;
-type RuntimeVariantState = Record<string, RuntimeVariantValue | undefined>;
+
+type RuntimeVariantState = Record<
+	string,
+	RuntimeVariantValue | null | undefined
+>;
+
+type ResolvedVariantState = Record<string, RuntimeVariantValue | undefined>;
 
 type RuntimeVariantMatcher =
 	| RuntimeVariantValue
@@ -147,7 +153,7 @@ type VariantPropsInternal<S extends MaybeSlots, V extends MaybeVariants<S>> = {
 };
 
 type MultiSlotFnProps<S extends MaybeSlots, V extends MaybeVariants<S>> =
-	Prettify<PartialUndefined<VariantPropsInternal<S, V>>> &
+	Prettify<PartialNullable<VariantPropsInternal<S, V>>> &
 		XORClassProp<ClassValue, true>;
 
 type DefaultVariantValue<
@@ -190,7 +196,7 @@ type CompiledConfig = {
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
 	requiredVariants: readonly string[];
 	multiSlots: ReadonlySet<string>;
-	presets: Record<string, RuntimeVariantState>;
+	presets: Record<string, ResolvedVariantState>;
 	compoundVariants: readonly CompiledCompoundVariant[];
 	compoundSlots: readonly CompiledCompoundSlot[];
 	cache: Map<string, CacheEntry>;
@@ -229,7 +235,7 @@ type VariantPropsWithRequired<
 	RV extends RequiredVariants<V>
 > = Pick<VariantPropsInternal<S, V>, RequiredVariantKeys<V, RV>> &
 	Omit<
-		PartialUndefined<VariantPropsInternal<S, V>>,
+		PartialNullable<VariantPropsInternal<S, V>>,
 		RequiredVariantKeys<V, RV>
 	>;
 
@@ -241,7 +247,7 @@ type Props<
 > = Prettify<
 	P extends undefined
 		? VariantPropsWithRequired<S, V, RV>
-		: PartialUndefined<VariantPropsInternal<S, V>> & {
+		: PartialNullable<VariantPropsInternal<S, V>> & {
 				preset?: StringKeyof<P> | undefined;
 			}
 > &
@@ -440,7 +446,7 @@ const defaultCacheSize = 256;
 
 const looseEquals = (
 	first: RuntimeVariantValue,
-	second: RuntimeVariantValue | undefined
+	second: RuntimeVariantValue | null | undefined
 ): boolean => first === second || `${first}` === `${second}`;
 
 const isVariantMatcherArray = (
@@ -560,7 +566,7 @@ const compileCompoundMatchers = (
 };
 
 const matchesCompound = (
-	props: RuntimeVariantState,
+	props: ResolvedVariantState,
 	matchers: readonly CompoundMatcher[]
 ): boolean => {
 
@@ -823,7 +829,7 @@ const assertKnownDefaultVariants = (
 };
 
 const assertKnownPresetVariants = (
-	presets: Record<string, RuntimeVariantState>,
+	presets: Record<string, ResolvedVariantState>,
 	normalizedVariants: NormalizedVariants
 ) => {
 
@@ -1008,9 +1014,9 @@ const compileConfig = <
 };
 
 const resolvePresetValues = (
-	presets: Record<string, RuntimeVariantState>,
+	presets: Record<string, ResolvedVariantState>,
 	presetName: string | undefined
-): RuntimeVariantState | undefined => {
+): ResolvedVariantState | undefined => {
 
 	if (presetName === undefined) {
 		return undefined;
@@ -1027,23 +1033,31 @@ const resolveVariantValue = (
 	defaultVariants: Record<string, RuntimeDefaultVariant>,
 	variantKey: string,
 	props: RuntimeVariantState,
-	presetValues: RuntimeVariantState | undefined
+	presetValues: ResolvedVariantState | undefined
 ): RuntimeVariantValue | undefined => {
 
 	const propValue = props[variantKey];
 
+	// `null` explicitly opts out of this variant, skipping preset/default
+	if (propValue === null) {
+		return undefined;
+	}
+
+	// `undefined` means the variant was not specified
 	if (propValue !== undefined) {
 		return propValue;
 	}
 
 	const presetValue = presetValues?.[variantKey];
 
+	// Check if preset value is defined, it takes precedence over default value.
 	if (presetValue !== undefined) {
 		return presetValue;
 	}
 
 	const defaultValue = defaultVariants[variantKey];
 
+	// Check for function default value, to evaluate it with the current props.
 	if (typeof defaultValue === 'function') {
 		return defaultValue(props);
 	}
@@ -1055,12 +1069,13 @@ const buildCacheKey = (
 	variantData: readonly VariantData[],
 	defaultVariants: Record<string, RuntimeDefaultVariant>,
 	props: RuntimeProps,
-	presetValues: RuntimeVariantState | undefined
+	presetValues: ResolvedVariantState | undefined
 ): string => {
 
 	let cacheKey = '';
 
 	for (const { key, valueIds } of variantData) {
+
 		const value = resolveVariantValue(
 			defaultVariants,
 			key,
@@ -1089,12 +1104,13 @@ const resolveVariantState = (
 	variantData: readonly VariantData[],
 	defaultVariants: Record<string, RuntimeDefaultVariant>,
 	props: RuntimeProps,
-	presetValues: RuntimeVariantState | undefined
-): RuntimeVariantState => {
+	presetValues: ResolvedVariantState | undefined
+): ResolvedVariantState => {
 
-	const resolvedProps: RuntimeVariantState = {};
+	const resolvedProps: ResolvedVariantState = {};
 
 	for (const { key } of variantData) {
+
 		const value = resolveVariantValue(
 			defaultVariants,
 			key,
@@ -1112,7 +1128,7 @@ const resolveVariantState = (
 
 const assertRequiredVariants = (
 	requiredVariants: readonly string[],
-	resolvedProps: RuntimeVariantState
+	resolvedProps: ResolvedVariantState
 ) => {
 
 	for (const variant of requiredVariants) {
@@ -1143,7 +1159,7 @@ const applyResolvedVariantClasses = (
 	variantData: readonly VariantData[],
 	slotKeys: ReadonlySet<string>,
 	slotClasses: SlotClasses,
-	resolvedProps: RuntimeVariantState
+	resolvedProps: ResolvedVariantState
 ) => {
 
 	for (const { key, values } of variantData) {
@@ -1167,7 +1183,7 @@ const applyCompoundClasses = (
 	compoundSlots: readonly CompiledCompoundSlot[],
 	slotKeys: ReadonlySet<string>,
 	slotClasses: SlotClasses,
-	resolvedProps: RuntimeVariantState
+	resolvedProps: ResolvedVariantState
 ) => {
 
 	for (const compound of compoundVariants) {
@@ -1262,7 +1278,7 @@ const mergeClassPropIntoResult = (
 const buildCacheEntry = (
 	config: CompiledConfig,
 	cacheKey: string,
-	resolvedProps: RuntimeVariantState
+	resolvedProps: ResolvedVariantState
 ): CacheEntry => {
 
 	const {

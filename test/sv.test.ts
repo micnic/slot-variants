@@ -168,7 +168,7 @@ const _helperRequiredConfigFn = sv(
 type HelperRequiredConfigProps = VariantProps<typeof _helperRequiredConfigFn>;
 
 type AssertHelperRequiredConfig = HelperRequiredConfigProps extends {
-	size?: 'sm' | 'lg' | undefined;
+	size?: 'sm' | 'lg' | null | undefined;
 	intent: 'primary' | 'danger';
 }
 	? true
@@ -416,7 +416,7 @@ type SingleVariantProps = VariantProps<typeof _singleVariantFn>;
 
 // size should be optional and accept only 'sm' | 'md' | 'lg'
 type AssertSingleVariant = SingleVariantProps extends {
-	size?: 'sm' | 'md' | 'lg' | undefined;
+	size?: 'sm' | 'md' | 'lg' | null | undefined;
 }
 	? true
 	: false;
@@ -447,8 +447,8 @@ type MultiVariantProps = VariantProps<typeof _multiVariantFn>;
 
 // both variants should be optional with correct union types
 type AssertMultiVariant = MultiVariantProps extends {
-	size?: 'sm' | 'lg' | undefined;
-	intent?: 'primary' | 'danger' | undefined;
+	size?: 'sm' | 'lg' | null | undefined;
+	intent?: 'primary' | 'danger' | null | undefined;
 }
 	? true
 	: false;
@@ -458,7 +458,7 @@ const _assertMultiVariant: AssertMultiVariant = true;
 type ExcludedVariantProps = VariantProps<typeof _multiVariantFn, 'intent'>;
 
 type AssertExcludedVariant = ExcludedVariantProps extends {
-	size?: 'sm' | 'lg' | undefined;
+	size?: 'sm' | 'lg' | null | undefined;
 }
 	? true
 	: false;
@@ -664,8 +664,8 @@ type DefaultVariantProps = VariantProps<typeof _defaultVariantFn>;
 
 // defaults do not make props required - they remain optional
 type AssertDefaultVariantProps = DefaultVariantProps extends {
-	size?: 'sm' | 'md' | 'lg' | undefined;
-	intent?: 'primary' | 'danger' | undefined;
+	size?: 'sm' | 'md' | 'lg' | null | undefined;
+	intent?: 'primary' | 'danger' | null | undefined;
 }
 	? true
 	: false;
@@ -767,6 +767,65 @@ t.test('explicit undefined does not override default variant', (t) => {
 	t.end();
 });
 
+t.test('explicit null opts out of default variant resolution', (t) => {
+	const button = sv('rounded-lg', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		defaultVariants: {
+			size: 'sm',
+			intent: 'primary'
+		}
+	});
+
+	t.equal(
+		button({ size: null }),
+		'rounded-lg bg-blue-500',
+		'null size skips its default, other default still applies'
+	);
+	t.equal(
+		button({ size: null, intent: null }),
+		'rounded-lg',
+		'null skips defaults for every nulled variant'
+	);
+	t.equal(
+		button({ size: null, intent: 'danger' }),
+		'rounded-lg bg-red-500',
+		'null size skips default, explicit intent still applies'
+	);
+
+	t.end();
+});
+
+t.test('explicit null opts out of a preset value', (t) => {
+	const button = sv('rounded-lg', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			}
+		},
+		presets: {
+			compact: { size: 'sm' }
+		}
+	});
+
+	t.equal(
+		button({ preset: 'compact', size: null }),
+		'rounded-lg',
+		'null overrides the preset value for that variant'
+	);
+
+	t.end();
+});
+
 t.test('defaults for multiple variants', (t) => {
 	const button = sv('rounded-lg', {
 		variants: {
@@ -854,7 +913,7 @@ const _boolRecordFn = sv('rounded-lg', {
 type BoolRecordProps = VariantProps<typeof _boolRecordFn>;
 
 type AssertBoolRecord = BoolRecordProps extends {
-	disabled?: boolean | undefined;
+	disabled?: boolean | null | undefined;
 }
 	? true
 	: false;
@@ -870,7 +929,7 @@ const _boolShorthandFn = sv('rounded-lg', {
 type BoolShorthandProps = VariantProps<typeof _boolShorthandFn>;
 
 type AssertBoolShorthand = BoolShorthandProps extends {
-	disabled?: boolean | undefined;
+	disabled?: boolean | null | undefined;
 }
 	? true
 	: false;
@@ -891,9 +950,9 @@ const _mixedBoolFn = sv('rounded-lg', {
 type MixedBoolProps = VariantProps<typeof _mixedBoolFn>;
 
 type AssertMixedBool = MixedBoolProps extends {
-	size?: 'sm' | 'lg' | undefined;
-	disabled?: boolean | undefined;
-	loading?: boolean | undefined;
+	size?: 'sm' | 'lg' | null | undefined;
+	disabled?: boolean | null | undefined;
+	loading?: boolean | null | undefined;
 }
 	? true
 	: false;
@@ -1125,7 +1184,7 @@ type NumericVariantProps = VariantProps<typeof _numericVariantFn>;
 
 // level should accept numeric literal types
 type AssertNumericVariant = NumericVariantProps extends {
-	level?: 1 | 2 | 3 | undefined;
+	level?: 1 | 2 | 3 | null | undefined;
 }
 	? true
 	: false;
@@ -1148,8 +1207,8 @@ const _mixedKeysFn = sv('font-bold', {
 type MixedKeysProps = VariantProps<typeof _mixedKeysFn>;
 
 type AssertMixedKeys = MixedKeysProps extends {
-	level?: 1 | 2 | undefined;
-	intent?: 'primary' | 'danger' | undefined;
+	level?: 1 | 2 | null | undefined;
+	intent?: 'primary' | 'danger' | null | undefined;
 }
 	? true
 	: false;
@@ -1299,7 +1358,7 @@ const _slotVariantFn = sv('border rounded-lg', {
 type SlotVariantProps = VariantProps<typeof _slotVariantFn>;
 
 type AssertSlotVariantProps = SlotVariantProps extends {
-	size?: 'sm' | 'lg' | undefined;
+	size?: 'sm' | 'lg' | null | undefined;
 }
 	? true
 	: false;
@@ -1322,7 +1381,7 @@ const _slotBoolFn = sv('border', {
 type SlotBoolProps = VariantProps<typeof _slotBoolFn>;
 
 type AssertSlotBool = SlotBoolProps extends {
-	highlighted?: boolean | undefined;
+	highlighted?: boolean | null | undefined;
 }
 	? true
 	: false;
@@ -2463,7 +2522,7 @@ const _assertRequiredSize: AssertRequiredSize = true;
 
 // intent should remain optional
 type AssertOptionalIntent = RequiredProps extends {
-	intent?: 'primary' | 'danger' | undefined;
+	intent?: 'primary' | 'danger' | null | undefined;
 }
 	? true
 	: false;
@@ -4089,7 +4148,7 @@ type RequiredTypeProps = VariantProps<typeof _typeRequiredFn>;
 // size should be required (no undefined)
 type AssertSizeRequired = RequiredTypeProps extends {
 	size: 'sm' | 'lg';
-	intent?: 'primary' | 'danger' | undefined;
+	intent?: 'primary' | 'danger' | null | undefined;
 }
 	? true
 	: false;
@@ -4177,7 +4236,7 @@ const _typeNumericKeysFn = sv('flex', {
 
 type NumericKeysProps = VariantProps<typeof _typeNumericKeysFn>;
 type AssertNumericKeys = NumericKeysProps extends {
-	level?: 1 | 2 | 3 | undefined;
+	level?: 1 | 2 | 3 | null | undefined;
 }
 	? true
 	: false;
@@ -4195,7 +4254,7 @@ const _typeBoolShorthandFn = sv('flex', {
 
 type BoolShorthandPropsType = VariantProps<typeof _typeBoolShorthandFn>;
 type AssertBoolShorthandType = BoolShorthandPropsType extends {
-	disabled?: boolean | undefined;
+	disabled?: boolean | null | undefined;
 }
 	? true
 	: false;
@@ -4230,7 +4289,7 @@ const _typeComplexFn = sv('flex', {
 type ComplexTypeProps = VariantProps<typeof _typeComplexFn>;
 type AssertComplexType = ComplexTypeProps extends {
 	size: 'sm' | 'lg';
-	variant?: 'default' | 'dark' | undefined;
+	variant?: 'default' | 'dark' | null | undefined;
 }
 	? true
 	: false;
@@ -5388,7 +5447,7 @@ const _assertFactoryIntrospection: AssertFactoryIntrospection = true;
 // Per-call config still drives the precise variant prop types
 type FactoryButtonProps = VariantProps<typeof _factoryButton>;
 type AssertFactoryProps = FactoryButtonProps extends {
-	size?: 'sm' | 'lg' | undefined;
+	size?: 'sm' | 'lg' | null | undefined;
 }
 	? true
 	: false;

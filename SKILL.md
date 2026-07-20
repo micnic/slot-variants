@@ -8,7 +8,7 @@
 import { sv, cn, type VariantProps } from 'slot-variants';
 ```
 
-`sv()` is a drop-in replacement for CVA (`cva` → `sv`) and covers the core feature set of tailwind-variants (`tv`) with a simpler API. Slots return strings directly by default, or reconfigurable functions (like in `tv`) when listed in `multiSlots`. Features not in CVA/TV: `requiredVariants`, `presets`, `cacheSize`, `postProcess`, function-based `defaultVariants`, and variadic base args.
+`sv()` is a drop-in replacement for CVA (`cva` → `sv`) and covers the core feature set of tailwind-variants (`tv`) with a simpler API. Slots return strings directly by default, or reconfigurable functions (like in `tv`) when listed in `multiSlots`. Features not in CVA/TV: `requiredVariants`, `presets`, `cacheSize`, `postProcess`, function-based `defaultVariants`, variadic base args, and `null`-to-unset variant props.
 
 ## Calling Conventions
 
@@ -137,7 +137,16 @@ const button = sv('btn', {
 button({ preset: 'cta' }); // applies size: 'lg', intent: 'primary'
 ```
 
-### 11. Use Introspection for Single Source of Truth
+### 11. Pass `null` to Explicitly Opt Out of a Defaulted Variant
+
+`undefined` (an omitted prop) falls back to `defaultVariants`/`preset`; `null` skips that resolution entirely, so no classes for that variant are applied:
+
+```typescript
+button({ size: undefined }); // falls back to the default/preset size
+button({ size: null });      // no size classes at all, default and preset skipped
+```
+
+### 12. Use Introspection for Single Source of Truth
 
 Set `introspection: true` to expose configuration and cache members on the returned function (off by default): `variantKeys`, `variants`, `slotKeys`, `slots`, `defaultVariants`, `requiredVariants`, `multiSlots`, `presetKeys`, `presets`, `getVariantValues(key)`, `getMaxEntries()`, `getCacheSize()`, and `clearCache()`.
 
