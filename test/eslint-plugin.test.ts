@@ -1317,6 +1317,28 @@ const NO_EMPTY_CLASSES_VALID = [
 			slots: { body: 'p-4' },
 			compoundSlots: [{ slots: ['body'], class: 'font-bold' }]
 		});`,
+	// Non-empty array matcher on a compoundVariants entry — can match.
+	IMPORT +
+		`sv({
+			variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+			compoundVariants: [{ size: ['sm', 'lg'], class: 'font-bold' }]
+		});`,
+	// The `slots` target array on a compoundSlots entry is a meta key, not
+	// a matcher — an empty array there is a TS-level error, not something
+	// this rule checks; a non-empty matcher alongside it is unaffected.
+	IMPORT +
+		`sv({
+			slots: { body: 'p-4' },
+			variants: { size: { sm: 'text-sm' } },
+			compoundSlots: [{ slots: ['body'], size: 'sm', class: 'font-bold' }]
+		});`,
+	// Computed matcher key with an empty array value — the key is
+	// dynamic, so the value isn't checked as a matcher.
+	IMPORT +
+		`sv({
+			variants: { size: { sm: 'text-sm' } },
+			compoundVariants: [{ [k]: [], class: 'font-bold' }]
+		});`,
 	// cn-style record with non-empty keys.
 	IMPORT_CN + 'cn({ foo: true, bar: false });',
 	// cn-style record with a non-empty string-literal key.
@@ -1592,6 +1614,39 @@ const NO_EMPTY_CLASSES_INVALID = [
 				compoundSlots: [{ slots: ['body'], class: '' }]
 			});`,
 		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// Empty array matcher on a compoundVariants entry can never match —
+		// the whole entry is unreachable.
+		code:
+			IMPORT +
+			`sv({
+				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+				compoundVariants: [{ size: [], class: 'font-bold' }]
+			});`,
+		errors: [{ messageId: 'unreachableMatcher' }]
+	},
+	{
+		// Empty array matcher on a compoundSlots entry.
+		code:
+			IMPORT +
+			`sv({
+				slots: { body: 'p-4' },
+				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+				compoundSlots: [{ slots: ['body'], size: [], class: 'font-bold' }]
+			});`,
+		errors: [{ messageId: 'unreachableMatcher' }]
+	},
+	{
+		// A hoisted `const` empty array read through as a matcher value.
+		code:
+			IMPORT +
+			`const noSizes = [];
+			sv({
+				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+				compoundVariants: [{ size: noSizes, class: 'font-bold' }]
+			});`,
+		errors: [{ messageId: 'unreachableMatcher' }]
 	},
 	{
 		// cn() with empty string.

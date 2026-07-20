@@ -1,5 +1,6 @@
 import type { Rule, Scope, SourceCode } from 'eslint';
 import type {
+	ArrayExpression,
 	CallExpression,
 	ConditionalExpression,
 	Expression,
@@ -3695,6 +3696,46 @@ const checkVariantsForEmpty = (
 	visitVariantRecordForEmpty(context, value, remove);
 };
 
+const isEmptyArrayLiteral = (node: Node): boolean =>
+	node.type === 'ArrayExpression' && node.elements.length === 0;
+
+// A compound matcher (any entry key other than `class`/`className`/`slots`)
+// whose value is a literal empty array can never match: `matchesCompound` in
+// sv.ts calls `.some()` over it, which is always false for an empty array —
+// so the whole entry is permanently unreachable, regardless of props.
+const checkCompoundMatchersForEmpty = (
+	context: Rule.RuleContext,
+	compoundEntries: ArrayExpression
+) => {
+	forEachStaticItem(compoundEntries.elements, (element) => {
+		if (element.type !== 'ObjectExpression') {
+			return;
+		}
+
+		for (const prop of element.properties) {
+			if (prop.type !== 'Property' || prop.computed) {
+				continue;
+			}
+
+			const key = getKeyName(prop);
+
+			if (key === null || COMPOUND_NON_MATCHER_KEYS.has(key)) {
+				continue;
+			}
+
+			const value = resolveStaticValue(prop.value, context.sourceCode);
+
+			if (isEmptyArrayLiteral(value)) {
+				context.report({
+					node: value,
+					messageId: 'unreachableMatcher',
+					data: { key }
+				});
+			}
+		}
+	});
+};
+
 const checkCompoundsForEmpty = (
 	context: Rule.RuleContext,
 	value: Node,
@@ -3708,6 +3749,8 @@ const checkCompoundsForEmpty = (
 		context.report({ node: value, messageId: 'emptyArray', fix: remove });
 		return;
 	}
+
+	checkCompoundMatchersForEmpty(context, value);
 
 	forEachCompoundClass(value, (cls) => {
 		// A slot-keyed compound class record — check each slot's class value;
@@ -3799,14 +3842,17 @@ const checkConfigForEmptyClasses = (
  * in `sv()` and `cn()` calls, plus zero-argument `sv()` / `cn()` calls (which
  * always produce an empty class string). Inside an `sv()` config, an empty
  * string is still allowed as a direct `slots[key]` value, since declaring a
- * slot with no default classes is a meaningful use case.
+ * slot with no default classes is a meaningful use case. Also flags an empty
+ * array (`[]`) as a `compoundVariants`/`compoundSlots` matcher value — since
+ * `matchesCompound` in `sv.ts` tests it with `.some()`, an empty array can
+ * never match, so the whole compound entry is permanently unreachable.
  */
 export const noEmptyClasses: Rule.RuleModule = {
 	meta: {
 		type: 'problem',
 		docs: {
 			description:
-				'Disallow empty class values (empty strings, arrays, or objects) and zero-argument calls in sv() and cn()',
+				'Disallow empty class values (empty strings, arrays, or objects), zero-argument calls, and empty compound matcher arrays in sv() and cn()',
 			recommended: true,
 			url: DOCS_URL
 		},
@@ -3816,7 +3862,9 @@ export const noEmptyClasses: Rule.RuleModule = {
 			emptyString: 'Empty class string is not allowed.',
 			emptyArray: 'Empty class array is not allowed.',
 			emptyObject: 'Empty class object is not allowed.',
-			emptyCall: 'Empty sv()/cn() call is not allowed.'
+			emptyCall: 'Empty sv()/cn() call is not allowed.',
+			unreachableMatcher:
+				'Empty array matcher for "{{key}}" can never match — this compound entry is unreachable.'
 		}
 	},
 	create(context) {

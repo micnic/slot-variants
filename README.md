@@ -1088,7 +1088,7 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 - **`slot-variants/no-dynamic-classes`** — flags class-bearing positions in `sv()` and `cn()` calls that aren't statically inferrable: identifiers, member access, calls, spreads, computed keys, templates with expressions, and so on. In cn-style positions, the conditional forms of the `cn()` calling convention stay allowed (`cond && 'px-4'`, `cond ? 'px-4' : 'px-2'`, and static-string ternaries inside template literals) as long as every branch is itself static; inside an `sv()` config, only static values are accepted. Non-class-bearing config keys (`defaultVariants`, `requiredVariants`, `cacheSize`, …) and runtime matchers in compound entries are not validated.
 
-- **`slot-variants/no-empty-classes`** — flags empty class values — empty strings, arrays, and objects — at any class-bearing position of an `sv()` or `cn()` call, plus zero-argument `sv()` / `cn()` calls themselves. The one exception: an empty string as a direct `slots[key]` value is allowed, since declaring a slot with no default classes is a valid use case. **Partially auto-fixable**: `eslint --fix` removes empty positional arguments, array elements, and top-level config properties when other items remain.
+- **`slot-variants/no-empty-classes`** — flags empty class values — empty strings, arrays, and objects — at any class-bearing position of an `sv()` or `cn()` call, plus zero-argument `sv()` / `cn()` calls themselves. The one exception: an empty string as a direct `slots[key]` value is allowed, since declaring a slot with no default classes is a valid use case. Also flags an empty array (`[]`) as a `compoundVariants`/`compoundSlots` matcher value — since a matcher is tested with `.some()`, an empty array can never match, so the whole compound entry is permanently unreachable. **Partially auto-fixable**: `eslint --fix` removes empty positional arguments, array elements, and top-level config properties when other items remain.
 
 - **`slot-variants/no-redundant-spaces`** — flags class strings whose whitespace isn't canonical (a single ASCII space between tokens): leading/trailing whitespace, repeated spaces, tabs, newlines. **Auto-fixable**: `eslint --fix` rewrites each offending literal in place, preserving its quote style.
 
@@ -1192,6 +1192,17 @@ cn();                                          // zero-arg call
 ```
 
 `no-empty-classes` reports each empty class value — strings, arrays, or objects — plus zero-argument `sv()` / `cn()` calls (they always produce an empty string). The one exception is a direct empty string at `slots[key]`, which is allowed because declaring a slot with no default classes is a real use case (`sv({ slots: { extra: '' } })`). Either remove the empty value or replace it with a meaningful class string.
+
+It also reports an empty array matcher value in `compoundVariants`/`compoundSlots`, since it can never match:
+
+```typescript
+sv({
+  variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+  compoundVariants: [
+    { size: [], class: 'font-bold' } // unreachable — [] never matches
+  ]
+});
+```
 
 ```typescript
 import { sv, cn } from 'slot-variants';
