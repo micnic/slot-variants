@@ -1094,7 +1094,7 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 - **`slot-variants/no-redundant-spaces`** — flags class strings whose whitespace isn't canonical (a single ASCII space between tokens): leading/trailing whitespace, repeated spaces, tabs, newlines. **Auto-fixable**: `eslint --fix` rewrites each offending literal in place, preserving its quote style.
 
-- **`slot-variants/no-shared-tokens`** — flags class tokens repeated in every value of an exhaustive variant (one with a static default, or listed in / covered by `requiredVariants`). Those tokens are constant in the rendered output and belong in `base` or the corresponding `slots[slot]` entry instead.
+- **`slot-variants/no-shared-tokens`** — flags class tokens repeated in every value of an exhaustive variant (one with a static default, or listed in / covered by `requiredVariants`). Those tokens are constant in the rendered output and belong in `base` or the corresponding `slots[slot]` entry instead. **Partially auto-fixable**: `eslint --fix` lifts the token into `base`/`slots[slot]` and strips it from each variant value, but only when that target and every variant value's contribution to the slot are plain, directly-authored string or template literals — an array, a value nested inside further structure, or one read through a hoisted `const` binding leaves the finding reported without a fix.
 
 - **`slot-variants/require-top-level-config`** — flags `sv()` calls with a config object that aren't at module top level. The config form compiles the variant function and seeds its cache once; nesting it inside a function rebuilds that work — and throws away the cache — on every call. Config-less cn-style calls are left alone.
 
@@ -1243,6 +1243,8 @@ const card = sv({
 ```
 
 `no-shared-tokens` reports `rounded` in both `button` variant values and in both `card` `root` slot values, because the token is present in every value of an exhaustive variant. Lift that class into `base` — or into `slots.root` for slot-based variants — so each variant value contains only the classes that actually vary.
+
+`eslint --fix` can do this automatically for `card`, since `slots.root` already exists as a plain string (`'flex'`) to lift `rounded` into. It can't for `button`, since there's no `base` property to lift `rounded` into — the finding is still reported, just without a fix.
 
 ## IntelliSense Setup (Optional)
 

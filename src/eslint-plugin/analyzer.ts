@@ -390,7 +390,8 @@ const reportEntryList = (
 	context: Rule.RuleContext,
 	entries: ReadonlyArray<Entry>,
 	messageId: string,
-	data: Record<string, string>
+	data: Record<string, string>,
+	fix?: (fixer: Rule.RuleFixer) => Rule.Fix[] | null
 ) => {
 	const { sourceCode } = context;
 
@@ -401,7 +402,8 @@ const reportEntryList = (
 				end: sourceCode.getLocFromIndex(entry.end)
 			},
 			messageId,
-			data
+			data,
+			fix
 		});
 	}
 };
@@ -3324,13 +3326,169 @@ const intersectSharedTokensBySlot = (
 	return sharedTokens;
 };
 
+// The tokens of a static class string, in source order — the shared inputs
+// to both a fix plan's target rewrite (append) and value rewrites (remove).
+const splitStaticTokens = (text: string): string[] =>
+	text.trim().split(/\s+/).filter(Boolean);
+
+// The literal's inner text exactly as written — not its cooked value. Token
+// identity throughout this file (`Entry.token`, `sharedTokens`) is always the
+// raw source substring (see `pushStringLiteralTokens`), so a fix's token math
+// has to match on that same raw text; diffing against the cooked value would
+// silently miscompare whenever a token contains an escape sequence. Callers
+// must have already confirmed `node` is a plain string/template literal.
+const getRawInnerText = (context: Rule.RuleContext, node: Node): string =>
+	context.sourceCode.getText(node).slice(1, -1);
+
+// Recomputes a literal node's text from a new token list, reusing
+// no-redundant-spaces' quote-preserving rewrite (`canHoistAsLiteral`). Returns
+// null when the new content can't be safely re-emitted at the node's own
+// delimiter — in which case the whole fix is abandoned (see
+// `planSharedTokensFix`), never partially applied. Callers are expected to
+// have already confirmed `node` is a plain, directly-authored string/template
+// literal (via `getStaticStringText`) before calling this.
+const planLiteralRewrite = (
+	context: Rule.RuleContext,
+	node: Node,
+	nextTokens: readonly string[]
+): { node: Node; nextText: string; quote: string } | null => {
+	const raw = context.sourceCode.getText(node);
+	/* c8 ignore next -- a string-literal/template node always has at least one delimiter char */
+	const quote = raw[0] ?? '';
+	const nextText = nextTokens.join(' ');
+
+	if (!canHoistAsLiteral(nextText, quote)) {
+		return null;
+	}
+
+	return { node, nextText, quote };
+};
+
+// The node holding `slot`'s contribution to a single variant value — the
+// value node itself for a `base`-only (unslotted) branch, or the matching
+// property of a slot-keyed record. Mirrors the shape `extractTokens` reads,
+// but works from the raw (un-resolved) node so a hoisted `const` value isn't
+// silently rewritten at its own declaration site.
+const getRawSlotValueNode = (
+	valueNode: Node,
+	slot: string,
+	slotNames: Set<string>
+): Node | null => {
+	const slotKeyed = collectSlotKeyedProperties(valueNode, slotNames);
+
+	if (slotKeyed) {
+		/* c8 ignore next -- `slot` only ever reaches here as a key `intersectSharedTokensBySlot` found present in every value's slot-keyed record, so `.get` always hits */
+		return slotKeyed.get(slot) ?? null;
+	}
+
+	if (slot !== 'base') {
+		return null;
+	}
+
+	return valueNode;
+};
+
+type SharedTokensFixPlan = {
+	target: { node: Node; nextText: string; quote: string };
+	values: ReadonlyArray<{ node: Node; nextText: string; quote: string }>;
+};
+
+// Plans a fix that lifts every shared token of one (variant, slot) pair out
+// of each variant value and into the slot's `base`/`slots[slot]` target in
+// one atomic rewrite — or returns null when any piece of that rewrite isn't
+// safely inferrable, in which case the finding is still reported, just
+// without a fix. Eligibility requires the target class value and every
+// variant value's contribution to this slot to be a plain, directly-authored
+// string or template literal — never an array, a nested slot-keyed record
+// unwound further, or a hoisted `const` reference.
+const planSharedTokensFix = (
+	context: Rule.RuleContext,
+	slot: string,
+	sharedTokens: ReadonlySet<string>,
+	valueEntries: ReadonlyMap<string, Node>,
+	slotNames: Set<string>,
+	targetNode: Node | undefined
+): SharedTokensFixPlan | null => {
+	if (!targetNode) {
+		return null;
+	}
+
+	if (getStaticStringText(targetNode) === null) {
+		return null;
+	}
+
+	const targetTokens = splitStaticTokens(getRawInnerText(context, targetNode));
+	const missingShared = [...sharedTokens].filter(
+		(token) => !targetTokens.includes(token)
+	);
+	const targetPlan = planLiteralRewrite(context, targetNode, [
+		...targetTokens,
+		...missingShared
+	]);
+
+	if (!targetPlan) {
+		return null;
+	}
+
+	const values: Array<{ node: Node; nextText: string; quote: string }> = [];
+
+	for (const valueNode of valueEntries.values()) {
+		const slotNode = getRawSlotValueNode(valueNode, slot, slotNames);
+
+		if (!slotNode) {
+			return null;
+		}
+
+		if (getStaticStringText(slotNode) === null) {
+			return null;
+		}
+
+		const remainingTokens = splitStaticTokens(
+			getRawInnerText(context, slotNode)
+		).filter((token) => !sharedTokens.has(token));
+		const valuePlan = planLiteralRewrite(context, slotNode, remainingTokens);
+
+		if (!valuePlan) {
+			return null;
+		}
+
+		values.push(valuePlan);
+	}
+
+	return { target: targetPlan, values };
+};
+
+const literalReplacement = (part: {
+	node: Node;
+	nextText: string;
+	quote: string;
+}): { node: Node; text: string } => ({
+	node: part.node,
+	text: `${part.quote}${part.nextText}${part.quote}`
+});
+
+const applySharedTokensFixPlan = (
+	fixer: Rule.RuleFixer,
+	plan: SharedTokensFixPlan
+): Rule.Fix[] =>
+	[plan.target, ...plan.values].map((part) => {
+		const { node, text } = literalReplacement(part);
+
+		return fixer.replaceText(node, text);
+	});
+
 const reportSharedTokenEntries = (
 	context: Rule.RuleContext,
 	tokensByValue: TokenEntriesBySlot[],
 	variantKey: string,
 	slot: string,
-	token: string
+	token: string,
+	plan: SharedTokensFixPlan | null
 ) => {
+	const fix = plan
+		? (fixer: Rule.RuleFixer) => applySharedTokensFixPlan(fixer, plan)
+		: undefined;
+
 	for (const valueMap of tokensByValue) {
 		const entryList = valueMap.get(slot)?.get(token);
 
@@ -3339,11 +3497,13 @@ const reportSharedTokenEntries = (
 			continue;
 		}
 
-		reportEntryList(context, entryList, 'shared', {
-			token,
-			variant: variantKey,
-			slot
-		});
+		reportEntryList(
+			context,
+			entryList,
+			'shared',
+			{ token, variant: variantKey, slot },
+			fix
+		);
 	}
 };
 
@@ -3351,16 +3511,29 @@ const reportSharedTokensBySlot = (
 	context: Rule.RuleContext,
 	sharedTokens: Map<string, Set<string>>,
 	tokensByValue: TokenEntriesBySlot[],
-	variantKey: string
+	variantKey: string,
+	valueEntries: ReadonlyMap<string, Node>,
+	slotNames: Set<string>,
+	getTargetNode: (slot: string) => Node | undefined
 ) => {
 	for (const [slot, tokens] of sharedTokens) {
+		const plan = planSharedTokensFix(
+			context,
+			slot,
+			tokens,
+			valueEntries,
+			slotNames,
+			getTargetNode(slot)
+		);
+
 		for (const token of tokens) {
 			reportSharedTokenEntries(
 				context,
 				tokensByValue,
 				variantKey,
 				slot,
-				token
+				token,
+				plan
 			);
 		}
 	}
@@ -3454,7 +3627,8 @@ const analyzeVariantSharedTokens = (
 	context: Rule.RuleContext,
 	variantKey: string,
 	variantValue: Node,
-	slotNames: Set<string>
+	slotNames: Set<string>,
+	getTargetNode: (slot: string) => Node | undefined
 ) => {
 	// Boolean shorthand has a single branch — no cross-value comparison.
 	if (isBooleanShorthandVariant(variantValue, slotNames)) {
@@ -3479,7 +3653,15 @@ const analyzeVariantSharedTokens = (
 
 	const sharedTokens = intersectSharedTokensBySlot(tokensByValue);
 
-	reportSharedTokensBySlot(context, sharedTokens, tokensByValue, variantKey);
+	reportSharedTokensBySlot(
+		context,
+		sharedTokens,
+		tokensByValue,
+		variantKey,
+		valueEntries,
+		slotNames,
+		getTargetNode
+	);
 };
 
 const getConfigSlotNames = (config: ReadonlyMap<string, Node>): Set<string> => {
@@ -3494,7 +3676,8 @@ const analyzeExhaustiveVariants = (
 	context: Rule.RuleContext,
 	variants: ObjectExpression,
 	exhaustive: Set<string>,
-	slotNames: Set<string>
+	slotNames: Set<string>,
+	getTargetNode: (slot: string) => Node | undefined
 ) => {
 	for (const [variantKey, variantValue] of getProperties(variants)) {
 		if (!exhaustive.has(variantKey)) {
@@ -3505,7 +3688,8 @@ const analyzeExhaustiveVariants = (
 			context,
 			variantKey,
 			variantValue,
-			slotNames
+			slotNames,
+			getTargetNode
 		);
 	}
 };
@@ -3518,11 +3702,19 @@ const analyzeSharedTokens = (context: Rule.RuleContext, configNode: Node) => {
 		return;
 	}
 
+	const slotNames = getConfigSlotNames(config);
+	const baseNode = config.get('base');
+	const slotProperties = getProperties(config.get('slots'));
+
+	const getTargetNode = (slot: string): Node | undefined =>
+		slot === 'base' ? baseNode : slotProperties.get(slot);
+
 	analyzeExhaustiveVariants(
 		context,
 		variants,
 		collectExhaustiveVariantKeys(config),
-		getConfigSlotNames(config)
+		slotNames,
+		getTargetNode
 	);
 };
 
@@ -3533,6 +3725,12 @@ const analyzeSharedTokens = (context: Rule.RuleContext, configNode: Node) => {
  * each variant value. Coverage is treated as exhaustive when the variant has a
  * `defaultVariants` entry, is listed in `requiredVariants`, or every variant is
  * required via `requiredVariants: true`.
+ *
+ * Auto-fixable when the fix is unambiguous: the `base`/`slots[slot]` target and
+ * every variant value's contribution to that slot must each be a plain,
+ * directly-authored string or template literal — an array, a value nested
+ * inside further structure, or one read through a hoisted `const` binding
+ * leaves the finding reported without a fix, rather than partially rewritten.
  */
 export const noSharedTokens: Rule.RuleModule = {
 	meta: {
@@ -3543,6 +3741,7 @@ export const noSharedTokens: Rule.RuleModule = {
 			recommended: true,
 			url: DOCS_URL
 		},
+		fixable: 'code',
 		schema: [],
 		messages: {
 			shared: 'Class "{{token}}" appears in every value of variant "{{variant}}" for slot "{{slot}}" — lift it out of the variant.'

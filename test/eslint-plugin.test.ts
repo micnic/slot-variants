@@ -3298,8 +3298,10 @@ const NO_SHARED_TOKENS_INVALID = [
 		errors: repeat(shared('rounded', 'size'), 2)
 	},
 	{
-		// Shared token in a non-base slot — must be flagged for
-		// the actual slot, not base.
+		// Shared token in a non-base slot — must be flagged for the actual
+		// slot, not base. The slot's target and every value are plain string
+		// literals, so the fix lifts the token into `slots.root` and strips
+		// it from each value in one pass.
 		code:
 			IMPORT +
 			`sv({
@@ -3308,6 +3310,18 @@ const NO_SHARED_TOKENS_INVALID = [
 					size: {
 						sm: { root: 'rounded text-sm', body: 'p-1' },
 						lg: { root: 'rounded text-lg', body: 'p-2' }
+					}
+				},
+				defaultVariants: { size: 'sm' }
+			});`,
+		output:
+			IMPORT +
+			`sv({
+				slots: { root: 'flex rounded', body: 'p-4' },
+				variants: {
+					size: {
+						sm: { root: 'text-sm', body: 'p-1' },
+						lg: { root: 'text-lg', body: 'p-2' }
 					}
 				},
 				defaultVariants: { size: 'sm' }
@@ -3359,6 +3373,109 @@ const NO_SHARED_TOKENS_INVALID = [
 					}
 				},
 				defaultVariants: { size: 1 }
+			});`,
+		errors: repeat(shared('rounded', 'size'), 2)
+	},
+	{
+		// A value read through a hoisted `const` still counts for shared-token
+		// detection (extraction resolves through it), but the fix bails: the
+		// raw (un-resolved) node is an Identifier, not a slot-keyed record, so
+		// nothing is rewritten — the finding is still reported, unfixed.
+		code:
+			IMPORT +
+			`const rootCls = { root: 'rounded text-sm', body: 'p-1' };
+			sv({
+				slots: { root: 'flex', body: 'p-4' },
+				variants: {
+					size: {
+						sm: rootCls,
+						lg: { root: 'rounded text-lg', body: 'p-2' }
+					}
+				},
+				defaultVariants: { size: 'sm' }
+			});`,
+		errors: repeat(shared('rounded', 'size', 'root'), 2)
+	},
+	{
+		// A slot value given as an array of strings is detected like any
+		// other, but isn't a plain string/template literal, so the fix bails.
+		code:
+			IMPORT +
+			`sv({
+				slots: { root: 'flex', body: 'p-4' },
+				variants: {
+					size: {
+						sm: { root: ['rounded', 'text-sm'], body: 'p-1' },
+						lg: { root: 'rounded text-lg', body: 'p-2' }
+					}
+				},
+				defaultVariants: { size: 'sm' }
+			});`,
+		errors: repeat(shared('rounded', 'size', 'root'), 2)
+	},
+	{
+		// A remaining value token containing a literal backslash can't be
+		// safely re-emitted at the same string delimiter, so the fix bails
+		// for the whole slot rather than partially rewriting it.
+		code:
+			IMPORT +
+			`sv({
+				slots: { root: 'flex', body: 'p-4' },
+				variants: {
+					size: {
+						sm: { root: 'rounded text-sm', body: 'p-1' },
+						lg: { root: 'rounded a\\\\b', body: 'p-2' }
+					}
+				},
+				defaultVariants: { size: 'sm' }
+			});`,
+		errors: repeat(shared('rounded', 'size', 'root'), 2)
+	},
+	{
+		// The shared token itself contains a literal backslash — appending it
+		// to the target's existing text can't be safely re-emitted, so the
+		// fix bails before ever touching the variant values.
+		code:
+			IMPORT +
+			`sv({
+				slots: { root: 'flex', body: 'p-4' },
+				variants: {
+					size: {
+						sm: { root: 'a\\\\b text-sm', body: 'p-1' },
+						lg: { root: 'a\\\\b text-lg', body: 'p-2' }
+					}
+				},
+				defaultVariants: { size: 'sm' }
+			});`,
+		errors: repeat(shared('a\\\\b', 'size', 'root'), 2)
+	},
+	{
+		// A base-only (unslotted) config: the shared token's target is the
+		// top-level `base` property and every value contributes to `base`
+		// directly (no slot-keyed record to unwrap) — the fully fixable path.
+		code:
+			IMPORT +
+			`sv({
+				base: 'flex',
+				variants: {
+					size: {
+						sm: 'rounded text-sm',
+						lg: 'rounded text-lg'
+					}
+				},
+				defaultVariants: { size: 'sm' }
+			});`,
+		output:
+			IMPORT +
+			`sv({
+				base: 'flex rounded',
+				variants: {
+					size: {
+						sm: 'text-sm',
+						lg: 'text-lg'
+					}
+				},
+				defaultVariants: { size: 'sm' }
 			});`,
 		errors: repeat(shared('rounded', 'size'), 2)
 	}
