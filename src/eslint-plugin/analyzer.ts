@@ -2001,6 +2001,18 @@ const resolveExclusiveGroups = (
 	return [];
 };
 
+// A group config listing the same utility in two different groups has no
+// coherent meaning — which group's id should the token's conflict key use? —
+// so it's rejected outright rather than silently resolved (last group wins).
+const createOverlappingExclusiveGroupError = (
+	token: string,
+	firstGroupIndex: number,
+	secondGroupIndex: number
+): Error =>
+	new Error(
+		`slot-variants/no-conflicting-classes: "exclusiveGroups" lists "${token}" in more than one group (groups ${firstGroupIndex} and ${secondGroupIndex}) — remove it from all but one.`
+	);
+
 // A lookup from each grouped utility to a stable per-group id, so tokens in the
 // same exclusive group share a conflict key. Empty when grouping is disabled,
 // in which case getConflictKey behaves exactly as before.
@@ -2008,12 +2020,24 @@ const buildExclusiveGroupMap = (
 	option: ExclusiveGroupsOption
 ): ReadonlyMap<string, string> => {
 	const map = new Map<string, string>();
+	const groupIndexByToken = new Map<string, number>();
 	let index = 0;
 
 	for (const group of resolveExclusiveGroups(option)) {
 		const groupId = String(index);
 
 		for (const token of group) {
+			const firstGroupIndex = groupIndexByToken.get(token);
+
+			if (firstGroupIndex !== undefined) {
+				throw createOverlappingExclusiveGroupError(
+					token,
+					firstGroupIndex,
+					index
+				);
+			}
+
+			groupIndexByToken.set(token, index);
 			map.set(token, groupId);
 		}
 
@@ -3171,6 +3195,10 @@ const analyzeCnForRule = (
  * variant, compound entries whose matchers require different values, and
  * opposite branches of one condition (ternaries and logical-ANDs, with
  * complementary `cond`/`!cond` conditions matched by source text).
+ *
+ * A custom `exclusiveGroups` option listing the same utility in more than one
+ * group throws synchronously from `create()` — there's no coherent way to
+ * pick which group's conflict key the token should use.
  */
 export const noConflictingClasses: Rule.RuleModule = {
 	meta: {

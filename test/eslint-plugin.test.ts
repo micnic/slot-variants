@@ -3038,6 +3038,54 @@ t.test('no-conflicting-classes (namespace conflicts)', (t) => {
 	t.end();
 });
 
+t.test('no-conflicting-classes (exclusiveGroups validation)', (t) => {
+	const conflictRule = rules['no-conflicting-classes'];
+
+	t.doesNotThrow(() => {
+		tester.run('no-conflicting-classes', conflictRule, {
+			valid: [
+				{
+					code: IMPORT + "sv('flex');",
+					options: [
+						{
+							exclusiveGroups: [
+								['a', 'b'],
+								['c', 'd']
+							]
+						}
+					]
+				}
+			],
+			invalid: []
+		});
+	}, 'non-overlapping custom groups pass');
+
+	t.throws(
+		() => {
+			tester.run('no-conflicting-classes', conflictRule, {
+				valid: [
+					{
+						code: IMPORT + "sv('flex');",
+						options: [
+							{
+								exclusiveGroups: [
+									['a', 'b'],
+									['b', 'c']
+								]
+							}
+						]
+					}
+				],
+				invalid: []
+			});
+		},
+		/"exclusiveGroups" lists "b" in more than one group \(groups 0 and 1\)/,
+		'a token listed in two custom groups throws'
+	);
+
+	t.end();
+});
+
 const NO_SHARED_TOKENS_VALID = [
 	// Non-object variants field bails out immediately.
 	IMPORT + 'sv({ variants: dynamic });',
