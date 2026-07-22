@@ -20,6 +20,52 @@ npm install slot-variants
 
 `sv()` is a drop-in replacement for [CVA](https://cva.style/) (just rename `cva` to `sv`) and covers the core feature set of [tailwind-variants](https://www.tailwind-variants.org/) (`tv`) with a simpler API. See [Migrating from CVA / tailwind-variants](#migrating-from-cva--tailwind-variants) for details.
 
+## Comparison
+
+### Features
+
+| | slot-variants | class-variance-authority | tailwind-variants |
+| --- | --- | --- | --- |
+| Call signature | `cva()`-style, `tv()`-style, and `cn()`-style with no config | `cva(base, config)` | `tv(config)`, `base` nested inside |
+| Runtime dependencies | 0 | 0 | 1 (`tailwind-merge`) |
+| Slots | ✅ | — | ✅ |
+| Compound variants | ✅ | ✅ | ✅ |
+| Compound slots | ✅ | — | ✅ |
+| Required variants | ✅ | ❌ | ❌ |
+| Presets (shared variant groups) | ✅ | ❌ | ❌ |
+| Built-in result cache | ✅ (configurable size) | ❌ | ❌ |
+| Config composition | ✅ (`createSV()` shared defaults) | ❌ | ✅ (`extend`, full variant/slot inheritance) |
+| `tailwind-merge` integration | opt-in via `postProcess` | ❌ | built in, always on |
+| Dedicated ESLint / oxlint plugin | ✅ (6 rules) | ❌ | ❌ |
+
+### Performance
+
+Numbers below are from this repo's own benchmarks (`npm run bench`, [tinybench](https://github.com/tinylibs/tinybench), 1000 warmup iterations) — run them yourself from [`bench/`](bench) rather than taking them on faith.
+
+`sv()` caches resolved results by call signature (see [Caching](#caching)), so repeated calls with the same props — a common pattern across re-renders — skip re-resolving variants entirely. That cache is the main reason for the gap against CVA, which has no cache of its own:
+
+| Case | sv (cached) | sv (`cacheSize: 0`) | cva |
+| --- | --- | --- | --- |
+| Simple variants, defaults | 89 ns | 231 ns | 107 ns |
+| Simple variants, with props | 73 ns | 226 ns | 160 ns |
+| Compound variant, match | 104 ns | 324 ns | 569 ns |
+| Compound variant, no match | 105 ns | 323 ns | 543 ns |
+| Many variant groups, defaults | 150 ns | 385 ns | 179 ns |
+| Many variant groups, with props | 127 ns | 341 ns | 263 ns |
+
+With caching disabled on both sides, sv's raw resolution is roughly on par with cva for simple lookups and pulls ahead as the config grows (more variant groups, compound entries to match) — the cache is a bonus on top of that, not the whole story.
+
+Against tailwind-variants, sv wins outright with or without its cache, since `tv()` does noticeably more work per call (slot resolution, and `tailwind-merge` unless disabled):
+
+| Case | sv (cached) | sv (`cacheSize: 0`) | tv | tv (`twMerge: false`) |
+| --- | --- | --- | --- | --- |
+| Simple variants, defaults | 88 ns | 263 ns | 450 ns | 344 ns |
+| Simple variants, with props | 74 ns | 238 ns | 489 ns | 401 ns |
+| Compound variant, match | 105 ns | 346 ns | 869 ns | 792 ns |
+| Compound variant, no match | 109 ns | 335 ns | 757 ns | 665 ns |
+| Slots, defaults | 93 ns | 645 ns | 1820 ns | 1401 ns |
+| Slots, with props | 73 ns | 626 ns | 1943 ns | 1535 ns |
+
 ## Quick Start
 
 ```typescript
