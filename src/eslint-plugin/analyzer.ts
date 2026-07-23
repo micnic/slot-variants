@@ -2867,10 +2867,11 @@ type ConflictKeyInfo = {
 	overlap: string | null;
 };
 
-// Splits `text` on `separator` characters that sit outside square brackets,
-// so arbitrary values keep their content intact as a single segment —
+// Splits `text` on `separator` characters that sit outside square brackets or
+// parens, so arbitrary values keep their content intact as a single segment —
 // `[calc(100%-2rem)]` isn't split on its inner dash, `[url(data:image/png)]`
-// isn't split on its inner colon.
+// isn't split on its inner colon, and a Tailwind v4 CSS-variable shorthand
+// like `w-(--my-var)` isn't split on the dash inside the variable name.
 const splitOutsideBrackets = (text: string, separator: string): string[] => {
 	const segments: string[] = [];
 	let depth = 0;
@@ -2879,9 +2880,9 @@ const splitOutsideBrackets = (text: string, separator: string): string[] => {
 	for (let index = 0; index < text.length; index += 1) {
 		const char = text.charAt(index);
 
-		if (char === '[') {
+		if (char === '[' || char === '(') {
 			depth += 1;
-		} else if (char === ']') {
+		} else if (char === ']' || char === ')') {
 			depth -= 1;
 		} else if (char === separator && depth === 0) {
 			segments.push(text.slice(start, index));

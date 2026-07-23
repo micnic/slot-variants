@@ -2730,6 +2730,19 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('w-4, w-[calc(100%-2rem)]'), 2)
 	},
 	{
+		// A Tailwind v4 CSS-variable shorthand is one segment regardless of
+		// inner dashes in the variable name, so it conflicts with a sized
+		// sibling the same way a bracketed arbitrary value does.
+		code: IMPORT_CN + "cn('w-4', 'w-(--my-width)');",
+		errors: repeat(conflictCn('w-(--my-width), w-4'), 2)
+	},
+	{
+		// Two CSS-variable shorthands with differing dash counts in the
+		// variable name still land in the same conflict key.
+		code: IMPORT_CN + "cn('w-(--foo)', 'w-(--foo-bar)');",
+		errors: repeat(conflictCn('w-(--foo), w-(--foo-bar)'), 2)
+	},
+	{
 		// Values with different segment counts land in different conflict keys
 		// but still share the segment's overlap node.
 		code: IMPORT_CN + "cn('mt-4', 'mt-safe-bottom');",
