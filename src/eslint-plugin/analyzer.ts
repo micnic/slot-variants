@@ -1839,6 +1839,19 @@ const visitForRedundantSpaces = (
 		return;
 	}
 
+	// Only the `&&` right operand and each ternary branch are class
+	// contributions; the condition/test itself is a runtime value.
+	if (cnStyle && node.type === 'LogicalExpression' && node.operator === '&&') {
+		visitForRedundantSpaces(context, node.right, cnStyle);
+		return;
+	}
+
+	if (cnStyle && node.type === 'ConditionalExpression') {
+		visitForRedundantSpaces(context, node.consequent, cnStyle);
+		visitForRedundantSpaces(context, node.alternate, cnStyle);
+		return;
+	}
+
 	if (node.type === 'ArrayExpression') {
 		forEachStaticItem(node.elements, (element) => {
 			visitForRedundantSpaces(context, element, cnStyle);

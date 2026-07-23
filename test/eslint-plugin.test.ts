@@ -140,7 +140,11 @@ const NO_REDUNDANT_SPACES_VALID = [
 	// A spread in a clsx record is skipped; other keys are still checked.
 	IMPORT_CN + "cn({ ...rest, 'px-2 py-1': cond });",
 	// A clsx record as an sv() cn-style leading argument — key is checked.
-	IMPORT + "sv({ 'px-2 py-1': isActive }, { base: 'flex' });"
+	IMPORT + "sv({ 'px-2 py-1': isActive }, { base: 'flex' });",
+	// Clean `&&` right operand.
+	IMPORT_CN + "cn(isActive && 'flex items-center');",
+	// Clean ternary branches.
+	IMPORT_CN + "cn(isActive ? 'flex' : 'items-center');"
 ];
 
 const NO_REDUNDANT_SPACES_INVALID = [
@@ -307,6 +311,25 @@ const NO_REDUNDANT_SPACES_INVALID = [
 		code: IMPORT_CN + "cn(['flex', { 'a  b': x }]);",
 		output: IMPORT_CN + "cn(['flex', { 'a b': x }]);",
 		errors: 1
+	},
+	{
+		// Redundant whitespace in the `&&` right operand — the condition's
+		// left side is a runtime check, not the class value.
+		code: IMPORT_CN + "cn(isActive && 'flex  items-center');",
+		output: IMPORT_CN + "cn(isActive && 'flex items-center');",
+		errors: 1
+	},
+	{
+		// Redundant whitespace in a ternary branch.
+		code: IMPORT_CN + "cn(isActive ? 'flex  items-center' : 'block');",
+		output: IMPORT_CN + "cn(isActive ? 'flex items-center' : 'block');",
+		errors: 1
+	},
+	{
+		// Redundant whitespace in both ternary branches — one report per branch.
+		code: IMPORT_CN + "cn(isActive ? 'flex  a' : 'block  b');",
+		output: IMPORT_CN + "cn(isActive ? 'flex a' : 'block b');",
+		errors: 2
 	}
 ];
 
