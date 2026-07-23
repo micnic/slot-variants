@@ -1413,7 +1413,13 @@ const NO_EMPTY_CLASSES_VALID = [
 	// A spread in a createSV() factory config is skipped (dynamic, not empty).
 	IMPORT_CREATE_SV + "createSV({ ...rest, base: 'flex' });",
 	// A computed key in a createSV() factory config is skipped.
-	IMPORT_CREATE_SV + "createSV({ [k]: 'x', base: 'flex' });"
+	IMPORT_CREATE_SV + "createSV({ [k]: 'x', base: 'flex' });",
+	// Non-empty `&&` right operand.
+	IMPORT_CN + "cn(isActive && 'flex');",
+	// Non-empty ternary branches.
+	IMPORT_CN + "cn(isActive ? 'flex' : 'block');",
+	// A hoisted `const` non-empty-string alias.
+	IMPORT_CN + "const cls = 'flex';\ncn(cls);"
 ];
 
 const NO_EMPTY_CLASSES_INVALID = [
@@ -1708,6 +1714,34 @@ const NO_EMPTY_CLASSES_INVALID = [
 	{
 		// An empty class value in a createSV() factory config is flagged.
 		code: IMPORT_CREATE_SV + "createSV({ base: '' });",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// Empty string as the `&&` right operand — the condition's left
+		// side is a runtime check, not the class value.
+		code: IMPORT_CN + "cn(isActive && '');",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// Empty string in a ternary branch.
+		code: IMPORT_CN + "cn(isActive ? '' : 'foo');",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// Empty string in both ternary branches — reported once per branch.
+		code: IMPORT_CN + "cn(isActive ? '' : '');",
+		errors: [{ messageId: 'emptyString' }, { messageId: 'emptyString' }]
+	},
+	{
+		// A hoisted `const` empty-string alias read through as a cn argument.
+		code: IMPORT_CN + "const cls = '';\ncn(cls);",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// Empty string as the `&&` right operand alongside another arg —
+		// the whole arg is removed on --fix.
+		code: IMPORT_CN + "cn('flex', isActive && '');",
+		output: IMPORT_CN + "cn('flex');",
 		errors: [{ messageId: 'emptyString' }]
 	}
 ];

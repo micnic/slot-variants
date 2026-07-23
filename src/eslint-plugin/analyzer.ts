@@ -3841,7 +3841,8 @@ const checkRecordKeysForEmpty = (
 // `allowEmptyString` is set at the top of a `slots[key]` value, where `''`
 // is a meaningful "slot with no default classes" declaration. `fix`, when
 // provided, removes `node` (and its adjacent comma) on `--fix`. `cnStyle` marks
-// a cn-style position, where an ObjectExpression is a clsx-style record.
+// a cn-style position, where an ObjectExpression is a clsx-style record and a
+// `&&`/ternary is a runtime branch rather than a class value itself.
 const visitForEmptyClasses = (
 	context: Rule.RuleContext,
 	node: Node,
@@ -3849,8 +3850,28 @@ const visitForEmptyClasses = (
 	fix?: EmptyFix,
 	cnStyle = false
 ) => {
+	node = resolveStaticValue(node, context.sourceCode);
+
 	if (shouldReportEmptyString(node, allowEmptyString)) {
 		context.report({ node, messageId: 'emptyString', fix });
+		return;
+	}
+
+	// Only the `&&` right operand and each ternary branch are class
+	// contributions; the same `fix` still removes the whole enclosing
+	// argument/element regardless of which branch triggered the report.
+	if (
+		cnStyle &&
+		node.type === 'LogicalExpression' &&
+		node.operator === '&&'
+	) {
+		visitForEmptyClasses(context, node.right, false, fix, cnStyle);
+		return;
+	}
+
+	if (cnStyle && node.type === 'ConditionalExpression') {
+		visitForEmptyClasses(context, node.consequent, false, fix, cnStyle);
+		visitForEmptyClasses(context, node.alternate, false, fix, cnStyle);
 		return;
 	}
 
