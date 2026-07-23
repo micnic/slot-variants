@@ -2295,6 +2295,11 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'border-x-2 border-t-4' });",
 	// A border width doesn't overlap a per-side border color.
 	IMPORT + "sv({ base: 'border-2 border-t-red-500' });",
+	// Logical block sides are leaves — they only merge through the bare form.
+	IMPORT + "sv({ base: 'border-bs-2 border-t-4' });",
+	IMPORT + "sv({ base: 'mbs-2 mt-2' });",
+	// `inset-x` still covers left/right only, not the logical block sides.
+	IMPORT + "sv({ base: 'inset-x-0 inset-bs-4' });",
 	// Per-side border width vs color are distinct sub-properties — including
 	// the single-word color keywords.
 	IMPORT + "sv({ base: 'border-t-2 border-t-red-500' });",
@@ -2373,6 +2378,9 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'touch-pan-x touch-pan-y' });",
 	// Pan and pinch-zoom also compose.
 	IMPORT + "sv({ base: 'touch-pan-x touch-pinch-zoom' });",
+	// The other pan directions have no overlap node, so they stay independent
+	// even alongside a bare touch-action toggle.
+	IMPORT + "sv({ base: 'touch-none touch-pan-left' });",
 	// A composing `-reverse` flag sits alongside the width, so it doesn't
 	// conflict with it.
 	IMPORT + "sv({ base: 'space-x-2 space-x-reverse' });",
@@ -2832,6 +2840,21 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('border-t-blue-500, border-t-red-500'), 2)
 	},
 	{
+		// A border color covers the per-side colors, mirroring `border-w`.
+		code: IMPORT_CN + "cn('border-red-500', 'border-t-blue-500');",
+		errors: repeat(conflictCn('border-red-500, border-t-blue-500'), 2)
+	},
+	{
+		// Logical block-side border widths conflict with each other…
+		code: IMPORT_CN + "cn('border-bs-2', 'border-bs-4');",
+		errors: repeat(conflictCn('border-bs-2, border-bs-4'), 2)
+	},
+	{
+		// …and the bare border width covers them too, like the physical sides.
+		code: IMPORT_CN + "cn('border-2', 'border-bs-4');",
+		errors: repeat(conflictCn('border-2, border-bs-4'), 2)
+	},
+	{
 		// Bare `border-spacing` covers its per-axis forms.
 		code: IMPORT_CN + "cn('border-spacing-2', 'border-spacing-x-4');",
 		errors: repeat(conflictCn('border-spacing-2, border-spacing-x-4'), 2)
@@ -2840,6 +2863,25 @@ const NO_CONFLICTING_NS_INVALID = [
 		// The scroll-margin family overlaps like the plain spacing one.
 		code: IMPORT_CN + "cn('scroll-m-4', 'scroll-mt-2');",
 		errors: repeat(conflictCn('scroll-m-4, scroll-mt-2'), 2)
+	},
+	{
+		// `m-*`/`p-*` also cover the logical block sides (`mbs`/`pbs`).
+		code: IMPORT_CN + "cn('m-4', 'mbs-2');",
+		errors: repeat(conflictCn('m-4, mbs-2'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('p-4', 'pbe-2');",
+		errors: repeat(conflictCn('p-4, pbe-2'), 2)
+	},
+	{
+		// …and so does `scroll-m`/`scroll-p`.
+		code: IMPORT_CN + "cn('scroll-m-4', 'scroll-mbs-2');",
+		errors: repeat(conflictCn('scroll-m-4, scroll-mbs-2'), 2)
+	},
+	{
+		// `inset-*` also covers the logical block-side offsets.
+		code: IMPORT_CN + "cn('inset-0', 'inset-bs-4');",
+		errors: repeat(conflictCn('inset-0, inset-bs-4'), 2)
 	},
 	{
 		// Compounds matching the same variant value apply together.
@@ -2958,6 +3000,17 @@ const NO_CONFLICTING_NS_INVALID = [
 		code: IMPORT_CN + "cn('sr-only', 'not-sr-only');",
 		options: [{ exclusiveGroups: true }],
 		errors: repeat(conflictCn('not-sr-only, sr-only'), 2)
+	},
+	{
+		// Opt-in: font-variant-numeric utilities are mutually exclusive.
+		code: IMPORT_CN + "cn('tabular-nums', 'proportional-nums');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('proportional-nums, tabular-nums'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('normal-nums', 'diagonal-fractions');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('diagonal-fractions, normal-nums'), 2)
 	},
 	{
 		// `truncate` forces text-overflow, so it conflicts with the explicit

@@ -1991,7 +1991,19 @@ const TAILWIND_EXCLUSIVE_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
 	// isolation
 	['isolate', 'isolation-auto'],
 	// screen-reader visibility
-	['sr-only', 'not-sr-only']
+	['sr-only', 'not-sr-only'],
+	// font-variant-numeric — every value replaces the whole property
+	[
+		'normal-nums',
+		'ordinal',
+		'slashed-zero',
+		'lining-nums',
+		'oldstyle-nums',
+		'proportional-nums',
+		'tabular-nums',
+		'diagonal-fractions',
+		'stacked-fractions'
+	]
 ];
 
 // `true` enables the built-in Tailwind groups; an array supplies custom groups
@@ -2112,7 +2124,7 @@ const selfMap = (tokens: ReadonlyArray<string>): ReadonlyMap<string, string> =>
 	categoryMap(tokens.map((token) => [token, [token]] as const));
 
 const COLOR_KEYWORDS = ['inherit', 'current', 'transparent', 'black', 'white'];
-const SIDES = ['t', 'r', 'b', 'l', 'x', 'y', 's', 'e'];
+const SIDES = ['t', 'r', 'b', 'l', 'x', 'y', 's', 'e', 'bs', 'be'];
 const CORNERS = [
 	't',
 	'r',
@@ -2138,6 +2150,13 @@ const axisSpec: PrefixSpec = {
 
 // `space-x-*` is an axis utility that also has a composing `space-x-reverse`.
 const spaceSpec: PrefixSpec = { ...axisSpec, reverseComposes: true };
+
+// `inset` has no `z` axis but does have logical block sides (`inset-bs`,
+// `inset-be`), unlike the other axis utilities that share `axisSpec`.
+const insetSpec: PrefixSpec = {
+	keywords: selfMap(['x', 'y', 'bs', 'be']),
+	fallback: 'all'
+};
 
 // `ring-offset-*` is both a width (`ring-offset-2`) and a color
 // (`ring-offset-red-500`), classified from the segments after `offset`.
@@ -2424,6 +2443,8 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 				'my',
 				'ms',
 				'me',
+				'mbs',
+				'mbe',
 				'p',
 				'pt',
 				'pr',
@@ -2432,7 +2453,9 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 				'px',
 				'py',
 				'ps',
-				'pe'
+				'pe',
+				'pbs',
+				'pbe'
 			].map((side) => [side, [side]] as const)
 		]),
 		fallback: 'other'
@@ -2478,7 +2501,7 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	scale: axisSpec,
 	skew: axisSpec,
 	rotate: axisSpec,
-	inset: axisSpec,
+	inset: insetSpec,
 	overflow: axisSpec,
 	overscroll: axisSpec
 };
@@ -2662,7 +2685,18 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 	...sideOverlapCovers('scroll-p'),
 	[
 		'inset',
-		['inset-x', 'inset-y', 'top', 'right', 'bottom', 'left', 'start', 'end']
+		[
+			'inset-x',
+			'inset-y',
+			'inset-bs',
+			'inset-be',
+			'top',
+			'right',
+			'bottom',
+			'left',
+			'start',
+			'end'
+		]
 	],
 	['inset-x', ['right', 'left']],
 	['inset-y', ['top', 'bottom']],
@@ -2683,6 +2717,10 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 	['border-w', SIDES.map((side) => `border-w-${side}`)],
 	['border-w-x', ['border-w-r', 'border-w-l']],
 	['border-w-y', ['border-w-t', 'border-w-b']],
+	['border-color', SIDES.map((side) => `border-color-${side}`)],
+	['border-color-x', ['border-color-r', 'border-color-l']],
+	['border-color-y', ['border-color-t', 'border-color-b']],
+	['touch', ['touch-x', 'touch-y', 'touch-pz']],
 	// `flex-1`/`flex-auto`/`flex-none` set flex-grow, flex-shrink, and
 	// flex-basis at once.
 	['flex-sizing', ['grow', 'shrink', 'basis']],
@@ -2778,7 +2816,7 @@ const getAxisOverlapNode = (
 		return segment;
 	}
 
-	if (category === 'x' || category === 'y') {
+	if (category === 'x' || category === 'y' || category === 'bs' || category === 'be') {
 		return `${segment}-${category}`;
 	}
 
@@ -2799,9 +2837,18 @@ const getBorderOverlapNode = (category: string): string | null => {
 		return 'border-w';
 	}
 
+	if (category === 'color') {
+		return 'border-color';
+	}
+
 	// A per-side width category is `${side}-width` (see `borderSideSpec`).
 	if (category.endsWith('-width')) {
 		return `border-w-${category.slice(0, -'-width'.length)}`;
+	}
+
+	// A per-side color category is `${side}-color` (see `borderSideSpec`).
+	if (category.endsWith('-color')) {
+		return `border-color-${category.slice(0, -'-color'.length)}`;
 	}
 
 	if (category.startsWith('spacing-')) {
@@ -2845,6 +2892,29 @@ const getOverlapNode = (segment: string, category: string): string | null => {
 
 	if (segment === 'text' && category === 'overflow') {
 		return 'text-overflow';
+	}
+
+	// `touch-none`/`touch-auto`/`touch-manipulation` overlap the `pan`/`pinch`
+	// sub-utilities; the other pan directions (`left`/`right`/`up`/`down`)
+	// compose instead of conflicting, so they're left unconnected.
+	if (segment === 'touch') {
+		if (category === 'base') {
+			return 'touch';
+		}
+
+		if (category === 'pan-x') {
+			return 'touch-x';
+		}
+
+		if (category === 'pan-y') {
+			return 'touch-y';
+		}
+
+		if (category === 'pinch') {
+			return 'touch-pz';
+		}
+
+		return null;
 	}
 
 	return null;
