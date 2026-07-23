@@ -2254,8 +2254,14 @@ const NO_CONFLICTING_NS_VALID = [
 	// conflict — even when the color is a single-word keyword.
 	IMPORT + "sv({ base: 'text-sm text-red-500' });",
 	IMPORT + "sv({ base: 'text-lg text-white' });",
+	// A single-word color keyword with an opacity modifier still resolves to
+	// `color`, not `size` — the modifier doesn't shadow the keyword match.
+	IMPORT + "sv({ base: 'text-lg text-white/50' });",
 	// A font size and text alignment don't conflict.
 	IMPORT + "sv({ base: 'text-sm text-center' });",
+	// A plain font size (no `/leading` modifier) doesn't conflict with a
+	// separate `leading-*` utility — only a modifier-bearing font size does.
+	IMPORT + "sv({ base: 'text-lg leading-6' });",
 	// Border width, style, and color are distinct properties.
 	IMPORT + "sv({ base: 'border-2 border-solid border-red-500' });",
 	// A bare default utility stays clear of siblings on other properties:
@@ -2519,6 +2525,32 @@ const NO_CONFLICTING_NS_INVALID = [
 		// An arbitrary color function is recognized too.
 		code: IMPORT_CN + "cn('bg-[rgb(0,0,0)]', 'bg-red-500');",
 		errors: repeat(conflictCn('bg-[rgb(0,0,0)], bg-red-500'), 2)
+	},
+	{
+		// Two font sizes conflict, modifier or not.
+		code: IMPORT_CN + "cn('text-lg', 'text-xl');",
+		errors: repeat(conflictCn('text-lg, text-xl'), 2)
+	},
+	{
+		// A `/leading` modifier sets line-height, so it conflicts with a
+		// separate `leading-*` utility.
+		code: IMPORT_CN + "cn('text-lg/6', 'leading-8');",
+		errors: repeat(conflictCn('leading-8, text-lg/6'), 2)
+	},
+	{
+		// …and it still conflicts with a plain, non-modifier font size too.
+		code: IMPORT_CN + "cn('text-lg', 'text-xl/6');",
+		errors: repeat(conflictCn('text-lg, text-xl/6'), 2)
+	},
+	{
+		// Two modifier-bearing font sizes conflict directly.
+		code: IMPORT_CN + "cn('text-lg/6', 'text-xl/8');",
+		errors: repeat(conflictCn('text-lg/6, text-xl/8'), 2)
+	},
+	{
+		// The modifier works on an arbitrary font-size value too.
+		code: IMPORT_CN + "cn('text-[13px]/6', 'leading-8');",
+		errors: repeat(conflictCn('leading-8, text-[13px]/6'), 2)
 	},
 	{
 		// Two ring offset widths conflict (same nested sub-property).

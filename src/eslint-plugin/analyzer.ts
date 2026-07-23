@@ -2545,12 +2545,19 @@ const isArbitraryImageValue = (segment: string): boolean =>
 	segment.startsWith('[image:') ||
 	/^\[(?:repeating-)?(?:linear|radial|conic)-gradient\(/.test(segment);
 
+// Strips a trailing top-level `/opacity` or `/leading` modifier (`white/50`,
+// `lg/6`) before a keyword lookup, so the modifier doesn't shadow the exact
+// keyword match (`text-white/50` should still resolve `white` to `color`).
+const withoutModifier = (segment: string): string =>
+	/* c8 ignore next -- splitOutsideBrackets always returns at least one segment */
+	splitOutsideBrackets(segment, '/')[0] ?? segment;
+
 const baseCategory = (
 	spec: PrefixSpec,
 	value: ReadonlyArray<string>,
 	head: string
 ): string => {
-	const keyworded = spec.keywords.get(head);
+	const keyworded = spec.keywords.get(withoutModifier(head));
 
 	if (keyworded !== undefined) {
 		return keyworded;
@@ -2721,6 +2728,10 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 	['border-color-x', ['border-color-r', 'border-color-l']],
 	['border-color-y', ['border-color-t', 'border-color-b']],
 	['touch', ['touch-x', 'touch-y', 'touch-pz']],
+	// A font-size always reaches its own modifier-bearing siblings; only the
+	// modifier-bearing node reaches `leading` (see `getConflictKey`).
+	['text-size', ['text-size-leading']],
+	['text-size-leading', ['leading']],
 	// `flex-1`/`flex-auto`/`flex-none` set flex-grow, flex-shrink, and
 	// flex-basis at once.
 	['flex-sizing', ['grow', 'shrink', 'basis']],
@@ -2894,6 +2905,18 @@ const getOverlapNode = (segment: string, category: string): string | null => {
 		return 'text-overflow';
 	}
 
+	// A font-size utility always overlaps its sibling sizes, and — only when
+	// it carries a `/leading` postfix modifier (see `getConflictKey`) — the
+	// separate `leading-*` utility too, since the modifier sets line-height
+	// directly.
+	if (segment === 'text' && category === 'size') {
+		return 'text-size';
+	}
+
+	if (segment === 'leading') {
+		return 'leading';
+	}
+
 	// `touch-none`/`touch-auto`/`touch-manipulation` overlap the `pan`/`pinch`
 	// sub-utilities; the other pan directions (`left`/`right`/`up`/`down`)
 	// compose instead of conflicting, so they're left unconnected.
@@ -3060,6 +3083,25 @@ const getConflictKey = (
 	// property category (see `categorize`): `text-sm` (size) and `text-red-500`
 	// (color) don't, while `text-red-500` and `text-blue-500` do.
 	const category = categorize(firstSegment, value);
+
+	// `text-lg/6` sets both font-size and line-height, so it also conflicts
+	// with a bare `leading-*` — but plain `text-lg` (no modifier) doesn't. The
+	// two get distinct keys so a plain and a modifier-bearing font-size never
+	// share a group by mistake; the `text-size`/`text-size-leading` overlap
+	// nodes reunite them whenever both are actually present (see
+	// `OVERLAP_COVERS`).
+	if (firstSegment === 'text' && category === 'size') {
+		/* c8 ignore next -- value is non-empty here (the length === 0 case returns earlier) */
+		const lastValueSegment = value[value.length - 1] ?? '';
+
+		if (splitOutsideBrackets(lastValueSegment, '/').length > 1) {
+			return {
+				key: `${variantPrefix}|text|size-leading`,
+				variantPrefix,
+				overlap: 'text-size-leading'
+			};
+		}
+	}
 
 	return {
 		key: `${variantPrefix}|${firstSegment}|${category}`,
