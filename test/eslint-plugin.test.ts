@@ -2292,8 +2292,15 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'px-4 ps-2' });",
 	// `inset-x` covers left/right only, not top.
 	IMPORT + "sv({ base: 'inset-x-0 top-0' });",
-	// Independent transform axes; `translate-z` has no overlap node at all.
+	// `translate-z` has its own overlap node, but it's only reachable through
+	// `translate-none` — a plain axis value doesn't reach it.
 	IMPORT + "sv({ base: 'translate-x-2 translate-z-10' });",
+	// The bare `translate` shorthand doesn't reach `z` either — only
+	// `translate-none` does (it resets every axis).
+	IMPORT + "sv({ base: 'translate-4 translate-z-10' });",
+	// Unlike `translate`, `scale` has no `-none` bridge, so its `z` axis
+	// never overlaps the bare shorthand.
+	IMPORT + "sv({ base: 'scale-105 scale-z-10' });",
 	// Corner sides and sibling corners don't overlap without their shorthand.
 	IMPORT + "sv({ base: 'rounded-t-lg rounded-b-sm' });",
 	IMPORT + "sv({ base: 'rounded-tl-lg rounded-tr-sm' });",
@@ -2836,6 +2843,22 @@ const NO_CONFLICTING_NS_INVALID = [
 	{
 		code: IMPORT_CN + "cn('scale-105', 'scale-x-110');",
 		errors: repeat(conflictCn('scale-105, scale-x-110'), 2)
+	},
+	{
+		// `translate-none` resets every axis, so it conflicts with the bare
+		// shorthand…
+		code: IMPORT_CN + "cn('translate-none', 'translate-4');",
+		errors: repeat(conflictCn('translate-4, translate-none'), 2)
+	},
+	{
+		// …with a per-axis value…
+		code: IMPORT_CN + "cn('translate-none', 'translate-x-2');",
+		errors: repeat(conflictCn('translate-none, translate-x-2'), 2)
+	},
+	{
+		// …and, unlike the bare shorthand, with `translate-z` too.
+		code: IMPORT_CN + "cn('translate-none', 'translate-z-10');",
+		errors: repeat(conflictCn('translate-none, translate-z-10'), 2)
 	},
 	{
 		// `rounded-*` covers corner sides, which cover their corners.

@@ -2158,6 +2158,15 @@ const insetSpec: PrefixSpec = {
 	fallback: 'all'
 };
 
+// `translate-none` is a keyword value (not an axis), and it's a special case:
+// it resets every axis including `z`, while the bare form (`translate-4`)
+// only sets `x`/`y` — so `none` gets its own category, distinct from the
+// `all` fallback the bare form uses (see `getOverlapNode`).
+const translateSpec: PrefixSpec = {
+	keywords: selfMap(['x', 'y', 'z', 'none']),
+	fallback: 'all'
+};
+
 // `ring-offset-*` is both a width (`ring-offset-2`) and a color
 // (`ring-offset-red-500`), classified from the segments after `offset`.
 const offsetSpec: PrefixSpec = {
@@ -2497,7 +2506,7 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	drop: unifiedSpec,
 	gap: axisSpec,
 	space: spaceSpec,
-	translate: axisSpec,
+	translate: translateSpec,
 	scale: axisSpec,
 	skew: axisSpec,
 	rotate: axisSpec,
@@ -2711,6 +2720,9 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 	axisOverlapCovers('overflow'),
 	axisOverlapCovers('overscroll'),
 	axisOverlapCovers('translate'),
+	// `translate-none` resets every axis, including `z` — which the bare
+	// `translate` shorthand above does not reach.
+	['translate-none', ['translate', 'translate-x', 'translate-y', 'translate-z']],
 	axisOverlapCovers('scale'),
 	axisOverlapCovers('skew'),
 	axisOverlapCovers('border-spacing'),
@@ -2877,6 +2889,19 @@ const getBorderOverlapNode = (category: string): string | null => {
 const getOverlapNode = (segment: string, category: string): string | null => {
 	if (SEGMENT_OVERLAP_NODES.has(segment)) {
 		return segment;
+	}
+
+	// `translate-none` resets every axis including `z`, unlike the bare form
+	// (which only reaches `x`/`y` through the generic axis handling below) —
+	// see `translateSpec` and the `translate-none` entry in `OVERLAP_COVERS`.
+	if (segment === 'translate') {
+		if (category === 'none') {
+			return 'translate-none';
+		}
+
+		if (category === 'z') {
+			return 'translate-z';
+		}
 	}
 
 	if (AXIS_OVERLAP_PREFIXES.has(segment)) {
