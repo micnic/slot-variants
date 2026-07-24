@@ -314,6 +314,73 @@ const lineSpec: PrefixSpec = {
 	fallback: 'other'
 };
 
+// `mask-{t,r,b,l,x,y,linear,conic,radial}-{from,to}-*` gradient-stop value: a
+// position/percentage or a color — mirroring `gradientStopSpec`, the two
+// don't merge since a position and a color modifier compose
+// (`mask-t-from-30% mask-t-from-red-500` is valid together).
+const maskStopSpec: PrefixSpec = {
+	keywords: categoryMap([['color', COLOR_KEYWORDS]]),
+	short: 'pos',
+	long: 'color',
+	fallback: 'pos'
+};
+
+// A directional mask gradient (`mask-t-from-*`, `mask-r-to-*`, …its `x`/`y`
+// axis siblings): only its `from`/`to` stops are meaningful, classified by
+// `maskStopSpec`.
+const maskDirectionSpec: PrefixSpec = {
+	keywords: new Map<string, string>(),
+	nested: new Map([
+		['from', maskStopSpec],
+		['to', maskStopSpec]
+	]),
+	fallback: 'other'
+};
+
+// `mask-linear-*`/`mask-conic-*`: a bare angle (`mask-linear-45`) alongside
+// the same `from`/`to` stops as the directional families.
+const maskAngleStopSpec: PrefixSpec = {
+	keywords: new Map<string, string>(),
+	nested: new Map([
+		['from', maskStopSpec],
+		['to', maskStopSpec]
+	]),
+	short: 'angle',
+	fallback: 'angle'
+};
+
+// `mask-radial-*`: a shape (`circle`/`ellipse`), a size (`closest`/`farthest`,
+// each paired with `side`/`corner` — the pairing is ignored since all four
+// combinations set the same property and conflict with each other), a
+// position (`mask-radial-at-*`), or the same `from`/`to` stops as the other
+// gradient families. An arbitrary shorthand value (`mask-radial-[...]`) falls
+// back to its own bucket.
+const maskRadialSpec: PrefixSpec = {
+	keywords: categoryMap([
+		['shape', ['circle', 'ellipse']],
+		['size', ['closest', 'farthest']],
+		['at', ['at']]
+	]),
+	nested: new Map([
+		['from', maskStopSpec],
+		['to', maskStopSpec]
+	]),
+	fallback: 'value'
+};
+
+// `mask-no-clip`/`mask-no-repeat` are the boolean-off form of the `clip`/
+// `repeat` sub-properties — kept distinct from each other (so they don't
+// falsely conflict with one another) but not merged with their positive
+// counterparts (`mask-clip-border`, `mask-repeat-x`, …); a documented gap
+// rather than a false positive.
+const maskNoSpec: PrefixSpec = {
+	keywords: categoryMap([
+		['clip', ['clip']],
+		['repeat', ['repeat']]
+	]),
+	fallback: 'other'
+};
+
 const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	text: {
 		keywords: categoryMap([
@@ -422,6 +489,32 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		short: 'box',
 		long: 'color',
 		fallback: 'color'
+	},
+	mask: {
+		keywords: categoryMap([
+			['composite', ['add', 'subtract', 'intersect', 'exclude']],
+			['mode', ['alpha', 'luminance', 'match']],
+			['position', ['center', 'top', 'bottom', 'left', 'right']],
+			['size', ['auto', 'cover', 'contain']],
+			['repeat', ['repeat']],
+			['image', ['none']]
+		]),
+		nested: new Map([
+			['linear', maskAngleStopSpec],
+			['conic', maskAngleStopSpec],
+			['radial', maskRadialSpec],
+			['t', maskDirectionSpec],
+			['r', maskDirectionSpec],
+			['b', maskDirectionSpec],
+			['l', maskDirectionSpec],
+			['x', maskDirectionSpec],
+			['y', maskDirectionSpec],
+			['clip', unifiedSpec],
+			['origin', unifiedSpec],
+			['type', unifiedSpec],
+			['no', maskNoSpec]
+		]),
+		fallback: 'other'
 	},
 	fill: colorSpec,
 	accent: colorSpec,

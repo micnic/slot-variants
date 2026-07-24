@@ -2397,6 +2397,27 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'inset-ring-2 inset-4' });",
 	// Inset-ring width vs inset-ring color are distinct sub-properties.
 	IMPORT + "sv({ base: 'inset-ring-2 inset-ring-red-500' });",
+	// mask-composite and mask-mode are distinct properties.
+	IMPORT + "sv({ base: 'mask-add mask-luminance' });",
+	// mask-position and mask-size are distinct properties.
+	IMPORT + "sv({ base: 'mask-center mask-cover' });",
+	// mask-clip and mask-origin are distinct properties.
+	IMPORT + "sv({ base: 'mask-clip-border mask-origin-padding' });",
+	// mask-clip and mask-type are distinct properties.
+	IMPORT + "sv({ base: 'mask-clip-border mask-type-alpha' });",
+	// A directional mask gradient's position and color stops compose.
+	IMPORT + "sv({ base: 'mask-t-from-30% mask-t-from-red-500' });",
+	// Different mask gradient directions are distinct properties.
+	IMPORT + "sv({ base: 'mask-t-from-red-500 mask-r-from-blue-500' });",
+	// mask-linear and mask-conic angles are distinct properties.
+	IMPORT + "sv({ base: 'mask-linear-45 mask-conic-90' });",
+	// mask-radial shape, size, and position are distinct sub-properties.
+	IMPORT +
+		"sv({ base: 'mask-radial-circle mask-radial-closest-side mask-radial-at-center' });",
+	// mask-no-clip and mask-no-repeat are the boolean-off form of distinct
+	// properties, so they don't conflict with each other (a documented gap:
+	// mask-no-clip also doesn't merge with mask-clip-border's category).
+	IMPORT + "sv({ base: 'mask-no-clip mask-no-repeat' });",
 	// touch-action pan directions compose, so they don't conflict.
 	IMPORT + "sv({ base: 'touch-pan-x touch-pan-y' });",
 	// Pan and pinch-zoom also compose.
@@ -2615,6 +2636,49 @@ const NO_CONFLICTING_NS_INVALID = [
 		// Two inset-ring widths conflict.
 		code: IMPORT_CN + "cn('inset-ring-2', 'inset-ring-4');",
 		errors: repeat(conflictCn('inset-ring-2, inset-ring-4'), 2)
+	},
+	{
+		// Two mask-composite values conflict.
+		code: IMPORT_CN + "cn('mask-add', 'mask-subtract');",
+		errors: repeat(conflictCn('mask-add, mask-subtract'), 2)
+	},
+	{
+		// Two mask-mode values conflict.
+		code: IMPORT_CN + "cn('mask-alpha', 'mask-luminance');",
+		errors: repeat(conflictCn('mask-alpha, mask-luminance'), 2)
+	},
+	{
+		// Two mask-clip values conflict.
+		code: IMPORT_CN + "cn('mask-clip-border', 'mask-clip-padding');",
+		errors: repeat(conflictCn('mask-clip-border, mask-clip-padding'), 2)
+	},
+	{
+		// Two directional mask gradient-stop colors conflict.
+		code: IMPORT_CN + "cn('mask-t-from-red-500', 'mask-t-from-blue-500');",
+		errors: repeat(
+			conflictCn('mask-t-from-blue-500, mask-t-from-red-500'),
+			2
+		)
+	},
+	{
+		// Two directional mask gradient-stop positions conflict.
+		code: IMPORT_CN + "cn('mask-t-from-30%', 'mask-t-from-60%');",
+		errors: repeat(conflictCn('mask-t-from-30%, mask-t-from-60%'), 2)
+	},
+	{
+		// Two mask-linear angles conflict.
+		code: IMPORT_CN + "cn('mask-linear-45', 'mask-linear-90');",
+		errors: repeat(conflictCn('mask-linear-45, mask-linear-90'), 2)
+	},
+	{
+		// Two mask-radial size values conflict, regardless of side/corner.
+		code:
+			IMPORT_CN +
+			"cn('mask-radial-closest-side', 'mask-radial-farthest-corner');",
+		errors: repeat(
+			conflictCn('mask-radial-closest-side, mask-radial-farthest-corner'),
+			2
+		)
 	},
 	{
 		// Exclusive touch-action keywords conflict (they replace each other).
