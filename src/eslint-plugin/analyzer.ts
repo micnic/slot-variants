@@ -14,8 +14,7 @@ import type {
 	TemplateLiteral
 } from 'estree';
 
-// Surfaced by ESLint as each rule's documentation link (editors, the `--format`
-// output, etc.). Points at the plugin's rule reference in the README.
+// ESLint surfaces this as each rule's docs link (editors, `--format` output, etc.).
 const DOCS_URL = 'https://github.com/micnic/slot-variants#rules';
 
 const CONFIG_KEYS = new Set([
@@ -202,15 +201,13 @@ const collectSlotKeyedProperties = (
 type CallMatch = {
 	config: ObjectExpression | null;
 	args: ReadonlyArray<Expression | SpreadElement>;
-	// True for a `createSV(defaults)` factory call itself, whose sole argument is
-	// validated like an sv() config but which compiles no variant function — so
-	// it is exempt from require-top-level-config and the empty-call check.
+	// True only for a `createSV(defaults)` factory call — it compiles no variant
+	// function, so it's exempt from require-top-level-config and the empty-call check.
 	isFactoryConfig?: boolean;
 };
 
-// The last argument is read through a hoisted `const` binding so
-// `const config = {...}; sv(config)` is analyzed as a config call rather than
-// a cn-style argument list.
+// Resolves the last arg through hoisted `const` bindings so `const config = {...};
+// sv(config)` is analyzed as a config call rather than a cn-style argument list.
 const matchSvCall = (
 	node: CallExpression,
 	sourceCode: SourceCode
@@ -269,10 +266,10 @@ const isConfigLike = (node: Node | undefined): node is ObjectExpression => {
 	return hasOnlyConfigKeys(properties);
 };
 
-// A variant source carries every condition its tokens render under, as
-// key -> required-value matchers: a variant value is a single matcher, a
-// compound entry one per readable matcher property, a cn-style conditional a
-// synthetic `cond:`/`ternary@` matcher — and nested conditionals accumulate.
+// The conditions a token renders under, as key -> required-value matchers: a
+// variant value is one matcher, a compound entry one per matcher property, a
+// cn-style conditional a synthetic `cond:`/`ternary@` matcher; nested
+// conditionals accumulate.
 type VariantMatchers = ReadonlyMap<string, string>;
 
 type Source =
@@ -281,7 +278,7 @@ type Source =
 	| { kind: 'compound' };
 
 const baseSource: Source = { kind: 'base' };
-// A compound entry with no readable matcher — never exclusive with anything.
+// No readable matcher — never exclusive with anything.
 const compoundSource: Source = { kind: 'compound' };
 
 const variantSource = (key: string, value: string): Source => ({
@@ -289,8 +286,8 @@ const variantSource = (key: string, value: string): Source => ({
 	matchers: new Map([[key, value]])
 });
 
-// Adds a matcher to a source, accumulating on top of an existing variant
-// source so nested conditionals keep their outer conditions.
+// Accumulates onto an existing variant source so nested conditionals keep
+// their outer conditions.
 const withMatcher = (source: Source, key: string, value: string): Source => {
 	if (source.kind !== 'variant') {
 		return variantSource(key, value);
@@ -321,8 +318,8 @@ const getEntryMatchers = (entry: Entry): VariantMatchers | null => {
 	return null;
 };
 
-// Two matcher sets are exclusive when some key they both constrain requires
-// different values — no render can satisfy both.
+// Exclusive when some key they both constrain requires different values —
+// no render can satisfy both.
 const areExclusiveMatchers = (
 	a: VariantMatchers,
 	b: VariantMatchers
@@ -338,9 +335,8 @@ const areExclusiveMatchers = (
 	return false;
 };
 
-// Entries can't co-occur when every pair disagrees on at least one shared
-// matcher key — different values of one variant, opposite branches of one
-// condition, or compound matchers requiring different values.
+// True when every pair of entries disagrees on at least one shared matcher
+// key, so they can't co-occur.
 const isMutuallyExclusiveVariants = (list: Entry[]): boolean => {
 	const matchers: VariantMatchers[] = [];
 
@@ -408,8 +404,8 @@ const reportEntryList = (
 	}
 };
 
-// Safe for cn() callers too: isMutuallyExclusiveVariants short-circuits to
-// false on non-variant entries, so base-only token lists are never skipped.
+// Safe for cn() too: isMutuallyExclusiveVariants short-circuits to false on
+// non-variant entries, so base-only token lists are never skipped.
 const reportDuplicateTokens = (
 	context: Rule.RuleContext,
 	tokenMap: Map<string, Entry[]>,
@@ -425,9 +421,7 @@ const reportDuplicateTokens = (
 	}
 };
 
-// Walks the scope chain from `scope` outward, returning the first variable
-// bound to `name` (so shadowing is respected) or null when it resolves to no
-// binding.
+// Walks outward so shadowing is respected.
 const findVariable = (
 	scope: Scope.Scope,
 	name: string
@@ -448,8 +442,8 @@ const findVariable = (
 };
 
 // The initializer of a single same-file `const name = <value>` binding, or null
-// for anything we can't safely read through: let/var, redeclarations, imports
-// (a different module), function parameters, and destructuring patterns.
+// for anything we can't safely read through: let/var, redeclarations, imports,
+// function parameters, and destructuring patterns.
 const getConstBindingInit = (variable: Scope.Variable | null): Node | null => {
 	if (!variable || variable.defs.length !== 1) {
 		return null;
@@ -480,10 +474,9 @@ const getConstBindingInit = (variable: Scope.Variable | null): Node | null => {
 	return init;
 };
 
-// Follows `const` bindings so a hoisted class constant (`const base = 'flex'`)
-// is analyzed as its value. Returns the first non-identifier value reached, the
-// original node when an identifier doesn't resolve to a readable const, or the
-// node that closes a reference cycle.
+// Follows `const` bindings so a hoisted constant (`const base = 'flex'`) is
+// analyzed as its value. Returns the original node when it doesn't resolve to
+// a readable const, or the node that closes a reference cycle.
 const resolveStaticValue = (node: Node, sourceCode: SourceCode): Node => {
 	let current = node;
 	const seen = new Set<Node>();
@@ -538,18 +531,16 @@ const pushStringLiteralTokens = (
 	entries: Entry[],
 	sourceCode: SourceCode
 ) => {
-	// String/untagged-template delimiters are single-char, so the node's
-	// start offset + 1 is the first inner character.
+	// String/template delimiters are single-char, so start offset + 1 is the
+	// first inner character.
 	const raw = sourceCode.getText(node);
 	const base = sourceCode.getRange(node)[0] + 1;
 
 	pushTokensFromText(raw.slice(1, -1), base, slot, source, entries);
 };
 
-// Flattens a ternary — including a chained one like `a ? x : b ? y : z` — into
-// its leaf branches. A branch that is itself a ternary is recursed into; any
-// other node (string, array, record, logical-AND, …) is a leaf. Exactly one
-// leaf renders, so each is a mutually-exclusive alternative.
+// Flattens a (possibly chained) ternary into its leaf branches — exactly one
+// renders, so each is a mutually-exclusive alternative.
 const collectBranchLeaves = (node: Node, leaves: Node[]) => {
 	if (node.type === 'ConditionalExpression') {
 		collectBranchLeaves(node.consequent, leaves);
@@ -560,10 +551,9 @@ const collectBranchLeaves = (node: Node, leaves: Node[]) => {
 	leaves.push(node);
 };
 
-// The exclusivity matcher for a condition, keyed on the condition's source
-// text so the same condition spelled in two places resolves to one matcher.
-// Leading `!` negations flip the branch instead of changing the key —
-// `cond && a` and `!cond && b` land on opposite values of one key.
+// Keyed on the condition's source text so the same condition spelled twice
+// resolves to one matcher. Leading `!` flips the branch instead of the key,
+// so `cond && a` and `!cond && b` land on opposite values of one key.
 const conditionMatcher = (
 	test: Node,
 	truthyBranch: boolean,
@@ -589,8 +579,8 @@ const conditionMatcher = (
 const isStaticStringNode = (node: Node): boolean =>
 	getStaticStringText(node) !== null;
 
-// A clsx-style record key is itself a class string: the key is appended verbatim
-// when its (runtime) value is truthy, so a multi-token key like `'px-2 py-1'`
+// A clsx-style record key is itself a class string, appended verbatim when its
+// (runtime) value is truthy — so a multi-token key like `'px-2 py-1'`
 // contributes each of its tokens. String-literal keys are tokenized like any
 // class string; identifier/numeric keys are a single, space-free token.
 const pushRecordKeyTokens = (
@@ -619,8 +609,8 @@ const pushRecordKeyTokens = (
 	entries.push({ source, slot, token, start, end });
 };
 
-// Keys of a clsx-style record become tokens; spreads and computed keys carry an
-// unknowable class name and are skipped (the no-dynamic-classes rule flags them).
+// Spreads and computed keys carry an unknowable class name and are skipped
+// (no-dynamic-classes flags them separately).
 const extractRecordTokens = (
 	node: ObjectExpression,
 	slot: string,
@@ -724,10 +714,10 @@ const extractTernaryTemplateTokens = (
 	}
 };
 
-// `cnStyle` toggles the cn() calling-convention forms — logical-AND (`cond &&
-// value`), ternaries (`cond ? a : b`, chained or nested), ternary templates, and
-// clsx-style records, each of which may nest the others. In an sv() config's
-// class positions an object is instead a slot-keyed record.
+// `cnStyle` toggles the cn() calling-convention forms — logical-AND, ternaries
+// (chained or nested), ternary templates, and clsx-style records, each of
+// which may nest the others. In an sv() config's class positions an object is
+// instead a slot-keyed record.
 const extractTokens = (
 	node: Node,
 	slot: string,
@@ -745,9 +735,9 @@ const extractTokens = (
 		return;
 	}
 
-	// The right operand of a `&&` is the only class it can contribute; the left
-	// is a runtime condition, recorded as a truthy-branch matcher so a
-	// complementary `!cond && …` elsewhere resolves as mutually exclusive.
+	// Only the right operand is a class contribution; the left is recorded as a
+	// truthy-branch matcher so a complementary `!cond && …` elsewhere resolves
+	// as mutually exclusive.
 	if (
 		cnStyle &&
 		node.type === 'LogicalExpression' &&
@@ -767,19 +757,17 @@ const extractTokens = (
 		return;
 	}
 
-	// A ternary renders exactly one branch, so its branches are mutually
-	// exclusive. A simple two-branch ternary is keyed on its condition text
-	// (via conditionMatcher), letting complementary conditionals across
-	// arguments — `cond ? a : ''` with `cond ? '' : b` or `!cond ? b : ''` —
-	// resolve as exclusive too. A chained ternary keeps a position-based key:
-	// its leaves are only exclusive to one another.
+	// A simple two-branch ternary is keyed on its condition text, letting
+	// complementary conditionals across arguments — `cond ? a : ''` with
+	// `cond ? '' : b` — resolve as exclusive too. A chained ternary keeps a
+	// position-based key: its leaves are only exclusive to one another.
 	if (cnStyle && node.type === 'ConditionalExpression') {
 		extractConditionalTokens(node, context);
 		return;
 	}
 
-	// A whitespace-isolated ternary template: the quasis carry always-present
-	// tokens and each substitution its own exclusive branch tokens.
+	// Quasis carry always-present tokens; each substitution carries its own
+	// exclusive branch tokens.
 	if (cnStyle && isStaticTernaryTemplate(node)) {
 		extractTernaryTemplateTokens(node, context);
 		return;
@@ -816,8 +804,7 @@ const extractTokens = (
 	}
 };
 
-// Skips spreads and holes silently. Validators that need to flag spreads
-// should use forEachItemReportingSpread instead.
+// Skips spreads/holes silently; use forEachItemReportingSpread to flag them.
 const forEachStaticItem = (
 	items: ReadonlyArray<Expression | SpreadElement | null>,
 	visit: (item: Expression) => void
@@ -831,8 +818,8 @@ const forEachStaticItem = (
 	}
 };
 
-// A variants[key] is a boolean shorthand when it's not a plain object, or
-// when its keys are slot names rather than value names.
+// Boolean shorthand when not a plain object, or when its keys are slot names
+// rather than value names.
 const isBooleanShorthandVariant = (
 	node: Node,
 	slotNames: Set<string>
@@ -910,11 +897,9 @@ const extractVariantTokens = (
 	}
 };
 
-// Keys of a compound entry that aren't variant matchers.
 const COMPOUND_NON_MATCHER_KEYS = new Set(['class', 'className', 'slots']);
 
-// The canonical string form of a static compound matcher value — strings,
-// booleans, and numbers align with variant value keys (`{ true: … }`,
+// Strings, booleans, and numbers align with variant value keys (`{ true: … }`,
 // `{ 2: … }`), which getKeyName also reads as strings.
 const getStaticMatcherValue = (node: Node): string | null => {
 	const text = getStaticStringText(node);
@@ -933,13 +918,11 @@ const getStaticMatcherValue = (node: Node): string | null => {
 	return null;
 };
 
-// Derives an exclusivity source from a compound entry's matcher properties,
-// so two compounds requiring different values of one variant — or a compound
-// and a variant value it can't co-occur with — aren't reported as conflicts.
+// Derives an exclusivity source from a compound's matcher properties, so two
+// compounds requiring different variant values aren't reported as conflicts.
 // Only statically-known scalar matchers count; a dynamic or array matcher is
 // skipped, which can only under-suppress, never wrongly suppress. With no
-// readable matcher left the entry falls back to the never-exclusive compound
-// source.
+// readable matcher left, falls back to the never-exclusive compound source.
 const getCompoundSource = (compound: ReadonlyMap<string, Node>): Source => {
 	const matchers = new Map<string, string>();
 
@@ -999,8 +982,7 @@ const collectConfigEntries = (
 		extract(slotValue, slotKey, baseSource);
 	}
 
-	// Leading args use the cn() calling convention, so logical-AND strings and
-	// clsx-style records contribute tokens (slots don't apply to them).
+	// Leading args use the cn() calling convention (slots don't apply to them).
 	for (const arg of baseArgs) {
 		extractTokens(
 			arg,
@@ -1040,17 +1022,16 @@ const reportDynamic = (context: Rule.RuleContext, node: Node) => {
 const isUndefinedIdentifier = (node: Node): boolean =>
 	node.type === 'Identifier' && node.name === 'undefined';
 
-// A ternary whose every (possibly nested) branch is a static string. Each
-// possible output is a complete, statically-known class string, so it is safe
-// as a template-literal substitution — unlike a logical-AND (which stringifies
-// to "false" when skipped) or an array (whose comma-join leaks into the text).
+// A ternary whose every (possibly nested) branch is a static string — safe as
+// a template-literal substitution, unlike a logical-AND (stringifies to
+// "false" when skipped) or an array (comma-join leaks into the text).
 const isStaticStringConditional = (node: Node): boolean =>
 	isStaticStringNode(node) ||
 	(node.type === 'ConditionalExpression' &&
 		isStaticStringConditional(node.consequent) &&
 		isStaticStringConditional(node.alternate));
 
-// A template substitution is only statically tokenizable when whitespace (or a
+// A substitution is only statically tokenizable when whitespace (or a
 // template edge) separates it from the surrounding quasi text — otherwise a
 // class token would straddle the boundary (e.g. `p-${x ? '2' : '4'}`), which
 // we deliberately don't attempt to enumerate.
@@ -1063,8 +1044,7 @@ const quasiIsolatesExpression = (
 	const hasLeftExpression = index > 0;
 	const hasRightExpression = index < quasis.length - 1;
 
-	// An empty quasi only isolates at a template edge; an interior empty quasi
-	// means two expressions sit adjacent with nothing between them.
+	// An interior empty quasi means two expressions sit adjacent.
 	if (raw.length === 0) {
 		return !hasLeftExpression || !hasRightExpression;
 	}
@@ -1080,9 +1060,8 @@ const quasiIsolatesExpression = (
 	return true;
 };
 
-// A template literal whose every substitution is a whitespace-isolated
-// static-string ternary: its full set of possible outputs is statically known,
-// so it's treated as a static class value.
+// Every substitution is a whitespace-isolated static-string ternary, so the
+// full set of possible outputs is statically known.
 const isStaticTernaryTemplate = (node: Node): node is TemplateLiteral =>
 	node.type === 'TemplateLiteral' &&
 	node.expressions.every(isStaticStringConditional) &&
@@ -1096,9 +1075,8 @@ type StaticClassValueOptions = {
 	allowClassRecord?: boolean;
 };
 
-// The cn-style affordances that propagate into nested positions (array items,
-// `&&` right operands, ternary branches). `allowNestedArrays`/`allowUndefined`
-// are top-level-only concerns and deliberately dropped.
+// The cn-style affordances that propagate into nested positions. `allowNestedArrays`
+// and `allowUndefined` are top-level-only concerns and deliberately dropped.
 const branchOptions = (
 	options: StaticClassValueOptions
 ): StaticClassValueOptions => ({
@@ -1107,8 +1085,7 @@ const branchOptions = (
 	allowClassRecord: options.allowClassRecord === true
 });
 
-// Validator counterpart to forEachStaticItem: spreads are reported as dynamic
-// rather than skipped.
+// Like forEachStaticItem, but spreads are reported as dynamic rather than skipped.
 const forEachItemReportingSpread = (
 	context: Rule.RuleContext,
 	items: ReadonlyArray<Expression | SpreadElement | null>,
@@ -1143,8 +1120,8 @@ const checkClassValueIsStatic = (
 		return;
 	}
 
-	// Only the `&&` right operand is a class contribution; the left is a runtime
-	// condition. Its branches are validated with the same affordances.
+	// Only the `&&` right operand is a class contribution, validated with the
+	// same affordances.
 	if (
 		options.allowLogicalString &&
 		node.type === 'LogicalExpression' &&
@@ -1227,10 +1204,9 @@ const forEachStaticProperty = (
 	}
 };
 
-// In cn-style arguments an ObjectExpression is a clsx-style record: its keys
-// are class names and its values are runtime conditions. Only the keys must be
-// statically known — spreads and computed keys make the class name dynamic, so
-// forEachStaticProperty reports them; the condition values are left alone.
+// In cn-style arguments an ObjectExpression is a clsx-style record: keys are
+// class names, values are runtime conditions. Only the keys must be statically
+// known, so forEachStaticProperty reports dynamic ones; values are left alone.
 const checkClassRecordKeys = (
 	context: Rule.RuleContext,
 	node: ObjectExpression
@@ -1366,9 +1342,9 @@ const getCompoundEntryValueChecker = (
 	slotNames: Set<string>
 ): SvConfigValueChecker | null => {
 	if (key === 'class' || key === 'className') {
-		// A compoundSlots entry already targets specific slots, so its class
-		// value is a plain class value; a compoundVariants class follows the
-		// same shape as a variant branch — it may be a slot-keyed record.
+		// A compoundSlots entry already targets specific slots, so its class value
+		// is plain; a compoundVariants class follows a variant branch's shape and
+		// may be a slot-keyed record.
 		if (hasSlotsKey) {
 			return checkConfigClassValueIsStatic;
 		}
@@ -1515,9 +1491,9 @@ const createImportsTracker = () => {
 	return { cnNames, svNames, createSvNames, importsTracker };
 };
 
-// An identifier that resolves to a tracked name could still be a local
-// binding that shadows the import (e.g. a function parameter named `cn`).
-// Resolve it to its variable and confirm it's an import binding.
+// A tracked-name identifier could still be a local binding that shadows the
+// import (e.g. a function parameter named `cn`), so confirm it resolves to
+// an import binding.
 const identifierResolvesToImport = (
 	context: Rule.RuleContext,
 	identifier: Identifier
@@ -1536,9 +1512,8 @@ const identifierResolvesToImport = (
 };
 
 // Reads the callee through same-file `const` aliases (`const cx = cn`) so
-// aliased sv/cn bindings stay tracked. Returns the identifier naming the
-// underlying binding, or null when the callee is not an identifier or is an
-// alias of a non-identifier value.
+// aliased sv/cn bindings stay tracked. Null when the callee isn't an
+// identifier, or is an alias of a non-identifier value.
 const resolveCalleeIdentifier = (
 	context: Rule.RuleContext,
 	node: CallExpression
@@ -1557,9 +1532,8 @@ const resolveCalleeIdentifier = (
 };
 
 // A `createSV(...)` factory call whose callee resolves to a tracked createSV
-// import (respecting shadowing and same-file `const` aliases). The `const`
-// binding it initializes is a pre-configured `sv()`, so its call sites are
-// analyzed exactly like `sv()` calls.
+// import. The `const` binding it initializes is a pre-configured `sv()`, so
+// its call sites are analyzed exactly like `sv()` calls.
 const isCreateSvFactoryCall = (
 	context: Rule.RuleContext,
 	node: CallExpression,
@@ -1578,12 +1552,9 @@ const isCreateSvFactoryCall = (
 };
 
 // The `createSV(defaults)` call itself: its sole argument is unambiguously the
-// shared config, validated like an sv() config. Unlike `sv()`, whose last arg
-// might be a cn-style class list, any object argument here is the config — so a
-// spread or computed key is reported (by the config checkers) as dynamic rather
-// than gating the whole object out. A missing or non-object argument leaves
-// nothing to analyze. `isFactoryConfig` exempts the call from
-// require-top-level-config and the empty-call check.
+// shared config. Unlike `sv()`, whose last arg might be a cn-style class list,
+// any object argument here is the config — so a spread or computed key is
+// reported as dynamic rather than gating the whole object out.
 const matchFactoryCall = (
 	node: CallExpression,
 	sourceCode: SourceCode
@@ -1604,10 +1575,9 @@ const matchFactoryCall = (
 };
 
 // Classifies a call as sv/cn-style, reading the callee through same-file
-// `const` aliases. A callee that resolves to a binding initialized by
-// `createSV(...)` is treated like `sv`; a direct `createSV` import names a
-// factory call whose defaults are validated like an sv() config; a direct sv/cn
-// import name uses the sv/cn convention. Returns null for anything untracked.
+// `const` aliases. A callee resolving to a `createSV(...)`-initialized binding
+// is treated like `sv`; a direct `createSV` import names a factory call; a
+// direct sv/cn import uses the sv/cn convention. Null for anything untracked.
 const matchTrackedCall = (
 	context: Rule.RuleContext,
 	node: CallExpression,
@@ -1805,9 +1775,8 @@ const visitObjectForRedundantSpaces = (
 	}
 };
 
-// In cn-style position an ObjectExpression is a clsx-style record whose keys are
-// the class strings, so a string-literal key is checked for redundant whitespace
-// (identifier/numeric keys can't contain whitespace; computed keys are dynamic).
+// A string-literal key is checked for redundant whitespace (identifier/numeric
+// keys can't contain whitespace; computed keys are dynamic).
 const visitRecordKeysForRedundantSpaces = (
 	context: Rule.RuleContext,
 	node: ObjectExpression
@@ -1839,8 +1808,7 @@ const visitForRedundantSpaces = (
 		return;
 	}
 
-	// Only the `&&` right operand and each ternary branch are class
-	// contributions; the condition/test itself is a runtime value.
+	// Only the `&&` right operand and each ternary branch are class contributions.
 	if (cnStyle && node.type === 'LogicalExpression' && node.operator === '&&') {
 		visitForRedundantSpaces(context, node.right, cnStyle);
 		return;
@@ -1945,17 +1913,15 @@ export const noRedundantSpaces: Rule.RuleModule = {
 	}
 };
 
-// Curated sets of Tailwind utilities that set the same CSS property and so are
-// mutually exclusive, but which the dash-namespace heuristic can't group —
-// single words (`flex`, `absolute`) or hyphenated siblings that don't share a
-// first segment (`inline-block` vs `flex`). Opt-in via the rule's
-// `exclusiveGroups: true` option, since a project's own single-word class names
-// would otherwise be flagged.
+// Curated sets of Tailwind utilities that set the same CSS property but which
+// the dash-namespace heuristic can't group — single words (`flex`, `absolute`)
+// or hyphenated siblings that don't share a first segment (`inline-block` vs
+// `flex`). Opt-in via `exclusiveGroups: true`, since a project's own
+// single-word class names would otherwise be flagged.
 
-// Every `display` value. The single-word subset (see
-// `SINGLE_WORD_DISPLAY_KEYWORDS` below) is shared with the always-on
-// `line-clamp` overlap (`line-clamp` sets `display` unconditionally, unlike
-// the rest of this group, which is opt-in — see `SINGLE_WORD_OVERLAP_NODES`).
+// Every `display` value. The single-word subset (`SINGLE_WORD_DISPLAY_KEYWORDS`
+// below) is also reachable via the always-on `line-clamp` overlap — unlike the
+// rest of this group, which is opt-in.
 const DISPLAY_KEYWORDS: ReadonlyArray<string> = [
 	'block',
 	'inline-block',
@@ -1983,11 +1949,8 @@ const DISPLAY_KEYWORDS: ReadonlyArray<string> = [
 // The subset of `DISPLAY_KEYWORDS` with no `-` of their own, safe to give a
 // dedicated `line-clamp` overlap node (see `SINGLE_WORD_OVERLAP_NODES`). The
 // hyphenated members (`table-cell`, `inline-block`, …) are excluded: several
-// of them (`table-*`) are already grouped by the `table` `PREFIX_SPECS` entry,
-// which correctly makes them conflict with each other by default — giving
-// each its own node here would shadow that and stop them from conflicting
-// with each other. `line-clamp` doesn't bridge to this subset as a result;
-// a narrower gap than the alternative of breaking `table`'s own grouping.
+// are already grouped by the `table` `PREFIX_SPECS` entry, and giving each its
+// own node here would shadow that grouping.
 const SINGLE_WORD_DISPLAY_KEYWORDS: ReadonlyArray<string> = DISPLAY_KEYWORDS.filter(
 	(word) => !word.includes('-')
 );
@@ -2011,12 +1974,9 @@ const TAILWIND_EXCLUSIVE_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
 	['isolate', 'isolation-auto'],
 	// screen-reader visibility
 	['sr-only', 'not-sr-only']
-	// Font-variant-numeric (`tabular-nums`, `normal-nums`, …) is NOT here: it
-	// isn't a flat mutually-exclusive set — `lining-nums`/`tabular-nums` (a
-	// figure style and a spacing style) compose and don't conflict with each
-	// other, only `normal-nums` conflicts with every other value (it resets
-	// the whole property). That star shape is default-on via
-	// `SINGLE_WORD_OVERLAP_NODES` instead — see the `fvn-*` entries there.
+	// Font-variant-numeric (`tabular-nums`, `normal-nums`, …) is NOT here: it's
+	// a star shape, not a flat mutually-exclusive set (see the `fvn-*` entries
+	// in `SINGLE_WORD_OVERLAP_NODES`, which is default-on instead).
 ];
 
 // `true` enables the built-in Tailwind groups; an array supplies custom groups
@@ -3028,27 +2988,23 @@ const getOverlapNode = (segment: string, category: string): string | null => {
 };
 
 // Single-word utilities that set the properties of several other namespaces
-// (`truncate` is overflow + text-overflow + white-space at once) take part in
-// the overlap graph through a node of their own, despite having no dashed
-// family — so they get a conflict key even without an exclusive-groups opt-in.
+// (`truncate` is overflow + text-overflow + white-space at once), so they get
+// a conflict key of their own despite having no dashed family — no
+// exclusive-groups opt-in needed.
 //
-// Every single-word `display` value gets its own node here too
-// (`display-flex`, `display-block`, …) — one per keyword, never a node shared
-// across keywords — so `line-clamp` (which always sets `display`) can reach
-// any of them, without making the keywords conflict with *each other* by
-// default (that stays behind the `exclusiveGroups: true` opt-in). The
-// hyphenated display keywords aren't included — see
+// Every single-word `display` value gets its own node too (`display-flex`,
+// `display-block`, …, never one shared across keywords), so `line-clamp`
+// (which always sets `display`) can reach any of them without making the
+// keywords conflict with *each other* by default (that stays behind
+// `exclusiveGroups: true`). Hyphenated display keywords are excluded — see
 // `SINGLE_WORD_DISPLAY_KEYWORDS`.
 //
-// Font-variant-numeric values are a star, not a flat set: `lining-nums` and
-// `oldstyle-nums` are literally the same figure-style property (so they share
-// a node and conflict directly, like `truncate`'s single node), but a figure
-// style doesn't conflict with a spacing style (`tabular-nums`) or a fraction
-// style (`diagonal-fractions`) — only `normal-nums` (which resets the whole
-// property) reaches every other value, via the `fvn-normal` bridge in
-// `OVERLAP_COVERS`. This is default-on (unlike `display`) because these words
-// are specific enough that they're very unlikely to collide with a project's
-// own class names.
+// Font-variant-numeric is a star, not a flat set: `lining-nums`/`oldstyle-nums`
+// share a node and conflict directly, but a figure style doesn't conflict with
+// a spacing (`tabular-nums`) or fraction (`diagonal-fractions`) style — only
+// `normal-nums` reaches every value, via the `fvn-normal` bridge in
+// `OVERLAP_COVERS`. Default-on (unlike `display`) since these words are
+// unlikely to collide with a project's own class names.
 const SINGLE_WORD_OVERLAP_NODES: Record<string, string> = {
 	truncate: 'truncate',
 	...Object.fromEntries(
@@ -3123,18 +3079,16 @@ const splitVariantPrefix = (
 const CONTAINER_TYPE_PREFIX = '@container';
 
 // `@container`/`@container-normal`/`@container-size` all set one property
-// (`container-type`), so they conflict with each other directly regardless of
-// the specific keyword — unlike every other prefix here, they don't split
-// into further categories. A `/name` suffix on any of the three (or on the
-// bare form) additionally names the container (`container-named`), a
-// distinct property that still conflicts with a plain, unnamed
-// `container-type` utility, since naming a container also sets its type (see
-// `OVERLAP_COVERS`). Different container *names* aren't distinguished from
-// each other here, matching tailwind-merge's own `container-named`
-// classGroupId, which doesn't parse out the name either. This bypasses the
-// regular dash-segment parsing entirely, since `@container`/`@container/name`
-// have no top-level `-` at all while `@container-size/name` does — the two
-// shapes aren't consistent enough to fit the normal `firstSegment` model.
+// (`container-type`), so they conflict directly regardless of keyword — unlike
+// every other prefix here, they don't split into further categories. A `/name`
+// suffix on any of the three additionally names the container
+// (`container-named`), which still conflicts with a plain, unnamed
+// `container-type` utility since naming also sets the type (see
+// `OVERLAP_COVERS`); different names aren't distinguished from each other,
+// matching tailwind-merge's own `container-named` classGroupId. This bypasses
+// the regular dash-segment parsing entirely because `@container`/
+// `@container/name` have no top-level `-` while `@container-size/name` does —
+// too inconsistent for the normal `firstSegment` model.
 const getContainerConflictKey = (
 	bare: string,
 	variantPrefix: string
@@ -3182,9 +3136,8 @@ const getConflictKey = (
 		bare = bare.slice(1);
 	}
 
-	// An opted-in exclusive group takes precedence — it can unify utilities that
-	// the heuristic can't (single words like `flex`/`block`, or hyphenated
-	// siblings like `inline-block`/`flex` that don't share a prefix).
+	// Takes precedence — can unify utilities the heuristic can't (single words,
+	// or hyphenated siblings that don't share a prefix).
 	const groupId = exclusiveGroups.get(bare);
 
 	if (groupId !== undefined) {
@@ -3473,13 +3426,11 @@ const analyzeCnForRule = (
  * same Tailwind-style utility namespace (e.g. `w-100` and `w-200`), and
  * shorthand/longhand overlaps where one token sets a property the other also
  * sets (`size-4`/`w-8`, `m-4`/`mt-2`, `inset-0`/`top-4`, `flex-1`/`grow-0`,
- * `truncate`/`overflow-x-auto`). Tokens with
- * different variant prefixes (`w-100` vs `hover:w-200`) don't conflict —
- * stacked variants are compared as a set, so `hover:focus:` and `focus:hover:`
- * are the same prefix — a
- * leading or trailing `!` important marker is ignored when computing the
- * namespace, and
- * mutually-exclusive positions are not flagged: different values of one
+ * `truncate`/`overflow-x-auto`). Tokens with different variant prefixes
+ * (`w-100` vs `hover:w-200`) don't conflict — stacked variants are compared as
+ * a set, so `hover:focus:` and `focus:hover:` are the same prefix — a leading
+ * or trailing `!` important marker is ignored when computing the namespace,
+ * and mutually-exclusive positions are not flagged: different values of one
  * variant, compound entries whose matchers require different values, and
  * opposite branches of one condition (ternaries and logical-ANDs, with
  * complementary `cond`/`!cond` conditions matched by source text).
@@ -3618,11 +3569,11 @@ const splitStaticTokens = (text: string): string[] =>
 	text.trim().split(/\s+/).filter(Boolean);
 
 // The literal's inner text exactly as written — not its cooked value. Token
-// identity throughout this file (`Entry.token`, `sharedTokens`) is always the
-// raw source substring (see `pushStringLiteralTokens`), so a fix's token math
-// has to match on that same raw text; diffing against the cooked value would
-// silently miscompare whenever a token contains an escape sequence. Callers
-// must have already confirmed `node` is a plain string/template literal.
+// identity throughout this file is always the raw source substring (see
+// `pushStringLiteralTokens`), so a fix's token math must match on that same raw
+// text; diffing against the cooked value would silently miscompare whenever a
+// token contains an escape sequence. Callers must have already confirmed
+// `node` is a plain string/template literal.
 const getRawInnerText = (context: Rule.RuleContext, node: Node): string =>
 	context.sourceCode.getText(node).slice(1, -1);
 
@@ -3650,11 +3601,9 @@ const planLiteralRewrite = (
 	return { node, nextText, quote };
 };
 
-// The node holding `slot`'s contribution to a single variant value — the
-// value node itself for a `base`-only (unslotted) branch, or the matching
-// property of a slot-keyed record. Mirrors the shape `extractTokens` reads,
-// but works from the raw (un-resolved) node so a hoisted `const` value isn't
-// silently rewritten at its own declaration site.
+// The node holding `slot`'s contribution to a single variant value. Works from
+// the raw (un-resolved) node so a hoisted `const` value isn't silently
+// rewritten at its own declaration site.
 const getRawSlotValueNode = (
 	valueNode: Node,
 	slot: string,
@@ -3680,13 +3629,11 @@ type SharedTokensFixPlan = {
 };
 
 // Plans a fix that lifts every shared token of one (variant, slot) pair out
-// of each variant value and into the slot's `base`/`slots[slot]` target in
-// one atomic rewrite — or returns null when any piece of that rewrite isn't
-// safely inferrable, in which case the finding is still reported, just
-// without a fix. Eligibility requires the target class value and every
-// variant value's contribution to this slot to be a plain, directly-authored
-// string or template literal — never an array, a nested slot-keyed record
-// unwound further, or a hoisted `const` reference.
+// of each variant value and into the slot's `base`/`slots[slot]` target in one
+// atomic rewrite — or returns null when any piece isn't safely inferrable, in
+// which case the finding is still reported, just without a fix. Eligibility
+// requires the target and every variant value's contribution to this slot to
+// be a plain, directly-authored string or template literal.
 const planSharedTokensFix = (
 	context: Rule.RuleContext,
 	slot: string,
@@ -3923,7 +3870,7 @@ const analyzeVariantSharedTokens = (
 
 	const valueEntries = getStrictProperties(variantValue);
 
-	// A spread or computed key means we can't see every value; we'd
+	// A spread or computed key means we can't see every value, so we'd
 	// over-flag tokens that may differ in the unseen branches.
 	if (!valueEntries || valueEntries.size < 2) {
 		return;
@@ -4054,10 +4001,9 @@ const shouldReportEmptyString = (
 
 type ListItems = ReadonlyArray<Node | null>;
 
-// Removes `node` (a member of `list`) along with the adjacent comma so the
-// surrounding call/array literal stays syntactically valid. Returns null when
-// removal would empty the list — the resulting empty call/array is itself
-// reported separately, so we leave it for the developer.
+// Removes `node` along with the adjacent comma so the surrounding call/array
+// literal stays syntactically valid. Returns null when removal would empty
+// the list — that's reported separately, so we leave it for the developer.
 const removeFromList = (
 	fixer: Rule.RuleFixer,
 	sourceCode: SourceCode,
@@ -4093,8 +4039,8 @@ const removeFromList = (
 	return fixer.removeRange([before.range[0], end]);
 };
 
-// A fix that removes the offending node — built by `makeListFix` for an
-// element of a call/array list, or supplied directly for a config property.
+// Built by `makeListFix` for a call/array list element, or supplied directly
+// for a config property.
 type EmptyFix = (fixer: Rule.RuleFixer) => Rule.Fix | null;
 
 const makeListFix = (
@@ -4124,10 +4070,9 @@ const checkRecordKeysForEmpty = (
 	}
 };
 
-// `allowEmptyString` is set at the top of a `slots[key]` value, where `''`
-// is a meaningful "slot with no default classes" declaration. `fix`, when
-// provided, removes `node` (and its adjacent comma) on `--fix`. `cnStyle` marks
-// a cn-style position, where an ObjectExpression is a clsx-style record and a
+// `allowEmptyString` is set at the top of a `slots[key]` value, where `''` is
+// a meaningful "slot with no default classes" declaration. `cnStyle` marks a
+// cn-style position, where an ObjectExpression is a clsx-style record and a
 // `&&`/ternary is a runtime branch rather than a class value itself.
 const visitForEmptyClasses = (
 	context: Rule.RuleContext,
@@ -4143,9 +4088,8 @@ const visitForEmptyClasses = (
 		return;
 	}
 
-	// Only the `&&` right operand and each ternary branch are class
-	// contributions; the same `fix` still removes the whole enclosing
-	// argument/element regardless of which branch triggered the report.
+	// The same `fix` still removes the whole enclosing argument/element
+	// regardless of which branch triggered the report.
 	if (
 		cnStyle &&
 		node.type === 'LogicalExpression' &&
@@ -4287,8 +4231,7 @@ const checkCompoundsForEmpty = (
 	checkCompoundMatchersForEmpty(context, value);
 
 	forEachCompoundClass(value, (cls) => {
-		// A slot-keyed compound class record — check each slot's class value;
-		// an empty record still falls through to the emptyObject report.
+		// An empty record still falls through to the emptyObject report.
 		if (cls.type === 'ObjectExpression' && cls.properties.length > 0) {
 			for (const slotClass of getProperties(cls).values()) {
 				visitForEmptyClasses(context, slotClass, false);
@@ -4336,11 +4279,9 @@ const svEmptyConfigValueCheckers: Record<string, EmptyConfigChecker> = {
 	compoundSlots: checkCompoundsForEmpty
 };
 
-// An `sv()` config (see `isConfigLike`) has only plain, statically keyed
-// properties, so an empty top-level class property can be dropped wholesale,
-// removing the property and its comma. A `createSV()` factory config may also
-// carry a spread or computed key (reported as dynamic by no-dynamic-classes);
-// those aren't class-bearing, so they're skipped here.
+// A `createSV()` factory config may carry a spread or computed key (reported
+// as dynamic by no-dynamic-classes); those aren't class-bearing, so they're
+// skipped here.
 const checkConfigForEmptyClasses = (
 	context: Rule.RuleContext,
 	config: ObjectExpression
@@ -4430,9 +4371,8 @@ export const noEmptyClasses: Rule.RuleModule = {
 };
 
 // An `sv()` config call compiles the variant function (and seeds its cache)
-// once. Nesting it inside a function rebuilds all of that — and discards the
-// cache — on every call, so the config form belongs at module scope. A
-// function scope anywhere above the call means it isn't top level.
+// once; nesting it inside a function rebuilds and discards that on every
+// call. A function scope anywhere above the call means it isn't top level.
 const isInsideFunctionScope = (scope: Scope.Scope): boolean => {
 	let current: Scope.Scope | null = scope;
 
@@ -4470,7 +4410,7 @@ export const requireTopLevelConfig: Rule.RuleModule = {
 	},
 	create(context) {
 		return createTrackedCallListeners(context, (node, call) => {
-			// A `createSV()` factory call compiles no variant function, so it is
+			// A `createSV()` factory call compiles no variant function, so it's
 			// exempt — only the returned function's config calls must be top level.
 			if (!call.config || call.isFactoryConfig === true) {
 				return;
@@ -4482,7 +4422,3 @@ export const requireTopLevelConfig: Rule.RuleModule = {
 		});
 	}
 };
-
-/**
- * Rules exported by the plugin.
- */
