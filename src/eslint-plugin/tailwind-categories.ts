@@ -269,13 +269,15 @@ const dropShadowSpec: PrefixSpec = {
 	fallback: 'other'
 };
 
-// `inset` has no `z` axis but does have logical block sides (`inset-bs`,
+// `inset` has no `z` axis but does have logical sides (`inset-s`/`inset-e`,
+// the aliases tailwind-merge treats as the very same classGroup as the
+// standalone `start`/`end` utilities, and the block sides `inset-bs`/
 // `inset-be`), unlike the other axis utilities that share `axisSpec`. Its
 // `shadow`/`ring` keywords introduce the unrelated `inset-shadow-*`/
 // `inset-ring-*` families — without this, they'd fall into the `all`
 // bucket and falsely conflict with the physical/logical offset utilities.
 const insetSpec: PrefixSpec = {
-	keywords: selfMap(['x', 'y', 'bs', 'be']),
+	keywords: selfMap(['x', 'y', 'bs', 'be', 's', 'e']),
 	nested: new Map([
 		['shadow', shadowSizeSpec],
 		['ring', borderSideSpec]
@@ -322,6 +324,28 @@ const unifiedSpec: PrefixSpec = {
 	keywords: new Map<string, string>(),
 	short: 'value',
 	long: 'value',
+	fallback: 'value'
+};
+
+// `mix-blend-*` (`mix-blend-normal`, `mix-blend-color-dodge`, …) is one
+// mix-blend-mode property regardless of how many segments the keyword itself
+// has, so every value shares a category via the nested `unifiedSpec` rather
+// than the generic dash-count fallback (which would wrongly split 2-segment
+// keywords like `normal` from 3-segment ones like `color-dodge`).
+const mixSpec: PrefixSpec = {
+	keywords: new Map<string, string>(),
+	nested: new Map([['blend', unifiedSpec]]),
+	fallback: 'other'
+};
+
+// `perspective-near`/`-none`/etc (a bare value) and `perspective-origin-*`
+// (`perspective-origin-center`, `perspective-origin-top-left`, …) are two
+// distinct properties; nesting `origin` avoids the same dash-count split
+// mix-blend has, since a two-word origin keyword (`top-left`) has one more
+// segment than a one-word one (`center`).
+const perspectiveSpec: PrefixSpec = {
+	keywords: new Map<string, string>(),
+	nested: new Map([['origin', unifiedSpec]]),
 	fallback: 'value'
 };
 
@@ -632,9 +656,13 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 				]
 			]
 		]),
-		// `font-stretch-*` (`font-stretch-condensed`, `font-stretch-50%`, …) is a
-		// third font sub-property, distinct from both weight and family.
-		nested: new Map([['stretch', unifiedSpec]]),
+		// `font-stretch-*` (`font-stretch-condensed`, `font-stretch-50%`, …) and
+		// `font-features-*` (font-feature-settings) are each their own font
+		// sub-property, distinct from weight and family and from each other.
+		nested: new Map([
+			['stretch', unifiedSpec],
+			['features', unifiedSpec]
+		]),
 		fallback: 'family'
 	},
 	grid: { keywords: selfMap(['cols', 'rows', 'flow']), fallback: 'other' },
@@ -768,6 +796,8 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	},
 	transform: transformSpec,
 	transition: transitionSpec,
+	mix: mixSpec,
+	perspective: perspectiveSpec,
 	ease: unifiedSpec,
 	origin: unifiedSpec,
 	cursor: unifiedSpec,
@@ -999,8 +1029,6 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 		'translate-none',
 		['translate', 'translate-x', 'translate-y', 'translate-z']
 	],
-	axisOverlapCovers('scale'),
-	axisOverlapCovers('skew'),
 	axisOverlapCovers('border-spacing'),
 	['rounded', CORNERS.map((corner) => `rounded-${corner}`)],
 	['rounded-t', ['rounded-tl', 'rounded-tr']],
@@ -1016,9 +1044,11 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 	['border-color-x', ['border-color-r', 'border-color-l']],
 	['border-color-y', ['border-color-t', 'border-color-b']],
 	['touch', ['touch-x', 'touch-y', 'touch-pz']],
-	// A font-size always reaches its own modifier-bearing siblings; only the
-	// modifier-bearing node reaches `leading` (see `getConflictKey`).
-	['text-size', ['text-size-leading']],
+	// A font-size (bare or modifier-bearing) always reaches `leading` — every
+	// font-size preset bundles a default line-height, so it conflicts with an
+	// explicit `leading-*` utility even without a `/leading` modifier (see
+	// `getConflictKey`).
+	['text-size', ['text-size-leading', 'leading']],
 	['text-size-leading', ['leading']],
 	// `flex-1`/`flex-auto`/`flex-none` set flex-grow, flex-shrink, and
 	// flex-basis at once.
@@ -1117,14 +1147,15 @@ const SEGMENT_OVERLAP_NODES: ReadonlySet<string> = new Set([
 
 // Prefixes classified by axisSpec whose bare form sets all axes: the category
 // picks between the whole-property node and a per-axis node.
+// `scale`/`skew` are deliberately excluded: unlike `gap`/`overflow`/
+// `overscroll`/`translate`, tailwind-merge does not treat the bare form as
+// conflicting with its `-x`/`-y` siblings (they compose as independent
+// per-axis overrides), and `inset` has its own dedicated handler above.
 const AXIS_OVERLAP_PREFIXES: ReadonlySet<string> = new Set([
-	'inset',
 	'gap',
 	'overflow',
 	'overscroll',
-	'translate',
-	'scale',
-	'skew'
+	'translate'
 ]);
 
 // The scroll-margin/scroll-padding categories of the `scroll` prefix spec —
@@ -1279,6 +1310,21 @@ const getTouchOverlapNode = (category: string): string | null => {
 	return null;
 };
 
+// `inset-s`/`inset-e` are tailwind-merge's own aliases for the standalone
+// `start`/`end` utilities (the very same classGroup), so they resolve to
+// those nodes directly rather than the generic per-axis naming.
+const getInsetOverlapNode = (category: string): string | null => {
+	if (category === 's') {
+		return 'start';
+	}
+
+	if (category === 'e') {
+		return 'end';
+	}
+
+	return getAxisOverlapNode('inset', category);
+};
+
 const SEGMENT_OVERLAP_HANDLERS: ReadonlyMap<
 	string,
 	(category: string) => string | null
@@ -1291,7 +1337,8 @@ const SEGMENT_OVERLAP_HANDLERS: ReadonlyMap<
 	['text', getTextOverlapNode],
 	['line', getLineOverlapNode],
 	['leading', getLeadingOverlapNode],
-	['touch', getTouchOverlapNode]
+	['touch', getTouchOverlapNode],
+	['inset', getInsetOverlapNode]
 ]);
 
 // The overlap node for a token's conflict group, or null when the token takes

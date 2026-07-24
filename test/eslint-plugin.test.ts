@@ -2259,9 +2259,6 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'text-lg text-white/50' });",
 	// A font size and text alignment don't conflict.
 	IMPORT + "sv({ base: 'text-sm text-center' });",
-	// A plain font size (no `/leading` modifier) doesn't conflict with a
-	// separate `leading-*` utility — only a modifier-bearing font size does.
-	IMPORT + "sv({ base: 'text-lg leading-6' });",
 	// Border width, style, and color are distinct properties.
 	IMPORT + "sv({ base: 'border-2 border-solid border-red-500' });",
 	// A bare default utility stays clear of siblings on other properties:
@@ -2301,6 +2298,11 @@ const NO_CONFLICTING_NS_VALID = [
 	// Unlike `translate`, `scale` has no `-none` bridge, so its `z` axis
 	// never overlaps the bare shorthand.
 	IMPORT + "sv({ base: 'scale-105 scale-z-10' });",
+	// Unlike `gap`/`overflow`/`overscroll`/`translate`, tailwind-merge doesn't
+	// treat bare `scale`/`skew` as conflicting with their `-x`/`-y` forms —
+	// they compose as independent per-axis overrides.
+	IMPORT + "sv({ base: 'scale-105 scale-x-110' });",
+	IMPORT + "sv({ base: 'skew-3 skew-x-6' });",
 	// Corner sides and sibling corners don't overlap without their shorthand.
 	IMPORT + "sv({ base: 'rounded-t-lg rounded-b-sm' });",
 	IMPORT + "sv({ base: 'rounded-tl-lg rounded-tr-sm' });",
@@ -2536,6 +2538,13 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'scale-x-50 scale-3d' });",
 	// color-scheme is unrelated to background color.
 	IMPORT + "sv({ base: 'scheme-dark bg-red-500' });",
+	// A bare perspective value and perspective-origin are distinct properties.
+	IMPORT + "sv({ base: 'perspective-near perspective-origin-center' });",
+	// font-features is distinct from font-stretch and font-family.
+	IMPORT +
+		"sv({ base: 'font-features-[10px] font-stretch-condensed font-sans' });",
+	// mix-blend-mode is unrelated to an explicit background color.
+	IMPORT + "sv({ base: 'mix-blend-multiply bg-red-500' });",
 	// break-before/after/inside are distinct from the word-break values.
 	IMPORT + "sv({ base: 'break-words break-before-column' });",
 	// A stroke color and stroke width are distinct sub-properties.
@@ -2632,6 +2641,13 @@ const NO_CONFLICTING_NS_INVALID = [
 		// separate `leading-*` utility.
 		code: IMPORT_CN + "cn('text-lg/6', 'leading-8');",
 		errors: repeat(conflictCn('leading-8, text-lg/6'), 2)
+	},
+	{
+		// Every font-size preset bundles a default line-height too, so even a
+		// bare font size (no `/leading` modifier) conflicts with an explicit
+		// `leading-*` utility.
+		code: IMPORT_CN + "cn('text-lg', 'leading-6');",
+		errors: repeat(conflictCn('leading-6, text-lg'), 2)
 	},
 	{
 		// …and it still conflicts with a plain, non-modifier font size too.
@@ -3033,10 +3049,6 @@ const NO_CONFLICTING_NS_INVALID = [
 	{
 		code: IMPORT_CN + "cn('overflow-hidden', 'overflow-x-auto');",
 		errors: repeat(conflictCn('overflow-hidden, overflow-x-auto'), 2)
-	},
-	{
-		code: IMPORT_CN + "cn('scale-105', 'scale-x-110');",
-		errors: repeat(conflictCn('scale-105, scale-x-110'), 2)
 	},
 	{
 		// `translate-none` resets every axis, so it conflicts with the bare
@@ -3565,6 +3577,47 @@ const NO_CONFLICTING_NS_INVALID = [
 	{
 		code: IMPORT_CN + "cn('row-auto', 'row-span-2');",
 		errors: repeat(conflictCn('row-auto, row-span-2'), 2)
+	},
+	{
+		// `inset-s-*` is tailwind-merge's own alias for `start-*` — the same
+		// classGroup — so they conflict directly.
+		code: IMPORT_CN + "cn('inset-s-4', 'start-2');",
+		errors: repeat(conflictCn('inset-s-4, start-2'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('inset-e-4', 'end-2');",
+		errors: repeat(conflictCn('end-2, inset-e-4'), 2)
+	},
+	{
+		// Two font-feature-settings values conflict, distinct from weight and
+		// family.
+		code: IMPORT_CN + "cn('font-features-[10px]', 'font-features-[20px]');",
+		errors: repeat(
+			conflictCn('font-features-[10px], font-features-[20px]'),
+			2
+		)
+	},
+	{
+		// Two mix-blend-mode values conflict, regardless of keyword segment
+		// count.
+		code: IMPORT_CN + "cn('mix-blend-normal', 'mix-blend-color-dodge');",
+		errors: repeat(
+			conflictCn('mix-blend-color-dodge, mix-blend-normal'),
+			2
+		)
+	},
+	{
+		// Two perspective-origin values conflict, regardless of keyword
+		// segment count.
+		code:
+			IMPORT_CN +
+			"cn('perspective-origin-center', 'perspective-origin-top-left');",
+		errors: repeat(
+			conflictCn(
+				'perspective-origin-center, perspective-origin-top-left'
+			),
+			2
+		)
 	}
 ];
 
