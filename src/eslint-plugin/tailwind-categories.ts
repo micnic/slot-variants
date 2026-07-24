@@ -210,13 +210,6 @@ const axisSpec: PrefixSpec = {
 // `space-x-*` is an axis utility that also has a composing `space-x-reverse`.
 const spaceSpec: PrefixSpec = { ...axisSpec, reverseComposes: true };
 
-// `inset` has no `z` axis but does have logical block sides (`inset-bs`,
-// `inset-be`), unlike the other axis utilities that share `axisSpec`.
-const insetSpec: PrefixSpec = {
-	keywords: selfMap(['x', 'y', 'bs', 'be']),
-	fallback: 'all'
-};
-
 // `translate-none` is a keyword value (not an axis), and it's a special case:
 // it resets every axis including `z`, while the bare form (`translate-4`)
 // only sets `x`/`y` — so `none` gets its own category, distinct from the
@@ -243,6 +236,31 @@ const borderSideSpec: PrefixSpec = {
 	short: 'width',
 	long: 'color',
 	fallback: 'width'
+};
+
+// `text-shadow-*`/`inset-shadow-*` size-or-color value (`text-shadow-sm`,
+// `text-shadow-red-500`); the bare form (`text-shadow`, `inset-shadow`) is
+// the default preset, itself a size — unlike `offsetSpec`/`borderSideSpec`,
+// whose bare form is a width.
+const shadowSizeSpec: PrefixSpec = {
+	keywords: categoryMap([['color', COLOR_KEYWORDS]]),
+	short: 'size',
+	long: 'color',
+	fallback: 'size'
+};
+
+// `inset` has no `z` axis but does have logical block sides (`inset-bs`,
+// `inset-be`), unlike the other axis utilities that share `axisSpec`. Its
+// `shadow`/`ring` keywords introduce the unrelated `inset-shadow-*`/
+// `inset-ring-*` families — without this, they'd fall into the `all`
+// bucket and falsely conflict with the physical/logical offset utilities.
+const insetSpec: PrefixSpec = {
+	keywords: selfMap(['x', 'y', 'bs', 'be']),
+	nested: new Map([
+		['shadow', shadowSizeSpec],
+		['ring', borderSideSpec]
+	]),
+	fallback: 'all'
 };
 
 // `touch-pan-x`/`-left`/`-right` all set the same CSS value (`pan-x`), so they
@@ -305,6 +323,7 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 			['color', COLOR_KEYWORDS],
 			['opacity', ['opacity']]
 		]),
+		nested: new Map([['shadow', shadowSizeSpec]]),
 		short: 'size',
 		long: 'color',
 		fallback: 'color'

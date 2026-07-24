@@ -2387,6 +2387,16 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'ring-offset-2 ring-offset-red-500' });",
 	// Ring width vs ring offset width are distinct properties.
 	IMPORT + "sv({ base: 'ring-2 ring-offset-2' });",
+	// A text-shadow color doesn't conflict with the unrelated text color.
+	IMPORT + "sv({ base: 'text-shadow-red-500 text-blue-500' });",
+	// A text-shadow size doesn't conflict with the unrelated font size.
+	IMPORT + "sv({ base: 'text-shadow-sm text-lg' });",
+	// An inset-shadow doesn't conflict with a physical inset offset.
+	IMPORT + "sv({ base: 'inset-shadow-sm inset-4' });",
+	// An inset-ring doesn't conflict with a physical inset offset.
+	IMPORT + "sv({ base: 'inset-ring-2 inset-4' });",
+	// Inset-ring width vs inset-ring color are distinct sub-properties.
+	IMPORT + "sv({ base: 'inset-ring-2 inset-ring-red-500' });",
 	// touch-action pan directions compose, so they don't conflict.
 	IMPORT + "sv({ base: 'touch-pan-x touch-pan-y' });",
 	// Pan and pinch-zoom also compose.
@@ -2582,6 +2592,29 @@ const NO_CONFLICTING_NS_INVALID = [
 		// Two ring offset colors conflict.
 		code: IMPORT_CN + "cn('ring-offset-red-500', 'ring-offset-blue-500');",
 		errors: repeat(conflictCn('ring-offset-blue-500, ring-offset-red-500'), 2)
+	},
+	{
+		// Two text-shadow sizes conflict.
+		code: IMPORT_CN + "cn('text-shadow-sm', 'text-shadow-lg');",
+		errors: repeat(conflictCn('text-shadow-lg, text-shadow-sm'), 2)
+	},
+	{
+		// Two text-shadow colors conflict.
+		code: IMPORT_CN + "cn('text-shadow-red-500', 'text-shadow-blue-500');",
+		errors: repeat(
+			conflictCn('text-shadow-blue-500, text-shadow-red-500'),
+			2
+		)
+	},
+	{
+		// Two inset-shadow sizes conflict.
+		code: IMPORT_CN + "cn('inset-shadow-sm', 'inset-shadow-lg');",
+		errors: repeat(conflictCn('inset-shadow-lg, inset-shadow-sm'), 2)
+	},
+	{
+		// Two inset-ring widths conflict.
+		code: IMPORT_CN + "cn('inset-ring-2', 'inset-ring-4');",
+		errors: repeat(conflictCn('inset-ring-2, inset-ring-4'), 2)
 	},
 	{
 		// Exclusive touch-action keywords conflict (they replace each other).
