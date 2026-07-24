@@ -2552,7 +2552,16 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'inline-flex inline-4' });",
 	IMPORT + "sv({ base: 'inline-block inline-full' });",
 	// min-inline-size and min-block-size are distinct properties.
-	IMPORT + "sv({ base: 'min-inline-full min-block-full' });"
+	IMPORT + "sv({ base: 'min-inline-full min-block-full' });",
+	// transition-property and transition-behavior are distinct properties.
+	IMPORT + "sv({ base: 'transition-colors transition-discrete' });",
+	IMPORT + "sv({ base: 'transition transition-normal' });",
+	// overflow-wrap and word-break are distinct properties.
+	IMPORT + "sv({ base: 'wrap-anywhere break-words' });",
+	// col-start/col-end are distinct from the col-span/auto/bare-integer group.
+	IMPORT + "sv({ base: 'col-start-2 col-span-3' });",
+	IMPORT + "sv({ base: 'col-start-2 col-end-4' });",
+	IMPORT + "sv({ base: 'row-start-2 row-span-3' });"
 ];
 
 const NO_CONFLICTING_NS_INVALID = [
@@ -3525,6 +3534,37 @@ const NO_CONFLICTING_NS_INVALID = [
 		// Two block-size values conflict.
 		code: IMPORT_CN + "cn('block-full', 'block-4');",
 		errors: repeat(conflictCn('block-4, block-full'), 2)
+	},
+	{
+		// Two transition-property values conflict.
+		code: IMPORT_CN + "cn('transition-colors', 'transition-none');",
+		errors: repeat(conflictCn('transition-colors, transition-none'), 2)
+	},
+	{
+		// Two transition-behavior values conflict.
+		code: IMPORT_CN + "cn('transition-normal', 'transition-discrete');",
+		errors: repeat(
+			conflictCn('transition-discrete, transition-normal'),
+			2
+		)
+	},
+	{
+		// Two overflow-wrap values conflict, despite differing dash counts.
+		code: IMPORT_CN + "cn('wrap-break-word', 'wrap-anywhere');",
+		errors: repeat(conflictCn('wrap-anywhere, wrap-break-word'), 2)
+	},
+	{
+		// col-auto, col-span-*, and a bare col-3 are one classGroup.
+		code: IMPORT_CN + "cn('col-auto', 'col-span-3');",
+		errors: repeat(conflictCn('col-auto, col-span-3'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('col-3', 'col-span-full');",
+		errors: repeat(conflictCn('col-3, col-span-full'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('row-auto', 'row-span-2');",
+		errors: repeat(conflictCn('row-auto, row-span-2'), 2)
 	}
 ];
 

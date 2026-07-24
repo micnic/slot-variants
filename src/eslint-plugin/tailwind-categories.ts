@@ -325,6 +325,15 @@ const unifiedSpec: PrefixSpec = {
 	fallback: 'value'
 };
 
+// `transition-*` property (`transition-colors`, bare `transition`) and
+// `transition-behavior` (`transition-normal`/`transition-discrete`) are
+// distinct properties sharing the `transition` first segment, and compose
+// (`transition-colors transition-discrete` is valid together).
+const transitionSpec: PrefixSpec = {
+	keywords: categoryMap([['behavior', ['normal', 'discrete']]]),
+	fallback: 'property'
+};
+
 // `inline-size` (`inline-4`, `inline-full`, …) is a single CSS property, but
 // the hyphenated display keywords `inline-block`/`inline-flex`/`inline-table`/
 // `inline-grid` share the `inline` first segment too — they set the unrelated
@@ -653,13 +662,25 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	self: unifiedSpec,
 	inline: inlineSpec,
 	block: unifiedSpec,
+	// `col-start-*`/`col-end-*` are their own classGroups (kept as distinct
+	// categories below), but `col-auto`, `col-span-*`, and a bare `col-3` are
+	// all one `col-start-end` classGroup — they share one category, and the
+	// bare-integer/arbitrary form reaches it through the fallback.
 	col: {
-		keywords: selfMap(['span', 'start', 'end', 'auto']),
-		fallback: 'other'
+		keywords: categoryMap([
+			['value', ['span', 'auto']],
+			['start', ['start']],
+			['end', ['end']]
+		]),
+		fallback: 'value'
 	},
 	row: {
-		keywords: selfMap(['span', 'start', 'end', 'auto']),
-		fallback: 'other'
+		keywords: categoryMap([
+			['value', ['span', 'auto']],
+			['start', ['start']],
+			['end', ['end']]
+		]),
+		fallback: 'value'
 	},
 	min: { keywords: selfMap(['w', 'h', 'inline', 'block']), fallback: 'other' },
 	max: { keywords: selfMap(['w', 'h', 'inline', 'block']), fallback: 'other' },
@@ -746,11 +767,13 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		fallback: 'base'
 	},
 	transform: transformSpec,
+	transition: transitionSpec,
 	ease: unifiedSpec,
 	origin: unifiedSpec,
 	cursor: unifiedSpec,
 	align: unifiedSpec,
 	whitespace: unifiedSpec,
+	wrap: unifiedSpec,
 	scheme: unifiedSpec,
 	drop: dropShadowSpec,
 	line: lineSpec,
