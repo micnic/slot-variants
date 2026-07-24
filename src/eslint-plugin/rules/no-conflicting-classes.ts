@@ -1,11 +1,11 @@
 import type { Rule } from 'eslint';
 import {
-    analyzeCnForRule,
-    analyzeConfigForRule,
-    buildExclusiveGroupMap,
+	analyzeCnForRule,
+	analyzeConfigForRule,
 	createTrackedCallListeners,
 	DOCS_URL
 } from '../analyzer.ts';
+import { buildExclusiveGroupMap } from '../tailwind-categories.ts';
 
 /**
  * Flags class tokens that collide within the same slot output: exact-duplicate
