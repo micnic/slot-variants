@@ -2418,6 +2418,12 @@ const NO_CONFLICTING_NS_VALID = [
 	// properties, so they don't conflict with each other (a documented gap:
 	// mask-no-clip also doesn't merge with mask-clip-border's category).
 	IMPORT + "sv({ base: 'mask-no-clip mask-no-repeat' });",
+	// scrollbar-thumb and scrollbar-track colors are distinct properties.
+	IMPORT + "sv({ base: 'scrollbar-thumb-red-500 scrollbar-track-blue-500' });",
+	// scrollbar-thumb color and the bare scrollbar width are distinct.
+	IMPORT + "sv({ base: 'scrollbar-thumb-red-500 scrollbar-thin' });",
+	// scrollbar-gutter and the bare scrollbar width are distinct.
+	IMPORT + "sv({ base: 'scrollbar-gutter-stable scrollbar-thin' });",
 	// touch-action pan directions compose, so they don't conflict.
 	IMPORT + "sv({ base: 'touch-pan-x touch-pan-y' });",
 	// Pan and pinch-zoom also compose.
@@ -2677,6 +2683,29 @@ const NO_CONFLICTING_NS_INVALID = [
 			"cn('mask-radial-closest-side', 'mask-radial-farthest-corner');",
 		errors: repeat(
 			conflictCn('mask-radial-closest-side, mask-radial-farthest-corner'),
+			2
+		)
+	},
+	{
+		// Two scrollbar-thumb colors conflict.
+		code:
+			IMPORT_CN +
+			"cn('scrollbar-thumb-red-500', 'scrollbar-thumb-blue-500');",
+		errors: repeat(
+			conflictCn('scrollbar-thumb-blue-500, scrollbar-thumb-red-500'),
+			2
+		)
+	},
+	{
+		// Two bare scrollbar width keywords conflict.
+		code: IMPORT_CN + "cn('scrollbar-thin', 'scrollbar-none');",
+		errors: repeat(conflictCn('scrollbar-none, scrollbar-thin'), 2)
+	},
+	{
+		// Two scrollbar-gutter values conflict.
+		code: IMPORT_CN + "cn('scrollbar-gutter-auto', 'scrollbar-gutter-both');",
+		errors: repeat(
+			conflictCn('scrollbar-gutter-auto, scrollbar-gutter-both'),
 			2
 		)
 	},

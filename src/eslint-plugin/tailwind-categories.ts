@@ -655,6 +655,15 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		]),
 		fallback: 'other'
 	},
+	scrollbar: {
+		keywords: categoryMap([['w', ['auto', 'thin', 'none']]]),
+		nested: new Map([
+			['thumb', colorSpec],
+			['track', colorSpec],
+			['gutter', unifiedSpec]
+		]),
+		fallback: 'other'
+	},
 	snap: {
 		keywords: categoryMap([
 			['axis', ['x', 'y', 'both', 'none']],
