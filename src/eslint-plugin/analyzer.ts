@@ -2824,6 +2824,106 @@ const getBorderOverlapNode = (category: string): string | null => {
 	return null;
 };
 
+// `translate-none` resets every axis including `z`, unlike the bare form
+// (which only reaches `x`/`y` through the generic axis handling) — see
+// `translateSpec` and the `translate-none` entry in `OVERLAP_COVERS`.
+const getTranslateOverlapNode = (category: string): string | null => {
+	if (category === 'none') {
+		return 'translate-none';
+	}
+
+	if (category === 'z') {
+		return 'translate-z';
+	}
+
+	return getAxisOverlapNode('translate', category);
+};
+
+const getScrollOverlapNode = (category: string): string | null => {
+	if (SCROLL_SPACING_CATEGORIES.has(category)) {
+		return `scroll-${category}`;
+	}
+
+	return null;
+};
+
+// The `flex` sizing values (`flex-1`, `flex-auto`, `flex-none`) overlap
+// grow/shrink/basis; the direction and wrap categories don't.
+const getFlexOverlapNode = (category: string): string | null => {
+	if (category === 'flex') {
+		return 'flex-sizing';
+	}
+
+	return null;
+};
+
+// A font-size utility always overlaps its sibling sizes, and — only when it
+// carries a `/leading` postfix modifier (see `getConflictKey`) — the
+// separate `leading-*` utility too, since the modifier sets line-height
+// directly.
+const getTextOverlapNode = (category: string): string | null => {
+	if (category === 'overflow') {
+		return 'text-overflow';
+	}
+
+	if (category === 'size') {
+		return 'text-size';
+	}
+
+	return null;
+};
+
+// `line-clamp-*` sets display and overflow as a side effect (see
+// `OVERLAP_COVERS['line-clamp']`); `line-through` and other `line-*`
+// categories take no part in the overlap graph.
+const getLineOverlapNode = (category: string): string | null => {
+	if (category === 'clamp-value') {
+		return 'line-clamp';
+	}
+
+	return null;
+};
+
+const getLeadingOverlapNode = (): string => 'leading';
+
+// `touch-none`/`touch-auto`/`touch-manipulation` overlap the `pan`/`pinch`
+// sub-utilities; the other pan directions (`left`/`right`/`up`/`down`)
+// compose instead of conflicting, so they're left unconnected.
+const getTouchOverlapNode = (category: string): string | null => {
+	if (category === 'base') {
+		return 'touch';
+	}
+
+	if (category === 'pan-x') {
+		return 'touch-x';
+	}
+
+	if (category === 'pan-y') {
+		return 'touch-y';
+	}
+
+	if (category === 'pinch') {
+		return 'touch-pz';
+	}
+
+	return null;
+};
+
+const SEGMENT_OVERLAP_HANDLERS: ReadonlyMap<
+	string,
+	(category: string) => string | null
+> = new Map([
+	['translate', getTranslateOverlapNode],
+	['rounded', getRoundedOverlapNode],
+	['border', getBorderOverlapNode],
+	['scroll', getScrollOverlapNode],
+	['flex', getFlexOverlapNode],
+	['text', getTextOverlapNode],
+	['line', getLineOverlapNode],
+	['leading', getLeadingOverlapNode],
+	['touch', getTouchOverlapNode]
+]);
+
 // The overlap node for a token's conflict group, or null when the token takes
 // part in no shorthand/longhand relation.
 const getOverlapNode = (segment: string, category: string): string | null => {
@@ -2831,85 +2931,14 @@ const getOverlapNode = (segment: string, category: string): string | null => {
 		return segment;
 	}
 
-	// `translate-none` resets every axis including `z`, unlike the bare form
-	// (which only reaches `x`/`y` through the generic axis handling below) —
-	// see `translateSpec` and the `translate-none` entry in `OVERLAP_COVERS`.
-	if (segment === 'translate') {
-		if (category === 'none') {
-			return 'translate-none';
-		}
+	const handler = SEGMENT_OVERLAP_HANDLERS.get(segment);
 
-		if (category === 'z') {
-			return 'translate-z';
-		}
+	if (handler) {
+		return handler(category);
 	}
 
 	if (AXIS_OVERLAP_PREFIXES.has(segment)) {
 		return getAxisOverlapNode(segment, category);
-	}
-
-	if (segment === 'rounded') {
-		return getRoundedOverlapNode(category);
-	}
-
-	if (segment === 'border') {
-		return getBorderOverlapNode(category);
-	}
-
-	if (segment === 'scroll' && SCROLL_SPACING_CATEGORIES.has(category)) {
-		return `scroll-${category}`;
-	}
-
-	// The `flex` sizing values (`flex-1`, `flex-auto`, `flex-none`) overlap
-	// grow/shrink/basis; the direction and wrap categories don't.
-	if (segment === 'flex' && category === 'flex') {
-		return 'flex-sizing';
-	}
-
-	if (segment === 'text' && category === 'overflow') {
-		return 'text-overflow';
-	}
-
-	// `line-clamp-*` sets display and overflow as a side effect (see
-	// `OVERLAP_COVERS['line-clamp']`); `line-through` and other `line-*`
-	// categories take no part in the overlap graph.
-	if (segment === 'line' && category === 'clamp-value') {
-		return 'line-clamp';
-	}
-
-	// A font-size utility always overlaps its sibling sizes, and — only when
-	// it carries a `/leading` postfix modifier (see `getConflictKey`) — the
-	// separate `leading-*` utility too, since the modifier sets line-height
-	// directly.
-	if (segment === 'text' && category === 'size') {
-		return 'text-size';
-	}
-
-	if (segment === 'leading') {
-		return 'leading';
-	}
-
-	// `touch-none`/`touch-auto`/`touch-manipulation` overlap the `pan`/`pinch`
-	// sub-utilities; the other pan directions (`left`/`right`/`up`/`down`)
-	// compose instead of conflicting, so they're left unconnected.
-	if (segment === 'touch') {
-		if (category === 'base') {
-			return 'touch';
-		}
-
-		if (category === 'pan-x') {
-			return 'touch-x';
-		}
-
-		if (category === 'pan-y') {
-			return 'touch-y';
-		}
-
-		if (category === 'pinch') {
-			return 'touch-pz';
-		}
-
-		return null;
 	}
 
 	return null;
