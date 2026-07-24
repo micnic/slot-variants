@@ -2391,9 +2391,12 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'touch-pan-x touch-pan-y' });",
 	// Pan and pinch-zoom also compose.
 	IMPORT + "sv({ base: 'touch-pan-x touch-pinch-zoom' });",
-	// The other pan directions have no overlap node, so they stay independent
-	// even alongside a bare touch-action toggle.
-	IMPORT + "sv({ base: 'touch-none touch-pan-left' });",
+	// `touch-pan-left` shares the `x` axis with `touch-pan-x`, but the `y`
+	// axis (`touch-pan-up`) is independent of it.
+	IMPORT + "sv({ base: 'touch-pan-left touch-pan-up' });",
+	// An unrecognized pan direction has no overlap node at all, so it stays
+	// untracked even alongside a bare touch-action toggle.
+	IMPORT + "sv({ base: 'touch-none touch-pan-diagonal' });",
 	// A composing `-reverse` flag sits alongside the width, so it doesn't
 	// conflict with it.
 	IMPORT + "sv({ base: 'space-x-2 space-x-reverse' });",
@@ -2439,6 +2442,14 @@ const NO_CONFLICTING_NS_VALID = [
 	// `line-through` shares the `line` first segment with `line-clamp-*` but
 	// is an unrelated single-word utility — no bridge between them.
 	IMPORT + "sv({ base: 'line-clamp-3 line-through' });",
+	// Container queries are unrelated to other utilities without their own
+	// bridge (`line-clamp` doesn't reach `@container`).
+	IMPORT + "sv({ base: '@container flex' });",
+	// The container overlap is scoped per variant prefix too.
+	IMPORT_CN + "cn('@container', 'hover:@container-normal');",
+	// Font-variant-numeric styles from different (non-`normal`) categories
+	// compose — only `normal-nums` conflicts with every other value.
+	IMPORT + "sv({ base: 'lining-nums tabular-nums diagonal-fractions' });",
 	// Axis utilities on independent axes don't conflict.
 	IMPORT + "sv({ base: 'gap-x-4 gap-y-2' });",
 	// Grid columns vs rows.
@@ -2576,6 +2587,22 @@ const NO_CONFLICTING_NS_INVALID = [
 		// Exclusive touch-action keywords conflict (they replace each other).
 		code: IMPORT_CN + "cn('touch-auto', 'touch-none');",
 		errors: repeat(conflictCn('touch-auto, touch-none'), 2)
+	},
+	{
+		// `touch-pan-x`/`-left`/`-right` all set the same CSS value, so they
+		// conflict directly, not just through the bare `touch-*` bridge.
+		code: IMPORT_CN + "cn('touch-pan-x', 'touch-pan-left');",
+		errors: repeat(conflictCn('touch-pan-left, touch-pan-x'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('touch-pan-y', 'touch-pan-up');",
+		errors: repeat(conflictCn('touch-pan-up, touch-pan-y'), 2)
+	},
+	{
+		// A bare touch-action toggle reaches every pan direction, not just the
+		// bare axis form.
+		code: IMPORT_CN + "cn('touch-none', 'touch-pan-left');",
+		errors: repeat(conflictCn('touch-none, touch-pan-left'), 2)
 	},
 	{
 		// `reverse` composition is opt-in: `flex-row-reverse` is a direction
@@ -3060,14 +3087,16 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('not-sr-only, sr-only'), 2)
 	},
 	{
-		// Opt-in: font-variant-numeric utilities are mutually exclusive.
+		// Font-variant-numeric spacing styles are the same property, so they
+		// conflict by default — no opt-in needed (unlike `display`, these
+		// words are specific enough to not collide with project class names).
 		code: IMPORT_CN + "cn('tabular-nums', 'proportional-nums');",
-		options: [{ exclusiveGroups: true }],
 		errors: repeat(conflictCn('proportional-nums, tabular-nums'), 2)
 	},
 	{
+		// `normal-nums` resets the whole property, so it conflicts with a
+		// value from any of the other font-variant-numeric categories too.
 		code: IMPORT_CN + "cn('normal-nums', 'diagonal-fractions');",
-		options: [{ exclusiveGroups: true }],
 		errors: repeat(conflictCn('diagonal-fractions, normal-nums'), 2)
 	},
 	{
@@ -3123,6 +3152,28 @@ const NO_CONFLICTING_NS_INVALID = [
 		// other) — this is a real conflict either way.
 		code: IMPORT_CN + "cn('line-clamp-3', 'flex', 'hidden');",
 		errors: repeat(conflictCn('flex, hidden, line-clamp-3'), 3)
+	},
+	{
+		// `@container`/`@container-normal`/`@container-size` all set one
+		// property, so they conflict with each other directly.
+		code: IMPORT_CN + "cn('@container', '@container-normal');",
+		errors: repeat(conflictCn('@container, @container-normal'), 2)
+	},
+	{
+		// Two named containers conflict too, regardless of the actual name —
+		// tailwind-merge doesn't distinguish container names either.
+		code: IMPORT_CN + "cn('@container/sidebar', '@container-size/nav');",
+		errors: repeat(conflictCn('@container-size/nav, @container/sidebar'), 2)
+	},
+	{
+		// Naming a container also sets its type, so it conflicts with a plain
+		// `container-type` utility too.
+		code: IMPORT_CN + "cn('@container-normal', '@container/sidebar');",
+		errors: repeat(conflictCn('@container-normal, @container/sidebar'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('@container', '@container/sidebar');",
+		errors: repeat(conflictCn('@container, @container/sidebar'), 2)
 	},
 	{
 		// `flex-1`/`flex-auto`/`flex-none` set grow, shrink, and basis at once.

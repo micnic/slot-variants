@@ -1952,9 +1952,10 @@ export const noRedundantSpaces: Rule.RuleModule = {
 // `exclusiveGroups: true` option, since a project's own single-word class names
 // would otherwise be flagged.
 
-// Every `display` value — shared with the always-on `line-clamp` overlap
-// below (`line-clamp` sets `display` unconditionally, unlike the rest of this
-// group, which is opt-in — see `SINGLE_WORD_OVERLAP_NODES`).
+// Every `display` value. The single-word subset (see
+// `SINGLE_WORD_DISPLAY_KEYWORDS` below) is shared with the always-on
+// `line-clamp` overlap (`line-clamp` sets `display` unconditionally, unlike
+// the rest of this group, which is opt-in — see `SINGLE_WORD_OVERLAP_NODES`).
 const DISPLAY_KEYWORDS: ReadonlyArray<string> = [
 	'block',
 	'inline-block',
@@ -1979,6 +1980,18 @@ const DISPLAY_KEYWORDS: ReadonlyArray<string> = [
 	'hidden'
 ];
 
+// The subset of `DISPLAY_KEYWORDS` with no `-` of their own, safe to give a
+// dedicated `line-clamp` overlap node (see `SINGLE_WORD_OVERLAP_NODES`). The
+// hyphenated members (`table-cell`, `inline-block`, …) are excluded: several
+// of them (`table-*`) are already grouped by the `table` `PREFIX_SPECS` entry,
+// which correctly makes them conflict with each other by default — giving
+// each its own node here would shadow that and stop them from conflicting
+// with each other. `line-clamp` doesn't bridge to this subset as a result;
+// a narrower gap than the alternative of breaking `table`'s own grouping.
+const SINGLE_WORD_DISPLAY_KEYWORDS: ReadonlyArray<string> = DISPLAY_KEYWORDS.filter(
+	(word) => !word.includes('-')
+);
+
 const TAILWIND_EXCLUSIVE_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
 	// display
 	DISPLAY_KEYWORDS,
@@ -1997,19 +2010,13 @@ const TAILWIND_EXCLUSIVE_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
 	// isolation
 	['isolate', 'isolation-auto'],
 	// screen-reader visibility
-	['sr-only', 'not-sr-only'],
-	// font-variant-numeric — every value replaces the whole property
-	[
-		'normal-nums',
-		'ordinal',
-		'slashed-zero',
-		'lining-nums',
-		'oldstyle-nums',
-		'proportional-nums',
-		'tabular-nums',
-		'diagonal-fractions',
-		'stacked-fractions'
-	]
+	['sr-only', 'not-sr-only']
+	// Font-variant-numeric (`tabular-nums`, `normal-nums`, …) is NOT here: it
+	// isn't a flat mutually-exclusive set — `lining-nums`/`tabular-nums` (a
+	// figure style and a spacing style) compose and don't conflict with each
+	// other, only `normal-nums` conflicts with every other value (it resets
+	// the whole property). That star shape is default-on via
+	// `SINGLE_WORD_OVERLAP_NODES` instead — see the `fvn-*` entries there.
 ];
 
 // `true` enables the built-in Tailwind groups; an array supplies custom groups
@@ -2192,10 +2199,15 @@ const borderSideSpec: PrefixSpec = {
 	fallback: 'width'
 };
 
-// `touch-pan-*` directions compose (`touch-pan-x touch-pan-y` is valid), so each
-// direction is its own category and never collides with a sibling.
+// `touch-pan-x`/`-left`/`-right` all set the same CSS value (`pan-x`), so they
+// conflict with each other; `touch-pan-y`/`-up`/`-down` likewise share
+// `pan-y`. The two axes are independent of each other and compose
+// (`touch-pan-x touch-pan-y` is valid).
 const panSpec: PrefixSpec = {
-	keywords: selfMap(['x', 'y', 'left', 'right', 'up', 'down']),
+	keywords: categoryMap([
+		['x', ['x', 'left', 'right']],
+		['y', ['y', 'up', 'down']]
+	]),
 	fallback: 'other'
 };
 
@@ -2771,16 +2783,26 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 	],
 	// `line-clamp-*` sets `display` (to `-webkit-box`) and `overflow` (to
 	// `hidden`) unconditionally — unlike `truncate`, it doesn't set
-	// `text-overflow`/`white-space`, and it reaches every `display` keyword,
-	// not just one.
+	// `text-overflow`/`white-space`, and it reaches every single-word display
+	// keyword (see `SINGLE_WORD_DISPLAY_KEYWORDS`).
 	[
 		'line-clamp',
 		[
-			...DISPLAY_KEYWORDS.map((word) => `display-${word}`),
+			...SINGLE_WORD_DISPLAY_KEYWORDS.map((word) => `display-${word}`),
 			'overflow',
 			'overflow-x',
 			'overflow-y'
 		]
+	],
+	// Naming a container also sets its type, so it conflicts with a plain,
+	// unnamed `container-type` utility too.
+	['container-named', ['container-type']],
+	// `normal-nums` resets the whole font-variant-numeric property, so it
+	// conflicts with every other value — but a figure/spacing/fraction style
+	// doesn't conflict with a style from a different one of those three.
+	[
+		'fvn-normal',
+		['fvn-ordinal', 'fvn-slashed-zero', 'fvn-figure', 'fvn-spacing', 'fvn-fraction']
 	]
 ]);
 
@@ -3010,16 +3032,37 @@ const getOverlapNode = (segment: string, category: string): string | null => {
 // the overlap graph through a node of their own, despite having no dashed
 // family — so they get a conflict key even without an exclusive-groups opt-in.
 //
-// Every `display` value gets its own node here too (`display-flex`,
-// `display-block`, …) — one per keyword, never a node shared across keywords
-// — so `line-clamp` (which always sets `display`) can reach any of them,
-// without making the keywords conflict with *each other* by default (that
-// stays behind the `exclusiveGroups: true` opt-in).
+// Every single-word `display` value gets its own node here too
+// (`display-flex`, `display-block`, …) — one per keyword, never a node shared
+// across keywords — so `line-clamp` (which always sets `display`) can reach
+// any of them, without making the keywords conflict with *each other* by
+// default (that stays behind the `exclusiveGroups: true` opt-in). The
+// hyphenated display keywords aren't included — see
+// `SINGLE_WORD_DISPLAY_KEYWORDS`.
+//
+// Font-variant-numeric values are a star, not a flat set: `lining-nums` and
+// `oldstyle-nums` are literally the same figure-style property (so they share
+// a node and conflict directly, like `truncate`'s single node), but a figure
+// style doesn't conflict with a spacing style (`tabular-nums`) or a fraction
+// style (`diagonal-fractions`) — only `normal-nums` (which resets the whole
+// property) reaches every other value, via the `fvn-normal` bridge in
+// `OVERLAP_COVERS`. This is default-on (unlike `display`) because these words
+// are specific enough that they're very unlikely to collide with a project's
+// own class names.
 const SINGLE_WORD_OVERLAP_NODES: Record<string, string> = {
 	truncate: 'truncate',
 	...Object.fromEntries(
-		DISPLAY_KEYWORDS.map((word) => [word, `display-${word}`])
-	)
+		SINGLE_WORD_DISPLAY_KEYWORDS.map((word) => [word, `display-${word}`])
+	),
+	'normal-nums': 'fvn-normal',
+	ordinal: 'fvn-ordinal',
+	'slashed-zero': 'fvn-slashed-zero',
+	'lining-nums': 'fvn-figure',
+	'oldstyle-nums': 'fvn-figure',
+	'proportional-nums': 'fvn-spacing',
+	'tabular-nums': 'fvn-spacing',
+	'diagonal-fractions': 'fvn-fraction',
+	'stacked-fractions': 'fvn-fraction'
 };
 
 // The conflict key plus the pieces an overlap merge needs: the variant prefix
@@ -3077,6 +3120,42 @@ const splitVariantPrefix = (
 	return { variantPrefix: segments.sort().join(':'), utility };
 };
 
+const CONTAINER_TYPE_PREFIX = '@container';
+
+// `@container`/`@container-normal`/`@container-size` all set one property
+// (`container-type`), so they conflict with each other directly regardless of
+// the specific keyword — unlike every other prefix here, they don't split
+// into further categories. A `/name` suffix on any of the three (or on the
+// bare form) additionally names the container (`container-named`), a
+// distinct property that still conflicts with a plain, unnamed
+// `container-type` utility, since naming a container also sets its type (see
+// `OVERLAP_COVERS`). Different container *names* aren't distinguished from
+// each other here, matching tailwind-merge's own `container-named`
+// classGroupId, which doesn't parse out the name either. This bypasses the
+// regular dash-segment parsing entirely, since `@container`/`@container/name`
+// have no top-level `-` at all while `@container-size/name` does — the two
+// shapes aren't consistent enough to fit the normal `firstSegment` model.
+const getContainerConflictKey = (
+	bare: string,
+	variantPrefix: string
+): ConflictKeyInfo | null => {
+	if (
+		bare !== CONTAINER_TYPE_PREFIX &&
+		!bare.startsWith(`${CONTAINER_TYPE_PREFIX}-`) &&
+		!bare.startsWith(`${CONTAINER_TYPE_PREFIX}/`)
+	) {
+		return null;
+	}
+
+	const hasName = splitOutsideBrackets(bare, '/').length > 1;
+
+	return {
+		key: `${variantPrefix}|container|${hasName ? 'named' : 'type'}`,
+		variantPrefix,
+		overlap: hasName ? 'container-named' : 'container-type'
+	};
+};
+
 // Returns null for tokens that don't look like a namespaced utility — single
 // words (`flex`), purely-prefixed (`-`), or anything without a top-level `-`
 // after the optional leading negative marker. The `!` important marker is
@@ -3116,6 +3195,26 @@ const getConflictKey = (
 		};
 	}
 
+	const containerInfo = getContainerConflictKey(bare, variantPrefix);
+
+	if (containerInfo !== null) {
+		return containerInfo;
+	}
+
+	// Matched on the full, un-split string — many of these words contain a
+	// `-` themselves (`inline-block`, `table-caption`, `diagonal-fractions`),
+	// so this has to run before the dash-split below, not inside its
+	// `value.length === 0` branch (which would miss every hyphenated one).
+	const wordOverlap = SINGLE_WORD_OVERLAP_NODES[bare];
+
+	if (wordOverlap !== undefined) {
+		return {
+			key: `${variantPrefix}|${wordOverlap}`,
+			variantPrefix,
+			overlap: wordOverlap
+		};
+	}
+
 	const value = splitOutsideBrackets(bare, '-');
 	const firstSegment = value.shift();
 
@@ -3128,17 +3227,7 @@ const getConflictKey = (
 		const bareValue = BARE_UTILITIES[firstSegment];
 
 		if (bareValue === undefined) {
-			const overlap = SINGLE_WORD_OVERLAP_NODES[firstSegment];
-
-			if (overlap === undefined) {
-				return null;
-			}
-
-			return {
-				key: `${variantPrefix}|${overlap}`,
-				variantPrefix,
-				overlap
-			};
+			return null;
 		}
 
 		const category = categorize(firstSegment, bareValue);
