@@ -2436,6 +2436,9 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'overflow-visible whitespace-normal' });",
 	// The truncate overlap is scoped per variant prefix.
 	IMPORT_CN + "cn('hover:truncate', 'overflow-visible');",
+	// `line-through` shares the `line` first segment with `line-clamp-*` but
+	// is an unrelated single-word utility — no bridge between them.
+	IMPORT + "sv({ base: 'line-clamp-3 line-through' });",
 	// Axis utilities on independent axes don't conflict.
 	IMPORT + "sv({ base: 'gap-x-4 gap-y-2' });",
 	// Grid columns vs rows.
@@ -3089,6 +3092,37 @@ const NO_CONFLICTING_NS_INVALID = [
 	{
 		code: IMPORT_CN + "cn('truncate', 'whitespace-normal');",
 		errors: repeat(conflictCn('truncate, whitespace-normal'), 2)
+	},
+	{
+		// Two `line-clamp-*` values conflict directly (same property).
+		code: IMPORT_CN + "cn('line-clamp-3', 'line-clamp-4');",
+		errors: repeat(conflictCn('line-clamp-3, line-clamp-4'), 2)
+	},
+	{
+		// `line-clamp-*` forces `display`, so it conflicts with any display
+		// keyword by default — no opt-in needed, unlike display-vs-display.
+		code: IMPORT_CN + "cn('line-clamp-3', 'flex');",
+		errors: repeat(conflictCn('flex, line-clamp-3'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('line-clamp-3', 'hidden');",
+		errors: repeat(conflictCn('hidden, line-clamp-3'), 2)
+	},
+	{
+		// `line-clamp-*` also forces `overflow: hidden`.
+		code: IMPORT_CN + "cn('line-clamp-3', 'overflow-visible');",
+		errors: repeat(conflictCn('line-clamp-3, overflow-visible'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('line-clamp-3', 'overflow-x-auto');",
+		errors: repeat(conflictCn('line-clamp-3, overflow-x-auto'), 2)
+	},
+	{
+		// The bridge merges every present display keyword into one group, since
+		// `flex` and `hidden` both reach `line-clamp` (and, transitively, each
+		// other) — this is a real conflict either way.
+		code: IMPORT_CN + "cn('line-clamp-3', 'flex', 'hidden');",
+		errors: repeat(conflictCn('flex, hidden, line-clamp-3'), 3)
 	},
 	{
 		// `flex-1`/`flex-auto`/`flex-none` set grow, shrink, and basis at once.

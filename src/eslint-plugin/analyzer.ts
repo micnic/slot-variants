@@ -1951,31 +1951,37 @@ export const noRedundantSpaces: Rule.RuleModule = {
 // first segment (`inline-block` vs `flex`). Opt-in via the rule's
 // `exclusiveGroups: true` option, since a project's own single-word class names
 // would otherwise be flagged.
+
+// Every `display` value — shared with the always-on `line-clamp` overlap
+// below (`line-clamp` sets `display` unconditionally, unlike the rest of this
+// group, which is opt-in — see `SINGLE_WORD_OVERLAP_NODES`).
+const DISPLAY_KEYWORDS: ReadonlyArray<string> = [
+	'block',
+	'inline-block',
+	'inline',
+	'flex',
+	'inline-flex',
+	'table',
+	'inline-table',
+	'table-caption',
+	'table-cell',
+	'table-column',
+	'table-column-group',
+	'table-footer-group',
+	'table-header-group',
+	'table-row-group',
+	'table-row',
+	'flow-root',
+	'grid',
+	'inline-grid',
+	'contents',
+	'list-item',
+	'hidden'
+];
+
 const TAILWIND_EXCLUSIVE_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
 	// display
-	[
-		'block',
-		'inline-block',
-		'inline',
-		'flex',
-		'inline-flex',
-		'table',
-		'inline-table',
-		'table-caption',
-		'table-cell',
-		'table-column',
-		'table-column-group',
-		'table-footer-group',
-		'table-header-group',
-		'table-row-group',
-		'table-row',
-		'flow-root',
-		'grid',
-		'inline-grid',
-		'contents',
-		'list-item',
-		'hidden'
-	],
+	DISPLAY_KEYWORDS,
 	// position
 	['static', 'fixed', 'absolute', 'relative', 'sticky'],
 	// visibility
@@ -2220,6 +2226,16 @@ const unifiedSpec: PrefixSpec = {
 	short: 'value',
 	long: 'value',
 	fallback: 'value'
+};
+
+// `line-clamp-*` (`line-clamp-3`, `line-clamp-none`, an arbitrary value) sets
+// display and overflow as a side effect, so it gets its own overlap node (see
+// `getOverlapNode`); `line-through` is an unrelated single-word utility that
+// happens to share the `line` first segment.
+const lineSpec: PrefixSpec = {
+	keywords: categoryMap([['through', ['through']]]),
+	nested: new Map([['clamp', unifiedSpec]]),
+	fallback: 'other'
 };
 
 const PREFIX_SPECS: Record<string, PrefixSpec> = {
@@ -2504,6 +2520,7 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	// Every `drop-shadow-*` (including the bare `drop-shadow`) sets the single
 	// drop-shadow filter, so collapse them all to one category.
 	drop: unifiedSpec,
+	line: lineSpec,
 	gap: axisSpec,
 	space: spaceSpec,
 	translate: translateSpec,
@@ -2751,6 +2768,19 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 	[
 		'truncate',
 		['overflow', 'overflow-x', 'overflow-y', 'text-overflow', 'whitespace']
+	],
+	// `line-clamp-*` sets `display` (to `-webkit-box`) and `overflow` (to
+	// `hidden`) unconditionally — unlike `truncate`, it doesn't set
+	// `text-overflow`/`white-space`, and it reaches every `display` keyword,
+	// not just one.
+	[
+		'line-clamp',
+		[
+			...DISPLAY_KEYWORDS.map((word) => `display-${word}`),
+			'overflow',
+			'overflow-x',
+			'overflow-y'
+		]
 	]
 ]);
 
@@ -2930,6 +2960,13 @@ const getOverlapNode = (segment: string, category: string): string | null => {
 		return 'text-overflow';
 	}
 
+	// `line-clamp-*` sets display and overflow as a side effect (see
+	// `OVERLAP_COVERS['line-clamp']`); `line-through` and other `line-*`
+	// categories take no part in the overlap graph.
+	if (segment === 'line' && category === 'clamp-value') {
+		return 'line-clamp';
+	}
+
 	// A font-size utility always overlaps its sibling sizes, and — only when
 	// it carries a `/leading` postfix modifier (see `getConflictKey`) — the
 	// separate `leading-*` utility too, since the modifier sets line-height
@@ -2972,8 +3009,17 @@ const getOverlapNode = (segment: string, category: string): string | null => {
 // (`truncate` is overflow + text-overflow + white-space at once) take part in
 // the overlap graph through a node of their own, despite having no dashed
 // family — so they get a conflict key even without an exclusive-groups opt-in.
+//
+// Every `display` value gets its own node here too (`display-flex`,
+// `display-block`, …) — one per keyword, never a node shared across keywords
+// — so `line-clamp` (which always sets `display`) can reach any of them,
+// without making the keywords conflict with *each other* by default (that
+// stays behind the `exclusiveGroups: true` opt-in).
 const SINGLE_WORD_OVERLAP_NODES: Record<string, string> = {
-	truncate: 'truncate'
+	truncate: 'truncate',
+	...Object.fromEntries(
+		DISPLAY_KEYWORDS.map((word) => [word, `display-${word}`])
+	)
 };
 
 // The conflict key plus the pieces an overlap merge needs: the variant prefix
