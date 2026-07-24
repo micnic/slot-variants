@@ -510,7 +510,10 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		fallback: 'color'
 	},
 	stroke: {
-		keywords: categoryMap([['color', COLOR_KEYWORDS]]),
+		// `stroke-none` sets the `stroke` color property to `none`, unlike
+		// `border-none`/`outline-none`/etc, which are a `style` keyword — so it
+		// joins `COLOR_KEYWORDS` here rather than falling to the `width` bucket.
+		keywords: categoryMap([['color', [...COLOR_KEYWORDS, 'none']]]),
 		short: 'width',
 		long: 'color',
 		fallback: 'color'
@@ -706,8 +709,9 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	},
 	break: {
 		keywords: categoryMap([
-			['wrap', ['words']],
-			['word', ['all', 'keep']],
+			// `break-normal`/`-words`/`-all`/`-keep` are all `word-break` values,
+			// so they share one category.
+			['word', ['normal', 'words', 'all', 'keep']],
 			['before', ['before']],
 			['after', ['after']],
 			['inside', ['inside']]

@@ -2535,7 +2535,14 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'scale-150 scale-3d' });",
 	IMPORT + "sv({ base: 'scale-x-50 scale-3d' });",
 	// color-scheme is unrelated to background color.
-	IMPORT + "sv({ base: 'scheme-dark bg-red-500' });"
+	IMPORT + "sv({ base: 'scheme-dark bg-red-500' });",
+	// break-before/after/inside are distinct from the word-break values.
+	IMPORT + "sv({ base: 'break-words break-before-column' });",
+	// A stroke color and stroke width are distinct sub-properties.
+	IMPORT + "sv({ base: 'stroke-2 stroke-red-500' });",
+	// stroke-none is a color value (not a width), so it doesn't falsely
+	// conflict with an actual stroke width.
+	IMPORT + "sv({ base: 'stroke-none stroke-2' });"
 ];
 
 const NO_CONFLICTING_NS_INVALID = [
@@ -3453,6 +3460,22 @@ const NO_CONFLICTING_NS_INVALID = [
 		// though they have different dash counts.
 		code: IMPORT_CN + "cn('scheme-dark', 'scheme-only-dark');",
 		errors: repeat(conflictCn('scheme-dark, scheme-only-dark'), 2)
+	},
+	{
+		// break-normal, break-words, break-all, and break-keep are all
+		// word-break values, so any two of them conflict.
+		code: IMPORT_CN + "cn('break-words', 'break-all');",
+		errors: repeat(conflictCn('break-all, break-words'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('break-normal', 'break-keep');",
+		errors: repeat(conflictCn('break-keep, break-normal'), 2)
+	},
+	{
+		// stroke-none sets the stroke color, so it conflicts with another
+		// stroke color rather than a stroke width.
+		code: IMPORT_CN + "cn('stroke-none', 'stroke-red-500');",
+		errors: repeat(conflictCn('stroke-none, stroke-red-500'), 2)
 	}
 ];
 
