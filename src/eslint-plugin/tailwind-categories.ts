@@ -210,6 +210,16 @@ const axisSpec: PrefixSpec = {
 // `space-x-*` is an axis utility that also has a composing `space-x-reverse`.
 const spaceSpec: PrefixSpec = { ...axisSpec, reverseComposes: true };
 
+// `scale-3d` enables 3D scaling and is independent of the scale factor
+// (`scale-150 scale-3d` composes) — unlike the `x`/`y`/`z` axis keywords
+// `axisSpec` shares with `gap`/`skew`/`rotate`/etc, which set the factor along
+// one axis, `scale` also has this standalone keyword, so it can't share the
+// common spec.
+const scaleSpec: PrefixSpec = {
+	keywords: selfMap(['x', 'y', 'z', '3d']),
+	fallback: 'all'
+};
+
 // `translate-none` is a keyword value (not an axis), and it's a special case:
 // it resets every axis including `z`, while the bare form (`translate-4`)
 // only sets `x`/`y` — so `none` gets its own category, distinct from the
@@ -247,6 +257,16 @@ const shadowSizeSpec: PrefixSpec = {
 	short: 'size',
 	long: 'color',
 	fallback: 'size'
+};
+
+// `drop-shadow-*` (`drop-shadow-sm`, `drop-shadow-red-500`) is a size-or-color
+// value nested under the literal `shadow` segment, mirroring `shadowSizeSpec`
+// — the bare `drop-shadow` is the default preset, itself a size, and the two
+// compose (`drop-shadow-sm drop-shadow-red-500` is valid together).
+const dropShadowSpec: PrefixSpec = {
+	keywords: new Map<string, string>(),
+	nested: new Map([['shadow', shadowSizeSpec]]),
+	fallback: 'other'
 };
 
 // `inset` has no `z` axis but does have logical block sides (`inset-bs`,
@@ -295,8 +315,9 @@ const gradientStopSpec: PrefixSpec = {
 
 // Single-property utilities whose values simply replace one another (`ease-*`
 // timing function, `cursor-*`, `origin-*`, `align-*` vertical-align,
-// `whitespace-*`): every value collapses to one category regardless of shape,
-// so a one-segment value collides with a hyphenated one (`ease-in`/`ease-in-out`).
+// `whitespace-*`, `scheme-*` color-scheme): every value collapses to one
+// category regardless of shape, so a one-segment value collides with a
+// hyphenated one (`ease-in`/`ease-in-out`, `scheme-dark`/`scheme-only-dark`).
 const unifiedSpec: PrefixSpec = {
 	keywords: new Map<string, string>(),
 	short: 'value',
@@ -379,6 +400,16 @@ const maskNoSpec: PrefixSpec = {
 		['repeat', ['repeat']]
 	]),
 	fallback: 'other'
+};
+
+// `transform-gpu`/`transform-cpu` (a GPU/CPU rendering hint, sharing its
+// category with the bare `transform`/`transform-none` forms) and
+// `transform-3d`/`transform-flat` (the unrelated `transform-style` property)
+// compose (`transform-gpu transform-3d` is valid together), so they need
+// distinct categories.
+const transformSpec: PrefixSpec = {
+	keywords: categoryMap([['style', ['3d', 'flat']]]),
+	fallback: 'hint'
 };
 
 const PREFIX_SPECS: Record<string, PrefixSpec> = {
@@ -691,19 +722,19 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		nested: new Map([['pan', panSpec]]),
 		fallback: 'base'
 	},
+	transform: transformSpec,
 	ease: unifiedSpec,
 	origin: unifiedSpec,
 	cursor: unifiedSpec,
 	align: unifiedSpec,
 	whitespace: unifiedSpec,
-	// Every `drop-shadow-*` (including the bare `drop-shadow`) sets the single
-	// drop-shadow filter, so collapse them all to one category.
-	drop: unifiedSpec,
+	scheme: unifiedSpec,
+	drop: dropShadowSpec,
 	line: lineSpec,
 	gap: axisSpec,
 	space: spaceSpec,
 	translate: translateSpec,
-	scale: axisSpec,
+	scale: scaleSpec,
 	skew: axisSpec,
 	rotate: axisSpec,
 	inset: insetSpec,

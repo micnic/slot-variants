@@ -2523,7 +2523,19 @@ const NO_CONFLICTING_NS_VALID = [
 		options: [{ exclusiveGroups: false }]
 	},
 	// Zero-arg call.
-	IMPORT + 'sv();'
+	IMPORT + 'sv();',
+	// A drop-shadow size and a drop-shadow color are distinct sub-properties.
+	IMPORT + "sv({ base: 'drop-shadow-sm drop-shadow-red-500' });",
+	// The bare drop-shadow preset is itself a size, distinct from the color.
+	IMPORT + "sv({ base: 'drop-shadow drop-shadow-red-500' });",
+	// A transform rendering hint and transform-style are distinct properties.
+	IMPORT + "sv({ base: 'transform-gpu transform-3d' });",
+	IMPORT + "sv({ base: 'transform-none transform-flat' });",
+	// scale-3d enables 3D scaling and is independent of the scale factor.
+	IMPORT + "sv({ base: 'scale-150 scale-3d' });",
+	IMPORT + "sv({ base: 'scale-x-50 scale-3d' });",
+	// color-scheme is unrelated to background color.
+	IMPORT + "sv({ base: 'scheme-dark bg-red-500' });"
 ];
 
 const NO_CONFLICTING_NS_INVALID = [
@@ -3412,6 +3424,35 @@ const NO_CONFLICTING_NS_INVALID = [
 		// Conflict between an always-present token and a chained-ternary leaf.
 		code: IMPORT_CN + "cn('w-100', a ? 'w-200' : 'block');",
 		errors: 2
+	},
+	{
+		// Two drop-shadow sizes conflict.
+		code: IMPORT_CN + "cn('drop-shadow-sm', 'drop-shadow-md');",
+		errors: repeat(conflictCn('drop-shadow-md, drop-shadow-sm'), 2)
+	},
+	{
+		// Two drop-shadow colors conflict.
+		code: IMPORT_CN + "cn('drop-shadow-red-500', 'drop-shadow-blue-500');",
+		errors: repeat(
+			conflictCn('drop-shadow-blue-500, drop-shadow-red-500'),
+			2
+		)
+	},
+	{
+		// Two transform rendering hints conflict.
+		code: IMPORT_CN + "cn('transform-gpu', 'transform-cpu');",
+		errors: repeat(conflictCn('transform-cpu, transform-gpu'), 2)
+	},
+	{
+		// Two transform-style values conflict.
+		code: IMPORT_CN + "cn('transform-3d', 'transform-flat');",
+		errors: repeat(conflictCn('transform-3d, transform-flat'), 2)
+	},
+	{
+		// A single-segment and a hyphenated color-scheme value conflict, even
+		// though they have different dash counts.
+		code: IMPORT_CN + "cn('scheme-dark', 'scheme-only-dark');",
+		errors: repeat(conflictCn('scheme-dark, scheme-only-dark'), 2)
 	}
 ];
 
