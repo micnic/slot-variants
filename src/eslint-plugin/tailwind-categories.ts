@@ -325,6 +325,18 @@ const unifiedSpec: PrefixSpec = {
 	fallback: 'value'
 };
 
+// `inline-size` (`inline-4`, `inline-full`, …) is a single CSS property, but
+// the hyphenated display keywords `inline-block`/`inline-flex`/`inline-table`/
+// `inline-grid` share the `inline` first segment too — they set the unrelated
+// `display` property and compose with an inline-size value
+// (`inline-flex inline-4` is valid together).
+const inlineSpec: PrefixSpec = {
+	keywords: categoryMap([['display', ['block', 'flex', 'table', 'grid']]]),
+	short: 'value',
+	long: 'value',
+	fallback: 'value'
+};
+
 // `line-clamp-*` (`line-clamp-3`, `line-clamp-none`, an arbitrary value) sets
 // display and overflow as a side effect, so it gets its own overlap node (see
 // `getOverlapNode`); `line-through` is an unrelated single-word utility that
@@ -489,7 +501,7 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	},
 	divide: {
 		keywords: categoryMap([
-			['style', ['solid', 'dashed', 'dotted', 'double', 'none']],
+			['style', ['solid', 'dashed', 'dotted', 'double', 'hidden', 'none']],
 			['color', COLOR_KEYWORDS],
 			['width-x', ['x']],
 			['width-y', ['y']],
@@ -611,6 +623,9 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 				]
 			]
 		]),
+		// `font-stretch-*` (`font-stretch-condensed`, `font-stretch-50%`, …) is a
+		// third font sub-property, distinct from both weight and family.
+		nested: new Map([['stretch', unifiedSpec]]),
 		fallback: 'family'
 	},
 	grid: { keywords: selfMap(['cols', 'rows', 'flow']), fallback: 'other' },
@@ -634,6 +649,10 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		fallback: 'other'
 	},
 	justify: { keywords: selfMap(['items', 'self']), fallback: 'content' },
+	items: unifiedSpec,
+	self: unifiedSpec,
+	inline: inlineSpec,
+	block: unifiedSpec,
 	col: {
 		keywords: selfMap(['span', 'start', 'end', 'auto']),
 		fallback: 'other'
@@ -642,8 +661,8 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		keywords: selfMap(['span', 'start', 'end', 'auto']),
 		fallback: 'other'
 	},
-	min: { keywords: selfMap(['w', 'h']), fallback: 'other' },
-	max: { keywords: selfMap(['w', 'h']), fallback: 'other' },
+	min: { keywords: selfMap(['w', 'h', 'inline', 'block']), fallback: 'other' },
+	max: { keywords: selfMap(['w', 'h', 'inline', 'block']), fallback: 'other' },
 	rounded: { keywords: selfMap(CORNERS), fallback: 'all' },
 	backdrop: {
 		keywords: selfMap([

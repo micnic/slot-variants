@@ -2542,7 +2542,17 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'stroke-2 stroke-red-500' });",
 	// stroke-none is a color value (not a width), so it doesn't falsely
 	// conflict with an actual stroke width.
-	IMPORT + "sv({ base: 'stroke-none stroke-2' });"
+	IMPORT + "sv({ base: 'stroke-none stroke-2' });",
+	// font-stretch is a distinct sub-property from both weight and family.
+	IMPORT + "sv({ base: 'font-stretch-condensed font-bold font-sans' });",
+	// align-items and align-self are distinct properties.
+	IMPORT + "sv({ base: 'items-center self-end' });",
+	// An inline-size value doesn't conflict with the unrelated inline-flex
+	// display keyword, even though both share the `inline` first segment.
+	IMPORT + "sv({ base: 'inline-flex inline-4' });",
+	IMPORT + "sv({ base: 'inline-block inline-full' });",
+	// min-inline-size and min-block-size are distinct properties.
+	IMPORT + "sv({ base: 'min-inline-full min-block-full' });"
 ];
 
 const NO_CONFLICTING_NS_INVALID = [
@@ -3476,6 +3486,45 @@ const NO_CONFLICTING_NS_INVALID = [
 		// stroke color rather than a stroke width.
 		code: IMPORT_CN + "cn('stroke-none', 'stroke-red-500');",
 		errors: repeat(conflictCn('stroke-none, stroke-red-500'), 2)
+	},
+	{
+		// divide-hidden is a divide-style keyword, so it conflicts with another
+		// divide-style value.
+		code: IMPORT_CN + "cn('divide-hidden', 'divide-solid');",
+		errors: repeat(conflictCn('divide-hidden, divide-solid'), 2)
+	},
+	{
+		// Two font-stretch values conflict.
+		code: IMPORT_CN + "cn('font-stretch-condensed', 'font-stretch-50%');",
+		errors: repeat(
+			conflictCn('font-stretch-50%, font-stretch-condensed'),
+			2
+		)
+	},
+	{
+		// Two align-items values conflict.
+		code: IMPORT_CN + "cn('items-center', 'items-start');",
+		errors: repeat(conflictCn('items-center, items-start'), 2)
+	},
+	{
+		// Two align-self values conflict, including the `-safe` v4.1 variant.
+		code: IMPORT_CN + "cn('self-end', 'self-end-safe');",
+		errors: repeat(conflictCn('self-end, self-end-safe'), 2)
+	},
+	{
+		// Two inline-size values conflict.
+		code: IMPORT_CN + "cn('inline-4', 'inline-full');",
+		errors: repeat(conflictCn('inline-4, inline-full'), 2)
+	},
+	{
+		// Two inline display keywords conflict with each other.
+		code: IMPORT_CN + "cn('inline-flex', 'inline-table');",
+		errors: repeat(conflictCn('inline-flex, inline-table'), 2)
+	},
+	{
+		// Two block-size values conflict.
+		code: IMPORT_CN + "cn('block-full', 'block-4');",
+		errors: repeat(conflictCn('block-4, block-full'), 2)
 	}
 ];
 
