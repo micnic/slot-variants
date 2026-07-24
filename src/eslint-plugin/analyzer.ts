@@ -523,6 +523,12 @@ const pushTokensFromText = (
 	}
 };
 
+// The literal's inner text exactly as written — not its cooked value. Shared
+// by token extraction and the shared-tokens/no-redundant-spaces fixers, which
+// all need to diff or rewrite the raw source rather than the cooked value.
+const getInnerText = (sourceCode: SourceCode, node: Node): string =>
+	sourceCode.getText(node).slice(1, -1);
+
 const pushStringLiteralTokens = (
 	node: Node,
 	slot: string,
@@ -532,10 +538,15 @@ const pushStringLiteralTokens = (
 ) => {
 	// String/template delimiters are single-char, so start offset + 1 is the
 	// first inner character.
-	const raw = sourceCode.getText(node);
 	const base = sourceCode.getRange(node)[0] + 1;
 
-	pushTokensFromText(raw.slice(1, -1), base, slot, source, entries);
+	pushTokensFromText(
+		getInnerText(sourceCode, node),
+		base,
+		slot,
+		source,
+		entries
+	);
 };
 
 // Flattens a (possibly chained) ternary into its leaf branches — exactly one
@@ -1667,6 +1678,14 @@ const hasRedundantSpaces = (value: string): boolean =>
 const canonicalizeWhitespace = (value: string): string =>
 	value.split(/\s+/).filter(Boolean).join(' ');
 
+// A string/template literal's opening delimiter, read from its source text.
+const getQuoteChar = (sourceCode: SourceCode, node: Node): string => {
+	const raw = sourceCode.getText(node);
+
+	/* c8 ignore next -- a string-literal/template node always has at least one delimiter char */
+	return raw[0] ?? '';
+};
+
 // Class tokens shouldn't contain the surrounding quote, backslashes, or `${` —
 // re-emitting at the same delimiter is safe without escaping.
 /* c8 ignore next 7 -- realistic class tokens don't contain backslashes, quotes, or `${` */
@@ -1689,9 +1708,7 @@ const reportRedundantSpaces = (
 		return;
 	}
 
-	const raw = context.sourceCode.getText(node);
-	/* c8 ignore next -- a string-literal/template node always has at least one delimiter char */
-	const quote = raw[0] ?? '';
+	const quote = getQuoteChar(context.sourceCode, node);
 	const canonical = canonicalizeWhitespace(value);
 
 	context.report({
@@ -3444,14 +3461,13 @@ const intersectSharedTokensBySlot = (
 const splitStaticTokens = (text: string): string[] =>
 	text.trim().split(/\s+/).filter(Boolean);
 
-// The literal's inner text exactly as written — not its cooked value. Token
-// identity throughout this file is always the raw source substring (see
+// Token identity throughout this file is always the raw source substring (see
 // `pushStringLiteralTokens`), so a fix's token math must match on that same raw
 // text; diffing against the cooked value would silently miscompare whenever a
 // token contains an escape sequence. Callers must have already confirmed
 // `node` is a plain string/template literal.
 const getRawInnerText = (context: Rule.RuleContext, node: Node): string =>
-	context.sourceCode.getText(node).slice(1, -1);
+	getInnerText(context.sourceCode, node);
 
 // Recomputes a literal node's text from a new token list, reusing
 // no-redundant-spaces' quote-preserving rewrite (`canHoistAsLiteral`). Returns
@@ -3465,9 +3481,7 @@ const planLiteralRewrite = (
 	node: Node,
 	nextTokens: readonly string[]
 ): { node: Node; nextText: string; quote: string } | null => {
-	const raw = context.sourceCode.getText(node);
-	/* c8 ignore next -- a string-literal/template node always has at least one delimiter char */
-	const quote = raw[0] ?? '';
+	const quote = getQuoteChar(context.sourceCode, node);
 	const nextText = nextTokens.join(' ');
 
 	if (!canHoistAsLiteral(nextText, quote)) {
