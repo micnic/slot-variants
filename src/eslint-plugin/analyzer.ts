@@ -14,8 +14,7 @@ import type {
 	TemplateLiteral
 } from 'estree';
 
-// ESLint surfaces this as each rule's docs link (editors, `--format` output, etc.).
-const DOCS_URL = 'https://github.com/micnic/slot-variants#rules';
+export const DOCS_URL = 'https://github.com/micnic/slot-variants#rules';
 
 const CONFIG_KEYS = new Set([
 	'base',
@@ -805,7 +804,7 @@ const extractTokens = (
 };
 
 // Skips spreads/holes silently; use forEachItemReportingSpread to flag them.
-const forEachStaticItem = (
+export const forEachStaticItem = (
 	items: ReadonlyArray<Expression | SpreadElement | null>,
 	visit: (item: Expression) => void
 ) => {
@@ -1414,8 +1413,7 @@ const checkSvConfigProperty = (
 	}
 };
 
-// Non-class-bearing keys (defaultVariants, presets, etc.) are not checked.
-const checkSvConfig = (
+export const checkSvConfig = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
 ) => {
@@ -1426,7 +1424,7 @@ const checkSvConfig = (
 	});
 };
 
-const checkCnArguments = (
+export const checkCnArguments = (
 	context: Rule.RuleContext,
 	args: ReadonlyArray<Expression | SpreadElement>
 ) => {
@@ -1628,7 +1626,7 @@ const matchTrackedCall = (
 	return null;
 };
 
-const createTrackedCallListeners = (
+export const createTrackedCallListeners = (
 	context: Rule.RuleContext,
 	onCall: (node: CallExpression, call: CallMatch) => void
 ) => {
@@ -1661,38 +1659,6 @@ const createTrackedCallListeners = (
 			}
 		}
 	};
-};
-
-/**
- * Flags dynamic values in `sv()` and `cn()` calls. Only statically inferrable
- * values — string literals, template literals without expressions, arrays of
- * those, and ObjectExpressions whose keys/values are themselves inferrable —
- * are allowed in class-bearing positions.
- */
-export const noDynamicClasses: Rule.RuleModule = {
-	meta: {
-		type: 'problem',
-		docs: {
-			description:
-				'Disallow dynamic values in sv() and cn() calls — only statically inferrable class values are allowed',
-			recommended: true,
-			url: DOCS_URL
-		},
-		schema: [],
-		messages: {
-			dynamic:
-				'Dynamic value in sv()/cn() call. Only statically inferrable class values are allowed.'
-		}
-	},
-	create(context) {
-		return createTrackedCallListeners(context, (_node, call) => {
-			checkCnArguments(context, call.args);
-
-			if (call.config) {
-				checkSvConfig(context, call.config);
-			}
-		});
-	}
 };
 
 const hasRedundantSpaces = (value: string): boolean =>
@@ -1794,7 +1760,7 @@ const visitRecordKeysForRedundantSpaces = (
 	}
 };
 
-const visitForRedundantSpaces = (
+export const visitForRedundantSpaces = (
 	context: Rule.RuleContext,
 	node: Node,
 	cnStyle = false
@@ -1854,7 +1820,7 @@ const checkCompoundsForRedundantSpaces = (
 	});
 };
 
-const svRedundantSpacesConfigValueCheckers: Record<
+export const svRedundantSpacesConfigValueCheckers: Record<
 	string,
 	SvConfigValueChecker
 > = {
@@ -1865,51 +1831,13 @@ const svRedundantSpacesConfigValueCheckers: Record<
 	compoundSlots: checkCompoundsForRedundantSpaces
 };
 
-const dispatchSvConfigCheckers = (
+export const dispatchSvConfigCheckers = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression,
 	checkers: Record<string, SvConfigValueChecker>
 ) => {
 	for (const [key, value] of getProperties(configNode)) {
 		checkers[key]?.(context, value);
-	}
-};
-
-/**
- * Flags redundant whitespace inside class strings passed to `sv()` and `cn()`
- * calls. A class string's whitespace is canonical only as a single ASCII space
- * between non-whitespace tokens; leading, trailing, repeated, or non-space
- * whitespace runs are reported. Dynamic expressions are skipped silently.
- */
-export const noRedundantSpaces: Rule.RuleModule = {
-	meta: {
-		type: 'problem',
-		docs: {
-			description:
-				'Disallow redundant whitespace inside class strings passed to sv() and cn() calls',
-			recommended: true,
-			url: DOCS_URL
-		},
-		fixable: 'code',
-		schema: [],
-		messages: {
-			redundant: 'Redundant whitespace in class string.'
-		}
-	},
-	create(context) {
-		return createTrackedCallListeners(context, (_node, call) => {
-			forEachStaticItem(call.args, (arg) => {
-				visitForRedundantSpaces(context, arg, true);
-			});
-
-			if (call.config) {
-				dispatchSvConfigCheckers(
-					context,
-					call.config,
-					svRedundantSpacesConfigValueCheckers
-				);
-			}
-		});
 	}
 };
 
@@ -2016,7 +1944,7 @@ const createOverlappingExclusiveGroupError = (
 // A lookup from each grouped utility to a stable per-group id, so tokens in the
 // same exclusive group share a conflict key. Empty when grouping is disabled,
 // in which case getConflictKey behaves exactly as before.
-const buildExclusiveGroupMap = (
+export const buildExclusiveGroupMap = (
 	option: ExclusiveGroupsOption
 ): ReadonlyMap<string, string> => {
 	const map = new Map<string, string>();
@@ -3368,7 +3296,7 @@ const reportConflicts = (
 	}
 };
 
-const analyzeConfigForRule = (
+export const analyzeConfigForRule = (
 	context: Rule.RuleContext,
 	configNode: Node,
 	baseArgs: ReadonlyArray<Expression | SpreadElement>,
@@ -3392,7 +3320,7 @@ const analyzeConfigForRule = (
 	}
 };
 
-const analyzeCnForRule = (
+export const analyzeCnForRule = (
 	context: Rule.RuleContext,
 	args: ReadonlyArray<Expression | SpreadElement>,
 	exclusiveGroups: ReadonlyMap<string, string>
@@ -3416,87 +3344,6 @@ const analyzeCnForRule = (
 	if (tokenMap) {
 		reportDuplicateTokens(context, tokenMap, 'duplicateCn', {});
 		reportConflicts(context, tokenMap, 'conflictCn', {}, exclusiveGroups);
-	}
-};
-
-/**
- * Flags class tokens that collide within the same slot output: exact-duplicate
- * tokens that will appear more than once (including across `base`, variants,
- * compounds, and within a single literal), distinct tokens that target the
- * same Tailwind-style utility namespace (e.g. `w-100` and `w-200`), and
- * shorthand/longhand overlaps where one token sets a property the other also
- * sets (`size-4`/`w-8`, `m-4`/`mt-2`, `inset-0`/`top-4`, `flex-1`/`grow-0`,
- * `truncate`/`overflow-x-auto`). Tokens with different variant prefixes
- * (`w-100` vs `hover:w-200`) don't conflict — stacked variants are compared as
- * a set, so `hover:focus:` and `focus:hover:` are the same prefix — a leading
- * or trailing `!` important marker is ignored when computing the namespace,
- * and mutually-exclusive positions are not flagged: different values of one
- * variant, compound entries whose matchers require different values, and
- * opposite branches of one condition (ternaries and logical-ANDs, with
- * complementary `cond`/`!cond` conditions matched by source text).
- *
- * A custom `exclusiveGroups` option listing the same utility in more than one
- * group throws synchronously from `create()` — there's no coherent way to
- * pick which group's conflict key the token should use.
- */
-export const noConflictingClasses: Rule.RuleModule = {
-	meta: {
-		type: 'problem',
-		docs: {
-			description:
-				'Disallow duplicate class tokens and tokens targeting the same utility namespace within an sv() or cn() output',
-			recommended: true,
-			url: DOCS_URL
-		},
-		schema: [
-			{
-				type: 'object',
-				properties: {
-					exclusiveGroups: {
-						oneOf: [
-							{ type: 'boolean' },
-							{
-								type: 'array',
-								items: {
-									type: 'array',
-									items: { type: 'string' },
-									minItems: 2
-								}
-							}
-						]
-					}
-				},
-				additionalProperties: false
-			}
-		],
-		messages: {
-			duplicate:
-				'Class "{{token}}" will appear more than once in the "{{slot}}" slot output.',
-			duplicateCn:
-				'Class "{{token}}" will appear more than once in the call output.',
-			conflict:
-				'Conflicting classes "{{tokens}}" target the same utility namespace in the "{{slot}}" slot output.',
-			conflictCn:
-				'Conflicting classes "{{tokens}}" target the same utility namespace in the call output.'
-		}
-	},
-	create(context) {
-		const exclusiveGroups = buildExclusiveGroupMap(
-			context.options[0]?.exclusiveGroups
-		);
-
-		return createTrackedCallListeners(context, (_node, call) => {
-			if (call.config) {
-				analyzeConfigForRule(
-					context,
-					call.config,
-					call.args,
-					exclusiveGroups
-				);
-			} else {
-				analyzeCnForRule(context, call.args, exclusiveGroups);
-			}
-		});
 	}
 };
 
@@ -3927,7 +3774,7 @@ const analyzeExhaustiveVariants = (
 	}
 };
 
-const analyzeSharedTokens = (context: Rule.RuleContext, configNode: Node) => {
+export const analyzeSharedTokens = (context: Rule.RuleContext, configNode: Node) => {
 	const config = getProperties(configNode);
 	const variants = config.get('variants');
 
@@ -3949,46 +3796,6 @@ const analyzeSharedTokens = (context: Rule.RuleContext, configNode: Node) => {
 		slotNames,
 		getTargetNode
 	);
-};
-
-/**
- * Flags class name tokens that appear in every value of an exhaustively-covered
- * variant — the token is constant in the rendered output and belongs in `base`
- * (or the corresponding `slots[slot]` entry) rather than being repeated across
- * each variant value. Coverage is treated as exhaustive when the variant has a
- * `defaultVariants` entry, is listed in `requiredVariants`, or every variant is
- * required via `requiredVariants: true`.
- *
- * Auto-fixable when the fix is unambiguous: the `base`/`slots[slot]` target and
- * every variant value's contribution to that slot must each be a plain,
- * directly-authored string or template literal — an array, a value nested
- * inside further structure, or one read through a hoisted `const` binding
- * leaves the finding reported without a fix, rather than partially rewritten.
- */
-export const noSharedTokens: Rule.RuleModule = {
-	meta: {
-		type: 'problem',
-		docs: {
-			description:
-				'Disallow class tokens that appear in every value of an exhaustively-covered variant — lift them out of the variant',
-			recommended: true,
-			url: DOCS_URL
-		},
-		fixable: 'code',
-		schema: [],
-		messages: {
-			shared: 'Class "{{token}}" appears in every value of variant "{{variant}}" for slot "{{slot}}" — lift it out of the variant.'
-		}
-	},
-	create(context) {
-		return createTrackedCallListeners(context, (_node, call) => {
-			if (!call.config) {
-				return;
-			}
-
-			analyzeSharedTokens(context, call.config);
-		});
-	}
 };
 
 const isEmptyStringNode = (node: Node): boolean =>
@@ -4043,7 +3850,7 @@ const removeFromList = (
 // for a config property.
 type EmptyFix = (fixer: Rule.RuleFixer) => Rule.Fix | null;
 
-const makeListFix = (
+export const makeListFix = (
 	context: Rule.RuleContext,
 	node: Node,
 	list: ListItems
@@ -4074,7 +3881,7 @@ const checkRecordKeysForEmpty = (
 // a meaningful "slot with no default classes" declaration. `cnStyle` marks a
 // cn-style position, where an ObjectExpression is a clsx-style record and a
 // `&&`/ternary is a runtime branch rather than a class value itself.
-const visitForEmptyClasses = (
+export const visitForEmptyClasses = (
 	context: Rule.RuleContext,
 	node: Node,
 	allowEmptyString: boolean,
@@ -4282,7 +4089,7 @@ const svEmptyConfigValueCheckers: Record<string, EmptyConfigChecker> = {
 // A `createSV()` factory config may carry a spread or computed key (reported
 // as dynamic by no-dynamic-classes); those aren't class-bearing, so they're
 // skipped here.
-const checkConfigForEmptyClasses = (
+export const checkConfigForEmptyClasses = (
 	context: Rule.RuleContext,
 	config: ObjectExpression
 ) => {
@@ -4312,68 +4119,10 @@ const checkConfigForEmptyClasses = (
 	}
 };
 
-/**
- * Flags empty class values — empty strings, empty arrays, and empty objects —
- * in `sv()` and `cn()` calls, plus zero-argument `sv()` / `cn()` calls (which
- * always produce an empty class string). Inside an `sv()` config, an empty
- * string is still allowed as a direct `slots[key]` value, since declaring a
- * slot with no default classes is a meaningful use case. Also flags an empty
- * array (`[]`) as a `compoundVariants`/`compoundSlots` matcher value — since
- * `matchesCompound` in `sv.ts` tests it with `.some()`, an empty array can
- * never match, so the whole compound entry is permanently unreachable.
- */
-export const noEmptyClasses: Rule.RuleModule = {
-	meta: {
-		type: 'problem',
-		docs: {
-			description:
-				'Disallow empty class values (empty strings, arrays, or objects), zero-argument calls, and empty compound matcher arrays in sv() and cn()',
-			recommended: true,
-			url: DOCS_URL
-		},
-		fixable: 'code',
-		schema: [],
-		messages: {
-			emptyString: 'Empty class string is not allowed.',
-			emptyArray: 'Empty class array is not allowed.',
-			emptyObject: 'Empty class object is not allowed.',
-			emptyCall: 'Empty sv()/cn() call is not allowed.',
-			unreachableMatcher:
-				'Empty array matcher for "{{key}}" can never match — this compound entry is unreachable.'
-		}
-	},
-	create(context) {
-		return createTrackedCallListeners(context, (node, call) => {
-			if (node.arguments.length === 0) {
-				// `createSV()` with no defaults is a valid factory call.
-				if (call.isFactoryConfig !== true) {
-					context.report({ node, messageId: 'emptyCall' });
-				}
-
-				return;
-			}
-
-			forEachStaticItem(call.args, (arg) => {
-				visitForEmptyClasses(
-					context,
-					arg,
-					false,
-					makeListFix(context, arg, node.arguments),
-					true
-				);
-			});
-
-			if (call.config) {
-				checkConfigForEmptyClasses(context, call.config);
-			}
-		});
-	}
-};
-
 // An `sv()` config call compiles the variant function (and seeds its cache)
 // once; nesting it inside a function rebuilds and discards that on every
 // call. A function scope anywhere above the call means it isn't top level.
-const isInsideFunctionScope = (scope: Scope.Scope): boolean => {
+export const isInsideFunctionScope = (scope: Scope.Scope): boolean => {
 	let current: Scope.Scope | null = scope;
 
 	while (current) {
@@ -4385,40 +4134,4 @@ const isInsideFunctionScope = (scope: Scope.Scope): boolean => {
 	}
 
 	return false;
-};
-
-/**
- * Flags `sv()` calls made with a config object that aren't at the module top
- * level. The config form compiles the variant function once; nesting it inside
- * a function recreates that work — and throws away the variant cache — on every
- * call, so it must live at module scope. The cn-style calling convention of
- * `sv()` (and every `cn()` call) carries no config and is left alone.
- */
-export const requireTopLevelConfig: Rule.RuleModule = {
-	meta: {
-		type: 'problem',
-		docs: {
-			description:
-				'Require sv() calls with a config object to be at the module top level',
-			recommended: true,
-			url: DOCS_URL
-		},
-		schema: [],
-		messages: {
-			nested: 'sv() with a config object must be called at the module top level, not nested inside a function — otherwise its compiled config and variant cache are rebuilt on every call.'
-		}
-	},
-	create(context) {
-		return createTrackedCallListeners(context, (node, call) => {
-			// A `createSV()` factory call compiles no variant function, so it's
-			// exempt — only the returned function's config calls must be top level.
-			if (!call.config || call.isFactoryConfig === true) {
-				return;
-			}
-
-			if (isInsideFunctionScope(context.sourceCode.getScope(node))) {
-				context.report({ node, messageId: 'nested' });
-			}
-		});
-	}
 };

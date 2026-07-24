@@ -1,9 +1,9 @@
-import noConflictingClasses from './no-conflicting-classes.ts';
-import noDynamicClasses from './no-dynamic-classes.ts';
-import noEmptyClasses from './no-empty-classes.ts';
-import noRedundantSpaces from './no-redundant-spaces.ts';
-import noSharedTokens from './no-shared-tokens.ts';
-import requireTopLevelConfig from './require-top-level-config.ts';
+import { noConflictingClasses } from './no-conflicting-classes.ts';
+import { noDynamicClasses } from './no-dynamic-classes.ts';
+import { noEmptyClasses } from './no-empty-classes.ts';
+import { noRedundantSpaces } from './no-redundant-spaces.ts';
+import { noSharedTokens } from './no-shared-tokens.ts';
+import { requireTopLevelConfig } from './require-top-level-config.ts';
 
 export const rules = {
 	'no-conflicting-classes': noConflictingClasses,
