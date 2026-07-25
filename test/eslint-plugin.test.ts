@@ -4383,7 +4383,17 @@ const REQUIRE_TOP_LEVEL_CONFIG_VALID = [
 	IMPORT + "function f() { return obj.sv({ base: 'flex' }); }",
 	// A createSV() factory call compiles nothing, so nesting it is fine.
 	IMPORT_CREATE_SV +
-		"function f() { return createSV({ base: 'flex' }); }"
+		"function f() { return createSV({ base: 'flex' }); }",
+	// A `static` field initializer runs once, with the class definition.
+	IMPORT + "class A { static button = sv({ base: 'flex' }); }",
+	// So does a static block.
+	IMPORT + "class A { static { sv({ base: 'flex' }); } }",
+	// cn-style sv() in an instance field carries no config to compile.
+	IMPORT + "class A { c = sv('flex', 'items-center'); }",
+	// Nor does a cn() call.
+	IMPORT_CN + "class A { c = cn('flex'); }",
+	// A createSV() factory call in an instance field compiles nothing either.
+	IMPORT_CREATE_SV + 'class A { make = createSV({ cacheSize: 512 }); }'
 ];
 
 const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
@@ -4428,6 +4438,44 @@ const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
 			'const customSV = createSV({ cacheSize: 512 });\n' +
 			"function f() { return customSV({ base: 'flex' }); }",
 		errors: [{ messageId: 'nested' }]
+	},
+	{
+		// An instance field initializer re-runs for every `new`, so it rebuilds the
+		// compiled config just as a function body would.
+		code: IMPORT + "class A { button = sv({ base: 'flex' }); }",
+		errors: [{ messageId: 'field' }]
+	},
+	{
+		// The call needn't be the whole initializer.
+		code: IMPORT + "class A { buttons = [sv({ base: 'flex' })]; }",
+		errors: [{ messageId: 'field' }]
+	},
+	{
+		// A private instance field is no different.
+		code: IMPORT + "class A { #button = sv({ base: 'flex' }); }",
+		errors: [{ messageId: 'field' }]
+	},
+	{
+		// An arrow in the initializer is the innermost reason — the call re-runs
+		// per invocation, not per instance.
+		code: IMPORT + "class A { button = () => sv({ base: 'flex' }); }",
+		errors: [{ messageId: 'nested' }]
+	},
+	{
+		// A `static` field is fine on its own, but not when the whole class is
+		// rebuilt on every call.
+		code:
+			IMPORT +
+			"function f() { return class { static button = sv({ base: 'flex' }); }; }",
+		errors: [{ messageId: 'nested' }]
+	},
+	{
+		// An instance field of a class expression inside a function reports the
+		// innermost reason.
+		code:
+			IMPORT +
+			"function f() { return class { button = sv({ base: 'flex' }); }; }",
+		errors: [{ messageId: 'field' }]
 	}
 ];
 
