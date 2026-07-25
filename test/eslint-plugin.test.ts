@@ -3330,6 +3330,20 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('flex, hidden, line-clamp-3'), 3)
 	},
 	{
+		// Enabling `exclusiveGroups` gives a display keyword a group conflict key,
+		// but must not cost it the always-on `line-clamp` bridge above.
+		code: IMPORT_CN + "cn('line-clamp-3', 'flex');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('flex, line-clamp-3'), 2)
+	},
+	{
+		// Same for a grouped `truncate`: a custom group replaces its conflict key
+		// while the overflow/white-space overlaps keep working.
+		code: IMPORT_CN + "cn('truncate', 'overflow-auto');",
+		options: [{ exclusiveGroups: [['truncate', 'text-ellipsis']] }],
+		errors: repeat(conflictCn('overflow-auto, truncate'), 2)
+	},
+	{
 		// `@container`/`@container-normal`/`@container-size` all set one
 		// property, so they conflict with each other directly.
 		code: IMPORT_CN + "cn('@container', '@container-normal');",

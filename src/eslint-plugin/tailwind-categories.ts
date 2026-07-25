@@ -1510,15 +1510,25 @@ export const getConflictKey = (
 		bare = bare.slice(1);
 	}
 
+	// Matched on the full, un-split string — many of these words contain a
+	// `-` themselves (`inline-block`, `table-caption`, `diagonal-fractions`),
+	// so this has to run before the dash-split below, not inside its
+	// `value.length === 0` branch (which would miss every hyphenated one).
+	const wordOverlap = SINGLE_WORD_OVERLAP_NODES[bare];
+
 	// Takes precedence — can unify utilities the heuristic can't (single words,
-	// or hyphenated siblings that don't share a prefix).
+	// or hyphenated siblings that don't share a prefix). The overlap node
+	// survives the group key, so a grouped utility keeps the always-on
+	// shorthand bridges it has without the option: `flex` shares the group key
+	// with every other `display` value *and* still conflicts with
+	// `line-clamp-3`, which sets `display` itself.
 	const groupId = exclusiveGroups.get(bare);
 
 	if (groupId !== undefined) {
 		return {
 			key: `${variantPrefix}|#${groupId}`,
 			variantPrefix,
-			overlap: null
+			overlap: wordOverlap ?? null
 		};
 	}
 
@@ -1527,12 +1537,6 @@ export const getConflictKey = (
 	if (containerInfo !== null) {
 		return containerInfo;
 	}
-
-	// Matched on the full, un-split string — many of these words contain a
-	// `-` themselves (`inline-block`, `table-caption`, `diagonal-fractions`),
-	// so this has to run before the dash-split below, not inside its
-	// `value.length === 0` branch (which would miss every hyphenated one).
-	const wordOverlap = SINGLE_WORD_OVERLAP_NODES[bare];
 
 	if (wordOverlap !== undefined) {
 		return {
