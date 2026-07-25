@@ -2444,8 +2444,8 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT +
 		"sv({ base: 'mask-radial-circle mask-radial-closest-side mask-radial-at-center' });",
 	// mask-no-clip and mask-no-repeat are the boolean-off form of distinct
-	// properties, so they don't conflict with each other (a documented gap:
-	// mask-no-clip also doesn't merge with mask-clip-border's category).
+	// properties, so they don't conflict with each other — even though each one
+	// does conflict with its own positive counterpart.
 	IMPORT + "sv({ base: 'mask-no-clip mask-no-repeat' });",
 	// scrollbar-thumb and scrollbar-track colors are distinct properties.
 	IMPORT + "sv({ base: 'scrollbar-thumb-red-500 scrollbar-track-blue-500' });",
@@ -2807,6 +2807,16 @@ const NO_CONFLICTING_NS_INVALID = [
 		// Two mask-clip values conflict.
 		code: IMPORT_CN + "cn('mask-clip-border', 'mask-clip-padding');",
 		errors: repeat(conflictCn('mask-clip-border, mask-clip-padding'), 2)
+	},
+	{
+		// `mask-no-clip` turns the same property off, so it collides with a value.
+		code: IMPORT_CN + "cn('mask-no-clip', 'mask-clip-border');",
+		errors: repeat(conflictCn('mask-clip-border, mask-no-clip'), 2)
+	},
+	{
+		// Same for `mask-no-repeat` against a mask-repeat value.
+		code: IMPORT_CN + "cn('mask-no-repeat', 'mask-repeat-x');",
+		errors: repeat(conflictCn('mask-no-repeat, mask-repeat-x'), 2)
 	},
 	{
 		// Two directional mask gradient-stop colors conflict.

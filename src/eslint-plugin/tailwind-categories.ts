@@ -149,6 +149,11 @@ type PrefixSpec = {
 	// A keyword that introduces a sub-property classified from the remaining
 	// segments (`ring-offset-2` width vs `ring-offset-red-500` color).
 	nested?: ReadonlyMap<string, PrefixSpec>;
+	// Set on a nested spec whose keyword names no sub-property of its own, so its
+	// categories are the parent's rather than being prefixed by the keyword:
+	// `mask-no-clip` is the boolean-off form of `mask-clip-*`, the same property,
+	// so it has to reach the same category — not a `no-clip` one.
+	flattensIntoParent?: boolean;
 	short?: string;
 	long?: string;
 	// The category of an untyped CSS-variable shorthand (`decoration-(--x)`),
@@ -438,15 +443,16 @@ const maskRadialSpec: PrefixSpec = {
 };
 
 // `mask-no-clip`/`mask-no-repeat` are the boolean-off form of the `clip`/
-// `repeat` sub-properties — kept distinct from each other (so they don't
-// falsely conflict with one another) but not merged with their positive
-// counterparts (`mask-clip-border`, `mask-repeat-x`, …); a documented gap
-// rather than a false positive.
+// `repeat` sub-properties, so each takes its positive counterpart's category
+// exactly — `mask-clip-*` is classified by the nested `unifiedSpec` (hence
+// `clip-value`), while `mask-repeat-*` is a plain `mask` keyword. The two
+// sub-properties stay independent of each other.
 const maskNoSpec: PrefixSpec = {
 	keywords: categoryMap([
-		['clip', ['clip']],
+		['clip-value', ['clip']],
 		['repeat', ['repeat']]
 	]),
+	flattensIntoParent: true,
 	fallback: 'other'
 };
 
@@ -1067,6 +1073,10 @@ const categorizeWithSpec = (
 	const nested = spec.nested?.get(head);
 
 	if (nested) {
+		if (nested.flattensIntoParent === true) {
+			return categorizeWithSpec(nested, value.slice(1));
+		}
+
 		return `${head}-${categorizeWithSpec(nested, value.slice(1))}`;
 	}
 
