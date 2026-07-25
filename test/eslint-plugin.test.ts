@@ -2520,6 +2520,12 @@ const NO_CONFLICTING_NS_VALID = [
 	// Font-variant-numeric styles from different (non-`normal`) categories
 	// compose — only `normal-nums` conflicts with every other value.
 	IMPORT + "sv({ base: 'lining-nums tabular-nums diagonal-fractions' });",
+	// `normal-nums` keeps a conflict key of its own rather than joining a
+	// `normal-*` dash family, so it stays clear of the unrelated `normal-case`.
+	IMPORT + "sv({ base: 'normal-nums normal-case' });",
+	// Two display keywords from different dash families are still opt-in only,
+	// even though both now take part in the `line-clamp` overlap.
+	IMPORT + "sv({ base: 'table-cell inline-block' });",
 	// Axis utilities on independent axes don't conflict.
 	IMPORT + "sv({ base: 'gap-x-4 gap-y-2' });",
 	// Grid columns vs rows.
@@ -3470,11 +3476,36 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('flex, hidden, line-clamp-3'), 3)
 	},
 	{
+		// The bridge reaches the hyphenated display keywords too, whichever dash
+		// family they take their conflict key from.
+		code: IMPORT_CN + "cn('line-clamp-3', 'inline-flex');",
+		errors: repeat(conflictCn('inline-flex, line-clamp-3'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('line-clamp-3', 'table-cell');",
+		errors: repeat(conflictCn('line-clamp-3, table-cell'), 2)
+	},
+	{
+		// `flow-root` has no dash family of its own, `list-item` shares one with
+		// the list-style-type utilities.
+		code: IMPORT_CN + "cn('line-clamp-3', 'flow-root');",
+		errors: repeat(conflictCn('flow-root, line-clamp-3'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('line-clamp-3', 'list-item');",
+		errors: repeat(conflictCn('line-clamp-3, list-item'), 2)
+	},
+	{
 		// Enabling `exclusiveGroups` gives a display keyword a group conflict key,
 		// but must not cost it the always-on `line-clamp` bridge above.
 		code: IMPORT_CN + "cn('line-clamp-3', 'flex');",
 		options: [{ exclusiveGroups: true }],
 		errors: repeat(conflictCn('flex, line-clamp-3'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('line-clamp-3', 'inline-flex');",
+		options: [{ exclusiveGroups: true }],
+		errors: repeat(conflictCn('inline-flex, line-clamp-3'), 2)
 	},
 	{
 		// Same for a grouped `truncate`: a custom group replaces its conflict key

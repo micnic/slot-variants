@@ -33,11 +33,12 @@ const DISPLAY_KEYWORDS: ReadonlyArray<string> = [
 	'hidden'
 ];
 
-// The subset of `DISPLAY_KEYWORDS` with no `-` of their own, safe to give a
-// dedicated `line-clamp` overlap node (see `SINGLE_WORD_OVERLAP_NODES`). The
-// hyphenated members (`table-cell`, `inline-block`, …) are excluded: several
-// are already grouped by the `table` `PREFIX_SPECS` entry, and giving each its
-// own node here would shadow that grouping.
+// The subset of `DISPLAY_KEYWORDS` with no `-` of their own, so a conflict key
+// of their own is all they can get (see `SINGLE_WORD_OVERLAP_NODES`). The
+// hyphenated members (`table-cell`, `inline-block`, …) keep the key their dashed
+// family gives them — several are grouped by the `table`/`inline`
+// `PREFIX_SPECS` entries, which an own-key node would shadow — and take part in
+// the overlap graph through `DISPLAY_OVERLAP_NODES` instead.
 const SINGLE_WORD_DISPLAY_KEYWORDS: ReadonlyArray<string> =
 	DISPLAY_KEYWORDS.filter((word) => !word.includes('-'));
 
@@ -1228,12 +1229,12 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 	],
 	// `line-clamp-*` sets `display` (to `-webkit-box`) and `overflow` (to
 	// `hidden`) unconditionally — unlike `truncate`, it doesn't set
-	// `text-overflow`/`white-space`, and it reaches every single-word display
-	// keyword (see `SINGLE_WORD_DISPLAY_KEYWORDS`).
+	// `text-overflow`/`white-space`, and it reaches every display keyword, the
+	// hyphenated ones included (see `DISPLAY_OVERLAP_NODES`).
 	[
 		'line-clamp',
 		[
-			...SINGLE_WORD_DISPLAY_KEYWORDS.map((word) => `display-${word}`),
+			...DISPLAY_KEYWORDS.map((word) => `display-${word}`),
 			'overflow',
 			'overflow-x',
 			'overflow-y'
@@ -1552,8 +1553,8 @@ const getOverlapNode = (segment: string, category: string): string | null => {
 // `display-block`, …, never one shared across keywords), so `line-clamp`
 // (which always sets `display`) can reach any of them without making the
 // keywords conflict with *each other* by default (that stays behind
-// `exclusiveGroups: true`). Hyphenated display keywords are excluded — see
-// `SINGLE_WORD_DISPLAY_KEYWORDS`.
+// `exclusiveGroups: true`). The hyphenated keywords get the same kind of node
+// from `DISPLAY_OVERLAP_NODES`, but not a key from here.
 //
 // Font-variant-numeric is a star, not a flat set: `lining-nums`/`oldstyle-nums`
 // share a node and conflict directly, but a figure style doesn't conflict with
@@ -1576,6 +1577,15 @@ const SINGLE_WORD_OVERLAP_NODES: Record<string, string> = {
 	'diagonal-fractions': 'fvn-fraction',
 	'stacked-fractions': 'fvn-fraction'
 };
+
+// A node for every display keyword, so `line-clamp-*` reaches the hyphenated
+// ones (`inline-flex`, `table-cell`, `flow-root`, `list-item`) as well as the
+// single words above. Only the node comes from here — a hyphenated keyword keeps
+// whatever conflict key its dashed family gives it, so `table-cell` stays
+// grouped with `table-row`.
+const DISPLAY_OVERLAP_NODES: Record<string, string> = Object.fromEntries(
+	DISPLAY_KEYWORDS.map((word) => [word, `display-${word}`])
+);
 
 // The conflict key plus the pieces an overlap merge needs: the variant prefix
 // and the overlap node the token belongs to (null for tokens outside every
@@ -1696,7 +1706,10 @@ export const getConflictKey = (
 	// `-` themselves (`inline-block`, `table-caption`, `diagonal-fractions`),
 	// so this has to run before the dash-split below, not inside its
 	// `value.length === 0` branch (which would miss every hyphenated one).
-	const wordOverlap = SINGLE_WORD_OVERLAP_NODES[bare];
+	const ownKeyOverlap = SINGLE_WORD_OVERLAP_NODES[bare];
+	// A hyphenated display keyword takes only the node, and keeps the key its
+	// dashed family gives it further down.
+	const wordOverlap = ownKeyOverlap ?? DISPLAY_OVERLAP_NODES[bare];
 
 	// Takes precedence — can unify utilities the heuristic can't (single words,
 	// or hyphenated siblings that don't share a prefix). The overlap node
@@ -1720,11 +1733,11 @@ export const getConflictKey = (
 		return containerInfo;
 	}
 
-	if (wordOverlap !== undefined) {
+	if (ownKeyOverlap !== undefined) {
 		return {
-			key: `${variantPrefix}|${wordOverlap}`,
+			key: `${variantPrefix}|${ownKeyOverlap}`,
 			variantPrefix,
-			overlap: wordOverlap
+			overlap: ownKeyOverlap
 		};
 	}
 
@@ -1779,6 +1792,6 @@ export const getConflictKey = (
 	return {
 		key: `${variantPrefix}|${firstSegment}|${category}`,
 		variantPrefix,
-		overlap: getOverlapNode(firstSegment, category)
+		overlap: wordOverlap ?? getOverlapNode(firstSegment, category)
 	};
 };
