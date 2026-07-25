@@ -14,6 +14,7 @@ const rule = rules['no-conflicting-classes'];
 const IMPORT = "import { sv } from 'slot-variants';\n";
 const IMPORT_CN = "import { cn } from 'slot-variants';\n";
 const IMPORT_CREATE_SV = "import { createSV } from 'slot-variants';\n";
+const IMPORT_NS = "import * as SV from 'slot-variants';\n";
 
 // RuleTester fires one report per offending token, so the multi-token
 // fixtures below expect the same messageId/data several times over. `repeat`
@@ -113,8 +114,8 @@ const NO_REDUNDANT_SPACES_VALID = [
 	"sv({ base: ' flex  ' });",
 	// Default-imported sv is not tracked.
 	"import sv from 'slot-variants'; sv({ base: ' flex  ' });",
-	// Namespace-imported sv is not tracked.
-	"import * as mod from 'slot-variants'; mod.sv({ base: ' flex  ' });",
+	// A namespace member that isn't a tracked export stays untracked.
+	"import * as mod from 'slot-variants'; mod.other({ base: ' flex  ' });",
 	// Side-effect import - no specifiers tracked.
 	"import 'slot-variants'; sv({ base: ' flex  ' });",
 	// Other named import is ignored.
@@ -148,6 +149,12 @@ const NO_REDUNDANT_SPACES_VALID = [
 ];
 
 const NO_REDUNDANT_SPACES_INVALID = [
+	{
+		// A namespace member call is analyzed like the named import.
+		code: IMPORT_NS + "SV.sv({ base: ' flex  ' });",
+		output: IMPORT_NS + "SV.sv({ base: 'flex' });",
+		errors: 1
+	},
 	{
 		// Leading whitespace.
 		code: IMPORT + "sv({ base: ' flex' });",
@@ -694,8 +701,8 @@ const NO_DYNAMIC_CLASSES_VALID = [
 	'sv({ base: dynamic });',
 	// Default-imported sv is not tracked.
 	"import sv from 'slot-variants'; sv(dynamic);",
-	// Namespace-imported sv is not tracked.
-	"import * as mod from 'slot-variants'; mod.sv(dynamic);",
+	// A namespace member that isn't a tracked export stays untracked.
+	"import * as mod from 'slot-variants'; mod.other(dynamic);",
 	// Side-effect import — no specifiers tracked.
 	"import 'slot-variants'; sv(dynamic);",
 	// Named import that is neither sv nor cn is ignored.
@@ -754,6 +761,11 @@ const NO_DYNAMIC_CLASSES_VALID = [
 ];
 
 const NO_DYNAMIC_CLASSES_INVALID = [
+	{
+		// A namespace member call is analyzed like the named import.
+		code: IMPORT_NS + 'SV.sv(dynamic);',
+		errors: [{ messageId: 'dynamic' }]
+	},
 	{
 		// Identifier as cn-style argument.
 		code: IMPORT + 'sv(dynamic);',
@@ -1467,9 +1479,34 @@ const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
-		// Empty string inside an array argument.
+		// A namespace member call is analyzed like the named import.
+		code: IMPORT_NS + "SV.sv({ base: '' });",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// Empty string inside an array argument. The removal takes the separator
+		// after it, so no double space is left behind.
 		code: IMPORT + "sv(['', 'flex']);",
-		output: IMPORT + "sv([ 'flex']);",
+		output: IMPORT + "sv(['flex']);",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// A middle element, where the stray space would sit between the survivors.
+		code: IMPORT + "sv(['flex', '', 'gap-2']);",
+		output: IMPORT + "sv(['flex', 'gap-2']);",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// An element on its own line takes the line break and indentation that
+		// introduce it instead, so no blank, indent-only line is left behind.
+		code: IMPORT + "sv([\n\t'flex',\n\t'',\n\t'gap-2'\n]);",
+		output: IMPORT + "sv([\n\t'flex',\n\t'gap-2'\n]);",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// Same for the first element of a multi-line list.
+		code: IMPORT + "sv([\n\t'',\n\t'flex'\n]);",
+		output: IMPORT + "sv([\n\t'flex'\n]);",
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
@@ -1480,7 +1517,7 @@ const NO_EMPTY_CLASSES_INVALID = [
 	{
 		// Empty string inside a nested array.
 		code: IMPORT + "sv([['', 'flex']]);",
-		output: IMPORT + "sv([[ 'flex']]);",
+		output: IMPORT + "sv([['flex']]);",
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
@@ -1501,7 +1538,7 @@ const NO_EMPTY_CLASSES_INVALID = [
 	{
 		// Empty string inside a base array.
 		code: IMPORT + "sv({ base: ['', 'flex'] });",
-		output: IMPORT + "sv({ base: [ 'flex'] });",
+		output: IMPORT + "sv({ base: ['flex'] });",
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
@@ -1513,7 +1550,7 @@ const NO_EMPTY_CLASSES_INVALID = [
 	{
 		// Empty base alongside other keys — the property is dropped.
 		code: IMPORT + "sv({ base: '', variants: { size: { sm: 'a' } } });",
-		output: IMPORT + "sv({  variants: { size: { sm: 'a' } } });",
+		output: IMPORT + "sv({ variants: { size: { sm: 'a' } } });",
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
@@ -1699,9 +1736,10 @@ const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
-		// Multiple empties reported in a single call.
+		// Multiple empties reported in a single call. Only the non-overlapping
+		// fixes apply in one pass; the rest are reported again on the next.
 		code: IMPORT_CN + "cn('', [], {});",
-		output: IMPORT_CN + 'cn(  {});',
+		output: IMPORT_CN + 'cn([]);',
 		errors: [
 			{ messageId: 'emptyString' },
 			{ messageId: 'emptyArray' },
@@ -1711,7 +1749,7 @@ const NO_EMPTY_CLASSES_INVALID = [
 	{
 		// Empty string as a base arg with config.
 		code: IMPORT + "sv('', { base: 'flex' });",
-		output: IMPORT + "sv( { base: 'flex' });",
+		output: IMPORT + "sv({ base: 'flex' });",
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
@@ -2612,6 +2650,19 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'col-start-2 col-span-3' });",
 	IMPORT + "sv({ base: 'col-start-2 col-end-4' });",
 	IMPORT + "sv({ base: 'row-start-2 row-span-3' });",
+	// A whole-module namespace import reaches the same exports, so an untracked
+	// member of it is left alone.
+	IMPORT_NS + "SV.other({ base: 'w-1 w-2' });",
+	// A computed member can't be read statically.
+	IMPORT_NS + "SV['sv']({ base: 'w-1 w-2' });",
+	// Nor can a nested member path be a namespace binding.
+	IMPORT_NS + "a.b.sv({ base: 'w-1 w-2' });",
+	// A private-name member is not an export either.
+	IMPORT_NS + "class A { #sv; m() { return SV.#sv({ base: 'w-1 w-2' }); } }",
+	// A local binding shadowing the namespace isn't the import.
+	IMPORT_NS + "function f(SV) { return SV.sv({ base: 'w-1 w-2' }); }",
+	// A namespace of some other module is unrelated.
+	"import * as X from 'other';\nX.sv({ base: 'w-1 w-2' });",
 	{
 		// A Tailwind v3 `prefix` is stripped, so two different properties stop
 		// looking like one `tw` namespace with a matching dash count.
@@ -3850,6 +3901,33 @@ const NO_CONFLICTING_NS_INVALID = [
 		)
 	},
 	{
+		// A namespace member call is analyzed like the named import.
+		code: IMPORT_NS + "SV.sv({ base: 'w-1 w-2' });",
+		errors: repeat(conflict('w-1, w-2'), 2)
+	},
+	{
+		code: IMPORT_NS + "SV.cn('w-1', 'w-2');",
+		errors: repeat(conflictCn('w-1, w-2'), 2)
+	},
+	{
+		// Optionally-chained too.
+		code: IMPORT_NS + "SV?.sv({ base: 'w-1 w-2' });",
+		errors: repeat(conflict('w-1, w-2'), 2)
+	},
+	{
+		// A namespace `createSV()` validates its defaults, and the binding it
+		// returns is analyzed like `sv`.
+		code: IMPORT_NS + "SV.createSV({ base: 'w-1 w-2' });",
+		errors: repeat(conflict('w-1, w-2'), 2)
+	},
+	{
+		code:
+			IMPORT_NS +
+			'const custom = SV.createSV({ cacheSize: 8 });\n' +
+			"custom({ base: 'w-1 w-2' });",
+		errors: repeat(conflict('w-1, w-2'), 2)
+	},
+	{
 		// Two prefixed values of one property still conflict.
 		code: IMPORT + "sv({ base: 'tw-w-4 tw-w-8' });",
 		options: [{ prefix: 'tw-' }],
@@ -4104,6 +4182,13 @@ const NO_SHARED_TOKENS_VALID = [
 ];
 
 const NO_SHARED_TOKENS_INVALID = [
+	{
+		// A namespace member call is analyzed like the named import.
+		code:
+			IMPORT_NS +
+			"SV.sv({ variants: { size: { sm: 'flex p-1', lg: 'flex p-2' } }, defaultVariants: { size: 'sm' } });",
+		errors: repeat(shared('flex', 'size'), 2)
+	},
 	{
 		// Token shared across all values of an exhaustive variant
 		// (via defaultVariants) — flag every occurrence.
@@ -4384,6 +4469,8 @@ const REQUIRE_TOP_LEVEL_CONFIG_VALID = [
 	// A createSV() factory call compiles nothing, so nesting it is fine.
 	IMPORT_CREATE_SV +
 		"function f() { return createSV({ base: 'flex' }); }",
+	// A namespace config call at the top level is fine.
+	IMPORT_NS + "SV.sv({ base: 'flex' });",
 	// A `static` field initializer runs once, with the class definition.
 	IMPORT + "class A { static button = sv({ base: 'flex' }); }",
 	// So does a static block.
@@ -4437,6 +4524,11 @@ const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
 			IMPORT_CREATE_SV +
 			'const customSV = createSV({ cacheSize: 512 });\n' +
 			"function f() { return customSV({ base: 'flex' }); }",
+		errors: [{ messageId: 'nested' }]
+	},
+	{
+		// A namespace config call is bound by the rule too.
+		code: IMPORT_NS + "function f() { return SV.sv({ base: 'flex' }); }",
 		errors: [{ messageId: 'nested' }]
 	},
 	{

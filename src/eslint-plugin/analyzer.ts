@@ -219,11 +219,24 @@ const matchSvCall = (
 	return { config: resolved, args: args.slice(0, -1) };
 };
 
+const matchCnCall = (node: CallExpression): CallMatch => ({
+	config: null,
+	args: node.arguments
+});
+
+// The local names each tracked export is reachable under, plus the locals bound
+// to a whole-module namespace import.
+type TrackedNames = {
+	svNames: Set<string>;
+	cnNames: Set<string>;
+	createSvNames: Set<string>;
+	namespaceNames: Set<string>;
+};
+
 const matchSvCnCall = (
 	node: CallExpression,
 	calleeName: string,
-	svNames: Set<string>,
-	cnNames: Set<string>,
+	{ svNames, cnNames }: TrackedNames,
 	sourceCode: SourceCode
 ): CallMatch | null => {
 	if (svNames.has(calleeName)) {
@@ -231,7 +244,7 @@ const matchSvCnCall = (
 	}
 
 	if (cnNames.has(calleeName)) {
-		return { config: null, args: node.arguments };
+		return matchCnCall(node);
 	}
 
 	return null;
@@ -1470,13 +1483,16 @@ const trackNamedImport = (
 };
 
 const createImportsTracker = () => {
-	const cnNames = new Set<string>();
-	const svNames = new Set<string>();
-	const createSvNames = new Set<string>();
+	const names: TrackedNames = {
+		cnNames: new Set<string>(),
+		svNames: new Set<string>(),
+		createSvNames: new Set<string>(),
+		namespaceNames: new Set<string>()
+	};
 	const trackedNamesByImport: Record<string, Set<string>> = {
-		cn: cnNames,
-		sv: svNames,
-		createSV: createSvNames
+		cn: names.cnNames,
+		sv: names.svNames,
+		createSV: names.createSvNames
 	};
 
 	const importsTracker = (node: ImportDeclaration) => {
@@ -1485,11 +1501,18 @@ const createImportsTracker = () => {
 		}
 
 		for (const specifier of node.specifiers) {
+			// `import * as SV` reaches every export through one local binding, so
+			// the export being called is only known at the call site.
+			if (specifier.type === 'ImportNamespaceSpecifier') {
+				names.namespaceNames.add(specifier.local.name);
+				continue;
+			}
+
 			trackNamedImport(specifier, trackedNamesByImport);
 		}
 	};
 
-	return { cnNames, svNames, createSvNames, importsTracker };
+	return { names, importsTracker };
 };
 
 // A tracked-name identifier could still be a local binding that shadows the
@@ -1532,14 +1555,75 @@ const resolveCalleeIdentifier = (
 	return resolved;
 };
 
+// The export a namespace member call names — `SV.sv(…)` for
+// `import * as SV from 'slot-variants'`. Null when the callee isn't a member of
+// a tracked namespace binding, including a computed one (`SV[name](…)`), whose
+// export can't be read statically.
+const resolveNamespaceExportName = (
+	context: Rule.RuleContext,
+	node: CallExpression,
+	namespaceNames: Set<string>
+): string | null => {
+	const { callee } = node;
+
+	if (callee.type !== 'MemberExpression' || callee.computed) {
+		return null;
+	}
+
+	const { object, property } = callee;
+
+	if (object.type !== 'Identifier' || property.type !== 'Identifier') {
+		return null;
+	}
+
+	if (
+		!namespaceNames.has(object.name) ||
+		!identifierResolvesToImport(context, object)
+	) {
+		return null;
+	}
+
+	return property.name;
+};
+
+// A namespace member call names its export outright, so there are no aliases to
+// resolve — `SV.sv(…)` is an `sv()` call by construction.
+const matchNamespaceCall = (
+	node: CallExpression,
+	exportName: string,
+	sourceCode: SourceCode
+): CallMatch | null => {
+	if (exportName === 'sv') {
+		return matchSvCall(node, sourceCode);
+	}
+
+	if (exportName === 'cn') {
+		return matchCnCall(node);
+	}
+
+	if (exportName === 'createSV') {
+		return matchFactoryCall(node, sourceCode);
+	}
+
+	return null;
+};
+
 // A `createSV(...)` factory call whose callee resolves to a tracked createSV
-// import. The `const` binding it initializes is a pre-configured `sv()`, so
-// its call sites are analyzed exactly like `sv()` calls.
+// import, named directly or reached through a namespace binding. The `const`
+// binding it initializes is a pre-configured `sv()`, so its call sites are
+// analyzed exactly like `sv()` calls.
 const isCreateSvFactoryCall = (
 	context: Rule.RuleContext,
 	node: CallExpression,
-	createSvNames: Set<string>
+	names: TrackedNames
 ): boolean => {
+	if (
+		resolveNamespaceExportName(context, node, names.namespaceNames) ===
+		'createSV'
+	) {
+		return true;
+	}
+
 	const factoryCallee = resolveCalleeIdentifier(context, node);
 
 	if (!factoryCallee) {
@@ -1547,7 +1631,7 @@ const isCreateSvFactoryCall = (
 	}
 
 	return (
-		createSvNames.has(factoryCallee.name) &&
+		names.createSvNames.has(factoryCallee.name) &&
 		identifierResolvesToImport(context, factoryCallee)
 	);
 };
@@ -1576,16 +1660,25 @@ const matchFactoryCall = (
 };
 
 // Classifies a call as sv/cn-style, reading the callee through same-file
-// `const` aliases. A callee resolving to a `createSV(...)`-initialized binding
-// is treated like `sv`; a direct `createSV` import names a factory call; a
-// direct sv/cn import uses the sv/cn convention. Null for anything untracked.
+// `const` aliases. A namespace member call (`SV.sv(…)`) names its export
+// directly; a callee resolving to a `createSV(...)`-initialized binding is
+// treated like `sv`; a direct `createSV` import names a factory call; a direct
+// sv/cn import uses the sv/cn convention. Null for anything untracked.
 const matchTrackedCall = (
 	context: Rule.RuleContext,
 	node: CallExpression,
-	svNames: Set<string>,
-	cnNames: Set<string>,
-	createSvNames: Set<string>
+	names: TrackedNames
 ): CallMatch | null => {
+	const namespaceExport = resolveNamespaceExportName(
+		context,
+		node,
+		names.namespaceNames
+	);
+
+	if (namespaceExport !== null) {
+		return matchNamespaceCall(node, namespaceExport, context.sourceCode);
+	}
+
 	if (node.callee.type !== 'Identifier') {
 		return null;
 	}
@@ -1594,7 +1687,7 @@ const matchTrackedCall = (
 
 	// A `const button = createSV(...)(…)` binding behaves like `sv`.
 	if (resolved.type === 'CallExpression') {
-		if (isCreateSvFactoryCall(context, resolved, createSvNames)) {
+		if (isCreateSvFactoryCall(context, resolved, names)) {
 			return matchSvCall(node, context.sourceCode);
 		}
 
@@ -1606,7 +1699,7 @@ const matchTrackedCall = (
 	}
 
 	// The `createSV(defaults)` factory call itself — validate its defaults.
-	if (createSvNames.has(resolved.name)) {
+	if (names.createSvNames.has(resolved.name)) {
 		if (identifierResolvesToImport(context, resolved)) {
 			return matchFactoryCall(node, context.sourceCode);
 		}
@@ -1617,8 +1710,7 @@ const matchTrackedCall = (
 	const call = matchSvCnCall(
 		node,
 		resolved.name,
-		svNames,
-		cnNames,
+		names,
 		context.sourceCode
 	);
 
@@ -1633,8 +1725,7 @@ export const createTrackedCallListeners = (
 	context: Rule.RuleContext,
 	onCall: (node: CallExpression, call: CallMatch) => void
 ) => {
-	const { cnNames, svNames, createSvNames, importsTracker } =
-		createImportsTracker();
+	const { names, importsTracker } = createImportsTracker();
 
 	return {
 		ImportDeclaration(node: ImportDeclaration) {
@@ -1642,20 +1733,15 @@ export const createTrackedCallListeners = (
 		},
 		CallExpression(node: CallExpression) {
 			if (
-				svNames.size === 0 &&
-				cnNames.size === 0 &&
-				createSvNames.size === 0
+				names.svNames.size === 0 &&
+				names.cnNames.size === 0 &&
+				names.createSvNames.size === 0 &&
+				names.namespaceNames.size === 0
 			) {
 				return;
 			}
 
-			const call = matchTrackedCall(
-				context,
-				node,
-				svNames,
-				cnNames,
-				createSvNames
-			);
+			const call = matchTrackedCall(context, node, names);
 
 			if (call) {
 				onCall(node, call);
@@ -2511,9 +2597,45 @@ const shouldReportEmptyString = (
 
 type ListItems = ReadonlyArray<Node | null>;
 
-// Removes `node` along with the adjacent comma so the surrounding call/array
-// literal stays syntactically valid. Returns null when removal would empty
-// the list — that's reported separately, so we leave it for the developer.
+// `charAt` returns '' past either end of the string, so neither of the walks
+// below needs a bounds check.
+const isSpaceOrTab = (char: string): boolean => char === ' ' || char === '\t';
+
+// The end of the run of horizontal whitespace starting at `from`. A newline
+// stops it: a line break belongs to the line that follows, so it's removed with
+// the element ahead of it rather than trailed behind.
+const skipSpacesAndTabs = (text: string, from: number): number => {
+	let index = from;
+
+	while (isSpaceOrTab(text.charAt(index))) {
+		index += 1;
+	}
+
+	return index;
+};
+
+// The offset of the line break introducing the element at `start`, when the
+// element sits on its own line and so owns the indentation before it. Null when
+// it shares a line with whatever precedes it.
+const startOfOwnLine = (text: string, start: number): number | null => {
+	let index = start;
+
+	while (isSpaceOrTab(text.charAt(index - 1))) {
+		index -= 1;
+	}
+
+	if (text.charAt(index - 1) === '\n') {
+		return index - 1;
+	}
+
+	return null;
+};
+
+// Removes `node` along with one adjacent comma so the surrounding call/array
+// literal stays syntactically valid, and with the separating whitespace on that
+// same side so no double space or dangling indent is left behind. Returns null
+// when removal would empty the list — that's reported separately, so we leave it
+// for the developer.
 const removeFromList = (
 	fixer: Rule.RuleFixer,
 	sourceCode: SourceCode,
@@ -2532,11 +2654,23 @@ const removeFromList = (
 		return null;
 	}
 
+	const source = sourceCode.getText();
 	const [start, end] = sourceCode.getRange(node);
 	const after = sourceCode.getTokenAfter(node);
 
 	if (after && after.value === ',') {
-		return fixer.removeRange([start, after.range[1]]);
+		const ownLine = startOfOwnLine(source, start);
+
+		// An own-line element takes the line break and indentation that introduce
+		// it, so the elements after it keep theirs.
+		if (ownLine !== null) {
+			return fixer.removeRange([ownLine, after.range[1]]);
+		}
+
+		return fixer.removeRange([
+			start,
+			skipSpacesAndTabs(source, after.range[1])
+		]);
 	}
 
 	const before = sourceCode.getTokenBefore(node);
@@ -2546,6 +2680,8 @@ const removeFromList = (
 		return null;
 	}
 
+	// The last element: its own comma is the one before it, and the whitespace
+	// after that comma separates the two.
 	return fixer.removeRange([before.range[0], end]);
 };
 
