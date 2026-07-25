@@ -2385,6 +2385,20 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'text-[#fff] text-sm' });",
 	// An arbitrary length value stays a size, distinct from a color.
 	IMPORT + "sv({ base: 'text-[16px] text-red-500' });",
+	// A typed CSS-variable shorthand classifies by its hint, so a color one is
+	// distinct from a font size.
+	IMPORT + "sv({ base: 'text-(color:--brand) text-sm' });",
+	// An untyped CSS-variable shorthand is the prefix's widest value type — a
+	// color here, so it doesn't touch the font size either.
+	IMPORT + "sv({ base: 'text-(--brand) text-sm' });",
+	// `decoration-(--x)` is the narrower thickness property, not a color.
+	IMPORT + "sv({ base: 'decoration-(--thin) decoration-red-500' });",
+	// A length hint is a border width, distinct from the border color.
+	IMPORT + "sv({ base: 'border-(length:--hairline) border-red-500' });",
+	// A number hint is a font weight, distinct from the family.
+	IMPORT + "sv({ base: 'font-(number:--bold) font-sans' });",
+	// A position hint is background-position, distinct from the color.
+	IMPORT + "sv({ base: 'bg-(position:--spot) bg-red-500' });",
 	// Ring offset width vs ring offset color are distinct sub-properties.
 	IMPORT + "sv({ base: 'ring-offset-2 ring-offset-red-500' });",
 	// Ring width vs ring offset width are distinct properties.
@@ -2630,6 +2644,62 @@ const NO_CONFLICTING_NS_INVALID = [
 		// An arbitrary color function is recognized too.
 		code: IMPORT_CN + "cn('bg-[rgb(0,0,0)]', 'bg-red-500');",
 		errors: repeat(conflictCn('bg-[rgb(0,0,0)], bg-red-500'), 2)
+	},
+	{
+		// A `color:` hint on the v4 CSS-variable shorthand reaches the color
+		// bucket, which its single segment alone wouldn't.
+		code: IMPORT_CN + "cn('text-(color:--brand)', 'text-red-500');",
+		errors: repeat(conflictCn('text-(color:--brand), text-red-500'), 2)
+	},
+	{
+		// An untyped shorthand is a color too, on a prefix whose widest value type
+		// is one.
+		code: IMPORT_CN + "cn('text-(--brand)', 'text-red-500');",
+		errors: repeat(conflictCn('text-(--brand), text-red-500'), 2)
+	},
+	{
+		// `bg` has no multi-segment bucket of its own, so an untyped shorthand
+		// falls to its color fallback.
+		code: IMPORT_CN + "cn('bg-(--brand)', 'bg-red-500');",
+		errors: repeat(conflictCn('bg-(--brand), bg-red-500'), 2)
+	},
+	{
+		// `decoration-(--x)` is a thickness, so it collides with an explicit one.
+		code: IMPORT_CN + "cn('decoration-(--thin)', 'decoration-2');",
+		errors: repeat(conflictCn('decoration-(--thin), decoration-2'), 2)
+	},
+	{
+		// A `length:` hint is a width on a prefix that has one.
+		code: IMPORT_CN + "cn('border-(length:--hairline)', 'border-2');",
+		errors: repeat(conflictCn('border-(length:--hairline), border-2'), 2)
+	},
+	{
+		// A `number:` hint is a font weight.
+		code: IMPORT_CN + "cn('font-(number:--bold)', 'font-semibold');",
+		errors: repeat(conflictCn('font-(number:--bold), font-semibold'), 2)
+	},
+	{
+		// A hint the prefix has no property for is ignored — `gap` has no color,
+		// so the value stays the axis-less gap it looks like.
+		code: IMPORT_CN + "cn('gap-(color:--x)', 'gap-4');",
+		errors: repeat(conflictCn('gap-(color:--x), gap-4'), 2)
+	},
+	{
+		// An unrecognized hint is ignored the same way, leaving the segment-count
+		// heuristic to classify the value.
+		code: IMPORT_CN + "cn('line-clamp-(integer:--x)', 'line-clamp-3');",
+		errors: repeat(conflictCn('line-clamp-(integer:--x), line-clamp-3'), 2)
+	},
+	{
+		// A colon that isn't a type hint leaves the value untyped — and a bracketed
+		// untyped value keeps the plain heuristic.
+		code:
+			IMPORT_CN +
+			"cn('mask-[url(data:image/a)]', 'mask-[url(data:image/b)]');",
+		errors: repeat(
+			conflictCn('mask-[url(data:image/a)], mask-[url(data:image/b)]'),
+			2
+		)
 	},
 	{
 		// Two font sizes conflict, modifier or not.

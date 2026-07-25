@@ -151,6 +151,9 @@ type PrefixSpec = {
 	nested?: ReadonlyMap<string, PrefixSpec>;
 	short?: string;
 	long?: string;
+	// The category of an untyped CSS-variable shorthand (`decoration-(--x)`),
+	// for the prefixes where it isn't the widest value type `long` names.
+	variable?: string;
 	// A trailing `reverse` segment is a composing flag, not a value — it sets a
 	// CSS variable (`space-x-reverse`, `divide-x-reverse`) rather than replacing
 	// the base utility, so it gets its own category and doesn't conflict with it.
@@ -550,6 +553,9 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 			['color', COLOR_KEYWORDS],
 			['thickness', ['from', 'auto']]
 		]),
+		// The one prefix where an untyped variable is the narrower property:
+		// `decoration-(--x)` is a thickness, not a color.
+		variable: 'thickness',
 		short: 'thickness',
 		long: 'color',
 		fallback: 'color'
@@ -857,6 +863,103 @@ const isArbitraryImageValue = (segment: string): boolean =>
 	segment.startsWith('[image:') ||
 	/^\[(?:repeating-)?(?:linear|radial|conic)-gradient\(/.test(segment);
 
+// --- Typed arbitrary values --------------------------------------------------
+//
+// A Tailwind arbitrary value can name its own CSS data type, either bracketed
+// (`text-[color:var(--x)]`) or as the v4 CSS-variable shorthand
+// (`text-(color:--x)`). The hint says which of the prefix's properties the
+// value sets, which is exactly what the dash-count heuristic can't see: a
+// one-segment `text-(color:--x)` would otherwise land in the `size` bucket.
+// Each hint maps to the candidate category names it can stand for, and only a
+// category the prefix actually declares is used — so `gap-(color:--x)`, whose
+// prefix has no color property, falls back to the plain heuristic.
+const HINT_CATEGORIES: ReadonlyMap<string, ReadonlyArray<string>> = new Map([
+	['color', ['color']],
+	['image', ['image']],
+	['position', ['position', 'pos']],
+	['size', ['size']],
+	['length', ['width', 'size', 'length', 'pos', 'position']],
+	['percentage', ['pos', 'position', 'size']],
+	['number', ['weight', 'width', 'size']],
+	['family-name', ['family']],
+	['generic-name', ['family']],
+	['shadow', ['box', 'size', 'shadow']],
+	['angle', ['angle']]
+]);
+
+// Every category name a spec can produce. Cached per spec — the specs are
+// module-level constants, and a hinted value would otherwise rebuild the set on
+// every token.
+const specCategoryCache = new Map<PrefixSpec, ReadonlySet<string>>();
+
+const specCategories = (spec: PrefixSpec): ReadonlySet<string> =>
+	getOrCreate(specCategoryCache, spec, () => {
+		const categories = new Set<string>(spec.keywords.values());
+
+		if (spec.short !== undefined) {
+			categories.add(spec.short);
+		}
+
+		if (spec.long !== undefined) {
+			categories.add(spec.long);
+		}
+
+		categories.add(spec.fallback);
+
+		return categories;
+	});
+
+// A value's declared type, or null when it's arbitrary but untyped; `variable`
+// tells the two arbitrary spellings apart, since only the CSS-variable
+// shorthand carries a meaning of its own when untyped (see `baseCategory`).
+type ArbitraryValue = {
+	hint: string | null;
+	variable: boolean;
+};
+
+// Parses `[type:value]`, `(type:--var)`, `[value]` and `(--var)`, returning
+// undefined for a value that isn't arbitrary at all. A colon that isn't a type
+// hint (`[url(data:image/png)]`) reads as untyped.
+const parseArbitraryValue = (segment: string): ArbitraryValue | undefined => {
+	const variable = segment.startsWith('(');
+
+	if (!variable && !segment.startsWith('[')) {
+		return undefined;
+	}
+
+	const inner = segment.slice(1, -1);
+	const colonIndex = inner.indexOf(':');
+
+	if (colonIndex === -1) {
+		return { hint: null, variable };
+	}
+
+	const hint = inner.slice(0, colonIndex);
+
+	if (/^[a-z-]+$/.test(hint)) {
+		return { hint, variable };
+	}
+
+	return { hint: null, variable };
+};
+
+// The spec's own name for the property a type hint names, or undefined when the
+// prefix has no such property.
+const hintedCategory = (
+	spec: PrefixSpec,
+	hint: string
+): string | undefined => {
+	const candidates = HINT_CATEGORIES.get(hint);
+
+	if (candidates === undefined) {
+		return undefined;
+	}
+
+	const categories = specCategories(spec);
+
+	return candidates.find((candidate) => categories.has(candidate));
+};
+
 // Strips a trailing top-level `/opacity` or `/leading` modifier (`white/50`,
 // `lg/6`) before a keyword lookup, so the modifier doesn't shadow the exact
 // keyword match (`text-white/50` should still resolve `white` to `color`).
@@ -884,6 +987,33 @@ const baseCategory = (
 	// `text-sm`.
 	if (spec.long === 'color' && isArbitraryColorValue(head)) {
 		return 'color';
+	}
+
+	const arbitrary = parseArbitraryValue(withoutModifier(head));
+
+	if (arbitrary !== undefined) {
+		if (arbitrary.hint !== null) {
+			const hinted = hintedCategory(spec, arbitrary.hint);
+
+			if (hinted !== undefined) {
+				return hinted;
+			}
+		} else if (arbitrary.variable) {
+			// An untyped CSS-variable shorthand takes the prefix's widest value
+			// type — `text-(--x)` is a color, the same bucket a multi-segment value
+			// lands in, not the `size` its single segment would suggest. A
+			// bracketed untyped value keeps the segment-count heuristic below,
+			// where `text-[16px]` really is a size.
+			if (spec.variable !== undefined) {
+				return spec.variable;
+			}
+
+			if (spec.long !== undefined) {
+				return spec.long;
+			}
+
+			return spec.fallback;
+		}
 	}
 
 	if (value.length === 1 && spec.short !== undefined) {
