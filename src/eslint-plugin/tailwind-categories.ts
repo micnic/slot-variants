@@ -1002,12 +1002,18 @@ const withoutModifier = (segment: string): string =>
 	/* c8 ignore next -- splitOutsideBrackets always returns at least one segment */
 	splitOutsideBrackets(segment, '/')[0] ?? segment;
 
+// A bracketed bare number (`font-[550]`), which names no CSS unit and so can
+// only be a unitless property — a weight, on the prefixes that have one.
+const isBareNumberValue = (segment: string): boolean =>
+	/^\[\d+(?:\.\d+)?\]$/.test(segment);
+
 const baseCategory = (
 	spec: PrefixSpec,
 	value: ReadonlyArray<string>,
 	head: string
 ): string => {
-	const keyworded = spec.keywords.get(withoutModifier(head));
+	const unmodified = withoutModifier(head);
+	const keyworded = spec.keywords.get(unmodified);
 
 	if (keyworded !== undefined) {
 		return keyworded;
@@ -1024,7 +1030,7 @@ const baseCategory = (
 		return 'color';
 	}
 
-	const arbitrary = parseArbitraryValue(withoutModifier(head));
+	const arbitrary = parseArbitraryValue(unmodified);
 
 	if (arbitrary !== undefined) {
 		if (arbitrary.hint !== null) {
@@ -1048,6 +1054,13 @@ const baseCategory = (
 			}
 
 			return spec.fallback;
+		} else if (
+			isBareNumberValue(unmodified) &&
+			specCategories(spec).has('weight')
+		) {
+			// A bracketed number carries no unit, so on a prefix with a weight it's
+			// that (`font-[550]`), not the family its segment count would suggest.
+			return 'weight';
 		}
 	}
 

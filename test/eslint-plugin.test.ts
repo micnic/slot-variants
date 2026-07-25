@@ -2401,6 +2401,10 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'border-(length:--hairline) border-red-500' });",
 	// A number hint is a font weight, distinct from the family.
 	IMPORT + "sv({ base: 'font-(number:--bold) font-sans' });",
+	// An unhinted bracketed number is a weight too, so it stays clear of the
+	// family — while a bracketed family name is not.
+	IMPORT + "sv({ base: 'font-[550] font-sans' });",
+	IMPORT + "sv({ base: 'font-[Arial] font-bold' });",
 	// A position hint is background-position, distinct from the color.
 	IMPORT + "sv({ base: 'bg-(position:--spot) bg-red-500' });",
 	// The explicit `bg-size-*`/`bg-position-*` namespaces are two distinct
@@ -2722,6 +2726,17 @@ const NO_CONFLICTING_NS_INVALID = [
 		// A `number:` hint is a font weight.
 		code: IMPORT_CN + "cn('font-(number:--bold)', 'font-semibold');",
 		errors: repeat(conflictCn('font-(number:--bold), font-semibold'), 2)
+	},
+	{
+		// So is a bracketed bare number, hint or not.
+		code: IMPORT_CN + "cn('font-[550]', 'font-bold');",
+		errors: repeat(conflictCn('font-[550], font-bold'), 2)
+	},
+	{
+		// A prefix with no weight of its own is unaffected — a bracketed number is
+		// still the width its segment count makes it.
+		code: IMPORT_CN + "cn('border-[2]', 'border-4');",
+		errors: repeat(conflictCn('border-4, border-[2]'), 2)
 	},
 	{
 		// A hint the prefix has no property for is ignored — `gap` has no color,
