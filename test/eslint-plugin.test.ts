@@ -2607,7 +2607,19 @@ const NO_CONFLICTING_NS_VALID = [
 	// col-start/col-end are distinct from the col-span/auto/bare-integer group.
 	IMPORT + "sv({ base: 'col-start-2 col-span-3' });",
 	IMPORT + "sv({ base: 'col-start-2 col-end-4' });",
-	IMPORT + "sv({ base: 'row-start-2 row-span-3' });"
+	IMPORT + "sv({ base: 'row-start-2 row-span-3' });",
+	{
+		// A Tailwind v3 `prefix` is stripped, so two different properties stop
+		// looking like one `tw` namespace with a matching dash count.
+		code: IMPORT + "sv({ base: 'tw-w-4 tw-h-4 tw-p-2 tw-text-sm' });",
+		options: [{ prefix: 'tw-' }]
+	},
+	{
+		// With a prefix configured, an unprefixed token is one of the project's own
+		// class names, not a utility.
+		code: IMPORT + "sv({ base: 'card-body card-header' });",
+		options: [{ prefix: 'tw-' }]
+	}
 ];
 
 const NO_CONFLICTING_NS_INVALID = [
@@ -3821,6 +3833,43 @@ const NO_CONFLICTING_NS_INVALID = [
 			),
 			2
 		)
+	},
+	{
+		// Two prefixed values of one property still conflict.
+		code: IMPORT + "sv({ base: 'tw-w-4 tw-w-8' });",
+		options: [{ prefix: 'tw-' }],
+		errors: repeat(conflict('tw-w-4, tw-w-8'), 2)
+	},
+	{
+		// v3 puts the negative marker before the prefix.
+		code: IMPORT + "sv({ base: '-tw-mt-2 tw-mt-4' });",
+		options: [{ prefix: 'tw-' }],
+		errors: repeat(conflict('-tw-mt-2, tw-mt-4'), 2)
+	},
+	{
+		// A prefix written without its trailing `-` means the same thing.
+		code: IMPORT + "sv({ base: 'tw-w-4 tw-w-8' });",
+		options: [{ prefix: 'tw' }],
+		errors: repeat(conflict('tw-w-4, tw-w-8'), 2)
+	},
+	{
+		// The shorthand/longhand overlaps read the stripped namespace too.
+		code: IMPORT + "sv({ base: 'tw-size-4 tw-w-8' });",
+		options: [{ prefix: 'tw-' }],
+		errors: repeat(conflict('tw-size-4, tw-w-8'), 2)
+	},
+	{
+		// So does the exclusive-group lookup, which lists unprefixed utilities.
+		code: IMPORT + "sv({ base: 'tw-flex tw-block' });",
+		options: [{ prefix: 'tw-', exclusiveGroups: true }],
+		errors: repeat(conflict('tw-block, tw-flex'), 2)
+	},
+	{
+		// An unprefixed token takes no part in the namespace analysis, but an
+		// exact repeat of one is still a duplicate.
+		code: IMPORT_CN + "cn('card-body', 'card-body');",
+		options: [{ prefix: 'tw-' }],
+		errors: repeat(dupCn('card-body'), 2)
 	}
 ];
 

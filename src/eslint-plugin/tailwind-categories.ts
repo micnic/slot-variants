@@ -1596,6 +1596,28 @@ export type ConflictKeyInfo = {
 	overlap: string | null;
 };
 
+// The parts of the rule's options that shape a token's conflict key.
+export type ConflictOptions = {
+	exclusiveGroups: ReadonlyMap<string, string>;
+	// A Tailwind v3 `prefix`, trailing `-` included, or empty when unset.
+	prefix: string;
+};
+
+// The `prefix` option in the form `getConflictKey` wants it. Tailwind v3 writes
+// it with the trailing `-` it prepends to every class (`prefix: 'tw-'`), but a
+// config that leaves the dash out means the same thing, so it's added back.
+export const normalizePrefix = (option: string | undefined): string => {
+	if (option === undefined) {
+		return '';
+	}
+
+	if (option.endsWith('-')) {
+		return option;
+	}
+
+	return `${option}-`;
+};
+
 // Splits `text` on `separator` characters that sit outside square brackets or
 // parens, so arbitrary values keep their content intact as a single segment —
 // `[calc(100%-2rem)]` isn't split on its inner dash, `[url(data:image/png)]`
@@ -1683,7 +1705,7 @@ const getContainerConflictKey = (
 // `!w-200`) — so it doesn't split the conflict key.
 export const getConflictKey = (
 	token: string,
-	exclusiveGroups: ReadonlyMap<string, string>
+	{ exclusiveGroups, prefix }: ConflictOptions
 ): ConflictKeyInfo | null => {
 	let stripped = token;
 
@@ -1700,6 +1722,20 @@ export const getConflictKey = (
 
 	if (bare.startsWith('-')) {
 		bare = bare.slice(1);
+	}
+
+	// Tailwind v3 prepends a configured `prefix` to every utility, after the
+	// negative marker stripped above (`-tw-mt-2`). Stripping it restores the
+	// namespace the rest of this function reads — without it `tw` would be the
+	// namespace and the dash count the category, so every two-segment utility
+	// would collide with every other. A token that lacks the prefix is one of the
+	// project's own class names, not a utility, so it's left alone.
+	if (prefix !== '') {
+		if (!bare.startsWith(prefix)) {
+			return null;
+		}
+
+		bare = bare.slice(prefix.length);
 	}
 
 	// Matched on the full, un-split string — many of these words contain a

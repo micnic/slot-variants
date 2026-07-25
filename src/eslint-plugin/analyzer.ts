@@ -14,7 +14,11 @@ import type {
 	TemplateLiteral
 } from 'estree';
 import { getOrCreate } from './map-utils.ts';
-import { getConflictKey, overlapNeighbors } from './tailwind-categories.ts';
+import {
+	type ConflictOptions,
+	getConflictKey,
+	overlapNeighbors
+} from './tailwind-categories.ts';
 
 export const DOCS_URL = 'https://github.com/micnic/slot-variants#rules';
 
@@ -1859,12 +1863,12 @@ type ConflictGroup = {
 
 const groupEntriesByConflictKey = (
 	tokenMap: Map<string, Entry[]>,
-	exclusiveGroups: ReadonlyMap<string, string>
+	options: ConflictOptions
 ): Map<string, ConflictGroup> => {
 	const groups = new Map<string, ConflictGroup>();
 
 	for (const [token, list] of tokenMap) {
-		const info = getConflictKey(token, exclusiveGroups);
+		const info = getConflictKey(token, options);
 
 		if (info === null) {
 			continue;
@@ -1977,9 +1981,9 @@ const reportConflicts = (
 	tokenMap: Map<string, Entry[]>,
 	messageId: string,
 	data: Record<string, string>,
-	exclusiveGroups: ReadonlyMap<string, string>
+	options: ConflictOptions
 ) => {
-	const groups = groupEntriesByConflictKey(tokenMap, exclusiveGroups);
+	const groups = groupEntriesByConflictKey(tokenMap, options);
 
 	for (const group of mergeOverlappingGroups(groups)) {
 		if (
@@ -1999,7 +2003,7 @@ export const analyzeConfigForRule = (
 	context: Rule.RuleContext,
 	configNode: Node,
 	baseArgs: ReadonlyArray<Expression | SpreadElement>,
-	exclusiveGroups: ReadonlyMap<string, string>
+	options: ConflictOptions
 ) => {
 	const config = getProperties(configNode);
 	const slotNames = getConfigSlotNames(config);
@@ -2009,20 +2013,14 @@ export const analyzeConfigForRule = (
 
 	for (const [slot, tokenMap] of bySlot) {
 		reportDuplicateTokens(context, tokenMap, 'duplicate', { slot });
-		reportConflicts(
-			context,
-			tokenMap,
-			'conflict',
-			{ slot },
-			exclusiveGroups
-		);
+		reportConflicts(context, tokenMap, 'conflict', { slot }, options);
 	}
 };
 
 export const analyzeCnForRule = (
 	context: Rule.RuleContext,
 	args: ReadonlyArray<Expression | SpreadElement>,
-	exclusiveGroups: ReadonlyMap<string, string>
+	options: ConflictOptions
 ) => {
 	const entries: Entry[] = [];
 
@@ -2042,7 +2040,7 @@ export const analyzeCnForRule = (
 
 	if (tokenMap) {
 		reportDuplicateTokens(context, tokenMap, 'duplicateCn', {});
-		reportConflicts(context, tokenMap, 'conflictCn', {}, exclusiveGroups);
+		reportConflicts(context, tokenMap, 'conflictCn', {}, options);
 	}
 };
 

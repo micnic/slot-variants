@@ -1134,6 +1134,17 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
   A custom `exclusiveGroups` array is validated on load: listing the same utility in two different groups throws (there's no coherent way to pick which group's conflict key it should use), so a config mistake surfaces immediately instead of silently picking the last group.
 
+  If your Tailwind v3 config sets a `prefix`, pass the same value so the rule can read the namespace underneath it — without it, `tw-w-4` and `tw-h-4` both look like the `tw` namespace and get reported as a conflict. Tokens that don't carry the prefix are then treated as your own class names and left out of the namespace check (exact duplicates are still flagged). Tailwind v4 prefixes are a variant (`tw:w-4`) and need no option.
+
+  ```js
+  // eslint.config.js
+  {
+  	rules: {
+  		'slot-variants/no-conflicting-classes': ['error', { prefix: 'tw-' }]
+  	}
+  }
+  ```
+
 - **`slot-variants/no-dynamic-classes`** — flags class-bearing positions in `sv()` and `cn()` calls that aren't statically inferrable: identifiers, member access, calls, spreads, computed keys, templates with expressions, and so on. In cn-style positions, the conditional forms of the `cn()` calling convention stay allowed (`cond && 'px-4'`, `cond ? 'px-4' : 'px-2'`, and static-string ternaries inside template literals) as long as every branch is itself static; inside an `sv()` config, only static values are accepted. Non-class-bearing config keys (`defaultVariants`, `requiredVariants`, `cacheSize`, …) and runtime matchers in compound entries are not validated.
 
 - **`slot-variants/no-empty-classes`** — flags empty class values — empty strings, arrays, and objects — at any class-bearing position of an `sv()` or `cn()` call, plus zero-argument `sv()` / `cn()` calls themselves. The one exception: an empty string as a direct `slots[key]` value is allowed, since declaring a slot with no default classes is a valid use case. Also flags an empty array (`[]`) as a `compoundVariants`/`compoundSlots` matcher value — since a matcher is tested with `.some()`, an empty array can never match, so the whole compound entry is permanently unreachable. **Partially auto-fixable**: `eslint --fix` removes empty positional arguments, array elements, and top-level config properties when other items remain.

@@ -5,7 +5,10 @@ import {
 	createTrackedCallListeners,
 	DOCS_URL
 } from '../analyzer.ts';
-import { buildExclusiveGroupMap } from '../tailwind-categories.ts';
+import {
+	buildExclusiveGroupMap,
+	normalizePrefix
+} from '../tailwind-categories.ts';
 
 /**
  * Flags class tokens that collide within the same slot output: exact-duplicate
@@ -26,6 +29,12 @@ import { buildExclusiveGroupMap } from '../tailwind-categories.ts';
  * A custom `exclusiveGroups` option listing the same utility in more than one
  * group throws synchronously from `create()` — there's no coherent way to
  * pick which group's conflict key the token should use.
+ *
+ * A `prefix` option matches a Tailwind v3 `prefix` config, which prepends itself
+ * to every utility (`tw-w-4`, and `-tw-mt-2` for a negative value): it's
+ * stripped before the namespace is read, and any token without it is treated as
+ * one of the project's own class names and left out of the analysis. Tailwind v4
+ * prefixes are a variant (`tw:w-4`) and need no option.
  */
 export const noConflictingClasses: Rule.RuleModule = {
 	meta: {
@@ -52,7 +61,8 @@ export const noConflictingClasses: Rule.RuleModule = {
 								}
 							}
 						]
-					}
+					},
+					prefix: { type: 'string', minLength: 1 }
 				},
 				additionalProperties: false
 			}
@@ -69,20 +79,18 @@ export const noConflictingClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const exclusiveGroups = buildExclusiveGroupMap(
-			context.options[0]?.exclusiveGroups
-		);
+		const options = {
+			exclusiveGroups: buildExclusiveGroupMap(
+				context.options[0]?.exclusiveGroups
+			),
+			prefix: normalizePrefix(context.options[0]?.prefix)
+		};
 
 		return createTrackedCallListeners(context, (_node, call) => {
 			if (call.config) {
-				analyzeConfigForRule(
-					context,
-					call.config,
-					call.args,
-					exclusiveGroups
-				);
+				analyzeConfigForRule(context, call.config, call.args, options);
 			} else {
-				analyzeCnForRule(context, call.args, exclusiveGroups);
+				analyzeCnForRule(context, call.args, options);
 			}
 		});
 	}
