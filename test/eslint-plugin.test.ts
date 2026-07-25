@@ -2399,6 +2399,13 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'font-(number:--bold) font-sans' });",
 	// A position hint is background-position, distinct from the color.
 	IMPORT + "sv({ base: 'bg-(position:--spot) bg-red-500' });",
+	// The explicit `bg-size-*`/`bg-position-*` namespaces are two distinct
+	// properties, and neither is the background color.
+	IMPORT + "sv({ base: 'bg-size-[3px_4px] bg-position-[center_top]' });",
+	IMPORT + "sv({ base: 'bg-position-[center_top] bg-red-500' });",
+	// Same for their mask counterparts, which also don't touch the mask image.
+	IMPORT + "sv({ base: 'mask-size-[3px] mask-position-[top]' });",
+	IMPORT + "sv({ base: 'mask-position-[top] mask-[url(/a.svg)]' });",
 	// Ring offset width vs ring offset color are distinct sub-properties.
 	IMPORT + "sv({ base: 'ring-offset-2 ring-offset-red-500' });",
 	// Ring width vs ring offset width are distinct properties.
@@ -2691,13 +2698,12 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('line-clamp-(integer:--x), line-clamp-3'), 2)
 	},
 	{
-		// A colon that isn't a type hint leaves the value untyped — and a bracketed
-		// untyped value keeps the plain heuristic.
+		// A colon that isn't a type hint (the scheme of a data URI) leaves the
+		// value untyped, so a bracketed one keeps the plain heuristic.
 		code:
-			IMPORT_CN +
-			"cn('mask-[url(data:image/a)]', 'mask-[url(data:image/b)]');",
+			IMPORT_CN + "cn('content-[url(data:a)]', 'content-[url(data:b)]');",
 		errors: repeat(
-			conflictCn('mask-[url(data:image/a)], mask-[url(data:image/b)]'),
+			conflictCn('content-[url(data:a)], content-[url(data:b)]'),
 			2
 		)
 	},
@@ -3101,6 +3107,30 @@ const NO_CONFLICTING_NS_INVALID = [
 		// Two background-images conflict — an arbitrary url() is an image.
 		code: IMPORT_CN + "cn('bg-[url(/hero.png)]', 'bg-none');",
 		errors: repeat(conflictCn('bg-[url(/hero.png)], bg-none'), 2)
+	},
+	{
+		// A mask image works the same way.
+		code: IMPORT_CN + "cn('mask-[url(/a.svg)]', 'mask-none');",
+		errors: repeat(conflictCn('mask-[url(/a.svg)], mask-none'), 2)
+	},
+	{
+		// The explicit `bg-size-*` namespace is the same property as the bare
+		// keyword form.
+		code: IMPORT_CN + "cn('bg-size-[3px_4px]', 'bg-cover');",
+		errors: repeat(conflictCn('bg-cover, bg-size-[3px_4px]'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('bg-position-(position:--spot)', 'bg-center');",
+		errors: repeat(conflictCn('bg-center, bg-position-(position:--spot)'), 2)
+	},
+	{
+		// Same for the mask namespaces.
+		code: IMPORT_CN + "cn('mask-size-[3px]', 'mask-contain');",
+		errors: repeat(conflictCn('mask-contain, mask-size-[3px]'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('mask-position-[top]', 'mask-center');",
+		errors: repeat(conflictCn('mask-center, mask-position-[top]'), 2)
 	},
 	{
 		// `inset-*` covers the individual offset utilities.

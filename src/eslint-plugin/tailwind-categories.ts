@@ -477,8 +477,13 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	bg: {
 		keywords: categoryMap([
 			['color', COLOR_KEYWORDS],
-			['size', ['auto', 'cover', 'contain']],
-			['position', ['bottom', 'center', 'left', 'right', 'top']],
+			// The bare keyword forms (`bg-cover`, `bg-center`) and the explicit
+			// `bg-size-*`/`bg-position-*` namespaces Tailwind 4.1 added are the same
+			// two properties, so each namespace segment joins its keyword's
+			// category — `bg-size-[3px_4px]` collides with `bg-cover`, and neither
+			// is mistaken for the color fallback.
+			['size', ['auto', 'cover', 'contain', 'size']],
+			['position', ['bottom', 'center', 'left', 'right', 'top', 'position']],
 			['repeat', ['repeat', 'no']],
 			['attach', ['fixed', 'local', 'scroll']],
 			['image', ['none', 'gradient', 'linear', 'radial', 'conic']],
@@ -579,11 +584,15 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		keywords: categoryMap([
 			['composite', ['add', 'subtract', 'intersect', 'exclude']],
 			['mode', ['alpha', 'luminance', 'match']],
-			['position', ['center', 'top', 'bottom', 'left', 'right']],
-			['size', ['auto', 'cover', 'contain']],
+			// `mask-position-*`/`mask-size-*` join their keyword forms, the same way
+			// the `bg` spec above pairs them.
+			['position', ['center', 'top', 'bottom', 'left', 'right', 'position']],
+			['size', ['auto', 'cover', 'contain', 'size']],
 			['repeat', ['repeat']],
 			['image', ['none']]
 		]),
+		// `mask-[url(/a.svg)]` is a mask-image, like the `bg` equivalent.
+		arbitraryImage: true,
 		nested: new Map([
 			['linear', maskAngleStopSpec],
 			['conic', maskAngleStopSpec],
