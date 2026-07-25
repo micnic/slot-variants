@@ -555,6 +555,10 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	decoration: {
 		keywords: categoryMap([
 			['style', ['solid', 'double', 'dotted', 'dashed', 'wavy']],
+			// Tailwind v3's box-decoration-break spelling (v4 renamed these to
+			// `box-decoration-*`) — an unrelated property that would otherwise fall
+			// into the thickness bucket and collide with `decoration-2`.
+			['break', ['clone', 'slice']],
 			['color', COLOR_KEYWORDS],
 			['thickness', ['from', 'auto']]
 		]),
@@ -704,7 +708,10 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	list: {
 		keywords: categoryMap([
 			['position', ['inside', 'outside']],
-			['image', ['image']]
+			['image', ['image']],
+			// `list-item` is a `display` value, not a list-style-type like every
+			// other bare `list-*` keyword.
+			['display', ['item']]
 		]),
 		fallback: 'type'
 	},

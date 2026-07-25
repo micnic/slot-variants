@@ -2393,6 +2393,10 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'text-(--brand) text-sm' });",
 	// `decoration-(--x)` is the narrower thickness property, not a color.
 	IMPORT + "sv({ base: 'decoration-(--thin) decoration-red-500' });",
+	// v3's `decoration-clone` is box-decoration-break, not a thickness.
+	IMPORT + "sv({ base: 'decoration-clone decoration-2' });",
+	// `list-item` is a display value, not a list-style-type.
+	IMPORT + "sv({ base: 'list-item list-disc' });",
 	// A length hint is a border width, distinct from the border color.
 	IMPORT + "sv({ base: 'border-(length:--hairline) border-red-500' });",
 	// A number hint is a font weight, distinct from the family.
@@ -2680,6 +2684,16 @@ const NO_CONFLICTING_NS_INVALID = [
 		// `decoration-(--x)` is a thickness, so it collides with an explicit one.
 		code: IMPORT_CN + "cn('decoration-(--thin)', 'decoration-2');",
 		errors: repeat(conflictCn('decoration-(--thin), decoration-2'), 2)
+	},
+	{
+		// The two box-decoration-break values do conflict with each other.
+		code: IMPORT_CN + "cn('decoration-clone', 'decoration-slice');",
+		errors: repeat(conflictCn('decoration-clone, decoration-slice'), 2)
+	},
+	{
+		// The remaining bare `list-*` keywords are still one list-style-type.
+		code: IMPORT_CN + "cn('list-disc', 'list-none');",
+		errors: repeat(conflictCn('list-disc, list-none'), 2)
 	},
 	{
 		// A `length:` hint is a width on a prefix that has one.
