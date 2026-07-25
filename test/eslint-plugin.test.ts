@@ -2403,6 +2403,8 @@ const NO_CONFLICTING_NS_VALID = [
 	// properties, and neither is the background color.
 	IMPORT + "sv({ base: 'bg-size-[3px_4px] bg-position-[center_top]' });",
 	IMPORT + "sv({ base: 'bg-position-[center_top] bg-red-500' });",
+	// An object-position value doesn't touch the keyword-only object-fit.
+	IMPORT + "sv({ base: 'object-[center_top] object-cover' });",
 	// Same for their mask counterparts, which also don't touch the mask image.
 	IMPORT + "sv({ base: 'mask-size-[3px] mask-position-[top]' });",
 	IMPORT + "sv({ base: 'mask-position-[top] mask-[url(/a.svg)]' });",
@@ -2491,6 +2493,10 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT_CN + "cn('sm:hover:w-4', 'sm:focus:w-8');",
 	// grow/shrink/basis are independent without a `flex-*` sizing shorthand.
 	IMPORT + "sv({ base: 'grow-0 shrink-0 basis-auto' });",
+	// The v3 `flex-*` spellings of the same three are just as independent.
+	IMPORT + "sv({ base: 'flex-grow-0 flex-shrink-0 flex-basis-auto' });",
+	// A v3 sizing longhand doesn't touch the direction or wrap properties.
+	IMPORT + "sv({ base: 'flex-grow-0 flex-row flex-wrap' });",
 	// Flex direction and wrap don't take part in the sizing overlap.
 	IMPORT + "sv({ base: 'flex-row flex-1 flex-wrap' });",
 	// `truncate` is unrelated to a font size, and overflow/white-space don't
@@ -3133,6 +3139,16 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('mask-center, mask-position-[top]'), 2)
 	},
 	{
+		// An arbitrary object value is an object-position, so it collides with the
+		// keyword form.
+		code: IMPORT_CN + "cn('object-[center_top]', 'object-center');",
+		errors: repeat(conflictCn('object-[center_top], object-center'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('object-(--spot)', 'object-left-top');",
+		errors: repeat(conflictCn('object-(--spot), object-left-top'), 2)
+	},
+	{
 		// `inset-*` covers the individual offset utilities.
 		code: IMPORT_CN + "cn('inset-0', 'top-4');",
 		errors: repeat(conflictCn('inset-0, top-4'), 2)
@@ -3483,6 +3499,24 @@ const NO_CONFLICTING_NS_INVALID = [
 		// The sizing shorthand bridges every present longhand into one group.
 		code: IMPORT_CN + "cn('flex-1', 'grow-0', 'shrink-0');",
 		errors: repeat(conflictCn('flex-1, grow-0, shrink-0'), 3)
+	},
+	{
+		// Tailwind v3's `flex-grow-*` is the same property as `grow-*`.
+		code: IMPORT_CN + "cn('flex-grow-0', 'grow');",
+		errors: repeat(conflictCn('flex-grow-0, grow'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('flex-shrink-0', 'shrink-0');",
+		errors: repeat(conflictCn('flex-shrink-0, shrink-0'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('flex-basis-0', 'basis-1/2');",
+		errors: repeat(conflictCn('basis-1/2, flex-basis-0'), 2)
+	},
+	{
+		// And the sizing shorthand reaches the v3 longhands the same way.
+		code: IMPORT_CN + "cn('flex-1', 'flex-grow-0');",
+		errors: repeat(conflictCn('flex-1, flex-grow-0'), 2)
 	},
 	{
 		// Opt-in grouping is respected inside an sv() config too, per slot.

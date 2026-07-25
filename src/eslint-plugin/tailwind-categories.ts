@@ -652,6 +652,16 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 			['direction', ['row', 'col']],
 			['wrap', ['wrap', 'nowrap']]
 		]),
+		// Tailwind v3's `flex-grow-*`/`flex-shrink-*`/`flex-basis-*` spellings are
+		// three independent properties — and each is the very same property as the
+		// standalone `grow`/`shrink`/`basis` utility, which the overlap nodes below
+		// reunite them with. Without them all three would share the `flex` sizing
+		// category, so `flex-grow-0 flex-shrink-0` would read as a conflict.
+		nested: new Map([
+			['grow', unifiedSpec],
+			['shrink', unifiedSpec],
+			['basis', unifiedSpec]
+		]),
 		fallback: 'flex'
 	},
 	font: {
@@ -687,7 +697,9 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 			['fit', ['contain', 'cover', 'fill', 'none', 'scale']],
 			['position', ['bottom', 'center', 'left', 'right', 'top']]
 		]),
-		fallback: 'other'
+		// `object-fit` is keyword-only, so every other value — arbitrary or a
+		// multi-word keyword pair like `object-left-top` — is an object-position.
+		fallback: 'position'
 	},
 	list: {
 		keywords: categoryMap([
@@ -1388,10 +1400,24 @@ const getScrollOverlapNode = (category: string): string | null => {
 };
 
 // The `flex` sizing values (`flex-1`, `flex-auto`, `flex-none`) overlap
-// grow/shrink/basis; the direction and wrap categories don't.
+// grow/shrink/basis; the direction and wrap categories don't. A v3 longhand
+// (`flex-grow-0`) resolves to the same node as its standalone spelling
+// (`grow-0`), so the two are one conflict group.
 const getFlexOverlapNode = (category: string): string | null => {
 	if (category === 'flex') {
 		return 'flex-sizing';
+	}
+
+	if (category === 'grow-value') {
+		return 'grow';
+	}
+
+	if (category === 'shrink-value') {
+		return 'shrink';
+	}
+
+	if (category === 'basis-value') {
+		return 'basis';
 	}
 
 	return null;
