@@ -1,4 +1,4 @@
-import type { Rule, Scope, SourceCode } from 'eslint';
+import type { AST, Rule, Scope, SourceCode } from 'eslint';
 import type {
 	ArrayExpression,
 	CallExpression,
@@ -528,6 +528,37 @@ const pushTokensFromText = (
 	}
 };
 
+// Token identity follows the value the browser sees, so a class string with an
+// escape has to be split on its cooked value: `'w-1 w-2'` is two classes
+// even though its source holds no whitespace to split on, and `'w-1'` is
+// the same class as `w-1`. Escapes are the only thing that can make the two
+// disagree, so a source without a backslash tokenizes exactly as written (the
+// caller's fast path) and keeps per-token report offsets. With one, mapping each
+// token back through the escapes would be needed to place it, so the whole
+// literal is highlighted instead — the trade-off `reportRedundantSpaces` already
+// makes. A fix is unaffected: `canHoistAsLiteral` refuses any rewrite whose text
+// would contain a backslash, so an escape-bearing literal is reported unfixed
+// either way.
+const hasEscape = (rawText: string): boolean => rawText.includes('\\');
+
+const pushCookedTokens = (
+	cooked: string,
+	[start, end]: AST.Range,
+	slot: string,
+	source: Source,
+	entries: Entry[]
+) => {
+	for (const match of cooked.matchAll(/\S+/g)) {
+		entries.push({
+			source,
+			slot,
+			token: match[0],
+			start,
+			end
+		});
+	}
+};
+
 // The literal's inner text exactly as written — not its cooked value. Shared
 // by token extraction and the shared-tokens/no-redundant-spaces fixers, which
 // all need to diff or rewrite the raw source rather than the cooked value.
@@ -541,17 +572,21 @@ const pushStringLiteralTokens = (
 	entries: Entry[],
 	sourceCode: SourceCode
 ) => {
+	const raw = getInnerText(sourceCode, node);
+	const range = sourceCode.getRange(node);
+
+	if (hasEscape(raw)) {
+		/* c8 ignore next -- callers only pass a static string/template literal */
+		const cooked = getStaticStringText(node) ?? raw;
+
+		pushCookedTokens(cooked, range, slot, source, entries);
+
+		return;
+	}
+
 	// String/template delimiters are single-char, so start offset + 1 is the
 	// first inner character.
-	const base = sourceCode.getRange(node)[0] + 1;
-
-	pushTokensFromText(
-		getInnerText(sourceCode, node),
-		base,
-		slot,
-		source,
-		entries
-	);
+	pushTokensFromText(raw, range[0] + 1, slot, source, entries);
 };
 
 // Flattens a (possibly chained) ternary into its leaf branches — exactly one
@@ -707,8 +742,25 @@ const extractTernaryTemplateTokens = (
 	const { slot, source, slotNames, entries, sourceCode } = context;
 
 	for (const quasi of node.quasis) {
+		const raw = quasi.value.raw;
+
+		if (hasEscape(raw)) {
+			/* c8 ignore next -- cooked is always defined on untagged templates */
+			const cooked = quasi.value.cooked ?? raw;
+
+			pushCookedTokens(
+				cooked,
+				sourceCode.getRange(quasi),
+				slot,
+				source,
+				entries
+			);
+
+			continue;
+		}
+
 		pushTokensFromText(
-			quasi.value.raw,
+			raw,
 			sourceCode.getRange(quasi)[0] + 1,
 			slot,
 			source,

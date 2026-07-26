@@ -2003,6 +2003,12 @@ const NO_CONFLICTING_DUP_VALID = [
 
 const NO_CONFLICTING_DUP_INVALID = [
 	{
+		// A separator written as an escape yields two tokens, so the repeat is
+		// visible as a duplicate.
+		code: IMPORT_CN + "cn('flex\\u0020flex');",
+		errors: repeat(dupCn('flex'), 2)
+	},
+	{
 		code:
 			IMPORT +
 			`sv({
@@ -3901,6 +3907,42 @@ const NO_CONFLICTING_NS_INVALID = [
 		)
 	},
 	{
+		// A separator written as an escape still separates two classes — the
+		// cooked value is what the browser sees, so that's what gets tokenized.
+		code: IMPORT_CN + "cn('w-1\\u0020w-2');",
+		errors: repeat(conflictCn('w-1, w-2'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('w-1\\x20w-2');",
+		errors: repeat(conflictCn('w-1, w-2'), 2)
+	},
+	{
+		// An escaped separator inside a template literal behaves the same.
+		code: IMPORT_CN + 'cn(`w-1\\u0020w-2`);',
+		errors: repeat(conflictCn('w-1, w-2'), 2)
+	},
+	{
+		// An escape inside the token itself is decoded for identity too, so the
+		// class matches its plainly-written twin and is named as the browser sees
+		// it.
+		code: IMPORT_CN + "cn('w-\\u0031', 'w-2');",
+		errors: repeat(conflictCn('w-1, w-2'), 2)
+	},
+	{
+		// A line continuation cooks away entirely, joining the two halves into one
+		// class — so this is the same class twice, not a stray backslash token.
+		code: IMPORT_CN + "cn('fl\\\nex', 'flex');",
+		errors: repeat(dupCn('flex'), 2)
+	},
+	{
+		// The static parts of a ternary-bearing template are tokenized the same
+		// way.
+		code:
+			IMPORT_CN +
+			"cn(`w-1\\u0020w-2 ${col ? 'flex-col' : 'flex-row'}`);",
+		errors: repeat(conflictCn('w-1, w-2'), 2)
+	},
+	{
 		// A namespace member call is analyzed like the named import.
 		code: IMPORT_NS + "SV.sv({ base: 'w-1 w-2' });",
 		errors: repeat(conflict('w-1, w-2'), 2)
@@ -4183,6 +4225,15 @@ const NO_SHARED_TOKENS_VALID = [
 
 const NO_SHARED_TOKENS_INVALID = [
 	{
+		// A shared token is found across values even when one of them writes its
+		// separator as an escape. No fix: the surviving token would carry a
+		// backslash into the rewrite.
+		code:
+			IMPORT +
+			"sv({ base: 'block', variants: { size: { sm: 'flex\\u0020p-1', lg: 'flex p-2' } }, defaultVariants: { size: 'sm' } });",
+		errors: repeat(shared('flex', 'size'), 2)
+	},
+	{
 		// A namespace member call is analyzed like the named import.
 		code:
 			IMPORT_NS +
@@ -4381,7 +4432,8 @@ const NO_SHARED_TOKENS_INVALID = [
 	{
 		// The shared token itself contains a literal backslash — appending it
 		// to the target's existing text can't be safely re-emitted, so the
-		// fix bails before ever touching the variant values.
+		// fix bails before ever touching the variant values. The message names
+		// the class as the browser sees it (`a\b`), not as the source escapes it.
 		code:
 			IMPORT +
 			`sv({
@@ -4394,7 +4446,7 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { size: 'sm' }
 			});`,
-		errors: repeat(shared('a\\\\b', 'size', 'root'), 2)
+		errors: repeat(shared('a\\b', 'size', 'root'), 2)
 	},
 	{
 		// A base-only (unslotted) config: the shared token's target is the
