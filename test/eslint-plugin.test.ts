@@ -4256,6 +4256,22 @@ const NO_SHARED_TOKENS_VALID = [
 
 const NO_SHARED_TOKENS_INVALID = [
 	{
+		// A dynamic `base` can't be read, so there's nothing to append the lifted
+		// token to — reported without a fix.
+		code:
+			IMPORT +
+			"sv({ base: dyn, variants: { size: { sm: 'flex p-1', lg: 'flex p-2' } }, defaultVariants: { size: 'sm' } });",
+		errors: repeat(shared('flex', 'size'), 2)
+	},
+	{
+		// A `base` whose own text carries a backslash can't be re-emitted with the
+		// lifted token appended, so the whole fix bails.
+		code:
+			IMPORT +
+			"sv({ base: 'a\\\\b', variants: { size: { sm: 'flex p-1', lg: 'flex p-2' } }, defaultVariants: { size: 'sm' } });",
+		errors: repeat(shared('flex', 'size'), 2)
+	},
+	{
 		// A single-value exhaustive variant always applies that one value, so
 		// every token in it is constant and belongs in `base`. No fix: lifting all
 		// of them would leave an empty class string behind.
@@ -4318,11 +4334,16 @@ const NO_SHARED_TOKENS_INVALID = [
 		code:
 			IMPORT_NS +
 			"SV.sv({ variants: { size: { sm: 'flex p-1', lg: 'flex p-2' } }, defaultVariants: { size: 'sm' } });",
+		output:
+			IMPORT_NS +
+			"SV.sv({ base: 'flex', variants: { size: { sm: 'p-1', lg: 'p-2' } }, defaultVariants: { size: 'sm' } });",
 		errors: repeat(shared('flex', 'size'), 2)
 	},
 	{
 		// Token shared across all values of an exhaustive variant
-		// (via defaultVariants) — flag every occurrence.
+		// (via defaultVariants) — flag every occurrence. With no `base` property
+		// to lift into, the fix creates one, laid out like the config's existing
+		// first property.
 		code:
 			IMPORT +
 			`sv({
@@ -4331,6 +4352,19 @@ const NO_SHARED_TOKENS_INVALID = [
 						sm: 'rounded text-sm',
 						md: 'rounded text-md',
 						lg: 'rounded text-lg'
+					}
+				},
+				defaultVariants: { size: 'md' }
+			});`,
+		output:
+			IMPORT +
+			`sv({
+				base: 'rounded',
+				variants: {
+					size: {
+						sm: 'text-sm',
+						md: 'text-md',
+						lg: 'text-lg'
 					}
 				},
 				defaultVariants: { size: 'md' }
@@ -4347,6 +4381,18 @@ const NO_SHARED_TOKENS_INVALID = [
 					intent: {
 						primary: 'rounded font-bold bg-blue-500',
 						danger: 'rounded font-bold bg-red-500'
+					}
+				},
+				requiredVariants: [\`intent\`]
+			});`,
+		output:
+			IMPORT +
+			`sv({
+				base: 'rounded font-bold',
+				variants: {
+					intent: {
+						primary: 'bg-blue-500',
+						danger: 'bg-red-500'
 					}
 				},
 				requiredVariants: [\`intent\`]
@@ -4369,6 +4415,18 @@ const NO_SHARED_TOKENS_INVALID = [
 					size: {
 						sm: 'rounded text-sm',
 						lg: 'rounded text-lg'
+					}
+				},
+				requiredVariants: true
+			});`,
+		output:
+			IMPORT +
+			`sv({
+				base: 'rounded',
+				variants: {
+					size: {
+						sm: 'text-sm',
+						lg: 'text-lg'
 					}
 				},
 				requiredVariants: true
@@ -4436,6 +4494,18 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { on: false }
 			});`,
+		output:
+			IMPORT +
+			`sv({
+				base: 'highlight',
+				variants: {
+					on: {
+						true: 'bg-blue-500',
+						false: 'bg-gray-200'
+					}
+				},
+				defaultVariants: { on: false }
+			});`,
 		errors: repeat(shared('highlight', 'on'), 2)
 	},
 	{
@@ -4448,6 +4518,18 @@ const NO_SHARED_TOKENS_INVALID = [
 					size: {
 						1: 'rounded text-sm',
 						2: 'rounded text-lg'
+					}
+				},
+				defaultVariants: { size: 1 }
+			});`,
+		output:
+			IMPORT +
+			`sv({
+				base: 'rounded',
+				variants: {
+					size: {
+						1: 'text-sm',
+						2: 'text-lg'
 					}
 				},
 				defaultVariants: { size: 1 }

@@ -18,6 +18,10 @@ import {
  * directly-authored string or template literal — an array, a value nested
  * inside further structure, or one read through a hoisted `const` binding
  * leaves the finding reported without a fix, rather than partially rewritten.
+ * A config with no `base` property yet is still fixable: the property is
+ * created, borrowing the variant values' own quote style and the layout of the
+ * config's first property. A value left with no tokens at all is not, since
+ * that would trade this finding for an empty class string.
  */
 export const noSharedTokens: Rule.RuleModule = {
 	meta: {

@@ -2302,9 +2302,17 @@ const getRawSlotValueNode = (
 	return valueNode;
 };
 
+type LiteralRewrite = { node: Node; nextText: string; quote: string };
+
+// Where a slot's lifted tokens go: the `base`/`slots[slot]` literal it already
+// has, or the config object a `base` property has to be created in.
+export type SharedTokensTarget =
+	| { node: Node }
+	| { createBaseIn: ObjectExpression };
+
 type SharedTokensFixPlan = {
-	target: { node: Node; nextText: string; quote: string };
-	values: ReadonlyArray<{ node: Node; nextText: string; quote: string }>;
+	target: LiteralRewrite | { insertBefore: Node; text: string };
+	values: ReadonlyArray<LiteralRewrite>;
 };
 
 // Plans a fix that lifts every shared token of one (variant, slot) pair out
@@ -2313,38 +2321,57 @@ type SharedTokensFixPlan = {
 // which case the finding is still reported, just without a fix. Eligibility
 // requires the target and every variant value's contribution to this slot to
 // be a plain, directly-authored string or template literal.
+// The text of a `base` property to create, laid out like the config's existing
+// first property so the insertion keeps the surrounding formatting: the same
+// whitespace that separates `{` from that property is repeated after the comma.
+const planBaseCreation = (
+	context: Rule.RuleContext,
+	config: ObjectExpression,
+	sharedTokens: ReadonlySet<string>,
+	quote: string
+): { insertBefore: Node; text: string } | null => {
+	const [firstProperty] = config.properties;
+
+	/* c8 ignore next 3 -- a config with no properties has no variants to analyze */
+	if (!firstProperty) {
+		return null;
+	}
+
+	const nextText = [...sharedTokens].join(' ');
+
+	/* c8 ignore next 3 -- same reason canHoistAsLiteral itself is ignored: a token that fails it carries a backslash, which makes the value rewrite above bail first */
+	if (!canHoistAsLiteral(nextText, quote)) {
+		return null;
+	}
+
+	const { sourceCode } = context;
+	const gap = sourceCode
+		.getText()
+		.slice(
+			sourceCode.getRange(config)[0] + 1,
+			sourceCode.getRange(firstProperty)[0]
+		);
+
+	return {
+		insertBefore: firstProperty,
+		text: `base: ${quote}${nextText}${quote},${gap}`
+	};
+};
+
 const planSharedTokensFix = (
 	context: Rule.RuleContext,
 	slot: string,
 	sharedTokens: ReadonlySet<string>,
 	valueEntries: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
-	targetNode: Node | undefined
+	target: SharedTokensTarget | null
 ): SharedTokensFixPlan | null => {
-	if (!targetNode) {
+	/* c8 ignore next 3 -- null only for the impossible missing-slot case above */
+	if (!target) {
 		return null;
 	}
 
-	if (getStaticStringText(targetNode) === null) {
-		return null;
-	}
-
-	const targetTokens = splitStaticTokens(
-		getRawInnerText(context, targetNode)
-	);
-	const missingShared = [...sharedTokens].filter(
-		(token) => !targetTokens.includes(token)
-	);
-	const targetPlan = planLiteralRewrite(context, targetNode, [
-		...targetTokens,
-		...missingShared
-	]);
-
-	if (!targetPlan) {
-		return null;
-	}
-
-	const values: Array<{ node: Node; nextText: string; quote: string }> = [];
+	const values: Array<LiteralRewrite> = [];
 
 	for (const valueNode of valueEntries.values()) {
 		const slotNode = getRawSlotValueNode(valueNode, slot, slotNames);
@@ -2382,6 +2409,50 @@ const planSharedTokensFix = (
 		values.push(valuePlan);
 	}
 
+	const [firstValue] = values;
+
+	/* c8 ignore next 3 -- a shared token needs at least one value to be shared by */
+	if (!firstValue) {
+		return null;
+	}
+
+	if ('createBaseIn' in target) {
+		// No literal to take a delimiter from, so the new property borrows the one
+		// the values already use.
+		const targetPlan = planBaseCreation(
+			context,
+			target.createBaseIn,
+			sharedTokens,
+			firstValue.quote
+		);
+
+		/* c8 ignore next 3 -- planBaseCreation only fails on the two invariants ignored inside it */
+		if (!targetPlan) {
+			return null;
+		}
+
+		return { target: targetPlan, values };
+	}
+
+	if (getStaticStringText(target.node) === null) {
+		return null;
+	}
+
+	const targetTokens = splitStaticTokens(
+		getRawInnerText(context, target.node)
+	);
+	const missingShared = [...sharedTokens].filter(
+		(token) => !targetTokens.includes(token)
+	);
+	const targetPlan = planLiteralRewrite(context, target.node, [
+		...targetTokens,
+		...missingShared
+	]);
+
+	if (!targetPlan) {
+		return null;
+	}
+
 	return { target: targetPlan, values };
 };
 
@@ -2397,12 +2468,27 @@ const literalReplacement = (part: {
 const applySharedTokensFixPlan = (
 	fixer: Rule.RuleFixer,
 	plan: SharedTokensFixPlan
-): Rule.Fix[] =>
-	[plan.target, ...plan.values].map((part) => {
+): Rule.Fix[] => {
+	const fixes = plan.values.map((part) => {
 		const { node, text } = literalReplacement(part);
 
 		return fixer.replaceText(node, text);
 	});
+
+	const { target } = plan;
+
+	if ('insertBefore' in target) {
+		fixes.push(fixer.insertTextBefore(target.insertBefore, target.text));
+
+		return fixes;
+	}
+
+	const { node, text } = literalReplacement(target);
+
+	fixes.push(fixer.replaceText(node, text));
+
+	return fixes;
+};
 
 const reportSharedTokenEntries = (
 	context: Rule.RuleContext,
@@ -2441,7 +2527,7 @@ const reportSharedTokensBySlot = (
 	variantKey: string,
 	valueEntries: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
-	getTargetNode: (slot: string) => Node | undefined
+	getTarget: (slot: string) => SharedTokensTarget | null
 ) => {
 	for (const [slot, tokens] of sharedTokens) {
 		const plan = planSharedTokensFix(
@@ -2450,7 +2536,7 @@ const reportSharedTokensBySlot = (
 			tokens,
 			valueEntries,
 			slotNames,
-			getTargetNode(slot)
+			getTarget(slot)
 		);
 
 		for (const token of tokens) {
@@ -2555,7 +2641,7 @@ const analyzeVariantSharedTokens = (
 	variantKey: string,
 	variantValue: Node,
 	slotNames: Set<string>,
-	getTargetNode: (slot: string) => Node | undefined
+	getTarget: (slot: string) => SharedTokensTarget | null
 ) => {
 	// Boolean shorthand has a single branch — no cross-value comparison.
 	if (isBooleanShorthandVariant(variantValue, slotNames)) {
@@ -2590,7 +2676,7 @@ const analyzeVariantSharedTokens = (
 		variantKey,
 		valueEntries,
 		slotNames,
-		getTargetNode
+		getTarget
 	);
 };
 
@@ -2607,7 +2693,7 @@ const analyzeExhaustiveVariants = (
 	variants: ObjectExpression,
 	exhaustive: Set<string>,
 	slotNames: Set<string>,
-	getTargetNode: (slot: string) => Node | undefined
+	getTarget: (slot: string) => SharedTokensTarget | null
 ) => {
 	for (const [variantKey, variantValue] of getProperties(variants)) {
 		if (!exhaustive.has(variantKey)) {
@@ -2619,14 +2705,14 @@ const analyzeExhaustiveVariants = (
 			variantKey,
 			variantValue,
 			slotNames,
-			getTargetNode
+			getTarget
 		);
 	}
 };
 
 export const analyzeSharedTokens = (
 	context: Rule.RuleContext,
-	configNode: Node
+	configNode: ObjectExpression
 ) => {
 	const config = getProperties(configNode);
 	const variants = config.get('variants');
@@ -2639,15 +2725,33 @@ export const analyzeSharedTokens = (
 	const baseNode = config.get('base');
 	const slotProperties = getProperties(config.get('slots'));
 
-	const getTargetNode = (slot: string): Node | undefined =>
-		slot === 'base' ? baseNode : slotProperties.get(slot);
+	const getTarget = (slot: string): SharedTokensTarget | null => {
+		if (slot !== 'base') {
+			const slotNode = slotProperties.get(slot);
+
+			/* c8 ignore next 3 -- a slot name only reaches here from the `slots` record it was read from */
+			if (!slotNode) {
+				return null;
+			}
+
+			return { node: slotNode };
+		}
+
+		if (baseNode) {
+			return { node: baseNode };
+		}
+
+		// A config with no `base` yet: the tokens still belong there, so the
+		// property is created rather than the finding left unfixed.
+		return { createBaseIn: configNode };
+	};
 
 	analyzeExhaustiveVariants(
 		context,
 		variants,
 		collectExhaustiveVariantKeys(config),
 		slotNames,
-		getTargetNode
+		getTarget
 	);
 };
 
