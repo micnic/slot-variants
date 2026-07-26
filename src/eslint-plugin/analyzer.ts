@@ -2360,6 +2360,15 @@ const planSharedTokensFix = (
 		const remainingTokens = splitStaticTokens(
 			getRawInnerText(context, slotNode)
 		).filter((token) => !sharedTokens.has(token));
+
+		// Lifting every token out would leave an empty class string behind, which
+		// no-empty-classes then reports — so there's no rewrite here that leaves
+		// the config clean. Whether the value should keep an empty string or go
+		// away entirely is the author's call, so the finding is reported unfixed.
+		if (remainingTokens.length === 0) {
+			return null;
+		}
+
 		const valuePlan = planLiteralRewrite(
 			context,
 			slotNode,
@@ -2556,8 +2565,11 @@ const analyzeVariantSharedTokens = (
 	const valueEntries = getStrictProperties(variantValue);
 
 	// A spread or computed key means we can't see every value, so we'd
-	// over-flag tokens that may differ in the unseen branches.
-	if (!valueEntries || valueEntries.size < 2) {
+	// over-flag tokens that may differ in the unseen branches. An empty record
+	// has no tokens to compare and is reported by no-empty-classes instead. A
+	// single value needs no comparison — the variant is exhaustive, so that one
+	// value always applies and every token in it is constant.
+	if (!valueEntries || valueEntries.size === 0) {
 		return;
 	}
 

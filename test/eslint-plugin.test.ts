@@ -4106,12 +4106,9 @@ const NO_SHARED_TOKENS_VALID = [
 				intent: () => 'primary'
 			}
 		});`,
-	// Single-value variant — nothing to compare against.
-	IMPORT +
-		`sv({
-			variants: { size: { sm: 'rounded text-sm' } },
-			defaultVariants: { size: 'sm' }
-		});`,
+	// Single-value variant that isn't exhaustive — the prop can be left off, so
+	// the value doesn't always apply.
+	IMPORT + "sv({ variants: { size: { sm: 'rounded text-sm' } } });",
 	// Token in only some values, not all.
 	IMPORT +
 		`sv({
@@ -4224,6 +4221,55 @@ const NO_SHARED_TOKENS_VALID = [
 ];
 
 const NO_SHARED_TOKENS_INVALID = [
+	{
+		// A single-value exhaustive variant always applies that one value, so
+		// every token in it is constant and belongs in `base`. No fix: lifting all
+		// of them would leave an empty class string behind.
+		code:
+			IMPORT +
+			`sv({
+				variants: { size: { sm: 'rounded text-sm' } },
+				defaultVariants: { size: 'sm' }
+			});`,
+		errors: [shared('rounded', 'size'), shared('text-sm', 'size')]
+	},
+	{
+		// Exhaustive via requiredVariants instead of a default.
+		code:
+			IMPORT +
+			`sv({
+				variants: { size: { sm: 'rounded text-sm' } },
+				requiredVariants: ['size']
+			});`,
+		errors: [shared('rounded', 'size'), shared('text-sm', 'size')]
+	},
+	{
+		// The same for a slot-keyed single value.
+		code:
+			IMPORT +
+			`sv({
+				slots: { root: 'block' },
+				variants: { size: { sm: { root: 'rounded text-sm' } } },
+				defaultVariants: { size: 'sm' }
+			});`,
+		errors: [
+			shared('rounded', 'size', 'root'),
+			shared('text-sm', 'size', 'root')
+		]
+	},
+	{
+		// Two values where one is entirely shared: the rewrite would empty it, so
+		// the finding is reported without a fix rather than leaving `sm: ''`
+		// behind for no-empty-classes to flag.
+		code:
+			IMPORT +
+			`sv({
+				base: 'block',
+				variants: { size: { sm: 'rounded', lg: 'rounded text-lg' } },
+				defaultVariants: { size: 'sm' }
+			});`,
+		errors: repeat(shared('rounded', 'size'), 2)
+	},
 	{
 		// A shared token is found across values even when one of them writes its
 		// separator as an escape. No fix: the surviving token would carry a
