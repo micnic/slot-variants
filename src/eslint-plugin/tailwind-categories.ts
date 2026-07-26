@@ -1007,6 +1007,52 @@ const withoutModifier = (segment: string): string =>
 const isBareNumberValue = (segment: string): boolean =>
 	/^\[\d+(?:\.\d+)?\]$/.test(segment);
 
+// An untyped CSS-variable shorthand takes the prefix's widest value type —
+// `text-(--x)` is a color, the same bucket a multi-segment value lands in, not
+// the `size` its single segment would suggest.
+const variableCategory = (spec: PrefixSpec): string => {
+	if (spec.variable !== undefined) {
+		return spec.variable;
+	}
+
+	if (spec.long !== undefined) {
+		return spec.long;
+	}
+
+	return spec.fallback;
+};
+
+// The category an arbitrary value names on its own: from a type hint, from the
+// CSS-variable shorthand rule above, or from a bare number, which carries no
+// unit and so is a weight on the prefixes that have one (`font-[550]`).
+// Undefined when the value isn't arbitrary, or names nothing this prefix has —
+// a bracketed untyped value then keeps the segment-count heuristic, where
+// `text-[16px]` really is a size.
+const arbitraryCategory = (
+	spec: PrefixSpec,
+	segment: string
+): string | undefined => {
+	const arbitrary = parseArbitraryValue(segment);
+
+	if (arbitrary === undefined) {
+		return undefined;
+	}
+
+	if (arbitrary.hint !== null) {
+		return hintedCategory(spec, arbitrary.hint);
+	}
+
+	if (arbitrary.variable) {
+		return variableCategory(spec);
+	}
+
+	if (isBareNumberValue(segment) && specCategories(spec).has('weight')) {
+		return 'weight';
+	}
+
+	return undefined;
+};
+
 const baseCategory = (
 	spec: PrefixSpec,
 	value: ReadonlyArray<string>,
@@ -1030,38 +1076,10 @@ const baseCategory = (
 		return 'color';
 	}
 
-	const arbitrary = parseArbitraryValue(unmodified);
+	const arbitrary = arbitraryCategory(spec, unmodified);
 
 	if (arbitrary !== undefined) {
-		if (arbitrary.hint !== null) {
-			const hinted = hintedCategory(spec, arbitrary.hint);
-
-			if (hinted !== undefined) {
-				return hinted;
-			}
-		} else if (arbitrary.variable) {
-			// An untyped CSS-variable shorthand takes the prefix's widest value
-			// type — `text-(--x)` is a color, the same bucket a multi-segment value
-			// lands in, not the `size` its single segment would suggest. A
-			// bracketed untyped value keeps the segment-count heuristic below,
-			// where `text-[16px]` really is a size.
-			if (spec.variable !== undefined) {
-				return spec.variable;
-			}
-
-			if (spec.long !== undefined) {
-				return spec.long;
-			}
-
-			return spec.fallback;
-		} else if (
-			isBareNumberValue(unmodified) &&
-			specCategories(spec).has('weight')
-		) {
-			// A bracketed number carries no unit, so on a prefix with a weight it's
-			// that (`font-[550]`), not the family its segment count would suggest.
-			return 'weight';
-		}
+		return arbitrary;
 	}
 
 	if (value.length === 1 && spec.short !== undefined) {
@@ -1711,15 +1729,18 @@ const getContainerConflictKey = (
 	};
 };
 
-// Returns null for tokens that don't look like a namespaced utility — single
-// words (`flex`), purely-prefixed (`-`), or anything without a top-level `-`
-// after the optional leading negative marker. The `!` important marker is
-// stripped — trailing (Tailwind v4 `w-200!`) or leading (Tailwind v3
-// `!w-200`) — so it doesn't split the conflict key.
-export const getConflictKey = (
+// The utility a token names, with its variant prefix split off and every marker
+// stripped: the `!` important marker — trailing (Tailwind v4 `w-200!`) or
+// leading (Tailwind v3 `!w-200`) — the negative `-`, and a configured Tailwind
+// v3 `prefix`, which sits after the negative marker (`-tw-mt-2`). Null when a
+// prefix is configured and the token lacks it, since it's then one of the
+// project's own class names rather than a utility — without stripping, `tw`
+// would be the namespace and the dash count the category, so every two-segment
+// utility would collide with every other.
+const splitUtility = (
 	token: string,
-	{ exclusiveGroups, prefix }: ConflictOptions
-): ConflictKeyInfo | null => {
+	prefix: string
+): { variantPrefix: string; bare: string } | null => {
 	let stripped = token;
 
 	if (token.endsWith('!')) {
@@ -1737,12 +1758,6 @@ export const getConflictKey = (
 		bare = bare.slice(1);
 	}
 
-	// Tailwind v3 prepends a configured `prefix` to every utility, after the
-	// negative marker stripped above (`-tw-mt-2`). Stripping it restores the
-	// namespace the rest of this function reads — without it `tw` would be the
-	// namespace and the dash count the category, so every two-segment utility
-	// would collide with every other. A token that lacks the prefix is one of the
-	// project's own class names, not a utility, so it's left alone.
 	if (prefix !== '') {
 		if (!bare.startsWith(prefix)) {
 			return null;
@@ -1750,6 +1765,76 @@ export const getConflictKey = (
 
 		bare = bare.slice(prefix.length);
 	}
+
+	return { variantPrefix, bare };
+};
+
+// A bare single-word utility (`rounded`, `border`) keys off the representative
+// value `BARE_UTILITIES` gives it. Null for a single word that names no family,
+// which is every project class name that reaches here.
+const getBareUtilityKey = (
+	firstSegment: string,
+	variantPrefix: string
+): ConflictKeyInfo | null => {
+	const bareValue = BARE_UTILITIES[firstSegment];
+
+	if (bareValue === undefined) {
+		return null;
+	}
+
+	const category = categorize(firstSegment, bareValue);
+
+	return {
+		key: `${variantPrefix}|${firstSegment}|${category}`,
+		variantPrefix,
+		overlap: getOverlapNode(firstSegment, category)
+	};
+};
+
+// `text-lg/6` sets both font-size and line-height, so it also conflicts with a
+// bare `leading-*` — but plain `text-lg` (no modifier) doesn't. The two get
+// distinct keys so a plain and a modifier-bearing font-size never share a group
+// by mistake; the `text-size`/`text-size-leading` overlap nodes reunite them
+// whenever both are actually present (see `OVERLAP_COVERS`). Null when this
+// isn't a modifier-bearing font size.
+const getFontSizeLeadingKey = (
+	firstSegment: string,
+	category: string,
+	value: ReadonlyArray<string>,
+	variantPrefix: string
+): ConflictKeyInfo | null => {
+	if (firstSegment !== 'text' || category !== 'size') {
+		return null;
+	}
+
+	/* c8 ignore next -- value is non-empty here (the length === 0 case returns earlier) */
+	const lastValueSegment = value[value.length - 1] ?? '';
+
+	if (splitOutsideBrackets(lastValueSegment, '/').length < 2) {
+		return null;
+	}
+
+	return {
+		key: `${variantPrefix}|text|size-leading`,
+		variantPrefix,
+		overlap: 'text-size-leading'
+	};
+};
+
+// Returns null for tokens that don't look like a namespaced utility — single
+// words (`flex`), purely-prefixed (`-`), or anything without a top-level `-`
+// after the optional leading negative marker.
+export const getConflictKey = (
+	token: string,
+	{ exclusiveGroups, prefix }: ConflictOptions
+): ConflictKeyInfo | null => {
+	const split = splitUtility(token, prefix);
+
+	if (split === null) {
+		return null;
+	}
+
+	const { variantPrefix, bare } = split;
 
 	// Matched on the full, un-split string — many of these words contain a
 	// `-` themselves (`inline-block`, `table-caption`, `diagonal-fractions`),
@@ -1799,43 +1884,22 @@ export const getConflictKey = (
 	}
 
 	if (value.length === 0) {
-		const bareValue = BARE_UTILITIES[firstSegment];
-
-		if (bareValue === undefined) {
-			return null;
-		}
-
-		const category = categorize(firstSegment, bareValue);
-
-		return {
-			key: `${variantPrefix}|${firstSegment}|${category}`,
-			variantPrefix,
-			overlap: getOverlapNode(firstSegment, category)
-		};
+		return getBareUtilityKey(firstSegment, variantPrefix);
 	}
 
 	// Tokens collide when they share a first segment and resolve to the same
 	// property category (see `categorize`): `text-sm` (size) and `text-red-500`
 	// (color) don't, while `text-red-500` and `text-blue-500` do.
 	const category = categorize(firstSegment, value);
+	const fontSizeLeading = getFontSizeLeadingKey(
+		firstSegment,
+		category,
+		value,
+		variantPrefix
+	);
 
-	// `text-lg/6` sets both font-size and line-height, so it also conflicts
-	// with a bare `leading-*` — but plain `text-lg` (no modifier) doesn't. The
-	// two get distinct keys so a plain and a modifier-bearing font-size never
-	// share a group by mistake; the `text-size`/`text-size-leading` overlap
-	// nodes reunite them whenever both are actually present (see
-	// `OVERLAP_COVERS`).
-	if (firstSegment === 'text' && category === 'size') {
-		/* c8 ignore next -- value is non-empty here (the length === 0 case returns earlier) */
-		const lastValueSegment = value[value.length - 1] ?? '';
-
-		if (splitOutsideBrackets(lastValueSegment, '/').length > 1) {
-			return {
-				key: `${variantPrefix}|text|size-leading`,
-				variantPrefix,
-				overlap: 'text-size-leading'
-			};
-		}
+	if (fontSizeLeading !== null) {
+		return fontSizeLeading;
 	}
 
 	return {

@@ -2358,20 +2358,17 @@ const planBaseCreation = (
 	};
 };
 
-const planSharedTokensFix = (
+// Each variant value's contribution to `slot`, rewritten without the shared
+// tokens. Null when any one of them can't be rewritten safely, so the fix is
+// abandoned whole rather than applied to some values and not others.
+const planValueRewrites = (
 	context: Rule.RuleContext,
 	slot: string,
 	sharedTokens: ReadonlySet<string>,
 	valueEntries: ReadonlyMap<string, Node>,
-	slotNames: Set<string>,
-	target: SharedTokensTarget | null
-): SharedTokensFixPlan | null => {
-	/* c8 ignore next 3 -- null only for the impossible missing-slot case above */
-	if (!target) {
-		return null;
-	}
-
-	const values: Array<LiteralRewrite> = [];
+	slotNames: Set<string>
+): LiteralRewrite[] | null => {
+	const values: LiteralRewrite[] = [];
 
 	for (const valueNode of valueEntries.values()) {
 		const slotNode = getRawSlotValueNode(valueNode, slot, slotNames);
@@ -2409,29 +2406,26 @@ const planSharedTokensFix = (
 		values.push(valuePlan);
 	}
 
-	const [firstValue] = values;
+	return values;
+};
 
-	/* c8 ignore next 3 -- a shared token needs at least one value to be shared by */
-	if (!firstValue) {
-		return null;
-	}
-
+// The shared tokens appended to the slot's existing target literal, or the
+// `base` property to create when it has none. `quote` is the delimiter the
+// variant values use, which a created property borrows for want of one of its
+// own.
+const planTargetRewrite = (
+	context: Rule.RuleContext,
+	target: SharedTokensTarget,
+	sharedTokens: ReadonlySet<string>,
+	quote: string
+): SharedTokensFixPlan['target'] | null => {
 	if ('createBaseIn' in target) {
-		// No literal to take a delimiter from, so the new property borrows the one
-		// the values already use.
-		const targetPlan = planBaseCreation(
+		return planBaseCreation(
 			context,
 			target.createBaseIn,
 			sharedTokens,
-			firstValue.quote
+			quote
 		);
-
-		/* c8 ignore next 3 -- planBaseCreation only fails on the two invariants ignored inside it */
-		if (!targetPlan) {
-			return null;
-		}
-
-		return { target: targetPlan, values };
 	}
 
 	if (getStaticStringText(target.node) === null) {
@@ -2444,10 +2438,51 @@ const planSharedTokensFix = (
 	const missingShared = [...sharedTokens].filter(
 		(token) => !targetTokens.includes(token)
 	);
-	const targetPlan = planLiteralRewrite(context, target.node, [
+
+	return planLiteralRewrite(context, target.node, [
 		...targetTokens,
 		...missingShared
 	]);
+};
+
+const planSharedTokensFix = (
+	context: Rule.RuleContext,
+	slot: string,
+	sharedTokens: ReadonlySet<string>,
+	valueEntries: ReadonlyMap<string, Node>,
+	slotNames: Set<string>,
+	target: SharedTokensTarget | null
+): SharedTokensFixPlan | null => {
+	/* c8 ignore next 3 -- null only for the impossible missing-slot case above */
+	if (!target) {
+		return null;
+	}
+
+	const values = planValueRewrites(
+		context,
+		slot,
+		sharedTokens,
+		valueEntries,
+		slotNames
+	);
+
+	if (values === null) {
+		return null;
+	}
+
+	const [firstValue] = values;
+
+	/* c8 ignore next 3 -- a shared token needs at least one value to be shared by */
+	if (!firstValue) {
+		return null;
+	}
+
+	const targetPlan = planTargetRewrite(
+		context,
+		target,
+		sharedTokens,
+		firstValue.quote
+	);
 
 	if (!targetPlan) {
 		return null;
