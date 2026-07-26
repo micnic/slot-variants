@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
   "entry": [
-    "src/index.ts"
+    "src/index.ts",
+    "bench/*.ts"
   ],
   "ignorePatterns": [
-    "bench/**",
     "scripts/**"
   ],
   "rules": {}

@@ -2306,7 +2306,7 @@ type LiteralRewrite = { node: Node; nextText: string; quote: string };
 
 // Where a slot's lifted tokens go: the `base`/`slots[slot]` literal it already
 // has, or the config object a `base` property has to be created in.
-export type SharedTokensTarget =
+type SharedTokensTarget =
 	| { node: Node }
 	| { createBaseIn: ObjectExpression };
 
