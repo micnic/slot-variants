@@ -2979,6 +2979,39 @@ type EmptyConfigChecker = (
 	remove: EmptyFix
 ) => void;
 
+// `[]` and `{}` are the empty forms of a config container. `requiredVariants`
+// and `multiSlots` also accept a boolean, which is never empty.
+const isEmptyContainer = (value: Node): boolean => {
+	if (value.type === 'ObjectExpression') {
+		return value.properties.length === 0;
+	}
+
+	if (value.type === 'ArrayExpression') {
+		return value.elements.length === 0;
+	}
+
+	return false;
+};
+
+// The config containers that hold no class values of their own — variant
+// selections and slot/variant name lists. Empty, each is inert: it reads as
+// configuration but changes nothing about the output, so it's reported to be
+// removed rather than left to look meaningful.
+const checkEmptyConfigContainer =
+	(key: string): EmptyConfigChecker =>
+	(context, value, remove) => {
+		if (!isEmptyContainer(value)) {
+			return;
+		}
+
+		context.report({
+			node: value,
+			messageId: 'emptyConfig',
+			data: { key },
+			fix: remove
+		});
+	};
+
 const svEmptyConfigValueCheckers: Record<string, EmptyConfigChecker> = {
 	base: (context, node, remove) => {
 		visitForEmptyClasses(context, node, false, remove);
@@ -2986,7 +3019,11 @@ const svEmptyConfigValueCheckers: Record<string, EmptyConfigChecker> = {
 	slots: checkSlotsForEmpty,
 	variants: checkVariantsForEmpty,
 	compoundVariants: checkCompoundsForEmpty,
-	compoundSlots: checkCompoundsForEmpty
+	compoundSlots: checkCompoundsForEmpty,
+	defaultVariants: checkEmptyConfigContainer('defaultVariants'),
+	requiredVariants: checkEmptyConfigContainer('requiredVariants'),
+	multiSlots: checkEmptyConfigContainer('multiSlots'),
+	presets: checkEmptyConfigContainer('presets')
 };
 
 // A `createSV()` factory config may carry a spread or computed key (reported

@@ -1396,15 +1396,21 @@ const NO_EMPTY_CLASSES_VALID = [
 	'cn();',
 	"sv('');",
 	'cn({});',
-	// Non-class config keys — not validated.
+	// Non-class config keys carrying a value are not validated.
 	IMPORT +
 		`sv({
 			base: 'flex',
-			defaultVariants: {},
-			requiredVariants: [],
-			presets: {},
+			variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+			defaultVariants: { size: 'sm' },
+			requiredVariants: true,
+			multiSlots: false,
+			presets: { fancy: { size: 'lg' } },
 			postProcess: noop
 		});`,
+	// A dynamic value can't be seen into.
+	IMPORT + "sv({ base: 'flex', defaultVariants: opts });",
+	// A non-empty preset selection is left alone.
+	IMPORT + "sv({ base: 'flex', presets: { fancy: {} } });",
 	// Spread inside variants — that property is bailed.
 	IMPORT + "sv({ variants: { ...rest, size: { sm: 'text-sm' } } });",
 	// Computed key inside variants — that property is bailed.
@@ -1458,6 +1464,34 @@ const NO_EMPTY_CLASSES_VALID = [
 ];
 
 const NO_EMPTY_CLASSES_INVALID = [
+	{
+		// A config container that holds no class values of its own is inert when
+		// empty, so the property is reported and removed.
+		code: IMPORT + "sv({ base: 'flex', defaultVariants: {} });",
+		output: IMPORT + "sv({ base: 'flex' });",
+		errors: [{ messageId: 'emptyConfig', data: { key: 'defaultVariants' } }]
+	},
+	{
+		code: IMPORT + "sv({ base: 'flex', requiredVariants: [] });",
+		output: IMPORT + "sv({ base: 'flex' });",
+		errors: [{ messageId: 'emptyConfig', data: { key: 'requiredVariants' } }]
+	},
+	{
+		code: IMPORT + "sv({ base: 'flex', multiSlots: [] });",
+		output: IMPORT + "sv({ base: 'flex' });",
+		errors: [{ messageId: 'emptyConfig', data: { key: 'multiSlots' } }]
+	},
+	{
+		code: IMPORT + "sv({ base: 'flex', presets: {} });",
+		output: IMPORT + "sv({ base: 'flex' });",
+		errors: [{ messageId: 'emptyConfig', data: { key: 'presets' } }]
+	},
+	{
+		// As the only property there's nothing left to remove it from, so the
+		// finding stands without a fix.
+		code: IMPORT + 'sv({ defaultVariants: {} });',
+		errors: [{ messageId: 'emptyConfig', data: { key: 'defaultVariants' } }]
+	},
 	{
 		// Empty string as cn-style sv argument.
 		code: IMPORT + "sv('');",

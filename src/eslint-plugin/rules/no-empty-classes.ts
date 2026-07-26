@@ -17,6 +17,11 @@ import {
  * array (`[]`) as a `compoundVariants`/`compoundSlots` matcher value — since
  * `matchesCompound` in `sv.ts` tests it with `.some()`, an empty array can
  * never match, so the whole compound entry is permanently unreachable.
+ *
+ * The config containers that carry no class values of their own —
+ * `defaultVariants`, `requiredVariants`, `multiSlots`, `presets` — are reported
+ * when empty too: each one reads as configuration while changing nothing about
+ * the output.
  */
 export const noEmptyClasses: Rule.RuleModule = {
 	meta: {
@@ -34,6 +39,8 @@ export const noEmptyClasses: Rule.RuleModule = {
 			emptyArray: 'Empty class array is not allowed.',
 			emptyObject: 'Empty class object is not allowed.',
 			emptyCall: 'Empty sv()/cn() call is not allowed.',
+			emptyConfig:
+				'Empty "{{key}}" has no effect — remove it or fill it in.',
 			unreachableMatcher:
 				'Empty array matcher for "{{key}}" can never match — this compound entry is unreachable.'
 		}
