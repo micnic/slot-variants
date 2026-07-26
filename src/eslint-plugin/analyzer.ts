@@ -785,6 +785,61 @@ const extractTernaryTemplateTokens = (
 // (chained or nested), ternary templates, and clsx-style records, each of
 // which may nest the others. In an sv() config's class positions an object is
 // instead a slot-keyed record.
+// The shapes only a cn-style position can hold: the conditional forms of the
+// calling convention, and a clsx-style record whose keys are the classes. True
+// when the node was one of them and its tokens have been extracted.
+const extractCnStyleTokens = (
+	node: Node,
+	context: TokenExtractionContext
+): boolean => {
+	const { slot, source, slotNames, entries, sourceCode } = context;
+
+	// Only the right operand is a class contribution; the left is recorded as a
+	// truthy-branch matcher so a complementary `!cond && …` elsewhere resolves
+	// as mutually exclusive.
+	if (node.type === 'LogicalExpression' && node.operator === '&&') {
+		const [key, branch] = conditionMatcher(node.left, true, sourceCode);
+
+		extractTokens(
+			node.right,
+			slot,
+			withMatcher(source, key, branch),
+			slotNames,
+			entries,
+			sourceCode,
+			true
+		);
+
+		return true;
+	}
+
+	// A simple two-branch ternary is keyed on its condition text, letting
+	// complementary conditionals across arguments — `cond ? a : ''` with
+	// `cond ? '' : b` — resolve as exclusive too. A chained ternary keeps a
+	// position-based key: its leaves are only exclusive to one another.
+	if (node.type === 'ConditionalExpression') {
+		extractConditionalTokens(node, context);
+
+		return true;
+	}
+
+	// Quasis carry always-present tokens; each substitution carries its own
+	// exclusive branch tokens.
+	if (isStaticTernaryTemplate(node)) {
+		extractTernaryTemplateTokens(node, context);
+
+		return true;
+	}
+
+	if (node.type === 'ObjectExpression') {
+		extractRecordTokens(node, slot, source, entries, sourceCode);
+
+		return true;
+	}
+
+	return false;
+};
+
 const extractTokens = (
 	node: Node,
 	slot: string,
@@ -802,41 +857,7 @@ const extractTokens = (
 		return;
 	}
 
-	// Only the right operand is a class contribution; the left is recorded as a
-	// truthy-branch matcher so a complementary `!cond && …` elsewhere resolves
-	// as mutually exclusive.
-	if (
-		cnStyle &&
-		node.type === 'LogicalExpression' &&
-		node.operator === '&&'
-	) {
-		const [key, branch] = conditionMatcher(node.left, true, sourceCode);
-
-		extractTokens(
-			node.right,
-			slot,
-			withMatcher(source, key, branch),
-			slotNames,
-			entries,
-			sourceCode,
-			cnStyle
-		);
-		return;
-	}
-
-	// A simple two-branch ternary is keyed on its condition text, letting
-	// complementary conditionals across arguments — `cond ? a : ''` with
-	// `cond ? '' : b` — resolve as exclusive too. A chained ternary keeps a
-	// position-based key: its leaves are only exclusive to one another.
-	if (cnStyle && node.type === 'ConditionalExpression') {
-		extractConditionalTokens(node, context);
-		return;
-	}
-
-	// Quasis carry always-present tokens; each substitution carries its own
-	// exclusive branch tokens.
-	if (cnStyle && isStaticTernaryTemplate(node)) {
-		extractTernaryTemplateTokens(node, context);
+	if (cnStyle && extractCnStyleTokens(node, context)) {
 		return;
 	}
 
@@ -852,11 +873,6 @@ const extractTokens = (
 				cnStyle
 			);
 		});
-		return;
-	}
-
-	if (cnStyle && node.type === 'ObjectExpression') {
-		extractRecordTokens(node, slot, source, entries, sourceCode);
 		return;
 	}
 
@@ -1172,6 +1188,65 @@ const forEachItemReportingSpread = (
 	}
 };
 
+// The conditional forms of the cn() calling convention, each validated with the
+// same affordances as the position they sit in. True when the node was one of
+// the forms this position allows, so it needs no further checking.
+const checkConditionalClassValue = (
+	context: Rule.RuleContext,
+	node: Node,
+	options: StaticClassValueOptions
+): boolean => {
+	// Only the `&&` right operand is a class contribution.
+	if (
+		options.allowLogicalString &&
+		node.type === 'LogicalExpression' &&
+		node.operator === '&&'
+	) {
+		checkClassValueIsStatic(context, node.right, branchOptions(options));
+
+		return true;
+	}
+
+	if (options.allowConditionalString !== true) {
+		return false;
+	}
+
+	if (node.type === 'ConditionalExpression') {
+		checkClassValueIsStatic(
+			context,
+			node.consequent,
+			branchOptions(options)
+		);
+		checkClassValueIsStatic(
+			context,
+			node.alternate,
+			branchOptions(options)
+		);
+
+		return true;
+	}
+
+	return isStaticTernaryTemplate(node);
+};
+
+const checkArrayClassValue = (
+	context: Rule.RuleContext,
+	node: ArrayExpression,
+	options: StaticClassValueOptions
+) => {
+	forEachItemReportingSpread(context, node.elements, (element) => {
+		if (
+			options.allowNestedArrays === false &&
+			element.type === 'ArrayExpression'
+		) {
+			reportDynamic(context, element);
+			return;
+		}
+
+		checkClassValueIsStatic(context, element, branchOptions(options));
+	});
+};
+
 const checkClassValueIsStatic = (
 	context: Rule.RuleContext,
 	node: Node,
@@ -1187,49 +1262,12 @@ const checkClassValueIsStatic = (
 		return;
 	}
 
-	// Only the `&&` right operand is a class contribution, validated with the
-	// same affordances.
-	if (
-		options.allowLogicalString &&
-		node.type === 'LogicalExpression' &&
-		node.operator === '&&'
-	) {
-		checkClassValueIsStatic(context, node.right, branchOptions(options));
+	if (checkConditionalClassValue(context, node, options)) {
 		return;
 	}
 
-	if (options.allowConditionalString) {
-		if (node.type === 'ConditionalExpression') {
-			checkClassValueIsStatic(
-				context,
-				node.consequent,
-				branchOptions(options)
-			);
-			checkClassValueIsStatic(
-				context,
-				node.alternate,
-				branchOptions(options)
-			);
-			return;
-		}
-
-		if (isStaticTernaryTemplate(node)) {
-			return;
-		}
-	}
-
 	if (node.type === 'ArrayExpression') {
-		forEachItemReportingSpread(context, node.elements, (element) => {
-			if (options.allowNestedArrays === false) {
-				if (element.type === 'ArrayExpression') {
-					reportDynamic(context, element);
-					return;
-				}
-			}
-
-			checkClassValueIsStatic(context, element, branchOptions(options));
-		});
-
+		checkArrayClassValue(context, node, options);
 		return;
 	}
 
@@ -2923,6 +2961,53 @@ const checkRecordKeysForEmpty = (
 // a meaningful "slot with no default classes" declaration. `cnStyle` marks a
 // cn-style position, where an ObjectExpression is a clsx-style record and a
 // `&&`/ternary is a runtime branch rather than a class value itself.
+// The conditional forms of the cn() calling convention: only the branches carry
+// classes, and the same `fix` still removes the whole enclosing argument or
+// element regardless of which branch reported. True when the node was one of
+// them.
+const visitBranchesForEmptyClasses = (
+	context: Rule.RuleContext,
+	node: Node,
+	fix?: EmptyFix
+): boolean => {
+	if (node.type === 'LogicalExpression' && node.operator === '&&') {
+		visitForEmptyClasses(context, node.right, false, fix, true);
+
+		return true;
+	}
+
+	if (node.type === 'ConditionalExpression') {
+		visitForEmptyClasses(context, node.consequent, false, fix, true);
+		visitForEmptyClasses(context, node.alternate, false, fix, true);
+
+		return true;
+	}
+
+	return false;
+};
+
+const visitArrayForEmptyClasses = (
+	context: Rule.RuleContext,
+	node: ArrayExpression,
+	fix: EmptyFix | undefined,
+	cnStyle: boolean
+) => {
+	if (node.elements.length === 0) {
+		context.report({ node, messageId: 'emptyArray', fix });
+		return;
+	}
+
+	forEachStaticItem(node.elements, (element) => {
+		visitForEmptyClasses(
+			context,
+			element,
+			false,
+			makeListFix(context, element, node.elements),
+			cnStyle
+		);
+	});
+};
+
 export const visitForEmptyClasses = (
 	context: Rule.RuleContext,
 	node: Node,
@@ -2937,38 +3022,12 @@ export const visitForEmptyClasses = (
 		return;
 	}
 
-	// The same `fix` still removes the whole enclosing argument/element
-	// regardless of which branch triggered the report.
-	if (
-		cnStyle &&
-		node.type === 'LogicalExpression' &&
-		node.operator === '&&'
-	) {
-		visitForEmptyClasses(context, node.right, false, fix, cnStyle);
-		return;
-	}
-
-	if (cnStyle && node.type === 'ConditionalExpression') {
-		visitForEmptyClasses(context, node.consequent, false, fix, cnStyle);
-		visitForEmptyClasses(context, node.alternate, false, fix, cnStyle);
+	if (cnStyle && visitBranchesForEmptyClasses(context, node, fix)) {
 		return;
 	}
 
 	if (node.type === 'ArrayExpression') {
-		if (node.elements.length === 0) {
-			context.report({ node, messageId: 'emptyArray', fix });
-			return;
-		}
-
-		forEachStaticItem(node.elements, (element) => {
-			visitForEmptyClasses(
-				context,
-				element,
-				false,
-				makeListFix(context, element, node.elements),
-				cnStyle
-			);
-		});
+		visitArrayForEmptyClasses(context, node, fix, cnStyle);
 		return;
 	}
 
