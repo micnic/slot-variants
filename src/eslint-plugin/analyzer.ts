@@ -2035,6 +2035,34 @@ type ConflictGroup = {
 	entries: Entry[];
 	variantPrefix: string;
 	overlap: string | null;
+	// Whether this group alone (before any overlap merge) has no two entries
+	// that can render together.
+	exclusive: boolean;
+	// Every entry's matcher list, or null if some entry has no readable
+	// matcher (base/compound). Non-null whenever `exclusive` is true — kept
+	// alongside it so a neighbor edge check can reuse it without re-walking
+	// `entries` and re-deriving what `exclusive` already established.
+	matchers: VariantMatchers[] | null;
+};
+
+// Null the moment one entry has no readable matcher — mirrors the guard
+// isMutuallyExclusiveVariants applies per-entry before ever comparing pairs.
+const getGroupMatchers = (
+	entries: ReadonlyArray<Entry>
+): VariantMatchers[] | null => {
+	const matchers: VariantMatchers[] = [];
+
+	for (const entry of entries) {
+		const entryMatchers = getEntryMatchers(entry);
+
+		if (entryMatchers === null) {
+			return null;
+		}
+
+		matchers.push(entryMatchers);
+	}
+
+	return matchers;
 };
 
 const groupEntriesByConflictKey = (
@@ -2054,48 +2082,155 @@ const groupEntriesByConflictKey = (
 			tokens: new Set<string>(),
 			entries: [],
 			variantPrefix: info.variantPrefix,
-			overlap: info.overlap
+			overlap: info.overlap,
+			exclusive: true,
+			matchers: null
 		}));
 
 		group.tokens.add(token);
 		group.entries.push(...list);
 	}
 
+	for (const group of groups.values()) {
+		group.exclusive = isMutuallyExclusiveVariants(group.entries);
+		group.matchers = getGroupMatchers(group.entries);
+	}
+
 	return groups;
 };
 
-const mergeGroupInto = (target: ConflictGroup, source: ConflictGroup) => {
-	for (const token of source.tokens) {
-		target.tokens.add(token);
+// The real-edge counterpart to isMutuallyExclusiveVariants: true when every
+// matcher of `a` is exclusive with every matcher of `b`. Used to check two
+// distinct covers-adjacent nodes (`p` vs `px`) against each other directly,
+// instead of flattening a whole connected component into one all-pairs check
+// — `px` and `pb` both bridge through `p` but aren't adjacent to each other,
+// so they must never be compared against one another. `a` comes from a group
+// already known to be internally exclusive (see isOverlapComponentExclusive),
+// so unlike `b` it's never null.
+const areGroupsExclusive = (
+	a: ReadonlyArray<VariantMatchers>,
+	b: ReadonlyArray<VariantMatchers> | null
+): boolean => {
+	if (b === null) {
+		return false;
 	}
 
-	target.entries.push(...source.entries);
+	for (const matchersA of a) {
+		for (const matchersB of b) {
+			if (!areExclusiveMatchers(matchersA, matchersB)) {
+				return false;
+			}
+		}
+	}
+
+	return true;
 };
 
-// Folds every group reachable from `node` through present covers edges into
-// `combined`: `m` pulls in a present `mt`; `w` and `h` only reach each other
-// when a bridging `size` is present.
-const mergeOverlapNeighbors = (
-	combined: ConflictGroup,
-	node: string,
+// Walks every node reachable from `start` through present covers edges,
+// without merging anything yet — collecting the component first keeps each
+// node's own entries pristine until every edge in the component has been
+// checked, so `p` merging `px` doesn't poison the later `p`-vs-`pb` check.
+const collectOverlapComponent = (
+	start: string,
 	byNode: ReadonlyMap<string, ConflictGroup>,
 	visited: Set<string>
-) => {
-	for (const neighbor of overlapNeighbors(node)) {
-		if (visited.has(neighbor)) {
-			continue;
+): string[] => {
+	const component: string[] = [];
+	const queue = [start];
+
+	visited.add(start);
+
+	for (const node of queue) {
+		component.push(node);
+
+		for (const neighbor of overlapNeighbors(node)) {
+			if (visited.has(neighbor) || !byNode.has(neighbor)) {
+				continue;
+			}
+
+			visited.add(neighbor);
+			queue.push(neighbor);
 		}
+	}
 
-		const group = byNode.get(neighbor);
+	return component;
+};
 
+// A component is exclusive only when every node's own group is exclusive and
+// every real covers edge between two present nodes in it is exclusive too —
+// nodes that merely share a bridge node without being adjacent to each other
+// are never compared.
+const isOverlapComponentExclusive = (
+	component: ReadonlyArray<string>,
+	byNode: ReadonlyMap<string, ConflictGroup>
+): boolean => {
+	for (const node of component) {
+		const group = byNode.get(node);
+
+		/* c8 ignore next 3 -- component only ever holds nodes present in byNode */
 		if (group === undefined) {
 			continue;
 		}
 
-		visited.add(neighbor);
-		mergeGroupInto(combined, group);
-		mergeOverlapNeighbors(combined, neighbor, byNode, visited);
+		if (!group.exclusive) {
+			return false;
+		}
+
+		/* c8 ignore next 3 -- exclusive true guarantees matchers is non-null */
+		if (group.matchers === null) {
+			return false;
+		}
+
+		for (const neighbor of overlapNeighbors(node)) {
+			const neighborGroup = byNode.get(neighbor);
+
+			if (
+				neighborGroup !== undefined &&
+				!areGroupsExclusive(group.matchers, neighborGroup.matchers)
+			) {
+				return false;
+			}
+		}
 	}
+
+	return true;
+};
+
+const buildOverlapConflictGroup = (
+	component: ReadonlyArray<string>,
+	byNode: ReadonlyMap<string, ConflictGroup>
+): ConflictGroup => {
+	const tokens = new Set<string>();
+	const entries: Entry[] = [];
+	let variantPrefix = '';
+	let overlap: string | null = null;
+
+	for (const node of component) {
+		const group = byNode.get(node);
+
+		/* c8 ignore next 3 -- component only ever holds nodes present in byNode */
+		if (group === undefined) {
+			continue;
+		}
+
+		variantPrefix = group.variantPrefix;
+		overlap = group.overlap;
+
+		for (const token of group.tokens) {
+			tokens.add(token);
+		}
+
+		entries.push(...group.entries);
+	}
+
+	return {
+		tokens,
+		entries,
+		variantPrefix,
+		overlap,
+		exclusive: isOverlapComponentExclusive(component, byNode),
+		matchers: getGroupMatchers(entries)
+	};
 };
 
 // Merges conflict groups related through a shorthand/longhand overlap. Groups
@@ -2107,7 +2242,7 @@ const mergeOverlappingGroups = (
 	groups: Map<string, ConflictGroup>
 ): ConflictGroup[] => {
 	const result: ConflictGroup[] = [];
-	// variant prefix -> overlap node -> the merged group for that node.
+	// variant prefix -> overlap node -> that node's own (pristine) group.
 	const overlap = new Map<string, Map<string, ConflictGroup>>();
 
 	for (const group of groups.values()) {
@@ -2124,13 +2259,21 @@ const mergeOverlappingGroups = (
 		const existing = byNode.get(group.overlap);
 
 		if (existing) {
-			mergeGroupInto(existing, group);
+			for (const token of group.tokens) {
+				existing.tokens.add(token);
+			}
+
+			existing.entries.push(...group.entries);
+			existing.exclusive = isMutuallyExclusiveVariants(existing.entries);
+			existing.matchers = getGroupMatchers(existing.entries);
 		} else {
 			byNode.set(group.overlap, {
 				tokens: new Set(group.tokens),
 				entries: [...group.entries],
 				variantPrefix: group.variantPrefix,
-				overlap: group.overlap
+				overlap: group.overlap,
+				exclusive: group.exclusive,
+				matchers: group.matchers
 			});
 		}
 	}
@@ -2138,14 +2281,14 @@ const mergeOverlappingGroups = (
 	for (const byNode of overlap.values()) {
 		const visited = new Set<string>();
 
-		for (const [node, group] of byNode) {
+		for (const node of byNode.keys()) {
 			if (visited.has(node)) {
 				continue;
 			}
 
-			visited.add(node);
-			mergeOverlapNeighbors(group, node, byNode, visited);
-			result.push(group);
+			const component = collectOverlapComponent(node, byNode, visited);
+
+			result.push(buildOverlapConflictGroup(component, byNode));
 		}
 	}
 
@@ -2162,10 +2305,7 @@ const reportConflicts = (
 	const groups = groupEntriesByConflictKey(tokenMap, options);
 
 	for (const group of mergeOverlappingGroups(groups)) {
-		if (
-			group.tokens.size < 2 ||
-			isMutuallyExclusiveVariants(group.entries)
-		) {
+		if (group.tokens.size < 2 || group.exclusive) {
 			continue;
 		}
 

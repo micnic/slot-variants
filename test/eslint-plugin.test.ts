@@ -2401,6 +2401,12 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'scroll-smooth scroll-mt-4' });",
 	// A shorthand overlap across mutually-exclusive variant values is fine.
 	IMPORT + "sv({ variants: { pad: { sm: 'p-2', lg: 'pt-8' } } });",
+	// Two siblings from the same variant value (`px-4`/`pb-4`) both bridge
+	// through `p`, which a different, mutually-exclusive value sets alone —
+	// the siblings must not be compared against each other just because they
+	// share a bridge with a branch neither of them can ever render alongside.
+	IMPORT +
+		"sv({ variants: { inset: { edge: 'px-4 pb-4', full: 'p-4' } } });",
 	// Compounds matching different values of one variant can never co-occur.
 	IMPORT +
 		`sv({
@@ -3205,6 +3211,31 @@ const NO_CONFLICTING_NS_INVALID = [
 		// The whole chain merges when the shorthand bridges it.
 		code: IMPORT_CN + "cn('m-4', 'mx-2', 'ml-1');",
 		errors: repeat(conflictCn('m-4, ml-1, mx-2'), 3)
+	},
+	{
+		// `p-2` alone is exhaustive (every `size` value sets it) and mutually
+		// exclusive with itself, so the edge check runs against its `px`
+		// neighbor — an array matcher can't be read statically, so the compound
+		// always renders alongside it: a real conflict.
+		code: IMPORT +
+			`sv({
+				variants: { size: { sm: 'p-2', lg: 'p-2' } },
+				compoundVariants: [{ size: ['sm', 'lg'], class: 'px-4' }]
+			});`,
+		errors: repeat(conflict('p-2, px-4'), 3)
+	},
+	{
+		// `p` and `px` each come from a different variant, so neither is
+		// exclusive with the other on shared-key grounds — both can be active
+		// (`size: 'sm', shade: 'red'`) at once, a real conflict.
+		code: IMPORT +
+			`sv({
+				variants: {
+					size: { sm: 'p-2' },
+					shade: { red: 'px-4' }
+				}
+			});`,
+		errors: repeat(conflict('p-2, px-4'), 2)
 	},
 	{
 		// An arbitrary value is one segment regardless of inner dashes, so it
