@@ -270,11 +270,12 @@ const isConfigLike = (node: Node | undefined): node is ObjectExpression => {
 	return hasOnlyConfigKeys(properties);
 };
 
-// The conditions a token renders under, as key -> required-value matchers: a
-// variant value is one matcher, a compound entry one per matcher property, a
-// cn-style conditional a synthetic `cond:`/`ternary@` matcher; nested
+// The conditions a token renders under, as key -> required-value-set matchers:
+// a variant value is one matcher (a singleton set), a compound entry one per
+// matcher property (a set when the matcher is an array, e.g. `variant: [a,
+// b]`), a cn-style conditional a synthetic `cond:`/`ternary@` matcher; nested
 // conditionals accumulate.
-type VariantMatchers = ReadonlyMap<string, string>;
+type VariantMatchers = ReadonlyMap<string, ReadonlySet<string>>;
 
 type Source =
 	| { kind: 'base' }
@@ -287,7 +288,7 @@ const compoundSource: Source = { kind: 'compound' };
 
 const variantSource = (key: string, value: string): Source => ({
 	kind: 'variant',
-	matchers: new Map([[key, value]])
+	matchers: new Map([[key, new Set([value])]])
 });
 
 // Accumulates onto an existing variant source so nested conditionals keep
@@ -299,7 +300,7 @@ const withMatcher = (source: Source, key: string, value: string): Source => {
 
 	const matchers = new Map(source.matchers);
 
-	matchers.set(key, value);
+	matchers.set(key, new Set([value]));
 
 	return { kind: 'variant', matchers };
 };
@@ -322,16 +323,32 @@ const getEntryMatchers = (entry: Entry): VariantMatchers | null => {
 	return null;
 };
 
-// Exclusive when some key they both constrain requires different values —
+// Two value-sets on the same key are exclusive when they share no value —
+// `["primary", "secondary"]` and `["secondary"]` overlap (both can render at
+// once when the value is `"secondary"`), `["primary"]` and `["link"]` don't.
+const areDisjointValueSets = (
+	a: ReadonlySet<string>,
+	b: ReadonlySet<string>
+): boolean => {
+	for (const value of a) {
+		if (b.has(value)) {
+			return false;
+		}
+	}
+
+	return true;
+};
+
+// Exclusive when some key they both constrain requires disjoint value sets —
 // no render can satisfy both.
 const areExclusiveMatchers = (
 	a: VariantMatchers,
 	b: VariantMatchers
 ): boolean => {
-	for (const [key, value] of a) {
+	for (const [key, values] of a) {
 		const other = b.get(key);
 
-		if (other !== undefined && other !== value) {
+		if (other !== undefined && areDisjointValueSets(values, other)) {
 			return true;
 		}
 	}
@@ -1001,23 +1018,57 @@ const getStaticMatcherValue = (node: Node): string | null => {
 	return null;
 };
 
+// A matcher property's value set: a scalar reads as one value, an array of
+// scalars (`variant: ["primary", "secondary"]`) as every value it statically
+// resolves — matching any one of them satisfies the compound. A dynamic
+// element inside the array is skipped, same as a wholly dynamic matcher;
+// an array with no statically-readable element gives up, same as null.
+const getStaticMatcherValues = (node: Node): ReadonlySet<string> | null => {
+	const scalar = getStaticMatcherValue(node);
+
+	if (scalar !== null) {
+		return new Set([scalar]);
+	}
+
+	if (node.type !== 'ArrayExpression') {
+		return null;
+	}
+
+	const values = new Set<string>();
+
+	forEachStaticItem(node.elements, (element) => {
+		const value = getStaticMatcherValue(element);
+
+		if (value !== null) {
+			values.add(value);
+		}
+	});
+
+	if (values.size === 0) {
+		return null;
+	}
+
+	return values;
+};
+
 // Derives an exclusivity source from a compound's matcher properties, so two
-// compounds requiring different variant values aren't reported as conflicts.
-// Only statically-known scalar matchers count; a dynamic or array matcher is
-// skipped, which can only under-suppress, never wrongly suppress. With no
-// readable matcher left, falls back to the never-exclusive compound source.
+// compounds requiring disjoint variant values aren't reported as conflicts.
+// Only statically-known matchers count; a wholly dynamic matcher (or an array
+// with no statically-readable element) is skipped, which can only
+// under-suppress, never wrongly suppress. With no readable matcher left,
+// falls back to the never-exclusive compound source.
 const getCompoundSource = (compound: ReadonlyMap<string, Node>): Source => {
-	const matchers = new Map<string, string>();
+	const matchers = new Map<string, ReadonlySet<string>>();
 
 	for (const [key, value] of compound) {
 		if (COMPOUND_NON_MATCHER_KEYS.has(key)) {
 			continue;
 		}
 
-		const matcherValue = getStaticMatcherValue(value);
+		const matcherValues = getStaticMatcherValues(value);
 
-		if (matcherValue !== null) {
-			matchers.set(key, matcherValue);
+		if (matcherValues !== null) {
+			matchers.set(key, matcherValues);
 		}
 	}
 

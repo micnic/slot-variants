@@ -2422,6 +2422,22 @@ const NO_CONFLICTING_NS_VALID = [
 			variants: { size: { sm: 'p-2', lg: 'font-bold' } },
 			compoundVariants: [{ size: 'lg', class: 'p-4' }]
 		});`,
+	// An array compound matcher reads as a value set: two compounds are
+	// exclusive when their sets for a shared key share no value. `"link"` is
+	// never one of the first compound's `variant` values, so neither the
+	// same-key `h-28`/`h-auto` pair nor the `p`-covers `p-sm`/`px-none` pair
+	// can ever co-occur.
+	IMPORT +
+		`sv({
+			compoundVariants: [
+				{
+					variant: ['primary', 'secondary', 'tertiary', 'ghost'],
+					size: 'sm',
+					class: 'h-28 p-sm'
+				},
+				{ variant: 'link', class: 'h-auto px-none py-none' }
+			]
+		});`,
 	// Boolean and numeric matchers align with variant value keys.
 	IMPORT +
 		`sv({
@@ -3213,10 +3229,10 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('m-4, ml-1, mx-2'), 3)
 	},
 	{
-		// `p-2` alone is exhaustive (every `size` value sets it) and mutually
-		// exclusive with itself, so the edge check runs against its `px`
-		// neighbor — an array matcher can't be read statically, so the compound
-		// always renders alongside it: a real conflict.
+		// `p-2` alone is exhaustive (every `size` value sets it), so the edge
+		// check runs against its `px` neighbor — the array matcher's value set
+		// (`sm`/`lg`) overlaps `p-2`'s own values on the shared `size` key, so
+		// the compound can still render alongside it: a real conflict.
 		code: IMPORT +
 			`sv({
 				variants: { size: { sm: 'p-2', lg: 'p-2' } },
@@ -3236,6 +3252,18 @@ const NO_CONFLICTING_NS_INVALID = [
 				}
 			});`,
 		errors: repeat(conflict('p-2, px-4'), 2)
+	},
+	{
+		// `p-2` alone is exclusive with itself (single-branch variant), so the
+		// edge check reaches its `px` neighbor — a wholly dynamic compound
+		// matcher can't prove exclusivity, so the overlap still counts as a
+		// real conflict.
+		code: IMPORT +
+			`sv({
+				variants: { size: { sm: 'p-2', lg: 'p-2' } },
+				compoundVariants: [{ size: dyn, class: 'px-4' }]
+			});`,
+		errors: repeat(conflict('p-2, px-4'), 3)
 	},
 	{
 		// An arbitrary value is one segment regardless of inner dashes, so it
@@ -3471,6 +3499,19 @@ const NO_CONFLICTING_NS_INVALID = [
 			`sv({
 				compoundVariants: [
 					{ size: dyn, class: 'p-2' },
+					{ size: 'lg', class: 'p-4' }
+				]
+			});`,
+		errors: repeat(conflict('p-2, p-4'), 2)
+	},
+	{
+		// An array matcher with no statically-readable element can't narrow
+		// anything either — same as a wholly dynamic matcher, stays flagged.
+		code:
+			IMPORT +
+			`sv({
+				compoundVariants: [
+					{ size: [dyn], class: 'p-2' },
 					{ size: 'lg', class: 'p-4' }
 				]
 			});`,
