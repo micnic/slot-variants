@@ -31,6 +31,9 @@ const repeat = <T>(value: T, count: number): T[] =>
 const shared = (token: string, variant: string, slot = 'base') =>
 	err('shared', { token, variant, slot });
 
+const singleKeyCompound = (kind: string, key: string, value: string) =>
+	err('singleKeyCompound', { kind, key, value });
+
 const dup = (token: string, slot = 'base') => err('duplicate', { token, slot });
 
 const dupCn = (token: string) => err('duplicateCn', { token });
@@ -4323,6 +4326,63 @@ const NO_SHARED_TOKENS_VALID = [
 				size: { sm: 'rounded text-sm', lg: 'rounded text-lg' }
 			},
 			requiredVariants: false
+		});`,
+	// A compound entry with two matcher keys is combining variants — the
+	// single-key check doesn't apply.
+	IMPORT +
+		`sv({
+			variants: {
+				variant: { primary: 'a', link: 'b' },
+				size: { sm: 'c', lg: 'd' }
+			},
+			compoundVariants: [
+				{ variant: 'link', size: 'sm', className: 'e' }
+			]
+		});`,
+	// A dynamic `variants` object means the matcher's variant can't be
+	// resolved, so there's nowhere known to merge the class into.
+	IMPORT +
+		`sv({
+			variants: dynamicVariants,
+			compoundVariants: [{ variant: 'link', className: 'e' }]
+		});`,
+	// A slot-keyed boolean-shorthand variant has a single branch — no "other"
+	// value to hold the class for the matcher's false case.
+	IMPORT +
+		`sv({
+			slots: { body: 'p-4' },
+			variants: {
+				variant: { primary: 'a', link: 'b' },
+				disabled: { body: 'opacity-50' }
+			},
+			compoundVariants: [{ disabled: true, className: 'e' }]
+		});`,
+	// A spread inside the compound entry could hide a second matcher, so the
+	// entry is skipped entirely rather than risk under-reporting it.
+	IMPORT +
+		`sv({
+			variants: { variant: { primary: 'a', link: 'b' } },
+			compoundVariants: [{ ...rest, variant: 'link', className: 'e' }]
+		});`,
+	// A computed key could likewise hide a second matcher.
+	IMPORT +
+		`sv({
+			variants: { variant: { primary: 'a', link: 'b' } },
+			compoundVariants: [{ variant: 'link', [k]: true, className: 'e' }]
+		});`,
+	// No matcher at all — this entry always applies, a different concern than
+	// this check.
+	IMPORT +
+		`sv({
+			variants: { variant: { primary: 'a', link: 'b' } },
+			compoundVariants: [{ className: 'e' }]
+		});`,
+	// A non-object compound entry (e.g. a spread source read as an
+	// identifier) is skipped rather than inspected.
+	IMPORT +
+		`sv({
+			variants: { variant: { primary: 'a', link: 'b' } },
+			compoundVariants: [dynamicEntry, { variant: 'primary', size: 'sm', className: 'p-1' }]
 		});`
 ];
 
@@ -4711,6 +4771,187 @@ const NO_SHARED_TOKENS_INVALID = [
 				defaultVariants: { size: 'sm' }
 			});`,
 		errors: repeat(shared('rounded', 'size'), 2)
+	},
+	{
+		// A single-key `compoundVariants` entry isn't combining variants — its
+		// class merges into that variant value directly, and the entry is
+		// removed. The sibling two-key entry keeps the array non-empty and is
+		// left alone.
+		code:
+			IMPORT +
+			`sv({
+				variants: {
+					variant: { primary: 'a', link: 'underline' }
+				},
+				compoundVariants: [
+					{ variant: 'primary', size: 'sm', className: 'p-1' },
+					{ variant: 'link', className: 'px-none' }
+				]
+			});`,
+		output:
+			IMPORT +
+			`sv({
+				variants: {
+					variant: { primary: 'a', link: 'underline px-none' }
+				},
+				compoundVariants: [
+					{ variant: 'primary', size: 'sm', className: 'p-1' }
+				]
+			});`,
+		errors: [singleKeyCompound('compoundVariants', 'variant', "'link'")]
+	},
+	{
+		// An array-valued matcher merges the class into every value it
+		// statically resolves to.
+		code:
+			IMPORT +
+			`sv({
+				variants: {
+					size: { sm: 'h-28', default: 'h-32', lg: 'h-36' }
+				},
+				compoundVariants: [
+					{ size: ['sm', 'lg'], className: 'rounded' },
+					{ size: 'default', variant: 'x', className: 'p-1' }
+				]
+			});`,
+		output:
+			IMPORT +
+			`sv({
+				variants: {
+					size: { sm: 'h-28 rounded', default: 'h-32', lg: 'h-36 rounded' }
+				},
+				compoundVariants: [
+					{ size: 'default', variant: 'x', className: 'p-1' }
+				]
+			});`,
+		errors: [singleKeyCompound('compoundVariants', 'size', "['sm', 'lg']")]
+	},
+	{
+		// `compoundSlots`' class targets a specific slot rather than the whole
+		// variant value, so it's reported without a fix.
+		code:
+			IMPORT +
+			`sv({
+				slots: { root: 'flex', icon: 'block' },
+				variants: {
+					iconOnly: { on: 'w-8', off: 'w-auto' }
+				},
+				compoundSlots: [
+					{ iconOnly: 'on', slots: ['icon'], className: 'shrink-0' }
+				]
+			});`,
+		errors: [singleKeyCompound('compoundSlots', 'iconOnly', "'on'")]
+	},
+	{
+		// A dynamic class can't be read, so there's nothing to merge — reported
+		// without a fix.
+		code:
+			IMPORT +
+			`sv({
+				variants: {
+					variant: { primary: 'a', link: 'b' }
+				},
+				compoundVariants: [
+					{ variant: 'primary', size: 'sm', className: 'p-1' },
+					{ variant: 'link', className: dynamicCls }
+				]
+			});`,
+		errors: [singleKeyCompound('compoundVariants', 'variant', "'link'")]
+	},
+	{
+		// The matcher's value has no corresponding variant value to merge
+		// into — reported without a fix.
+		code:
+			IMPORT +
+			`sv({
+				variants: {
+					variant: { primary: 'a', link: 'b' }
+				},
+				compoundVariants: [
+					{ variant: 'primary', size: 'sm', className: 'p-1' },
+					{ variant: 'ghost', className: 'e' }
+				]
+			});`,
+		errors: [singleKeyCompound('compoundVariants', 'variant', "'ghost'")]
+	},
+	{
+		// Removing the sole compound entry would leave `compoundVariants`
+		// empty, which no-empty-classes would then flag — so it's reported
+		// without a fix instead.
+		code:
+			IMPORT +
+			`sv({
+				variants: {
+					variant: { primary: 'a', link: 'b' }
+				},
+				compoundVariants: [{ variant: 'link', className: 'e' }]
+			});`,
+		errors: [singleKeyCompound('compoundVariants', 'variant', "'link'")]
+	},
+	{
+		// A spread inside the matched variant's value record means its values
+		// can't be enumerated safely, so the merge target can't be found —
+		// reported without a fix.
+		code:
+			IMPORT +
+			`sv({
+				variants: {
+					variant: { ...rest, primary: 'a', link: 'b' }
+				},
+				compoundVariants: [
+					{ variant: 'primary', size: 'sm', className: 'p-1' },
+					{ variant: 'link', className: 'e' }
+				]
+			});`,
+		errors: [singleKeyCompound('compoundVariants', 'variant', "'link'")]
+	},
+	{
+		// The target variant value is an array rather than a plain string, so
+		// it can't be rewritten — reported without a fix.
+		code:
+			IMPORT +
+			`sv({
+				variants: {
+					variant: { primary: 'a', link: ['underline'] }
+				},
+				compoundVariants: [
+					{ variant: 'primary', size: 'sm', className: 'p-1' },
+					{ variant: 'link', className: 'e' }
+				]
+			});`,
+		errors: [singleKeyCompound('compoundVariants', 'variant', "'link'")]
+	},
+	{
+		// An empty class string has no tokens to merge — reported without a
+		// fix (no-empty-classes separately flags the empty string itself).
+		code:
+			IMPORT +
+			`sv({
+				variants: {
+					variant: { primary: 'a', link: 'b' }
+				},
+				compoundVariants: [
+					{ variant: 'primary', size: 'sm', className: 'p-1' },
+					{ variant: 'link', className: '' }
+				]
+			});`,
+		errors: [singleKeyCompound('compoundVariants', 'variant', "'link'")]
+	},
+	{
+		// A dynamic matcher value can't be resolved to a target variant
+		// value — reported without a fix.
+		code:
+			IMPORT +
+			`sv({
+				variants: {
+					variant: { primary: 'a', link: 'b' }
+				},
+				compoundVariants: [
+					{ variant: 'primary', size: 'sm', className: 'p-1' },
+					{ variant: someVar, className: 'e' }
+				]
+			});`,
+		errors: [singleKeyCompound('compoundVariants', 'variant', 'someVar')]
 	}
 ];
 

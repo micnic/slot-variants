@@ -924,6 +924,21 @@ const button = sv({
 
 `rounded` is present in every value of an exhaustive variant. Lift it into `base` (or the corresponding slot for slot-based variants) so each variant value contains only the classes that actually vary.
 
+The same rule also flags a `compoundVariants`/`compoundSlots` entry whose matcher covers exactly one variant key — it isn't combining variants, so it isn't really a compound; its class belongs directly on that variant's value instead. `compoundVariants` is auto-fixed when its class and the target variant value are plain string/template literals; `compoundSlots` is always reported without a fix, since its class targets a specific slot rather than the whole variant value.
+
+```typescript
+const button = sv({
+  variants: {
+    variant: { primary: '...', link: 'underline-offset-4' }
+  },
+  compoundVariants: [
+    { variant: 'link', className: 'hover:underline' }
+  ]
+});
+```
+
+This entry only matches `variant: 'link'` — merge `hover:underline` into `variants.variant.link` directly instead.
+
 #### `slot-variants/require-top-level-config`
 
 Flags `sv()` calls with a config object that aren't at module top level (e.g. inside a function body or a non-static class field), since the config form compiles the variant function and seeds its cache once, and re-entering the call throws that work away every time.

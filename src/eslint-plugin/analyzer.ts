@@ -2952,6 +2952,237 @@ const getConfigSlotNames = (config: ReadonlyMap<string, Node>): Set<string> => {
 	return slotNames;
 };
 
+type SingleMatcher = { key: string; value: Node };
+
+// The one variant-key matcher on a compound entry, or null when the entry
+// doesn't have exactly one: no matcher at all, two or more, or a shape that
+// can't be counted reliably (a spread or computed key might hide another
+// matcher, so the whole entry is skipped rather than risk under-reporting a
+// hidden key as if it weren't there).
+const getSingleCompoundMatcher = (
+	element: ObjectExpression
+): SingleMatcher | null => {
+	const matchers: SingleMatcher[] = [];
+	let hasClass = false;
+
+	for (const prop of element.properties) {
+		if (prop.type !== 'Property' || prop.computed) {
+			return null;
+		}
+
+		const key = getKeyName(prop);
+
+		/* c8 ignore next 3 -- getKeyName only returns null for a computed key, already excluded above */
+		if (key === null) {
+			return null;
+		}
+
+		if (COMPOUND_NON_MATCHER_KEYS.has(key)) {
+			if (key === 'class' || key === 'className') {
+				hasClass = true;
+			}
+
+			continue;
+		}
+
+		matchers.push({ key, value: prop.value });
+	}
+
+	const [matcher] = matchers;
+
+	if (!hasClass || !matcher || matchers.length > 1) {
+		return null;
+	}
+
+	return matcher;
+};
+
+// Merges the compound's class tokens into one target variant-value literal,
+// keeping the literal's own tokens first and skipping any the class already
+// contains. Returns null the moment any piece isn't safely rewritable, same
+// as `no-shared-tokens`' own fix planning — the whole fix is abandoned rather
+// than partially applied.
+const planSingleKeyTargetRewrite = (
+	context: Rule.RuleContext,
+	targetNode: Node,
+	clsTokens: readonly string[]
+): LiteralRewrite | null => {
+	if (getStaticStringText(targetNode) === null) {
+		return null;
+	}
+
+	const targetTokens = splitStaticTokens(getRawInnerText(context, targetNode));
+	const missing = clsTokens.filter((token) => !targetTokens.includes(token));
+
+	return planLiteralRewrite(context, targetNode, [
+		...targetTokens,
+		...missing
+	]);
+};
+
+// Plans merging a single-key `compoundVariants` entry's class into every
+// variant value its matcher statically resolves to, plus removing the entry
+// itself. Only attempted for `compoundVariants` — `compoundSlots`' class
+// belongs on a specific slot rather than the whole variant value, which is
+// enough extra shape to leave unfixed for now. Any of: a dynamic class, an
+// unreadable matcher value, a missing or non-literal target value, aborts the
+// whole plan, leaving the finding reported without a fix.
+const planSingleKeyCompoundFix = (
+	context: Rule.RuleContext,
+	element: ObjectExpression,
+	clsNode: Node,
+	matcher: SingleMatcher,
+	variantValue: ObjectExpression,
+	siblingElements: ListItems
+): ((fixer: Rule.RuleFixer) => Rule.Fix[] | null) | null => {
+	const clsText = getStaticStringText(clsNode);
+
+	if (clsText === null) {
+		return null;
+	}
+
+	const clsTokens = splitStaticTokens(clsText);
+
+	if (clsTokens.length === 0) {
+		return null;
+	}
+
+	const matcherValues = getStaticMatcherValues(matcher.value);
+
+	if (!matcherValues) {
+		return null;
+	}
+
+	const valueEntries = getStrictProperties(variantValue);
+
+	if (!valueEntries) {
+		return null;
+	}
+
+	const rewrites: LiteralRewrite[] = [];
+
+	for (const value of matcherValues) {
+		const targetNode = valueEntries.get(value);
+
+		if (!targetNode) {
+			return null;
+		}
+
+		const rewrite = planSingleKeyTargetRewrite(context, targetNode, clsTokens);
+
+		if (!rewrite) {
+			return null;
+		}
+
+		rewrites.push(rewrite);
+	}
+
+	const removeEntry = makeListFix(context, element, siblingElements);
+
+	return (fixer) => {
+		const removal = removeEntry(fixer);
+
+		if (!removal) {
+			return null;
+		}
+
+		return [
+			removal,
+			...rewrites.map((rewrite) => {
+				const { node, text } = literalReplacement(rewrite);
+
+				return fixer.replaceText(node, text);
+			})
+		];
+	};
+};
+
+const checkCompoundEntryForSingleKey = (
+	context: Rule.RuleContext,
+	element: ObjectExpression,
+	kind: 'compoundVariants' | 'compoundSlots',
+	variantsMap: ReadonlyMap<string, Node>,
+	slotNames: Set<string>,
+	siblingElements: ListItems
+) => {
+	const matcher = getSingleCompoundMatcher(element);
+
+	if (!matcher) {
+		return;
+	}
+
+	const variantValue = variantsMap.get(matcher.key);
+
+	if (!variantValue || variantValue.type !== 'ObjectExpression') {
+		return;
+	}
+
+	// Boolean shorthand has only one branch — there's no "other" value to hold
+	// the class for the matcher's false case, so this isn't the same
+	// simplification.
+	if (isBooleanShorthandVariant(variantValue, slotNames)) {
+		return;
+	}
+
+	const properties = getProperties(element);
+	const clsNode = properties.get('class') ?? properties.get('className');
+
+	/* c8 ignore next 3 -- getSingleCompoundMatcher already confirmed a class/className property exists */
+	if (!clsNode) {
+		return;
+	}
+
+	const fix =
+		kind === 'compoundVariants'
+			? planSingleKeyCompoundFix(
+					context,
+					element,
+					clsNode,
+					matcher,
+					variantValue,
+					siblingElements
+				)
+			: null;
+
+	context.report({
+		node: element,
+		messageId: 'singleKeyCompound',
+		data: {
+			kind,
+			key: matcher.key,
+			value: context.sourceCode.getText(matcher.value)
+		},
+		fix: fix ?? undefined
+	});
+};
+
+const checkCompoundsForSingleKey = (
+	context: Rule.RuleContext,
+	compoundNode: Node | undefined,
+	kind: 'compoundVariants' | 'compoundSlots',
+	variantsMap: ReadonlyMap<string, Node>,
+	slotNames: Set<string>
+) => {
+	if (!compoundNode || compoundNode.type !== 'ArrayExpression') {
+		return;
+	}
+
+	forEachStaticItem(compoundNode.elements, (element) => {
+		if (element.type !== 'ObjectExpression') {
+			return;
+		}
+
+		checkCompoundEntryForSingleKey(
+			context,
+			element,
+			kind,
+			variantsMap,
+			slotNames,
+			compoundNode.elements
+		);
+	});
+};
+
 const analyzeExhaustiveVariants = (
 	context: Rule.RuleContext,
 	variants: ObjectExpression,
@@ -2980,12 +3211,31 @@ export const analyzeSharedTokens = (
 ) => {
 	const config = getProperties(configNode);
 	const variants = config.get('variants');
+	const slotNames = getConfigSlotNames(config);
+	const variantsMap =
+		variants && variants.type === 'ObjectExpression'
+			? getProperties(variants)
+			: EMPTY_PROPERTIES;
+
+	checkCompoundsForSingleKey(
+		context,
+		config.get('compoundVariants'),
+		'compoundVariants',
+		variantsMap,
+		slotNames
+	);
+	checkCompoundsForSingleKey(
+		context,
+		config.get('compoundSlots'),
+		'compoundSlots',
+		variantsMap,
+		slotNames
+	);
 
 	if (!variants || variants.type !== 'ObjectExpression') {
 		return;
 	}
 
-	const slotNames = getConfigSlotNames(config);
 	const baseNode = config.get('base');
 	const slotProperties = getProperties(config.get('slots'));
 
