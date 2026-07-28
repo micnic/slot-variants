@@ -5109,3 +5109,90 @@ t.test('require-top-level-config', (t) => {
 	}, 'rule tester passes');
 	t.end();
 });
+
+const SV_CONFIG_STYLE_ORDER_VALID = [
+	{
+		code: IMPORT + "sv({ base: 'flex', variants: { size: { sm: 'text-sm' } } });"
+	},
+	{
+		code:
+			IMPORT +
+			"sv({ base: 'flex', slots: { icon: 'w-4' }, variants: { size: { sm: 'text-sm' } }, compoundSlots: [], compoundVariants: [], defaultVariants: { size: 'sm' }, requiredVariants: { size: true }, presets: {}, multiSlots: true, cacheSize: 10, introspection: true, postProcess: (c) => c });"
+	},
+	{
+		// Single property stays as-is.
+		code: IMPORT + "sv({ base: 'flex' });"
+	},
+	{
+		// Three properties in order.
+		code: IMPORT + "sv({ base: 'flex', slots: { body: 'p-4' }, variants: { size: { sm: 'text-sm' } } });"
+	}
+];
+
+const SV_CONFIG_STYLE_ORDER_INVALID = [
+	{
+		code: IMPORT + "sv({ variants: { size: { sm: 'text-sm' } }, base: 'flex' });",
+		errors: [{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }],
+		output: IMPORT + "sv({ base: 'flex', variants: { size: { sm: 'text-sm' } } });"
+	},
+	{
+		// Multiple out-of-order keys each report their own violation.
+		code:
+			IMPORT +
+			"sv({ defaultVariants: { size: 'sm' }, variants: { size: { sm: 'text-sm' } }, base: 'flex' });",
+		errors: [
+			{ messageId: 'wrongOrder', data: { key: 'variants', before: 'defaultVariants' } },
+			{ messageId: 'wrongOrder', data: { key: 'base', before: 'defaultVariants' } }
+		],
+		output:
+			IMPORT +
+			"sv({ base: 'flex', variants: { size: { sm: 'text-sm' } }, defaultVariants: { size: 'sm' } });"
+	},
+	{
+		// An unknown/computed key present anywhere in the object disables the fixer
+		// for the whole call, but known-key order is still checked and reported.
+		// Note: this uses createSV(), not sv() — a computed key in an sv() config
+		// argument makes the shared call-matcher (`matchSvCall` → `isConfigLike` →
+		// `getStrictProperties`) refuse to recognize the object as a config at all
+		// (it requires every key to be statically readable), so `call.config` would
+		// be null and this rule would never see it. `createSV(defaults)` matches
+		// its argument more permissively (`matchFactoryCall` only checks that it's
+		// an `ObjectExpression`), so a computed key there still reaches this rule —
+		// that's the real place this bail-out matters.
+		code:
+			IMPORT_CREATE_SV +
+			"const key = 'variants';\ncreateSV({ variants: { size: { sm: 'text-sm' } }, [key]: 1, base: 'flex' });",
+		errors: [{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }]
+	},
+	{
+		// createSV() factory defaults are checked too.
+		code:
+			IMPORT_CREATE_SV +
+			"createSV({ variants: { size: { sm: 'text-sm' } }, base: 'flex' });",
+		errors: [{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }],
+		output:
+			IMPORT_CREATE_SV +
+			"createSV({ base: 'flex', variants: { size: { sm: 'text-sm' } } });"
+	},
+	{
+		// Multiple reorderings trigger error for each misplaced key.
+		code: IMPORT + "sv({ variants: { size: { sm: 'text-sm' } }, slots: { body: 'p-4' }, base: 'flex' });",
+		errors: [
+			{ messageId: 'wrongOrder', data: { key: 'slots', before: 'variants' } },
+			{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }
+		],
+		output: IMPORT + "sv({ base: 'flex', slots: { body: 'p-4' }, variants: { size: { sm: 'text-sm' } } });"
+	}
+];
+
+t.test('sv-config-style (key order)', (t) => {
+	const styleRule = rules['sv-config-style'];
+
+	t.doesNotThrow(() => {
+		tester.run('sv-config-style', styleRule, {
+			valid: SV_CONFIG_STYLE_ORDER_VALID,
+			invalid: SV_CONFIG_STYLE_ORDER_INVALID
+		});
+	}, 'rule tester passes');
+	t.end();
+});
