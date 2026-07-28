@@ -468,20 +468,35 @@ t.test('configs.recommended preset', (t) => {
 		'preset references the plugin under its name'
 	);
 
+	// sv-config-style is a pure style/consistency check with no runtime
+	// correctness impact, so it opts out of the recommended preset.
+	const NOT_RECOMMENDED = new Set(['sv-config-style']);
+
 	const ruleNames = Object.keys(plugin.rules);
+	const recommendedRuleNames = ruleNames.filter(
+		(ruleName) => !NOT_RECOMMENDED.has(ruleName)
+	);
 	const recommendedKeys = Object.keys(recommended.rules);
 
 	t.equal(
 		recommendedKeys.length,
-		ruleNames.length,
-		'preset enables every shipped rule'
+		recommendedRuleNames.length,
+		'preset enables every shipped rule except the opted-out ones'
 	);
 
-	for (const ruleName of ruleNames) {
+	for (const ruleName of recommendedRuleNames) {
 		t.equal(
 			recommended.rules[`slot-variants/${ruleName}`],
 			'error',
 			`preset enables ${ruleName} at error`
+		);
+	}
+
+	for (const ruleName of NOT_RECOMMENDED) {
+		t.equal(
+			recommended.rules[`slot-variants/${ruleName}`],
+			undefined,
+			`preset does not enable ${ruleName}`
 		);
 	}
 

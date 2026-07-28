@@ -152,7 +152,7 @@ export const svConfigStyle: Rule.RuleModule = {
 		docs: {
 			description:
 				'Enforce a canonical sv() config key order and a single base-class style',
-			recommended: true,
+			recommended: false,
 			url: DOCS_URL
 		},
 		fixable: 'code',
