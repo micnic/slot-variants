@@ -37,7 +37,7 @@ const CONFIG_KEYS = new Set([
 	'introspection'
 ]);
 
-const getKeyName = (prop: Property): string | null => {
+export const getKeyName = (prop: Property): string | null => {
 	if (prop.computed) {
 		return null;
 	}
@@ -1944,7 +1944,7 @@ const reportRedundantSpaces = (
 	});
 };
 
-const getStaticStringText = (node: Node): string | null => {
+export const getStaticStringText = (node: Node): string | null => {
 	if (node.type === 'Literal') {
 		if (typeof node.value === 'string') {
 			return node.value;
