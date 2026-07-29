@@ -1,6 +1,18 @@
 import type { Rule, SourceCode } from 'eslint';
-import type { ObjectExpression, Property, SpreadElement } from 'estree';
-import { createTrackedCallListeners, DOCS_URL, getKeyName } from '../analyzer.ts';
+import type {
+	CallExpression,
+	Expression,
+	Node,
+	ObjectExpression,
+	Property,
+	SpreadElement
+} from 'estree';
+import {
+	createTrackedCallListeners,
+	DOCS_URL,
+	getKeyName,
+	getStaticStringText
+} from '../analyzer.ts';
 
 /**
  * Canonical order for sv()/createSV() config keys. Fixed, not configurable —
@@ -146,6 +158,286 @@ const checkKeyOrder = (context: Rule.RuleContext, configNode: ObjectExpression) 
 	}
 };
 
+type BaseStyle = 'field' | 'separateArg' | 'slotsBase';
+
+const BASE_STYLE_LABELS: Record<BaseStyle, string> = {
+	field: 'a "base" field in the config',
+	separateArg: 'a separate leading argument',
+	slotsBase: 'a "base" entry in "slots"'
+};
+
+const normalizeBaseStyle = (option: BaseStyle | undefined): BaseStyle => {
+	if (option === undefined) {
+		return 'field';
+	}
+
+	return option;
+};
+
+const findProperty = (obj: ObjectExpression, key: string): Property | null => {
+	for (const prop of obj.properties) {
+		if (prop.type === 'Property' && !prop.computed && getKeyName(prop) === key) {
+			return prop;
+		}
+	}
+
+	return null;
+};
+
+const getSlotsObject = (configNode: ObjectExpression): ObjectExpression | null => {
+	const slotsProp = findProperty(configNode, 'slots');
+
+	if (slotsProp && slotsProp.value.type === 'ObjectExpression') {
+		return slotsProp.value;
+	}
+
+	return null;
+};
+
+// The three places base classes can live. `separateArg` carries the call so a
+// fix can find where the config argument starts; `slotsBase` carries the
+// resolved `slots` object so a fix can insert/remove directly on it.
+type BaseSource =
+	| { style: 'separateArg'; arg: Expression | SpreadElement; call: CallExpression }
+	| { style: 'field'; prop: Property }
+	| { style: 'slotsBase'; prop: Property; slotsObj: ObjectExpression };
+
+const detectBaseSources = (
+	call: CallExpression,
+	configNode: ObjectExpression,
+	args: ReadonlyArray<Expression | SpreadElement>
+): BaseSource[] => {
+	const sources: BaseSource[] = [];
+	const [arg] = args;
+
+	if (arg) {
+		sources.push({ style: 'separateArg', arg, call });
+	}
+
+	const baseProp = findProperty(configNode, 'base');
+
+	if (baseProp) {
+		sources.push({ style: 'field', prop: baseProp });
+	}
+
+	const slotsObj = getSlotsObject(configNode);
+
+	if (slotsObj) {
+		const slotsBaseProp = findProperty(slotsObj, 'base');
+
+		if (slotsBaseProp) {
+			sources.push({ style: 'slotsBase', prop: slotsBaseProp, slotsObj });
+		}
+	}
+
+	return sources;
+};
+
+const getBaseSourceNode = (source: BaseSource): Node => {
+	if (source.style === 'separateArg') {
+		return source.arg;
+	}
+
+	return source.prop;
+};
+
+const getBaseSourceValue = (source: BaseSource): Node => {
+	if (source.style === 'separateArg') {
+		return source.arg;
+	}
+
+	return source.prop.value;
+};
+
+const isStaticallyMovableValue = (node: Node): boolean => {
+	if (getStaticStringText(node) !== null) {
+		return true;
+	}
+
+	if (node.type !== 'ArrayExpression') {
+		return false;
+	}
+
+	for (const element of node.elements) {
+		if (element === null || element.type === 'SpreadElement') {
+			return false;
+		}
+
+		if (getStaticStringText(element) === null) {
+			return false;
+		}
+	}
+
+	return true;
+};
+
+const removePropertyFix = (
+	fixer: Rule.RuleFixer,
+	sourceCode: SourceCode,
+	obj: ObjectExpression,
+	prop: Property
+): Rule.Fix => {
+	const { properties } = obj;
+	const index = properties.indexOf(prop);
+
+	if (properties.length === 1) {
+		return fixer.remove(prop);
+	}
+
+	if (index === properties.length - 1) {
+		const previous = properties[index - 1];
+
+		/* c8 ignore next 3 -- a non-first, non-only property always has a predecessor */
+		if (!previous) {
+			return fixer.remove(prop);
+		}
+
+		const [, previousEnd] = sourceCode.getRange(previous);
+		const [, propEnd] = sourceCode.getRange(prop);
+
+		return fixer.removeRange([previousEnd, propEnd]);
+	}
+
+	const next = properties[index + 1];
+
+	/* c8 ignore next 3 -- index < length - 1 always has a successor */
+	if (!next) {
+		return fixer.remove(prop);
+	}
+
+	const [propStart] = sourceCode.getRange(prop);
+	const [nextStart] = sourceCode.getRange(next);
+
+	return fixer.removeRange([propStart, nextStart]);
+};
+
+const insertAsFirstPropertyFix = (
+	fixer: Rule.RuleFixer,
+	sourceCode: SourceCode,
+	obj: ObjectExpression,
+	text: string
+): Rule.Fix => {
+	const [first] = obj.properties;
+
+	if (!first) {
+		const openBrace = sourceCode.getFirstToken(obj);
+
+		/* c8 ignore next 3 -- an ObjectExpression always has an opening brace token */
+		if (!openBrace) {
+			return fixer.insertTextAfter(obj, text);
+		}
+
+		return fixer.insertTextAfter(openBrace, ` ${text} `);
+	}
+
+	return fixer.insertTextBefore(first, `${text}, `);
+};
+
+const removeLeadingArgFix = (
+	fixer: Rule.RuleFixer,
+	sourceCode: SourceCode,
+	arg: Expression | SpreadElement,
+	configNode: ObjectExpression
+): Rule.Fix => {
+	const [argStart] = sourceCode.getRange(arg);
+	const [configStart] = sourceCode.getRange(configNode);
+
+	return fixer.removeRange([argStart, configStart]);
+};
+
+const insertLeadingArgFix = (
+	fixer: Rule.RuleFixer,
+	configNode: ObjectExpression,
+	text: string
+): Rule.Fix => fixer.insertTextBefore(configNode, `${text}, `);
+
+const buildBaseStyleFix = (
+	sourceCode: SourceCode,
+	configNode: ObjectExpression,
+	source: BaseSource,
+	target: BaseStyle
+): ((fixer: Rule.RuleFixer) => Rule.Fix[]) => {
+	const valueText = sourceCode.getText(getBaseSourceValue(source));
+	const propertyText = `base: ${valueText}`;
+
+	return (fixer) => {
+		const fixes: Rule.Fix[] = [];
+
+		if (source.style === 'separateArg') {
+			fixes.push(removeLeadingArgFix(fixer, sourceCode, source.arg, configNode));
+		} else if (source.style === 'field') {
+			fixes.push(removePropertyFix(fixer, sourceCode, configNode, source.prop));
+		} else {
+			fixes.push(removePropertyFix(fixer, sourceCode, source.slotsObj, source.prop));
+		}
+
+		if (target === 'separateArg') {
+			fixes.push(insertLeadingArgFix(fixer, configNode, valueText));
+			return fixes;
+		}
+
+		if (target === 'field') {
+			fixes.push(insertAsFirstPropertyFix(fixer, sourceCode, configNode, propertyText));
+			return fixes;
+		}
+
+		const slotsObj = getSlotsObject(configNode);
+
+		/* c8 ignore next 3 -- target 'slotsBase' is only reached when slots already exists (checkBaseStyle returns early otherwise) */
+		if (!slotsObj) {
+			return [];
+		}
+
+		fixes.push(insertAsFirstPropertyFix(fixer, sourceCode, slotsObj, propertyText));
+
+		return fixes;
+	};
+};
+
+const checkBaseStyle = (
+	context: Rule.RuleContext,
+	call: CallExpression,
+	configNode: ObjectExpression,
+	args: ReadonlyArray<Expression | SpreadElement>,
+	baseStyle: BaseStyle
+) => {
+	const slotsObj = getSlotsObject(configNode);
+
+	if (baseStyle === 'slotsBase' && !slotsObj) {
+		return;
+	}
+
+	const sources = detectBaseSources(call, configNode, args);
+	const mismatched = sources.filter((source) => source.style !== baseStyle);
+
+	if (mismatched.length === 0) {
+		return;
+	}
+
+	let fix: ((fixer: Rule.RuleFixer) => Rule.Fix[]) | undefined;
+	const [onlySource] = sources;
+
+	if (
+		sources.length === 1 &&
+		onlySource &&
+		isStaticallyMovableValue(getBaseSourceValue(onlySource))
+	) {
+		fix = buildBaseStyleFix(context.sourceCode, configNode, onlySource, baseStyle);
+	}
+
+	for (const source of mismatched) {
+		context.report({
+			node: getBaseSourceNode(source),
+			messageId: 'wrongBaseStyle',
+			data: {
+				style: BASE_STYLE_LABELS[baseStyle],
+				found: BASE_STYLE_LABELS[source.style]
+			},
+			fix
+		});
+	}
+};
+
 export const svConfigStyle: Rule.RuleModule = {
 	meta: {
 		type: 'suggestion',
@@ -156,20 +448,35 @@ export const svConfigStyle: Rule.RuleModule = {
 			url: DOCS_URL
 		},
 		fixable: 'code',
-		schema: [],
+		schema: [
+			{
+				type: 'object',
+				properties: {
+					baseStyle: {
+						type: 'string',
+						enum: ['field', 'separateArg', 'slotsBase']
+					}
+				},
+				additionalProperties: false
+			}
+		],
 		messages: {
 			wrongOrder:
-				'Config key "{{key}}" should come before "{{before}}" (canonical order: base, slots, variants, compoundSlots, compoundVariants, defaultVariants, requiredVariants, presets, multiSlots, cacheSize, introspection, postProcess).'
+				'Config key "{{key}}" should come before "{{before}}" (canonical order: base, slots, variants, compoundSlots, compoundVariants, defaultVariants, requiredVariants, presets, multiSlots, cacheSize, introspection, postProcess).',
+			wrongBaseStyle:
+				'Base classes should be expressed as {{style}} — found as {{found}}.'
 		}
 	},
 	create(context) {
-		return createTrackedCallListeners(context, (_node, call) => {
-			/* c8 ignore next 3 -- call.config is only null for non-sv/createSV calls, which RuleTester doesn't emit */
+		const baseStyle = normalizeBaseStyle(context.options[0]?.baseStyle);
+
+		return createTrackedCallListeners(context, (node, call) => {
 			if (!call.config) {
 				return;
 			}
 
 			checkKeyOrder(context, call.config);
+			checkBaseStyle(context, node, call.config, call.args, baseStyle);
 		});
 	}
 };

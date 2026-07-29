@@ -5211,3 +5211,214 @@ t.test('sv-config-style (key order)', (t) => {
 	}, 'rule tester passes');
 	t.end();
 });
+
+const SV_CONFIG_STYLE_BASE_VALID = [
+	// Default baseStyle ('field'): base as a config field passes.
+	{ code: IMPORT + "sv({ base: 'flex', variants: {} });" },
+	// No base classes at all: nothing to check.
+	{ code: IMPORT + 'sv({ variants: {} });' },
+	// separateArg configured and used.
+	{
+		code: IMPORT + "sv('flex', { variants: {} });",
+		options: [{ baseStyle: 'separateArg' }]
+	},
+	// slotsBase configured and used.
+	{
+		code: IMPORT + "sv({ slots: { base: 'flex', icon: 'w-4' }, variants: {} });",
+		options: [{ baseStyle: 'slotsBase' }]
+	},
+	// slotsBase configured but call has no slots at all: skipped entirely, so a
+	// plain `base` field isn't flagged either.
+	{
+		code: IMPORT + "sv({ base: 'flex', variants: {} });",
+		options: [{ baseStyle: 'slotsBase' }]
+	},
+	// cn()-style call: never has a config object, so checkBaseStyle's
+	// `call.config` guard is exercised as a no-op.
+	{ code: IMPORT_CN + "cn('flex');" }
+];
+
+const SV_CONFIG_STYLE_BASE_INVALID = [
+	{
+		// separateArg present, default target is 'field': reports and fixes.
+		code: IMPORT + "sv('flex', { variants: {} });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a separate leading argument'
+				}
+			}
+		],
+		output: IMPORT + "sv({ base: 'flex', variants: {} });"
+	},
+	{
+		// field present, target configured as separateArg: reports and fixes.
+		code: IMPORT + "sv({ base: 'flex', variants: {} });",
+		options: [{ baseStyle: 'separateArg' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a separate leading argument',
+					found: 'a "base" field in the config'
+				}
+			}
+		],
+		output: IMPORT + "sv('flex', { variants: {} });"
+	},
+	{
+		// field present, target configured as slotsBase, slots already exists:
+		// reports and fixes, moving base into slots.
+		code: IMPORT + "sv({ base: 'flex', slots: { icon: 'w-4' }, variants: {} });",
+		options: [{ baseStyle: 'slotsBase' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" entry in "slots"',
+					found: 'a "base" field in the config'
+				}
+			}
+		],
+		output: IMPORT + "sv({ slots: { base: 'flex', icon: 'w-4' }, variants: {} });"
+	},
+	{
+		// Dynamic (non-static) base value: reported, not fixed.
+		code: IMPORT + 'const extra = getExtra();\nsv({ base: extra, variants: {} });',
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a separate leading argument',
+					found: 'a "base" field in the config'
+				}
+			}
+		],
+		options: [{ baseStyle: 'separateArg' }]
+	},
+	{
+		// Target already populated (both a leading arg and a field present):
+		// reported for the mismatched one, not fixed (ambiguous merge).
+		code: IMPORT + "sv('flex', { base: 'items-center', variants: {} });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a separate leading argument'
+				}
+			}
+		]
+	},
+	{
+		// slotsBase present, default target is 'field': reports and fixes,
+		// removing the only property from `slots` (exercises the
+		// `properties.length === 1` removal from a non-config object) and
+		// moving base out to a config field.
+		code: IMPORT + "sv({slots:{base:'flex'},variants:{}});",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a "base" entry in "slots"'
+				}
+			}
+		],
+		output: IMPORT + "sv({base: 'flex', slots:{},variants:{}});"
+	},
+	{
+		// field present, target configured as slotsBase, slots already exists
+		// but is empty: reports and fixes, inserting base as the first (and
+		// only) property of the empty slots object.
+		code: IMPORT + "sv({ base: 'flex', slots: {}, variants: {} });",
+		options: [{ baseStyle: 'slotsBase' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" entry in "slots"',
+					found: 'a "base" field in the config'
+				}
+			}
+		],
+		output: IMPORT + "sv({ slots: { base: 'flex' }, variants: {} });"
+	},
+	{
+		// Base value is a static array (not a plain string): exercises the
+		// ArrayExpression branch of the movable-value check, still fixed.
+		code: IMPORT + "sv({ base: ['flex', 'items-center'], variants: {} });",
+		options: [{ baseStyle: 'separateArg' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a separate leading argument',
+					found: 'a "base" field in the config'
+				}
+			}
+		],
+		output: IMPORT + "sv(['flex', 'items-center'], { variants: {} });"
+	},
+	{
+		// slotsBase present as the LAST property inside `slots` (not the only
+		// one, not the first): exercises the last-property removal branch.
+		// `slots`' own key order isn't covered by the key-order check, so this
+		// doesn't also trigger `wrongOrder`.
+		code: IMPORT + "sv({ slots: { icon: 'w-4', base: 'flex' }, variants: {} });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a "base" entry in "slots"'
+				}
+			}
+		],
+		output: IMPORT + "sv({ base: 'flex', slots: { icon: 'w-4' }, variants: {} });"
+	},
+	{
+		// Base value is an array with a spread element: not statically
+		// movable, so it's reported without a fix.
+		code: IMPORT + "sv({ base: ['flex', ...rest], variants: {} });",
+		options: [{ baseStyle: 'separateArg' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a separate leading argument',
+					found: 'a "base" field in the config'
+				}
+			}
+		]
+	},
+	{
+		// Base value is an array with a dynamic (non-static) element: not
+		// statically movable, so it's reported without a fix.
+		code: IMPORT + "sv({ base: ['flex', dynamic], variants: {} });",
+		options: [{ baseStyle: 'separateArg' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a separate leading argument',
+					found: 'a "base" field in the config'
+				}
+			}
+		]
+	}
+];
+
+t.test('sv-config-style (base style)', (t) => {
+	const styleRule = rules['sv-config-style'];
+
+	t.doesNotThrow(() => {
+		tester.run('sv-config-style', styleRule, {
+			valid: SV_CONFIG_STYLE_BASE_VALID,
+			invalid: SV_CONFIG_STYLE_BASE_INVALID
+		});
+	}, 'rule tester passes');
+	t.end();
+});
