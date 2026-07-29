@@ -5132,7 +5132,7 @@ const SV_CONFIG_STYLE_ORDER_VALID = [
 	{
 		code:
 			IMPORT +
-			"sv({ base: 'flex', slots: { icon: 'w-4' }, variants: { size: { sm: 'text-sm' } }, compoundSlots: [], compoundVariants: [], defaultVariants: { size: 'sm' }, requiredVariants: { size: true }, presets: {}, multiSlots: true, cacheSize: 10, introspection: true, postProcess: (c) => c });"
+			"sv({ base: 'flex', slots: { icon: 'w-4' }, multiSlots: true, variants: { size: { sm: 'text-sm' } }, presets: {}, compoundSlots: [], compoundVariants: [], defaultVariants: { size: 'sm' }, requiredVariants: { size: true }, cacheSize: 10, introspection: true, postProcess: (c) => c });"
 	},
 	{
 		// Single property stays as-is.

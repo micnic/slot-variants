@@ -31,13 +31,13 @@ export const DOCS_URL = 'https://github.com/micnic/slot-variants#rules';
 export const CONFIG_KEY_ORDER: readonly string[] = [
 	'base',
 	'slots',
+	'multiSlots',
 	'variants',
+	'presets',
 	'compoundSlots',
 	'compoundVariants',
 	'defaultVariants',
 	'requiredVariants',
-	'presets',
-	'multiSlots',
 	'cacheSize',
 	'introspection',
 	'postProcess'

@@ -957,7 +957,7 @@ Move the `sv()` call to a module-level `const` so it's compiled once and its cac
 
 #### `slot-variants/sv-config-style`
 
-Enforces a canonical `sv()`/`createSV()` config key order (`base`, `slots`, `variants`, `compoundSlots`, `compoundVariants`, `defaultVariants`, `requiredVariants`, `presets`, `multiSlots`, `cacheSize`, `introspection`, `postProcess`) and a single style for expressing base classes, selected via the `baseStyle` option (`'field'` by default):
+Enforces a canonical `sv()`/`createSV()` config key order (`base`, `slots`, `multiSlots`, `variants`, `presets`, `compoundSlots`, `compoundVariants`, `defaultVariants`, `requiredVariants`, `cacheSize`, `introspection`, `postProcess`) and a single style for expressing base classes, selected via the `baseStyle` option (`'field'` by default):
 
 - `'field'` — a `base` field inside the config (tv-style)
 - `'separateArg'` — a leading class argument before the config object (cva-style)

@@ -487,7 +487,7 @@ export const svConfigStyle: Rule.RuleModule = {
 		],
 		messages: {
 			wrongOrder:
-				'Config key "{{key}}" should come before "{{before}}" (canonical order: base, slots, variants, compoundSlots, compoundVariants, defaultVariants, requiredVariants, presets, multiSlots, cacheSize, introspection, postProcess).',
+				'Config key "{{key}}" should come before "{{before}}" (canonical order: base, slots, multiSlots, variants, presets, compoundSlots, compoundVariants, defaultVariants, requiredVariants, cacheSize, introspection, postProcess).',
 			wrongBaseStyle:
 				'Base classes should be expressed as {{style}} — found as {{found}}.'
 		}
