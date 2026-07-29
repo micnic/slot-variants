@@ -955,6 +955,24 @@ class Card {
 
 Move the `sv()` call to a module-level `const` so it's compiled once and its cache persists across calls.
 
+#### `slot-variants/sv-config-style`
+
+Enforces a canonical `sv()`/`createSV()` config key order (`base`, `slots`, `variants`, `compoundSlots`, `compoundVariants`, `defaultVariants`, `requiredVariants`, `presets`, `multiSlots`, `cacheSize`, `introspection`, `postProcess`) and a single style for expressing base classes, selected via the `baseStyle` option (`'field'` by default):
+
+- `'field'` — a `base` field inside the config (tv-style)
+- `'separateArg'` — a leading class argument before the config object (cva-style)
+- `'slotsBase'` — a `base` entry inside `slots`, only enforced once the config already declares `slots`
+
+```typescript
+sv({ variants: { size: { sm: 'text-sm' } }, base: 'flex' }); // base out of order
+
+sv('flex', { variants: {} }); // baseStyle: 'field' expects a base field instead
+```
+
+Partially auto-fixable — a fix is only applied when the change is unambiguous: reordering skips a config containing a spread or a computed/unknown key, and a base-style rewrite skips a call whose base value isn't a static string/array, or whose target location already holds a value of its own.
+
+Disabled by default (`recommended: false`) since it's a pure style/consistency check with no runtime correctness impact — enable it explicitly in your ESLint config.
+
 ### ESLint (flat config)
 
 Use the `recommended` preset to enable every rule at `error` in one line:
