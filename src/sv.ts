@@ -271,17 +271,29 @@ type Config<
 	MS extends MultiSlots<S>,
 	I extends boolean = false
 > = {
+	/** Classes always applied, alongside any matched variant/compound classes. */
 	base?: ConfigClassValue;
+	/** Named variants, each mapping its possible values to the classes they apply. */
 	variants?: V | undefined;
+	/** Named slots, each with its own base classes, turning the return value into a per-slot class map. */
 	slots?: S | undefined;
+	/** Extra classes applied only when a specific combination of variant values matches. */
 	compoundVariants?: CompoundVariants<S, V> | undefined;
+	/** Extra per-slot classes applied only when a specific combination of variant values matches. */
 	compoundSlots?: CompoundSlots<S, V> | undefined;
+	/** Variant values used when the caller doesn't pass a value for that variant. */
 	defaultVariants?: DefaultVariants<S, V, RV> | undefined;
+	/** Variant keys the caller must always provide, dropping their `?` from the props type. */
 	requiredVariants?: RV | undefined;
+	/** Slot keys whose class function accepts variant props per call, for slots repeated across multiple elements. */
 	multiSlots?: MS | undefined;
+	/** Named bundles of variant values selectable by passing a single `preset` prop. */
 	presets?: P | undefined;
+	/** Number of distinct prop combinations whose computed classes are cached. Defaults to 256. */
 	cacheSize?: number | undefined;
+	/** Exposes variant metadata and cache controls as properties on the returned function. */
 	introspection?: I | undefined;
+	/** Transforms the final class string (or each slot's class string) before it's returned. */
 	postProcess?: ((className: string) => string) | undefined;
 };
 
@@ -294,20 +306,33 @@ type IntrospectionValues<
 	P extends MaybePresets<S, V>,
 	MS extends MultiSlots<S>
 > = {
+	/** The `variants` config passed in, as-is. */
 	variants: V extends undefined ? Record<string, never> : V;
+	/** Names of all declared variants. */
 	variantKeys: StringKeyof<V>[];
+	/** The `slots` config passed in, as-is. */
 	slots: S extends undefined ? Record<string, never> : S;
+	/** Names of all declared slots (including `'base'`). */
 	slotKeys: SlotKey<S>[];
+	/** The effective default variant values, after `defaultVariants` and `requiredVariants` are merged. */
 	defaultVariants: DefaultVariants<S, V, RV>;
+	/** Names of the variants the caller must always provide. */
 	requiredVariants: RV extends true ? StringKeyof<V>[] : RV;
+	/** The `multiSlots` config passed in, as-is. */
 	multiSlots: MS extends true ? SlotKey<S>[] : MS;
+	/** The `presets` config passed in, as-is. */
 	presets: P extends undefined ? Record<string, never> : P;
+	/** Names of all declared presets. */
 	presetKeys: P extends undefined ? [] : StringKeyof<P>[];
+	/** Lists every valid value for a given variant. */
 	getVariantValues: V extends undefined
 		? (key: never) => never[]
 		: <K extends StringKeyof<V>>(key: K) => VariantPropType<V[K], S>[];
+	/** The configured cache size (`cacheSize`, or the default of 256). */
 	getMaxEntries: () => number;
+	/** Empties the cache of computed class results. */
 	clearCache: () => void;
+	/** Current number of cached class results. */
 	getCacheSize: () => number;
 };
 
