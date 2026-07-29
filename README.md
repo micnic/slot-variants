@@ -969,13 +969,13 @@ sv({ variants: { size: { sm: 'text-sm' } }, base: 'flex' }); // base out of orde
 sv('flex', { variants: {} }); // baseStyle: 'field' expects a base field instead
 ```
 
-Partially auto-fixable — a fix is only applied when the change is unambiguous: reordering skips a config containing a spread or a computed/unknown key, and a base-style rewrite skips a call whose base value isn't a static string/array, or whose target location already holds a value of its own.
+Partially auto-fixable — a fix is only applied when the change is unambiguous: reordering skips a config containing a spread, a computed/unknown key, or a comment anywhere inside the config object, and a base-style rewrite skips a call whose base value isn't a static string/array, whose target location already holds a value of its own, that passes more than one leading class argument, or whose config object is a `const` declared outside the call.
 
 Disabled by default (`recommended: false`) since it's a pure style/consistency check with no runtime correctness impact — enable it explicitly in your ESLint config.
 
 ### ESLint (flat config)
 
-Use the `recommended` preset to enable every rule at `error` in one line:
+Use the `recommended` preset to enable every rule marked `recommended` at `error` in one line (that's all rules except `sv-config-style`, which is opt-in):
 
 ```js
 import svPlugin from 'slot-variants/eslint-plugin';
@@ -997,7 +997,8 @@ export default [
       'slot-variants/no-empty-classes': 'error',
       'slot-variants/no-redundant-spaces': 'error',
       'slot-variants/no-shared-tokens': 'error',
-      'slot-variants/require-top-level-config': 'error'
+      'slot-variants/require-top-level-config': 'error',
+      'slot-variants/sv-config-style': ['error', { baseStyle: 'field' }]
     }
   }
 ];
@@ -1014,7 +1015,8 @@ export default [
     "slot-variants/no-empty-classes": "error",
     "slot-variants/no-redundant-spaces": "error",
     "slot-variants/no-shared-tokens": "error",
-    "slot-variants/require-top-level-config": "error"
+    "slot-variants/require-top-level-config": "error",
+    "slot-variants/sv-config-style": ["error", { "baseStyle": "field" }]
   }
 }
 ```

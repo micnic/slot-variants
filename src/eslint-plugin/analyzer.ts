@@ -22,20 +22,28 @@ import {
 
 export const DOCS_URL = 'https://github.com/micnic/slot-variants#rules';
 
-const CONFIG_KEYS = new Set([
+/**
+ * Every recognized sv()/createSV() config key, in the project's canonical
+ * declaration order (the order documented in the README's config table). The
+ * `sv-config-style` rule enforces this order, and `CONFIG_KEYS` is derived from
+ * it so the two can't drift apart.
+ */
+export const CONFIG_KEY_ORDER: readonly string[] = [
 	'base',
-	'variants',
 	'slots',
-	'compoundVariants',
+	'variants',
 	'compoundSlots',
+	'compoundVariants',
 	'defaultVariants',
 	'requiredVariants',
-	'multiSlots',
 	'presets',
+	'multiSlots',
 	'cacheSize',
-	'postProcess',
-	'introspection'
-]);
+	'introspection',
+	'postProcess'
+];
+
+const CONFIG_KEYS = new Set(CONFIG_KEY_ORDER);
 
 export const getKeyName = (prop: Property): string | null => {
 	if (prop.computed) {

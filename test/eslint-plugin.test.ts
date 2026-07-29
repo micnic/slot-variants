@@ -5190,6 +5190,32 @@ const SV_CONFIG_STYLE_ORDER_INVALID = [
 			"createSV({ base: 'flex', variants: { size: { sm: 'text-sm' } } });"
 	},
 	{
+		// An unknown (but non-computed) key also disables the fixer for the whole
+		// call while known-key order is still reported. Uses createSV() for the
+		// same reason as the computed-key case above.
+		code:
+			IMPORT_CREATE_SV +
+			"createSV({ variants: { size: { sm: 'text-sm' } }, foo: 1, base: 'flex' });",
+		errors: [{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }]
+	},
+	{
+		// A spread element inside the config disables the fixer too — the spread's
+		// own keys aren't statically known, so moving properties across it could
+		// change which value wins.
+		code:
+			IMPORT_CREATE_SV +
+			"const extra = getExtra();\ncreateSV({ variants: { size: { sm: 'text-sm' } }, ...extra, base: 'flex' });",
+		errors: [{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }]
+	},
+	{
+		// A comment anywhere inside the config disables the fixer: reattaching it
+		// to its moved property isn't attempted.
+		code:
+			IMPORT +
+			"sv({\n\tvariants: { size: { sm: 'text-sm' } },\n\t// keep base last\n\tbase: 'flex'\n});",
+		errors: [{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }]
+	},
+	{
 		// Multiple reorderings trigger error for each misplaced key.
 		code: IMPORT + "sv({ variants: { size: { sm: 'text-sm' } }, slots: { body: 'p-4' }, base: 'flex' });",
 		errors: [
@@ -5235,7 +5261,15 @@ const SV_CONFIG_STYLE_BASE_VALID = [
 	},
 	// cn()-style call: never has a config object, so checkBaseStyle's
 	// `call.config` guard is exercised as a no-op.
-	{ code: IMPORT_CN + "cn('flex');" }
+	{ code: IMPORT_CN + "cn('flex');" },
+	// separateArg configured but the config is a createSV() factory default:
+	// createSV() takes exactly one argument, so a leading class argument there
+	// would be ignored at runtime. The check is skipped entirely rather than
+	// reporting an unsatisfiable requirement.
+	{
+		code: IMPORT_CREATE_SV + "createSV({ base: 'flex', variants: {} });",
+		options: [{ baseStyle: 'separateArg' }]
+	}
 ];
 
 const SV_CONFIG_STYLE_BASE_INVALID = [
@@ -5408,6 +5442,105 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 				}
 			}
 		]
+	},
+	{
+		// slotsBase present, target configured as separateArg: reports and fixes,
+		// moving base out of `slots` and into a leading argument.
+		code: IMPORT + "sv({ slots: { base: 'flex' }, variants: {} });",
+		options: [{ baseStyle: 'separateArg' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a separate leading argument',
+					found: 'a "base" entry in "slots"'
+				}
+			}
+		],
+		output: IMPORT + "sv('flex', { slots: {  }, variants: {} });"
+	},
+	{
+		// separateArg present, target configured as slotsBase with slots already
+		// declared: reports and fixes, moving the leading argument into `slots`.
+		code: IMPORT + "sv('flex', { slots: { icon: 'w-4' }, variants: {} });",
+		options: [{ baseStyle: 'slotsBase' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" entry in "slots"',
+					found: 'a separate leading argument'
+				}
+			}
+		],
+		output: IMPORT + "sv({ slots: { base: 'flex', icon: 'w-4' }, variants: {} });"
+	},
+	{
+		// More than one leading class argument: reported, but never fixed —
+		// folding them into a single base value would silently drop a class.
+		code: IMPORT + "sv('flex', 'items-center', { variants: {} });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a separate leading argument'
+				}
+			}
+		]
+	},
+	{
+		// The config is a hoisted `const` resolved from elsewhere in the file, so
+		// the call's own argument list doesn't hold the object literal. Inserting
+		// a leading argument would edit the wrong place: reported, never fixed.
+		code:
+			IMPORT +
+			"const config = { base: 'flex', variants: {} };\nsv(config);",
+		options: [{ baseStyle: 'separateArg' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a separate leading argument',
+					found: 'a "base" field in the config'
+				}
+			}
+		]
+	},
+	{
+		// Same hoisting hazard from the other direction: the leading argument is
+		// real, but removing it spans the range up to the config *literal*, which
+		// lives in the declaration above. Reported, never fixed.
+		code:
+			IMPORT +
+			"const config = { variants: {} };\nsv('flex', config);",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a separate leading argument'
+				}
+			}
+		]
+	},
+	{
+		// A key-order violation and a base-style violation in the same call: both
+		// are reported. Their fix ranges touch, so ESLint applies only the
+		// base-style one in this pass (RuleTester checks a single pass) and the
+		// reorder on the next pass — neither corrupts the other.
+		code: IMPORT + "sv('flex', { variants: {}, slots: { icon: 'w-4' } });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a separate leading argument'
+				}
+			},
+			{ messageId: 'wrongOrder', data: { key: 'slots', before: 'variants' } }
+		],
+		output: IMPORT + "sv({ base: 'flex', variants: {}, slots: { icon: 'w-4' } });"
 	}
 ];
 

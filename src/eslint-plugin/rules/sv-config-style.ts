@@ -8,30 +8,12 @@ import type {
 	SpreadElement
 } from 'estree';
 import {
+	CONFIG_KEY_ORDER,
 	createTrackedCallListeners,
 	DOCS_URL,
 	getKeyName,
 	getStaticStringText
 } from '../analyzer.ts';
-
-/**
- * Canonical order for sv()/createSV() config keys. Fixed, not configurable —
- * matches the project's documented field order in the README's config table.
- */
-const CONFIG_KEY_ORDER: readonly string[] = [
-	'base',
-	'slots',
-	'variants',
-	'compoundSlots',
-	'compoundVariants',
-	'defaultVariants',
-	'requiredVariants',
-	'presets',
-	'multiSlots',
-	'cacheSize',
-	'introspection',
-	'postProcess'
-];
 
 const ORDER_INDEX = new Map(
 	CONFIG_KEY_ORDER.map((key, index) => [key, index])
@@ -69,7 +51,9 @@ const collectOrderedEntries = (
 
 		const index = ORDER_INDEX.get(key);
 
-		/* c8 ignore next 4 -- every key found by getKeyName is in CONFIG_KEY_ORDER by construction */
+		// Reachable through `createSV(defaults)`, which accepts any object
+		// literal — an unrecognized key can't be placed in the canonical order,
+		// so the whole object becomes unfixable while known keys stay checked.
 		if (index === undefined) {
 			fixable = false;
 			continue;
@@ -95,6 +79,12 @@ const DEFAULT_SEPARATOR = ',\n\t';
 // The separator (comma + whitespace) between the first two properties in
 // their original source order, reused between every reordered property so
 // the rewritten object keeps the file's existing formatting.
+// Tradeoff: sampling a single separator can normalize away uneven spacing —
+// most visibly when a base-style fix has just inserted an inline
+// `base: 'x', ` before the first property, so a following reorder pass samples
+// that inline separator and collapses a multi-line object onto one line.
+// Accepted as cosmetic: the result is still valid, correctly ordered code, and
+// a formatter pass restores the layout.
 const getEntrySeparator = (sourceCode: SourceCode, entries: ReadonlyArray<KeyEntry>): string => {
 	const first = entries[0];
 	const second = entries[1];
@@ -194,16 +184,14 @@ const getSlotsObject = (configNode: ObjectExpression): ObjectExpression | null =
 	return null;
 };
 
-// The three places base classes can live. `separateArg` carries the call so a
-// fix can find where the config argument starts; `slotsBase` carries the
-// resolved `slots` object so a fix can insert/remove directly on it.
+// The three places base classes can live. `slotsBase` carries the resolved
+// `slots` object so a fix can insert/remove directly on it.
 type BaseSource =
-	| { style: 'separateArg'; arg: Expression | SpreadElement; call: CallExpression }
+	| { style: 'separateArg'; arg: Expression | SpreadElement }
 	| { style: 'field'; prop: Property }
 	| { style: 'slotsBase'; prop: Property; slotsObj: ObjectExpression };
 
 const detectBaseSources = (
-	call: CallExpression,
 	configNode: ObjectExpression,
 	args: ReadonlyArray<Expression | SpreadElement>
 ): BaseSource[] => {
@@ -211,7 +199,7 @@ const detectBaseSources = (
 	const [arg] = args;
 
 	if (arg) {
-		sources.push({ style: 'separateArg', arg, call });
+		sources.push({ style: 'separateArg', arg });
 	}
 
 	const baseProp = findProperty(configNode, 'base');
@@ -394,12 +382,43 @@ const buildBaseStyleFix = (
 	};
 };
 
+// Whether the single detected base source can be rewritten into `target`
+// without risking a silent loss of classes or an edit at the wrong place.
+const canFixBaseStyle = (
+	call: CallExpression,
+	configNode: ObjectExpression,
+	args: ReadonlyArray<Expression | SpreadElement>,
+	source: BaseSource,
+	target: BaseStyle
+): boolean => {
+	if (!isStaticallyMovableValue(getBaseSourceValue(source))) {
+		return false;
+	}
+
+	// Several leading class arguments can't be folded into one base value
+	// without dropping the extras, and merging them isn't attempted.
+	if (source.style === 'separateArg' && args.length > 1) {
+		return false;
+	}
+
+	if (source.style !== 'separateArg' && target !== 'separateArg') {
+		return true;
+	}
+
+	// Adding or removing a leading argument edits the call's own argument list,
+	// which is only safe when the config literal really is that last argument —
+	// it can also be a hoisted `const` declared elsewhere in the file, in which
+	// case those ranges would rewrite unrelated code.
+	return call.arguments[call.arguments.length - 1] === configNode;
+};
+
 const checkBaseStyle = (
 	context: Rule.RuleContext,
 	call: CallExpression,
 	configNode: ObjectExpression,
 	args: ReadonlyArray<Expression | SpreadElement>,
-	baseStyle: BaseStyle
+	baseStyle: BaseStyle,
+	isFactoryConfig: boolean
 ) => {
 	const slotsObj = getSlotsObject(configNode);
 
@@ -407,7 +426,13 @@ const checkBaseStyle = (
 		return;
 	}
 
-	const sources = detectBaseSources(call, configNode, args);
+	// `createSV(defaults)` takes exactly one argument and ignores any extra, so
+	// a leading class argument there is unsatisfiable, not merely un-fixable.
+	if (baseStyle === 'separateArg' && isFactoryConfig) {
+		return;
+	}
+
+	const sources = detectBaseSources(configNode, args);
 	const mismatched = sources.filter((source) => source.style !== baseStyle);
 
 	if (mismatched.length === 0) {
@@ -420,7 +445,7 @@ const checkBaseStyle = (
 	if (
 		sources.length === 1 &&
 		onlySource &&
-		isStaticallyMovableValue(getBaseSourceValue(onlySource))
+		canFixBaseStyle(call, configNode, args, onlySource, baseStyle)
 	) {
 		fix = buildBaseStyleFix(context.sourceCode, configNode, onlySource, baseStyle);
 	}
@@ -476,7 +501,14 @@ export const svConfigStyle: Rule.RuleModule = {
 			}
 
 			checkKeyOrder(context, call.config);
-			checkBaseStyle(context, node, call.config, call.args, baseStyle);
+			checkBaseStyle(
+				context,
+				node,
+				call.config,
+				call.args,
+				baseStyle,
+				call.isFactoryConfig === true
+			);
 		});
 	}
 };
