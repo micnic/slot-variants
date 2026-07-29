@@ -335,6 +335,23 @@ type NonConfigClassArg<T> =
 			: T
 		: T;
 
+type MultiSlotResult = Record<
+	string,
+	string | ((props?: RuntimeProps) => string)
+>;
+
+// A config whose generic parameters are widened to their constraints. Used as
+// the default bag for createSV(), where each call's own config drives the
+// precise variant types and these defaults are merged in underneath.
+type RawConfig = Config<
+	MaybeSlots,
+	MaybeVariants<MaybeSlots>,
+	RequiredVariants<MaybeVariants<MaybeSlots>>,
+	MaybePresets<MaybeSlots, MaybeVariants<MaybeSlots>>,
+	MultiSlots<MaybeSlots>,
+	boolean
+>;
+
 /**
  * The shape of an `sv()` function. Mirrors the overloads of the exported `sv`,
  * with the introspection default `DI` baked in by `createSV()` so configs that
@@ -1427,11 +1444,6 @@ const buildSlotFn =
 		return cn(result[slotKey]);
 	};
 
-type MultiSlotResult = Record<
-	string,
-	string | ((props?: RuntimeProps) => string)
->;
-
 const applyMultiSlots = (
 	config: CompiledConfig,
 	props: RuntimeProps,
@@ -1506,78 +1518,6 @@ const runVariantResult = (
 	return applyMultiSlots(config, props, result);
 };
 
-/**
- * Builds a class name string or a variant-based class name generator.
- *
- * Called with only `ClassValue` arguments, it merges them like `cn()` and
- * returns a string. Called with a single config object, or with one or more
- * `ClassValue` arguments followed by a trailing config, it returns a variant
- * function driven by that config (with optional slots support).
- *
- * @example
- * ```ts
- * // Class name merging (no config)
- * sv('flex', 'items-center', { gap: true }); // 'flex items-center gap'
- * ```
- *
- * @example
- * ```ts
- * // Config-only call
- * const button = sv({
- *   base: 'btn',
- *   variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
- * });
- *
- * button({ size: 'lg' }); // 'btn text-lg'
- * ```
- *
- * @example
- * ```ts
- * // Base + config call
- * const button = sv('btn font-medium', {
- *   variants: { intent: { primary: 'bg-blue-500', danger: 'bg-red-500' } },
- *   defaultVariants: { intent: 'primary' }
- * });
- *
- * button(); // 'btn font-medium bg-blue-500'
- * ```
- *
- * @example
- * ```ts
- * // With slots
- * const card = sv('border rounded-lg', {
- *   slots: { header: 'font-bold', body: 'py-4' }
- * });
- *
- * const { base, header, body } = card();
- * ```
- */
-export const sv: SV = ((...args: ClassValue[]) => {
-
-	const last = args.at(-1);
-
-	// Return merged class string if no config is provided
-	if (!isConfig(last)) {
-		return cn(...args);
-	}
-
-	const config = compileConfig(args.slice(0, -1), last);
-
-	return createVariantFn(config);
-}) as unknown as SV;
-
-// A config whose generic parameters are widened to their constraints. Used as
-// the default bag for createSV(), where each call's own config drives the
-// precise variant types and these defaults are merged in underneath.
-type RawConfig = Config<
-	MaybeSlots,
-	MaybeVariants<MaybeSlots>,
-	RequiredVariants<MaybeVariants<MaybeSlots>>,
-	MaybePresets<MaybeSlots, MaybeVariants<MaybeSlots>>,
-	MultiSlots<MaybeSlots>,
-	boolean
->;
-
 // Wraps a compiled config in its callable form, attaching the introspection
 // surface only when the config enables it. Operates on the already-compiled
 // (non-generic) config so callers stay free of S/V variance concerns.
@@ -1630,7 +1570,7 @@ const createVariantFn = (config: CompiledConfig) => {
  * ```
  */
 export const createSV = <I extends boolean = false>(
-	defaults: RawConfig & { introspection?: I | undefined } = {}
+	defaults?: RawConfig & { introspection?: I | undefined }
 ): SV<I> => {
 
 	const configuredSv = (...args: ClassValue[]) => {
@@ -1642,13 +1582,62 @@ export const createSV = <I extends boolean = false>(
 			return cn(...args);
 		}
 
-		const config = compileConfig(args.slice(0, -1), {
-			...defaults,
-			...last
-		});
+		if (!defaults) {
+			return createVariantFn(compileConfig(args.slice(0, -1), last));
+		}
 
-		return createVariantFn(config);
+		return createVariantFn(
+			compileConfig(args.slice(0, -1), { ...defaults, ...last })
+		);
 	};
 
 	return configuredSv as unknown as SV<I>;
 };
+
+/**
+ * Builds a class name string or a variant-based class name generator.
+ *
+ * Called with only `ClassValue` arguments, it merges them like `cn()` and
+ * returns a string. Called with a single config object, or with one or more
+ * `ClassValue` arguments followed by a trailing config, it returns a variant
+ * function driven by that config (with optional slots support).
+ *
+ * @example
+ * ```ts
+ * // Class name merging (no config)
+ * sv('flex', 'items-center', { gap: true }); // 'flex items-center gap'
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Config-only call
+ * const button = sv({
+ *   base: 'btn',
+ *   variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
+ * });
+ *
+ * button({ size: 'lg' }); // 'btn text-lg'
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Base + config call
+ * const button = sv('btn font-medium', {
+ *   variants: { intent: { primary: 'bg-blue-500', danger: 'bg-red-500' } },
+ *   defaultVariants: { intent: 'primary' }
+ * });
+ *
+ * button(); // 'btn font-medium bg-blue-500'
+ * ```
+ *
+ * @example
+ * ```ts
+ * // With slots
+ * const card = sv('border rounded-lg', {
+ *   slots: { header: 'font-bold', body: 'py-4' }
+ * });
+ *
+ * const { base, header, body } = card();
+ * ```
+ */
+export const sv: SV = createSV();
