@@ -104,12 +104,13 @@ type MultiSlotKeys<
 type ReturnValue<
 	S extends MaybeSlots,
 	V extends MaybeVariants<S>,
+	P extends MaybePresets<S, V>,
 	MS extends MultiSlots<S>
 > = S extends undefined
 	? string
 	: Prettify<{
 			readonly [K in SlotKey<S>]: K extends MultiSlotKeys<S, MS>
-				? (props?: MultiSlotFnProps<S, V>) => string
+				? (props?: MultiSlotFnProps<S, V, P>) => string
 				: string;
 		}>;
 
@@ -152,9 +153,18 @@ type VariantPropsInternal<S extends MaybeSlots, V extends MaybeVariants<S>> = {
 	[K in StringKeyof<V>]: VariantPropType<V[K], S>;
 };
 
-type MultiSlotFnProps<S extends MaybeSlots, V extends MaybeVariants<S>> =
-	Prettify<PartialNullable<VariantPropsInternal<S, V>>> &
-		XORClassProp<ClassValue, true>;
+type MultiSlotFnProps<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
+	P extends MaybePresets<S, V>
+> = Prettify<
+	P extends undefined
+		? PartialNullable<VariantPropsInternal<S, V>>
+		: PartialNullable<VariantPropsInternal<S, V>> & {
+				preset?: StringKeyof<P> | undefined;
+			}
+> &
+	XORClassProp<ClassValue, true>;
 
 type DefaultVariantValue<
 	S extends MaybeSlots,
@@ -313,7 +323,7 @@ type VariantFn<
 		...args: [RequiredVariantKeys<V, RV>] extends [never]
 			? [props?: Prettify<Props<S, V, RV, P>> | undefined]
 			: [props: Prettify<Props<S, V, RV, P>>]
-	): ReturnValue<S, V, MS>;
+	): ReturnValue<S, V, P, MS>;
 } & (I extends true
 	? Prettify<IntrospectionValues<S, V, RV, P, MS>>
 	: unknown);

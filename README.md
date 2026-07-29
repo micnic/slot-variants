@@ -539,7 +539,7 @@ Compound slots support the same array matching as compound variants.
 
 ### Multi Slots
 
-By default each slot in the result object is a plain class string. The `multiSlots` option turns the listed slots into reconfigurable functions instead. A slot function accepts variant prop overrides and a `class`/`className` override, and returns that slot's class string.
+By default each slot in the result object is a plain class string. The `multiSlots` option turns the listed slots into reconfigurable functions instead. A slot function accepts variant prop overrides, a `preset` name when the config declares [presets](#presets), and a `class`/`className` override, and returns that slot's class string.
 
 This is designed for cases where a single slot is rendered multiple times with different props — for example a list of items where each item needs its own variant values:
 
@@ -569,6 +569,33 @@ result.header({ class: 'mt-2' }); // 'font-bold text-sm mt-2'
 ```
 
 Slots not listed in `multiSlots` stay plain strings. Pass `true` to make every slot a function, or `false` (the default) to keep them all strings.
+
+A slot function may also switch presets per call. It inherits the preset passed to the outer call, and its own `preset` takes precedence:
+
+```typescript
+const badge = sv({
+  slots: {
+    label: 'font-medium'
+  },
+  variants: {
+    tone: {
+      neutral: { label: 'text-gray-900' },
+      danger: { label: 'text-red-600' }
+    }
+  },
+  presets: {
+    alert: { tone: 'danger' },
+    plain: { tone: 'neutral' }
+  },
+  multiSlots: ['label']
+});
+
+const result = badge({ preset: 'alert' });
+
+result.label();                    // 'font-medium text-red-600' (outer preset)
+result.label({ preset: 'plain' }); // 'font-medium text-gray-900'
+result.label({ tone: 'neutral' }); // 'font-medium text-gray-900'
+```
 
 ### Class Override at Runtime
 

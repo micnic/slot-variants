@@ -5069,6 +5069,110 @@ t.test('multiSlots makes listed slot a reconfigurable function', (t) => {
 	t.end();
 });
 
+t.test('multiSlots slot function accepts a preset', (t) => {
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold',
+			body: 'py-4'
+		},
+		variants: {
+			tone: {
+				neutral: { header: 'text-gray-900' },
+				danger: { header: 'text-red-600' }
+			}
+		},
+		defaultVariants: {
+			tone: 'neutral'
+		},
+		presets: {
+			alert: { tone: 'danger' }
+		},
+		multiSlots: ['header']
+	});
+
+	const result = card({});
+
+	t.equal(
+		result.header({ preset: 'alert' }),
+		'font-bold text-red-600',
+		'slot function applies the preset'
+	);
+	t.equal(
+		result.header(),
+		'font-bold text-gray-900',
+		'omitting the preset keeps the default variant'
+	);
+
+	t.end();
+});
+
+t.test('multiSlots slot function overrides an outer preset', (t) => {
+	const card = sv({
+		slots: {
+			header: 'font-bold'
+		},
+		variants: {
+			tone: {
+				neutral: { header: 'text-gray-900' },
+				danger: { header: 'text-red-600' }
+			}
+		},
+		presets: {
+			alert: { tone: 'danger' },
+			plain: { tone: 'neutral' }
+		},
+		multiSlots: ['header']
+	});
+
+	const result = card({ preset: 'alert' });
+
+	t.equal(
+		result.header(),
+		'font-bold text-red-600',
+		'slot function inherits the outer preset'
+	);
+	t.equal(
+		result.header({ preset: 'plain' }),
+		'font-bold text-gray-900',
+		'slot function preset takes precedence over the outer one'
+	);
+	t.equal(
+		result.header({ tone: 'neutral' }),
+		'font-bold text-gray-900',
+		'an explicit variant prop still overrides the outer preset'
+	);
+
+	t.end();
+});
+
+t.test('multiSlots slot function throws for an unknown preset', (t) => {
+	const card = sv({
+		slots: {
+			header: 'font-bold'
+		},
+		variants: {
+			tone: {
+				neutral: { header: 'text-gray-900' }
+			}
+		},
+		presets: {
+			plain: { tone: 'neutral' }
+		},
+		multiSlots: ['header']
+	});
+
+	const result = card({});
+
+	t.throws(
+		// @ts-expect-error unknown preset names are rejected at compile time too
+		() => result.header({ preset: 'nope' }),
+		new Error('Invalid preset "nope"'),
+		'throws for an unknown preset'
+	);
+
+	t.end();
+});
+
 t.test('multiSlots: true makes every slot a function', (t) => {
 	const card = sv('border', {
 		slots: {

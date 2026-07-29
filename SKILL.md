@@ -84,6 +84,8 @@ header({ class: 'mt-2' }); // 'font-bold text-sm mt-2'
 
 Pass `true` to make every slot a function, `false` (default) to keep them all strings.
 
+A slot function also accepts `preset` when the config declares `presets`. It inherits the outer call's preset, and its own `preset` wins.
+
 ### 6. Use VariantProps Type for Component Props
 
 ```typescript
