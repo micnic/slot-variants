@@ -870,6 +870,166 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 | `cacheSize` | `number` | Maximum number of cached results (default: `256`); `0` or a negative value disables caching |
 | `introspection` | `boolean` | When `true`, exposes variant/slot/preset introspection and cache methods on the returned function (default: `false`) |
 
+## Framework Usage
+
+`sv()` is a plain function with no framework dependency — it takes props and returns a class string (or a per-slot object). React needs no wrapper at all; frameworks with a different reactivity model need a small one to keep the result in sync with reactive state. With slots, wrap the whole call once and read individual slot classes off that single result — don't call `sv()` separately per slot.
+
+The examples below share this config:
+
+```typescript
+const card = sv('rounded-lg border', {
+  slots: {
+    header: 'font-bold px-4 pt-4',
+    body: 'px-4 pb-4 text-sm'
+  },
+  variants: {
+    tone: {
+      neutral: { header: 'text-gray-900', body: 'text-gray-600' },
+      danger: { header: 'text-red-900', body: 'text-red-600' }
+    }
+  },
+  defaultVariants: { tone: 'neutral' }
+});
+```
+
+### React
+
+Call it directly during render — re-renders recompute it naturally:
+
+```tsx
+function Card({ tone, className, title, children }: CardProps) {
+  const classes = card({ tone, class: className });
+
+  return (
+    <div className={classes.base}>
+      <div className={classes.header}>{title}</div>
+      <div className={classes.body}>{children}</div>
+    </div>
+  );
+}
+```
+
+### Solid
+
+Component bodies run once, so reactive prop reads must stay lazy. Wrap the call in `createMemo` (or call it inline inside JSX, where Solid's fine-grained reactivity tracks the prop access itself):
+
+```tsx
+function Card(props: CardProps) {
+  const classes = createMemo(() => card({ tone: props.tone, class: props.class }));
+
+  return (
+    <div class={classes().base}>
+      <div class={classes().header}>{props.title}</div>
+      <div class={classes().body}>{props.children}</div>
+    </div>
+  );
+}
+```
+
+### Svelte
+
+```svelte
+<script>
+  let { tone, class: className, title, children } = $props();
+  const classes = $derived(card({ tone, class: className }));
+</script>
+
+<div class={classes.base}>
+  <div class={classes.header}>{title}</div>
+  <div class={classes.body}>{@render children()}</div>
+</div>
+```
+
+### Vue
+
+```vue
+<script setup>
+const classes = computed(() => card({ tone: props.tone, class: props.class }));
+</script>
+
+<template>
+  <div :class="classes.base">
+    <div :class="classes.header">{{ title }}</div>
+    <div :class="classes.body"><slot /></div>
+  </div>
+</template>
+```
+
+### Multi Slots
+
+If a slot is listed in [`multiSlots`](#multi-slots), it resolves to a function instead of a string; call that function per rendered item, still reading it off the same memoized/computed result. The examples below share this config:
+
+```typescript
+const list = sv({
+  slots: { item: 'px-2 py-1' },
+  variants: { active: { true: 'bg-blue-100', false: '' } },
+  multiSlots: ['item']
+});
+```
+
+React:
+
+```tsx
+function List({ items, activeId }: ListProps) {
+  const classes = list();
+
+  return (
+    <ul>
+      {items.map((item) => (
+        <li key={item.id} className={classes.item({ active: item.id === activeId })}>
+          {item.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+Solid:
+
+```tsx
+function List(props: ListProps) {
+  const classes = createMemo(() => list());
+
+  return (
+    <For each={props.items}>
+      {(item) => <li class={classes().item({ active: item.id === props.activeId })}>{item.label}</li>}
+    </For>
+  );
+}
+```
+
+Svelte:
+
+```svelte
+<script>
+  let { items, activeId } = $props();
+  const classes = $derived(list());
+</script>
+
+<ul>
+  {#each items as item}
+    <li class={classes.item({ active: item.id === activeId })}>{item.label}</li>
+  {/each}
+</ul>
+```
+
+Vue:
+
+```vue
+<script setup>
+const classes = computed(() => list());
+</script>
+
+<template>
+  <ul>
+    <li v-for="item in items" :key="item.id" :class="classes.item({ active: item.id === activeId })">
+      {{ item.label }}
+    </li>
+  </ul>
+</template>
+```
+
 ## ESLint / oxlint Plugin
 
 `slot-variants` ships an ESLint-compatible plugin at the `slot-variants/eslint-plugin` subpath. It runs under ESLint v9+ (flat config) and under [oxlint](https://oxc.rs/docs/guide/usage/linter/js-plugins) via its `jsPlugins` API. The plugin is a separate entry point with no runtime imports — consuming it doesn't pull any library code into your bundle.

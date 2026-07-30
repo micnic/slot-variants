@@ -213,6 +213,30 @@ const card = sv('border rounded-lg', {
 const { base, header, body, footer } = card({ size: 'md' });
 ```
 
+## Framework Usage
+
+`sv()` has no framework dependency — it's a plain function returning a class string (or per-slot object). React needs no wrapper; frameworks with a different reactivity model need one so the result stays in sync with reactive state:
+
+- **React**: call directly during render.
+- **Solid**: component bodies run once — wrap in `createMemo(() => card({ ... }))`, or call inline inside JSX so Solid tracks the prop access.
+- **Svelte**: `const classes = $derived(card({ ... }))`.
+- **Vue**: `const classes = computed(() => card({ ... }))`.
+
+With slots, wrap the whole call once (one memo/computed/derived) and read individual slot classes off the result — never call `sv()` per slot:
+
+```tsx
+// Solid, with slots: { header: '...', body: '...' }
+const classes = createMemo(() => card({ tone: props.tone, class: props.class }));
+// classes().base, classes().header, classes().body
+```
+
+A `multiSlots` function is called per rendered item, still reading off the same wrapped result:
+
+- **React**: `list().item({ active: item.id === activeId })`.
+- **Solid**: `classes().item({ active: item.id === props.activeId })` where `classes = createMemo(() => list())`.
+- **Svelte**: `classes.item({ active: item.id === activeId })` where `classes = $derived(list())`.
+- **Vue**: `classes.item({ active: item.id === activeId })` where `classes = computed(() => list())`.
+
 ## Configuration Reference
 
 Class values inside the config (`base`, `variants` values, `slots` values, and `compound*` `class`/`className`) accept only `string`, `string[]`, or `undefined`. Dynamic class values (objects, booleans, nested arrays) belong on the `class`/`className` runtime prop, not in the config. Variant keys are strings or numbers (`level: { 1: 'text-4xl' }`), plus `true`/`false` for boolean variants.
