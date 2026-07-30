@@ -27,7 +27,7 @@ type RuntimeVariantMatcher =
 	| RuntimeVariantValue
 	| readonly RuntimeVariantValue[];
 
-type XORClassProp<C, O extends boolean = false> = O extends true
+type EitherClassProp<C, O extends boolean = false> = O extends true
 	? { class?: C; className?: never } | { class?: never; className?: C }
 	: { class: C; className?: never } | { class?: never; className: C };
 
@@ -118,7 +118,7 @@ type SlotValue<S extends MaybeSlots, V> = S extends Slots
 	? Partial<Record<SlotKey<S>, V>> | V
 	: V;
 
-type ClassProp<S extends MaybeSlots, V> = XORClassProp<SlotValue<S, V>, true>;
+type ClassProp<S extends MaybeSlots, V> = EitherClassProp<SlotValue<S, V>, true>;
 
 type Variants<S extends MaybeSlots> = Record<
 	string,
@@ -139,7 +139,7 @@ type CompoundVariants<
 	S extends MaybeSlots,
 	V extends MaybeVariants<S>
 > = readonly (VariantConditions<S, V> &
-	XORClassProp<SlotValue<S, ConfigClassValue>>)[];
+	EitherClassProp<SlotValue<S, ConfigClassValue>>)[];
 
 type CompoundSlots<
 	S extends MaybeSlots,
@@ -147,7 +147,7 @@ type CompoundSlots<
 > = readonly ({
 	slots: readonly [SlotKey<S>, ...SlotKey<S>[]];
 } & VariantConditions<S, V> &
-	XORClassProp<ConfigClassValue>)[];
+	EitherClassProp<ConfigClassValue>)[];
 
 type VariantPropsInternal<S extends MaybeSlots, V extends MaybeVariants<S>> = {
 	[K in StringKeyof<V>]: VariantPropType<V[K], S>;
@@ -164,7 +164,7 @@ type MultiSlotFnProps<
 				preset?: StringKeyof<P> | undefined;
 			}
 > &
-	XORClassProp<ClassValue, true>;
+	EitherClassProp<ClassValue, true>;
 
 type DefaultVariantValue<
 	S extends MaybeSlots,
