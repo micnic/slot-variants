@@ -36,15 +36,28 @@ type MaybeSlots = Slots | undefined;
 type BooleanString<T> = T extends `${boolean}` ? boolean : T;
 type SlotKey<S extends MaybeSlots> = 'base' | StringKeyof<S>;
 
-type BooleanShorthandKeys<S extends MaybeSlots> =
-	| (S extends Slots ? SlotKey<S> : never)
+type Groups<S extends MaybeSlots> = Record<string, readonly SlotKey<S>[]>;
+type MaybeGroups<S extends MaybeSlots> = Groups<S> | undefined;
+
+/** Every name that stands for one or more slots: a slot key or a group name. */
+type SlotTarget<S extends MaybeSlots, G> = SlotKey<S> | StringKeyof<G>;
+
+/** The slot keys a group name expands to, or `never` for a non-group key. */
+type GroupSlots<G, K extends string> = K extends keyof G
+	? G[K] extends readonly (infer U extends string)[]
+		? U
+		: never
+	: never;
+
+type BooleanShorthandKeys<S extends MaybeSlots, G> =
+	| (S extends Slots ? SlotTarget<S, G> : never)
 	| 'true'
 	| 'false';
 
-type VariantPropType<T, S extends MaybeSlots> =
+type VariantPropType<T, S extends MaybeSlots, G = undefined> =
 	T extends Record<string | number, unknown>
 		? [Extract<keyof T, number>] extends [never]
-			? StringKeyof<T> extends BooleanShorthandKeys<S>
+			? StringKeyof<T> extends BooleanShorthandKeys<S, G>
 				? boolean
 				: BooleanString<StringKeyof<T>>
 			: BooleanString<StringKeyof<T>> | Extract<keyof T, number>
@@ -79,6 +92,12 @@ type RuntimeDefaultVariant =
 
 type SlotClasses = Record<string, ConfigClassValue[]>;
 
+/** The `groups` config with its slot names widened for runtime use. */
+type RuntimeGroups = Record<string, readonly string[]>;
+
+/** Each group name mapped to the slot names it stands for. */
+type CompiledGroups = ReadonlyMap<string, readonly string[]>;
+
 type CompoundMatcher = {
 	key: string;
 	expected: RuntimeVariantMatcher;
@@ -96,48 +115,61 @@ type CompiledCompoundSlot = {
 	slots: readonly string[];
 };
 
-type MultiSlots<S extends MaybeSlots> = readonly SlotKey<S>[] | boolean;
+type MultiSlots<S extends MaybeSlots, G = undefined> =
+	| readonly SlotTarget<S, G>[]
+	| boolean;
 
 type MultiSlotKeys<
 	S extends MaybeSlots,
-	MS extends MultiSlots<S>
+	G,
+	MS extends MultiSlots<S, G>
 > = MS extends true
 	? SlotKey<S>
 	: MS extends readonly string[]
-		? MS[number] & SlotKey<S>
+		? (MS[number] & SlotKey<S>) | GroupSlots<G, MS[number]>
 		: never;
 
 type ReturnValue<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	P extends MaybePresets<S, V>,
-	MS extends MultiSlots<S>
+	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, V, G>,
+	MS extends MultiSlots<S, G>,
+	G
 > = S extends undefined
 	? string
 	: Prettify<{
-			readonly [K in SlotKey<S>]: K extends MultiSlotKeys<S, MS>
-				? (props?: MultiSlotFnProps<S, V, P>) => string
+			readonly [K in SlotKey<S>]: K extends MultiSlotKeys<S, G, MS>
+				? (props?: MultiSlotFnProps<S, V, P, G>) => string
 				: string;
 		}>;
 
-type SlotValue<S extends MaybeSlots, V> = S extends Slots
-	? Partial<Record<SlotKey<S>, V>> | V
+type SlotValue<S extends MaybeSlots, V, G = undefined> = S extends Slots
+	? Partial<Record<SlotTarget<S, G>, V>> | V
 	: V;
 
-type ClassProp<S extends MaybeSlots, V> = EitherClassProp<SlotValue<S, V>, true>;
-
-type Variants<S extends MaybeSlots> = Record<
-	string,
-	| Record<string | number, SlotValue<S, ConfigClassValue>>
-	| SlotValue<S, ConfigClassValue>
+type ClassProp<S extends MaybeSlots, V, G> = EitherClassProp<
+	SlotValue<S, V, G>,
+	true
 >;
 
-type MaybeVariants<S extends MaybeSlots> = Variants<S> | undefined;
+type Variants<S extends MaybeSlots, G = undefined> = Record<
+	string,
+	| Record<string | number, SlotValue<S, ConfigClassValue, G>>
+	| SlotValue<S, ConfigClassValue, G>
+>;
 
-type VariantConditions<S extends MaybeSlots, V extends MaybeVariants<S>> = {
+type MaybeVariants<S extends MaybeSlots, G = undefined> =
+	| Variants<S, G>
+	| undefined;
+
+type VariantConditions<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S, G>,
+	G
+> = {
 	[K in StringKeyof<V>]?:
-		| VariantPropType<V[K], S>
-		| readonly VariantPropType<V[K], S>[]
+		| VariantPropType<V[K], S, G>
+		| readonly VariantPropType<V[K], S, G>[]
 		| undefined;
 };
 
@@ -148,40 +180,48 @@ type VariantConditions<S extends MaybeSlots, V extends MaybeVariants<S>> = {
 // unwritable.
 type CompoundConditions<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	P extends MaybePresets<S, V>
-> = VariantConditions<S, V> & {
+	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, V, G>,
+	G
+> = VariantConditions<S, V, G> & {
 	preset?: (keyof P & string) | undefined;
 };
 
 type CompoundVariants<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	P extends MaybePresets<S, V>
-> = readonly (CompoundConditions<S, V, P> &
-	EitherClassProp<SlotValue<S, ConfigClassValue>>)[];
+	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, V, G>,
+	G
+> = readonly (CompoundConditions<S, V, P, G> &
+	EitherClassProp<SlotValue<S, ConfigClassValue, G>>)[];
 
 type CompoundSlots<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	P extends MaybePresets<S, V>
+	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, V, G>,
+	G
 > = readonly ({
-	slots: readonly [SlotKey<S>, ...SlotKey<S>[]];
-} & CompoundConditions<S, V, P> &
+	slots: readonly [SlotTarget<S, G>, ...SlotTarget<S, G>[]];
+} & CompoundConditions<S, V, P, G> &
 	EitherClassProp<ConfigClassValue>)[];
 
-type VariantPropsInternal<S extends MaybeSlots, V extends MaybeVariants<S>> = {
-	[K in StringKeyof<V>]: VariantPropType<V[K], S>;
+type VariantPropsInternal<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S, G>,
+	G
+> = {
+	[K in StringKeyof<V>]: VariantPropType<V[K], S, G>;
 };
 
 type MultiSlotFnProps<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	P extends MaybePresets<S, V>
+	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, V, G>,
+	G
 > = Prettify<
 	P extends undefined
-		? PartialNullable<VariantPropsInternal<S, V>>
-		: PartialNullable<VariantPropsInternal<S, V>> & {
+		? PartialNullable<VariantPropsInternal<S, V, G>>
+		: PartialNullable<VariantPropsInternal<S, V, G>> & {
 				preset?: StringKeyof<P> | undefined;
 			}
 > &
@@ -189,22 +229,27 @@ type MultiSlotFnProps<
 
 type DefaultVariantValue<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	K extends StringKeyof<V>
+	V extends MaybeVariants<S, G>,
+	K extends StringKeyof<V>,
+	G
 > =
-	| VariantPropType<V[K], S>
-	| ((props: RuntimeVariantState) => VariantPropType<V[K], S> | undefined)
+	| VariantPropType<V[K], S, G>
+	| ((props: RuntimeVariantState) => VariantPropType<V[K], S, G> | undefined)
 	| undefined;
 
 type RuntimeClassValue = SlotValue<Slots, ClassValue>;
 
-type Presets<S extends MaybeSlots, V extends MaybeVariants<S>> = Record<
-	string,
-	Partial<VariantPropsInternal<S, V>>
->;
+type Presets<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S, G>,
+	G
+> = Record<string, Partial<VariantPropsInternal<S, V, G>>>;
 
-type MaybePresets<S extends MaybeSlots, V extends MaybeVariants<S>> =
-	Presets<S, V> | undefined;
+type MaybePresets<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S, G>,
+	G
+> = Presets<S, V, G> | undefined;
 
 type PresetNameCollision<V extends MaybeVariants<MaybeSlots>, P> = {
 	[K in Extract<
@@ -228,6 +273,10 @@ type CompiledConfig = {
 	slots: Slots;
 	slotEntries: readonly [string, ConfigClassValue][];
 	slotKeys: ReadonlySet<string>;
+	/** Slot keys plus group names, the keys a per-slot object may hold. */
+	targetKeys: ReadonlySet<string>;
+	originalGroups: RuntimeGroups;
+	groups: CompiledGroups;
 	originalVariants: Variants<MaybeSlots>;
 	normalizedVariants: NormalizedVariants;
 	variantData: readonly VariantData[];
@@ -258,46 +307,50 @@ type RequiredVariantKeys<
 
 type DefaultVariants<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	RV extends RequiredVariants<V>
+	V extends MaybeVariants<S, G>,
+	RV extends RequiredVariants<V>,
+	G
 > = {
 	[K in Exclude<
 		StringKeyof<V>,
 		RequiredVariantKeys<V, RV>
-	>]?: DefaultVariantValue<S, V, K>;
+	>]?: DefaultVariantValue<S, V, K, G>;
 };
 
 type VariantPropsWithRequired<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
-	RV extends RequiredVariants<V>
-> = Pick<VariantPropsInternal<S, V>, RequiredVariantKeys<V, RV>> &
+	V extends MaybeVariants<S, G>,
+	RV extends RequiredVariants<V>,
+	G
+> = Pick<VariantPropsInternal<S, V, G>, RequiredVariantKeys<V, RV>> &
 	Omit<
-		PartialNullable<VariantPropsInternal<S, V>>,
+		PartialNullable<VariantPropsInternal<S, V, G>>,
 		RequiredVariantKeys<V, RV>
 	>;
 
 type Props<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
+	V extends MaybeVariants<S, G>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V>
+	P extends MaybePresets<S, V, G>,
+	G
 > = Prettify<
 	P extends undefined
-		? VariantPropsWithRequired<S, V, RV>
-		: PartialNullable<VariantPropsInternal<S, V>> & {
+		? VariantPropsWithRequired<S, V, RV, G>
+		: PartialNullable<VariantPropsInternal<S, V, G>> & {
 				preset?: StringKeyof<P> | undefined;
 			}
 > &
-	ClassProp<S, ClassValue>;
+	ClassProp<S, ClassValue, G>;
 
 type Config<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
+	V extends MaybeVariants<S, G>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V>,
-	MS extends MultiSlots<S>,
-	I extends boolean = false
+	P extends MaybePresets<S, V, G>,
+	MS extends MultiSlots<S, G>,
+	I extends boolean = false,
+	G extends MaybeGroups<S> = undefined
 > = {
 	/** Classes always applied, alongside any matched variant/compound classes. */
 	base?: ConfigClassValue;
@@ -305,12 +358,14 @@ type Config<
 	variants?: V | undefined;
 	/** Named slots, each with its own base classes, turning the return value into a per-slot class map. */
 	slots?: S | undefined;
+	/** Named sets of slots, usable anywhere a slot name is, to target several slots at once. Group names must not match a slot name. */
+	groups?: G | undefined;
 	/** Extra classes applied only when a specific combination of variant values matches. A `preset` name stands for the variant values it holds. */
-	compoundVariants?: CompoundVariants<S, V, P> | undefined;
+	compoundVariants?: CompoundVariants<S, V, P, G> | undefined;
 	/** Extra per-slot classes applied only when a specific combination of variant values matches. A `preset` name stands for the variant values it holds. */
-	compoundSlots?: CompoundSlots<S, V, P> | undefined;
+	compoundSlots?: CompoundSlots<S, V, P, G> | undefined;
 	/** Variant values used when the caller doesn't pass a value for that variant. */
-	defaultVariants?: DefaultVariants<S, V, RV> | undefined;
+	defaultVariants?: DefaultVariants<S, V, RV, G> | undefined;
 	/** Variant keys the caller must always provide, dropping their `?` from the props type. */
 	requiredVariants?: RV | undefined;
 	/** Slot keys whose class function accepts variant props per call, for slots repeated across multiple elements. */
@@ -329,10 +384,11 @@ type ConfigKey = keyof Config<undefined, undefined, [], undefined, false>;
 
 type IntrospectionValues<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
+	V extends MaybeVariants<S, G>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V>,
-	MS extends MultiSlots<S>
+	P extends MaybePresets<S, V, G>,
+	MS extends MultiSlots<S, G>,
+	G
 > = {
 	/** The `variants` config passed in, as-is. */
 	variants: V extends undefined ? Record<string, never> : V;
@@ -342,8 +398,12 @@ type IntrospectionValues<
 	slots: S extends undefined ? Record<string, never> : S;
 	/** Names of all declared slots (including `'base'`). */
 	slotKeys: SlotKey<S>[];
+	/** The `groups` config passed in, as-is. */
+	groups: G extends undefined ? Record<string, never> : G;
+	/** Names of all declared groups. */
+	groupKeys: G extends undefined ? [] : StringKeyof<G>[];
 	/** The effective default variant values, after `defaultVariants` and `requiredVariants` are merged. */
-	defaultVariants: DefaultVariants<S, V, RV>;
+	defaultVariants: DefaultVariants<S, V, RV, G>;
 	/** Names of the variants the caller must always provide. */
 	requiredVariants: RV extends true ? StringKeyof<V>[] : RV;
 	/** The `multiSlots` config passed in, as-is. */
@@ -355,7 +415,7 @@ type IntrospectionValues<
 	/** Lists every valid value for a given variant. */
 	getVariantValues: V extends undefined
 		? (key: never) => never[]
-		: <K extends StringKeyof<V>>(key: K) => VariantPropType<V[K], S>[];
+		: <K extends StringKeyof<V>>(key: K) => VariantPropType<V[K], S, G>[];
 	/** The configured cache size (`cacheSize`, or the default of 256). */
 	getMaxEntries: () => number;
 	/** Empties the cache of computed class results. */
@@ -366,19 +426,20 @@ type IntrospectionValues<
 
 type VariantFn<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
+	V extends MaybeVariants<S, G>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V>,
-	MS extends MultiSlots<S>,
-	I extends boolean
+	P extends MaybePresets<S, V, G>,
+	MS extends MultiSlots<S, G>,
+	I extends boolean,
+	G
 > = {
 	(
 		...args: [RequiredVariantKeys<V, RV>] extends [never]
-			? [props?: Prettify<Props<S, V, RV, P>> | undefined]
-			: [props: Prettify<Props<S, V, RV, P>>]
-	): ReturnValue<S, V, P, MS>;
+			? [props?: Prettify<Props<S, V, RV, P, G>> | undefined]
+			: [props: Prettify<Props<S, V, RV, P, G>>]
+	): ReturnValue<S, V, P, MS, G>;
 } & (I extends true
-	? Prettify<IntrospectionValues<S, V, RV, P, MS>>
+	? Prettify<IntrospectionValues<S, V, RV, P, MS, G>>
 	: unknown);
 
 type NonConfigClassArg<T> =
@@ -398,11 +459,16 @@ type MultiSlotResult = Record<
 // precise variant types and these defaults are merged in underneath.
 type RawConfig = Config<
 	MaybeSlots,
-	MaybeVariants<MaybeSlots>,
+	MaybeVariants<MaybeSlots, MaybeGroups<MaybeSlots>>,
 	RequiredVariants<MaybeVariants<MaybeSlots>>,
-	MaybePresets<MaybeSlots, MaybeVariants<MaybeSlots>>,
-	MultiSlots<MaybeSlots>,
-	boolean
+	MaybePresets<
+		MaybeSlots,
+		MaybeVariants<MaybeSlots, MaybeGroups<MaybeSlots>>,
+		MaybeGroups<MaybeSlots>
+	>,
+	MultiSlots<MaybeSlots, MaybeGroups<MaybeSlots>>,
+	boolean,
+	MaybeGroups<MaybeSlots>
 >;
 
 /**
@@ -413,24 +479,26 @@ type RawConfig = Config<
 export type SV<DI extends boolean = false> = {
 	<
 		S extends MaybeSlots = undefined,
-		V extends MaybeVariants<S> = undefined,
+		V extends MaybeVariants<S, G> = undefined,
 		RV extends RequiredVariants<V> = false,
-		P extends MaybePresets<S, V> = undefined,
-		MS extends MultiSlots<S> = false,
-		I extends boolean = DI
+		P extends MaybePresets<S, V, G> = undefined,
+		MS extends MultiSlots<S, G> = false,
+		I extends boolean = DI,
+		G extends MaybeGroups<S> = undefined
 	>(
-		config: Config<S, V, RV, P, MS, I>
-	): VariantFn<S, V, RV, P, MS, I>;
+		config: Config<S, V, RV, P, MS, I, G>
+	): VariantFn<S, V, RV, P, MS, I, G>;
 	<
 		S extends MaybeSlots = undefined,
-		V extends MaybeVariants<S> = undefined,
+		V extends MaybeVariants<S, G> = undefined,
 		RV extends RequiredVariants<V> = false,
-		P extends MaybePresets<S, V> = undefined,
-		MS extends MultiSlots<S> = false,
-		I extends boolean = DI
+		P extends MaybePresets<S, V, G> = undefined,
+		MS extends MultiSlots<S, G> = false,
+		I extends boolean = DI,
+		G extends MaybeGroups<S> = undefined
 	>(
-		...args: [...ClassValue[], Config<S, V, RV, P, MS, I>]
-	): VariantFn<S, V, RV, P, MS, I>;
+		...args: [...ClassValue[], Config<S, V, RV, P, MS, I, G>]
+	): VariantFn<S, V, RV, P, MS, I, G>;
 	<const T extends ClassValue[]>(
 		...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
 	): string;
@@ -548,6 +616,9 @@ const createInvalidCompoundMatcherValueError = (
 
 const noopCacheReturn = (_cacheKey: string, value: CacheEntry): CacheEntry =>
 	value;
+
+/** Stands in for a missing group's slots, so lookups don't allocate. */
+const noSlots: readonly string[] = [];
 
 const createCache = (
 	cacheSize: number
@@ -714,16 +785,16 @@ const isObjectRecord = (
 
 const isSlotObjectVariantValue = (
 	variantValue: NormalizedVariantValues,
-	slotKeys: ReadonlySet<string>
+	targetKeys: ReadonlySet<string>
 ): variantValue is Record<string, ConfigClassValue> => {
 
-	if (slotKeys.size <= 1) {
+	if (targetKeys.size <= 1) {
 		return false;
 	}
 
 	const valueKeys = keys(variantValue);
 
-	return valueKeys.length > 0 && valueKeys.every((key) => slotKeys.has(key));
+	return valueKeys.length > 0 && valueKeys.every((key) => targetKeys.has(key));
 };
 
 const isBooleanVariantRecord = (
@@ -733,12 +804,12 @@ const isBooleanVariantRecord = (
 
 const normalizeVariantValue = (
 	variantValue: RuntimeVariantConfigValue,
-	slotKeys: ReadonlySet<string>
+	targetKeys: ReadonlySet<string>
 ): NormalizedVariantValues => {
 
 	if (
 		!isObjectRecord(variantValue) ||
-		isSlotObjectVariantValue(variantValue, slotKeys)
+		isSlotObjectVariantValue(variantValue, targetKeys)
 	) {
 		return {
 			false: '',
@@ -784,6 +855,7 @@ const configKeysRecord: Record<ConfigKey, true> = {
 	base: true,
 	variants: true,
 	slots: true,
+	groups: true,
 	compoundVariants: true,
 	compoundSlots: true,
 	defaultVariants: true,
@@ -799,14 +871,15 @@ const configKeys: ReadonlySet<string> = new Set(keys(configKeysRecord));
 
 const isConfig = <
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
+	V extends MaybeVariants<S, G>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V>,
-	MS extends MultiSlots<S>,
-	I extends boolean
+	P extends MaybePresets<S, V, G>,
+	MS extends MultiSlots<S, G>,
+	I extends boolean,
+	G extends MaybeGroups<S>
 >(
-	value: ClassValue | Config<S, V, RV, P, MS, I>
-): value is Config<S, V, RV, P, MS, I> =>
+	value: ClassValue | Config<S, V, RV, P, MS, I, G>
+): value is Config<S, V, RV, P, MS, I, G> =>
 	value !== null &&
 	typeof value === 'object' &&
 	!isArray(value) &&
@@ -814,13 +887,13 @@ const isConfig = <
 
 const createNormalizedVariants = <S extends MaybeSlots>(
 	variants: Variants<S>,
-	slotKeys: ReadonlySet<string>
+	targetKeys: ReadonlySet<string>
 ): NormalizedVariants => {
 
 	const result: NormalizedVariants = {};
 
 	for (const [variantKey, variantValue] of entries(variants)) {
-		result[variantKey] = normalizeVariantValue(variantValue, slotKeys);
+		result[variantKey] = normalizeVariantValue(variantValue, targetKeys);
 	}
 
 	return result;
@@ -879,6 +952,7 @@ const resolveRequiredVariants = (
 
 const resolveMultiSlots = (
 	multiSlots: readonly string[] | boolean,
+	groups: CompiledGroups,
 	slotKeys: ReadonlySet<string>
 ): ReadonlySet<string> => {
 
@@ -890,13 +964,9 @@ const resolveMultiSlots = (
 		return new Set();
 	}
 
-	for (const slot of multiSlots) {
-		if (!slotKeys.has(slot)) {
-			throw new Error(`Multi slot references unknown slot "${slot}"`);
-		}
-	}
-
-	return new Set(multiSlots);
+	return new Set(
+		expandSlotTargets(multiSlots, groups, slotKeys, 'Multi slot')
+	);
 };
 
 const assertValidRequiredVariantConfig = (
@@ -974,19 +1044,74 @@ const assertValidPresets = (
 	}
 };
 
-const assertKnownCompoundSlots = (
-	compoundSlots: readonly string[],
+const resolveGroups = (
+	groups: RuntimeGroups,
 	slotKeys: ReadonlySet<string>
-) => {
+): CompiledGroups => {
 
-	if (compoundSlots.length === 0) {
-		throw new Error('Compound slot must define at least one slot');
+	const result = new Map<string, readonly string[]>();
+
+	for (const [groupName, groupSlots] of entries(groups)) {
+
+		if (slotKeys.has(groupName)) {
+			throw new Error(
+				`Group "${groupName}" cannot have the same name as a slot`
+			);
+		}
+
+		if (groupSlots.length === 0) {
+			throw new Error(`Group "${groupName}" must define at least one slot`);
+		}
+
+		for (const slot of groupSlots) {
+			if (!slotKeys.has(slot)) {
+				throw new Error(
+					`Group "${groupName}" references unknown slot "${slot}"`
+				);
+			}
+		}
+
+		result.set(groupName, groupSlots);
 	}
 
-	for (const slot of compoundSlots) {
-		if (!slotKeys.has(slot)) {
-			throw new Error(`Compound slot references unknown slot "${slot}"`);
+	return result;
+};
+
+// Flattens a list of slot names and group names into the slot names it covers,
+// keeping the first occurrence of a slot reached through more than one name
+const expandSlotTargets = (
+	targets: readonly string[],
+	groups: CompiledGroups,
+	slotKeys: ReadonlySet<string>,
+	label: 'Compound slot' | 'Multi slot'
+): readonly string[] => {
+
+	const result = new Set<string>();
+
+	for (const target of targets) {
+
+		const groupSlots = groups.get(target);
+
+		if (groupSlots !== undefined) {
+			for (const slot of groupSlots) {
+				result.add(slot);
+			}
+			continue;
 		}
+
+		if (!slotKeys.has(target)) {
+			throw new Error(`${label} references unknown slot "${target}"`);
+		}
+
+		result.add(target);
+	}
+
+	return [...result];
+};
+
+const assertNonEmptyCompoundSlots = (compoundSlots: readonly string[]) => {
+	if (compoundSlots.length === 0) {
+		throw new Error('Compound slot must define at least one slot');
 	}
 };
 
@@ -1008,11 +1133,11 @@ const hasOnlySlotKeys = (
 	value:
 		| Record<string, unknown>
 		| Partial<Record<SlotKey<Slots>, ClassValue>>,
-	slotKeys: ReadonlySet<string>
+	targetKeys: ReadonlySet<string>
 ): boolean => {
 
 	for (const key of keys(value)) {
-		if (!slotKeys.has(key)) {
+		if (!targetKeys.has(key)) {
 			return false;
 		}
 	}
@@ -1022,23 +1147,51 @@ const hasOnlySlotKeys = (
 
 const isSlotObjectValue = <T>(
 	value: SlotValue<Slots, T>,
-	slotKeys: ReadonlySet<string>
+	targetKeys: ReadonlySet<string>
 ): value is Partial<Record<string, T>> =>
 	value !== null &&
 	typeof value === 'object' &&
 	!isArray(value) &&
-	hasOnlySlotKeys(value, slotKeys);
+	hasOnlySlotKeys(value, targetKeys);
+
+// Pushes a per-slot object onto its slots. Group entries are applied before
+// slot entries, so a class written for a single slot always lands after the
+// one its group contributes, no matter the order the keys were written in.
+const pushSlotObjectValue = (
+	slotClasses: SlotClasses,
+	value: Record<string, ConfigClassValue>,
+	groups: CompiledGroups
+) => {
+
+	if (groups.size > 0) {
+		for (const [targetKey, targetValue] of entries(value)) {
+
+			const groupSlots = groups.get(targetKey);
+
+			if (groupSlots !== undefined) {
+				for (const slotKey of groupSlots) {
+					slotClasses[slotKey]?.push(targetValue);
+				}
+			}
+		}
+	}
+
+	for (const [targetKey, targetValue] of entries(value)) {
+		if (!groups.has(targetKey)) {
+			slotClasses[targetKey]?.push(targetValue);
+		}
+	}
+};
 
 const applyValueToSlotClasses = (
 	slotClasses: SlotClasses,
 	value: NormalizedVariantValue,
-	slotKeys: ReadonlySet<string>
+	targetKeys: ReadonlySet<string>,
+	groups: CompiledGroups
 ) => {
 
-	if (isSlotObjectValue(value, slotKeys)) {
-		for (const [slotKey, slotValue] of entries(value)) {
-			slotClasses[slotKey]?.push(slotValue);
-		}
+	if (isSlotObjectValue(value, targetKeys)) {
+		pushSlotObjectValue(slotClasses, value, groups);
 		return;
 	}
 
@@ -1047,20 +1200,22 @@ const applyValueToSlotClasses = (
 
 const compileConfig = <
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>,
+	V extends MaybeVariants<S, G>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V>,
-	MS extends MultiSlots<S>,
-	I extends boolean
+	P extends MaybePresets<S, V, G>,
+	MS extends MultiSlots<S, G>,
+	I extends boolean,
+	G extends MaybeGroups<S>
 >(
 	baseArgs: ClassValue[],
-	config: Config<S, V, RV, P, MS, I>
+	config: Config<S, V, RV, P, MS, I, G>
 ): CompiledConfig => {
 
 	const {
 		base: configBase,
 		variants = {},
 		slots = {},
+		groups = {},
 		compoundVariants = [],
 		compoundSlots = [],
 		defaultVariants = {},
@@ -1082,9 +1237,21 @@ const compileConfig = <
 	const { cache, cacheReturn } = createCache(cacheSize);
 	const slotEntries = entries(normalizedSlots);
 	const slotKeys: ReadonlySet<string> = new Set(keys(normalizedSlots));
-	const normalizedVariants = createNormalizedVariants(variants, slotKeys);
+	const resolvedGroups = resolveGroups(groups, slotKeys);
+
+	const targetKeys: ReadonlySet<string> = new Set([
+		...slotKeys,
+		...resolvedGroups.keys()
+	]);
+
+	const normalizedVariants = createNormalizedVariants(variants, targetKeys);
 	const variantData = createVariantData(normalizedVariants);
-	const resolvedMultiSlots = resolveMultiSlots(multiSlots, slotKeys);
+
+	const resolvedMultiSlots = resolveMultiSlots(
+		multiSlots,
+		resolvedGroups,
+		slotKeys
+	);
 
 	const resolvedRequiredVariants = resolveRequiredVariants(
 		requiredVariants,
@@ -1113,7 +1280,7 @@ const compileConfig = <
 
 	const compiledCompoundSlots = compoundSlots.map(
 		(compound): CompiledCompoundSlot => {
-			assertKnownCompoundSlots(compound.slots, slotKeys);
+			assertNonEmptyCompoundSlots(compound.slots);
 			return {
 				classValue: requireCompoundClassValue(compound, 'slot'),
 				matchers: compileCompoundMatchers(
@@ -1121,7 +1288,12 @@ const compileConfig = <
 					normalizedVariants,
 					presets
 				),
-				slots: compound.slots
+				slots: expandSlotTargets(
+					compound.slots,
+					resolvedGroups,
+					slotKeys,
+					'Compound slot'
+				)
 			};
 		}
 	);
@@ -1130,6 +1302,9 @@ const compileConfig = <
 		slots,
 		slotEntries,
 		slotKeys,
+		targetKeys,
+		originalGroups: groups,
+		groups: resolvedGroups,
 		originalVariants: variants,
 		normalizedVariants,
 		variantData,
@@ -1290,7 +1465,8 @@ const getVariantClasses = (
 
 const applyResolvedVariantClasses = (
 	variantData: readonly VariantData[],
-	slotKeys: ReadonlySet<string>,
+	targetKeys: ReadonlySet<string>,
+	groups: CompiledGroups,
 	slotClasses: SlotClasses,
 	resolvedProps: ResolvedVariantState
 ) => {
@@ -1306,7 +1482,12 @@ const applyResolvedVariantClasses = (
 		const variantClasses = getVariantClasses(key, variantProp, values);
 
 		if (variantClasses !== '') {
-			applyValueToSlotClasses(slotClasses, variantClasses, slotKeys);
+			applyValueToSlotClasses(
+				slotClasses,
+				variantClasses,
+				targetKeys,
+				groups
+			);
 		}
 	}
 };
@@ -1314,14 +1495,20 @@ const applyResolvedVariantClasses = (
 const applyCompoundClasses = (
 	compoundVariants: readonly CompiledCompoundVariant[],
 	compoundSlots: readonly CompiledCompoundSlot[],
-	slotKeys: ReadonlySet<string>,
+	targetKeys: ReadonlySet<string>,
+	groups: CompiledGroups,
 	slotClasses: SlotClasses,
 	resolvedProps: ResolvedVariantState
 ) => {
 
 	for (const compound of compoundVariants) {
 		if (matchesCompound(resolvedProps, compound.matchers)) {
-			applyValueToSlotClasses(slotClasses, compound.classValue, slotKeys);
+			applyValueToSlotClasses(
+				slotClasses,
+				compound.classValue,
+				targetKeys,
+				groups
+			);
 		}
 	}
 
@@ -1375,18 +1562,68 @@ const applyPostProcess = (
 	return result;
 };
 
+// Collects the values a per-slot object contributes to a single slot: every
+// group holding that slot first, then the slot's own entry
+const collectSlotValues = (
+	value: Partial<Record<string, ClassValue>>,
+	slotKey: string,
+	groups: CompiledGroups
+): ClassValue[] => {
+
+	const result: ClassValue[] = [];
+
+	for (const [targetKey, targetValue] of entries(value)) {
+		if (groups.get(targetKey)?.includes(slotKey)) {
+			result.push(targetValue);
+		}
+	}
+
+	result.push(value[slotKey]);
+
+	return result;
+};
+
+// Merges a per-slot object into an already computed slot map. Group entries
+// are merged before slot entries, so a slot's own class always lands after the
+// ones its groups contribute.
+const mergeSlotObjectIntoResult = (
+	baseResult: Record<string, string>,
+	classProp: Partial<Record<string, ClassValue>>,
+	groups: CompiledGroups
+): Record<string, string> => {
+
+	const result: Record<string, string> = { ...baseResult };
+
+	if (groups.size > 0) {
+		for (const [targetKey, targetValue] of entries(classProp)) {
+			for (const slotKey of groups.get(targetKey) ?? noSlots) {
+				result[slotKey] = cn(result[slotKey], targetValue);
+			}
+		}
+	}
+
+	for (const [targetKey, targetValue] of entries(classProp)) {
+		if (!groups.has(targetKey)) {
+			result[targetKey] = cn(result[targetKey], targetValue);
+		}
+	}
+
+	return result;
+};
+
 const mergeClassPropIntoResult = (
-	slotKeys: ReadonlySet<string>,
+	targetKeys: ReadonlySet<string>,
+	groups: CompiledGroups,
 	baseResult: CacheValue,
 	classProp: RuntimeClassValue
 ): CacheValue => {
 
-	const classPropIsSlotObject = isSlotObjectValue(classProp, slotKeys);
+	const classPropIsSlotObject = isSlotObjectValue(classProp, targetKeys);
 
 	if (typeof baseResult === 'string') {
 
 		if (classPropIsSlotObject) {
-			return cn(baseResult, classProp.base);
+			return cn(baseResult, collectSlotValues(classProp, 'base', groups));
 		}
 
 		return cn(baseResult, classProp);
@@ -1399,13 +1636,7 @@ const mergeClassPropIntoResult = (
 		};
 	}
 
-	const result: Record<string, string> = { ...baseResult };
-
-	for (const [slotKey, slotValue] of entries(classProp)) {
-		result[slotKey] = cn(baseResult[slotKey], slotValue);
-	}
-
-	return result;
+	return mergeSlotObjectIntoResult(baseResult, classProp, groups);
 };
 
 const buildCacheEntry = (
@@ -1418,6 +1649,8 @@ const buildCacheEntry = (
 		requiredVariants,
 		slotEntries,
 		slotKeys,
+		targetKeys,
+		groups,
 		variantData,
 		compoundVariants,
 		compoundSlots,
@@ -1435,7 +1668,8 @@ const buildCacheEntry = (
 
 	applyResolvedVariantClasses(
 		variantData,
-		slotKeys,
+		targetKeys,
+		groups,
 		slotClasses,
 		resolvedProps
 	);
@@ -1443,7 +1677,8 @@ const buildCacheEntry = (
 	applyCompoundClasses(
 		compoundVariants,
 		compoundSlots,
-		slotKeys,
+		targetKeys,
+		groups,
 		slotClasses,
 		resolvedProps
 	);
@@ -1465,7 +1700,8 @@ const runVariant = (
 		defaultVariants,
 		cache,
 		postProcess,
-		slotKeys
+		targetKeys,
+		groups
 	} = config;
 
 	const classProp = props.class ?? props.className;
@@ -1498,12 +1734,12 @@ const runVariant = (
 
 	return applyPostProcess(
 		postProcess,
-		mergeClassPropIntoResult(slotKeys, entry.raw, classProp)
+		mergeClassPropIntoResult(targetKeys, groups, entry.raw, classProp)
 	);
 };
 
 const mergeMultiSlotClass = (
-	slotKeys: ReadonlySet<string>,
+	targetKeys: ReadonlySet<string>,
 	outerClass: RuntimeClassValue | undefined,
 	innerClass: RuntimeClassValue,
 	slotKey: string
@@ -1511,7 +1747,7 @@ const mergeMultiSlotClass = (
 
 	const merged: Record<string, ClassValue> = {};
 
-	if (outerClass !== undefined && isSlotObjectValue(outerClass, slotKeys)) {
+	if (outerClass !== undefined && isSlotObjectValue(outerClass, targetKeys)) {
 		assign(merged, outerClass);
 	} else {
 		merged.base = outerClass;
@@ -1534,7 +1770,7 @@ const buildSlotFn =
 		// A defined inner class takes precedence over the spread `className`
 		if (innerClass !== undefined) {
 			mergedProps.class = mergeMultiSlotClass(
-				config.slotKeys,
+				config.targetKeys,
 				outerClass,
 				innerClass,
 				slotKey
@@ -1642,6 +1878,8 @@ const createVariantFn = (config: CompiledConfig) => {
 		variantKeys: keys(config.normalizedVariants),
 		slots: config.slots,
 		slotKeys: [...config.slotKeys],
+		groups: config.originalGroups,
+		groupKeys: [...config.groups.keys()],
 		defaultVariants: config.defaultVariants,
 		requiredVariants: config.requiredVariants,
 		multiSlots: [...config.multiSlots],

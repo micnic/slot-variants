@@ -31,6 +31,7 @@ export const DOCS_URL = 'https://github.com/micnic/slot-variants#rules';
 export const CONFIG_KEY_ORDER: readonly string[] = [
 	'base',
 	'slots',
+	'groups',
 	'multiSlots',
 	'variants',
 	'presets',
@@ -2961,8 +2962,15 @@ const analyzeVariantSharedTokens = (
 	);
 };
 
+// Every name a per-slot object may be keyed by: the declared slots plus the
+// group names that stand for them, mirroring how `sv()` reads those objects.
+// `base` is dropped since it is keyable without being declared.
 const getConfigSlotNames = (config: ReadonlyMap<string, Node>): Set<string> => {
 	const slotNames = new Set(getProperties(config.get('slots')).keys());
+
+	for (const groupName of getProperties(config.get('groups')).keys()) {
+		slotNames.add(groupName);
+	}
 
 	slotNames.delete('base');
 
@@ -3260,7 +3268,8 @@ export const analyzeSharedTokens = (
 		if (slot !== 'base') {
 			const slotNode = slotProperties.get(slot);
 
-			/* c8 ignore next 3 -- a slot name only reaches here from the `slots` record it was read from */
+			// A group name has no `slots` entry of its own to lift the token
+			// into, so the finding is reported without a fix
 			if (!slotNode) {
 				return null;
 			}
@@ -3673,6 +3682,7 @@ const svEmptyConfigValueCheckers: Record<string, EmptyConfigChecker> = {
 		visitForEmptyClasses(context, node, false, remove);
 	},
 	slots: checkSlotsForEmpty,
+	groups: checkEmptyConfigContainer('groups'),
 	variants: checkVariantsForEmpty,
 	compoundVariants: checkCompoundsForEmpty,
 	compoundSlots: checkCompoundsForEmpty,

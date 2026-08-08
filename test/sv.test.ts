@@ -5793,3 +5793,459 @@ void _assertBodyIsString;
 void _assertHeaderReturn;
 void _multiSlotAllFn;
 void _assertMultiSlotAll;
+// =============================================================================
+// sv() - groups
+// =============================================================================
+
+t.test('group applies variant classes to every slot it names', (t) => {
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold',
+			body: 'py-4',
+			footer: 'text-xs'
+		},
+		groups: {
+			content: ['header', 'body']
+		},
+		variants: {
+			size: {
+				sm: { content: 'text-sm' },
+				lg: { content: 'text-lg', footer: 'text-sm' }
+			}
+		}
+	});
+
+	t.strictSame(
+		card({ size: 'sm' }),
+		{
+			base: 'border',
+			header: 'font-bold text-sm',
+			body: 'py-4 text-sm',
+			footer: 'text-xs'
+		},
+		'group value reaches both of its slots'
+	);
+
+	t.strictSame(
+		card({ size: 'lg' }),
+		{
+			base: 'border',
+			header: 'font-bold text-lg',
+			body: 'py-4 text-lg',
+			footer: 'text-xs text-sm'
+		},
+		'group and slot keys coexist in one value'
+	);
+
+	t.end();
+});
+
+t.test('group can name the base slot', (t) => {
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold'
+		},
+		groups: {
+			outer: ['base', 'header']
+		},
+		variants: {
+			bordered: { outer: 'border-2' }
+		}
+	});
+
+	t.strictSame(
+		card({ bordered: true }),
+		{ base: 'border border-2', header: 'font-bold border-2' },
+		'base is a valid group member'
+	);
+
+	t.end();
+});
+
+t.test('group classes apply before slot classes', (t) => {
+	const card = sv({
+		slots: {
+			header: 'a',
+			body: 'b'
+		},
+		groups: {
+			content: ['header', 'body']
+		},
+		variants: {
+			size: {
+				lg: { header: 'slot', content: 'group' }
+			}
+		}
+	});
+
+	t.strictSame(
+		card({ size: 'lg' }),
+		{ base: '', header: 'a group slot', body: 'b group' },
+		'the group wins the earlier position even when written last'
+	);
+
+	t.end();
+});
+
+t.test('compoundVariants class object accepts a group name', (t) => {
+	const card = sv({
+		slots: {
+			header: 'h',
+			body: 'b',
+			footer: 'f'
+		},
+		groups: {
+			content: ['header', 'body']
+		},
+		variants: {
+			size: { sm: '', lg: '' },
+			tone: { loud: '', quiet: '' }
+		},
+		compoundVariants: [
+			{
+				size: 'lg',
+				tone: 'loud',
+				class: { content: 'font-bold' }
+			}
+		]
+	});
+
+	t.strictSame(
+		card({ size: 'lg', tone: 'loud' }),
+		{ base: '', header: 'h font-bold', body: 'b font-bold', footer: 'f' },
+		'compound variant class expands the group'
+	);
+
+	t.strictSame(
+		card({ size: 'sm', tone: 'loud' }),
+		{ base: '', header: 'h', body: 'b', footer: 'f' },
+		'unmatched compound variant applies nothing'
+	);
+
+	t.end();
+});
+
+t.test('compoundSlots accepts group names mixed with slot names', (t) => {
+	const card = sv({
+		slots: {
+			header: 'h',
+			body: 'b',
+			footer: 'f'
+		},
+		groups: {
+			content: ['header', 'body']
+		},
+		variants: {
+			size: { lg: '' }
+		},
+		compoundSlots: [
+			{
+				slots: ['content', 'footer'],
+				size: 'lg',
+				class: 'px-6'
+			},
+			{
+				slots: ['content', 'header'],
+				size: 'lg',
+				class: 'gap-2'
+			}
+		]
+	});
+
+	t.strictSame(
+		card({ size: 'lg' }),
+		{
+			base: '',
+			header: 'h px-6 gap-2',
+			body: 'b px-6 gap-2',
+			footer: 'f px-6'
+		},
+		'a slot reached twice through one entry gets the class once'
+	);
+
+	t.end();
+});
+
+t.test('runtime class prop accepts a group name', (t) => {
+	const card = sv({
+		slots: {
+			header: 'h',
+			body: 'b',
+			footer: 'f'
+		},
+		groups: {
+			content: ['header', 'body']
+		}
+	});
+
+	t.strictSame(
+		card({ class: { content: 'px-2' } }),
+		{ base: '', header: 'h px-2', body: 'b px-2', footer: 'f' },
+		'group class prop reaches both slots'
+	);
+
+	t.strictSame(
+		card({ className: { content: 'px-2', header: 'px-4' } }),
+		{ base: '', header: 'h px-2 px-4', body: 'b px-2', footer: 'f' },
+		'slot class prop merges after its group'
+	);
+
+	t.end();
+});
+
+t.test('group class prop works without slots', (t) => {
+	const button = sv('btn', {
+		groups: {
+			everything: ['base']
+		}
+	});
+
+	t.equal(
+		button({ class: { everything: 'px-2' } }),
+		'btn px-2',
+		'group reaching base merges into the string result'
+	);
+
+	t.end();
+});
+
+t.test('multiSlots accepts a group name', (t) => {
+	const card = sv({
+		slots: {
+			header: 'h',
+			body: 'b',
+			footer: 'f'
+		},
+		groups: {
+			content: ['header', 'body']
+		},
+		multiSlots: ['content'],
+		variants: {
+			size: { lg: { content: 'text-lg' } }
+		}
+	});
+
+	const { header, body, footer } = card();
+
+	t.equal(typeof footer, 'string', 'slot outside the group stays a string');
+	t.equal(header({ size: 'lg' }), 'h text-lg', 'group member is a function');
+	t.equal(body({ size: 'lg' }), 'b text-lg', 'every group member is a function');
+
+	t.end();
+});
+
+t.test('multiSlots group function merges an outer group class', (t) => {
+	const card = sv({
+		slots: {
+			header: 'h',
+			body: 'b'
+		},
+		groups: {
+			content: ['header', 'body']
+		},
+		multiSlots: ['content']
+	});
+
+	const { header } = card({ class: { content: 'px-2' } });
+
+	t.equal(
+		header({ class: 'px-4' }),
+		'h px-2 px-4',
+		'inner class merges after the outer group class'
+	);
+
+	t.end();
+});
+
+t.test('introspection exposes groups', (t) => {
+	const card = sv({
+		slots: {
+			header: 'h',
+			body: 'b'
+		},
+		groups: {
+			content: ['header', 'body']
+		},
+		introspection: true
+	});
+
+	t.strictSame(card.groups, { content: ['header', 'body'] }, 'groups config');
+	t.strictSame(card.groupKeys, ['content'], 'group names');
+	t.strictSame(card.slotKeys, ['base', 'header', 'body'], 'groups are not slots');
+
+	t.end();
+});
+
+t.test('group named after a slot throws', (t) => {
+	t.throws(
+		() =>
+			sv({
+				slots: { header: 'h' },
+				groups: { header: ['header'] }
+			}),
+		{ message: 'Group "header" cannot have the same name as a slot' }
+	);
+
+	t.throws(
+		() =>
+			sv({
+				slots: { header: 'h' },
+				groups: { base: ['header'] }
+			}),
+		{ message: 'Group "base" cannot have the same name as a slot' }
+	);
+
+	t.end();
+});
+
+t.test('empty group throws', (t) => {
+	t.throws(
+		() =>
+			sv({
+				slots: { header: 'h' },
+				groups: { content: [] }
+			}),
+		{ message: 'Group "content" must define at least one slot' }
+	);
+
+	t.end();
+});
+
+t.test('group with unknown slot throws', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error unknown slot name not assignable
+			sv({
+				slots: { header: 'h' },
+				groups: { content: ['header', 'footer'] }
+			}),
+		{ message: 'Group "content" references unknown slot "footer"' }
+	);
+
+	t.end();
+});
+
+t.test('group cannot reference another group', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error group name is not a slot name
+			sv({
+				slots: { header: 'h', body: 'b', footer: 'f' },
+				groups: {
+					content: ['header', 'body'],
+					all: ['content', 'footer']
+				}
+			}),
+		{ message: 'Group "all" references unknown slot "content"' }
+	);
+
+	t.end();
+});
+
+t.test('compoundSlots with unknown target throws', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error unknown target name not assignable
+			sv({
+				slots: { header: 'h' },
+				groups: { content: ['header'] },
+				compoundSlots: [{ slots: ['missing'], class: 'px-4' }]
+			}),
+		{ message: 'Compound slot references unknown slot "missing"' }
+	);
+
+	t.end();
+});
+
+t.test('multiSlots with unknown target throws', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error unknown target name not assignable
+			sv({
+				slots: { header: 'h' },
+				groups: { content: ['header'] },
+				multiSlots: ['missing']
+			}),
+		{ message: 'Multi slot references unknown slot "missing"' }
+	);
+
+	t.end();
+});
+
+// --- groups type tests ---
+
+const _groupsFn = sv({
+	slots: {
+		header: 'h',
+		body: 'b',
+		footer: 'f'
+	},
+	groups: {
+		content: ['header', 'body']
+	},
+	multiSlots: ['content'],
+	variants: {
+		size: { sm: { content: 'text-sm' }, lg: { content: 'text-lg' } }
+	},
+	introspection: true
+});
+
+type GroupsReturn = ReturnType<typeof _groupsFn>;
+
+// A group name never becomes a key of the result
+type AssertNoGroupKey = 'content' extends keyof GroupsReturn ? true : false;
+const _assertNoGroupKey: AssertNoGroupKey = false;
+
+// Every slot of a multiSlots group becomes a function
+type AssertGroupHeaderIsFn = GroupsReturn['header'] extends (
+	...args: never[]
+) => unknown
+	? true
+	: false;
+const _assertGroupHeaderIsFn: AssertGroupHeaderIsFn = true;
+
+type AssertGroupBodyIsFn = GroupsReturn['body'] extends (
+	...args: never[]
+) => unknown
+	? true
+	: false;
+const _assertGroupBodyIsFn: AssertGroupBodyIsFn = true;
+
+type AssertGroupFooterIsString = GroupsReturn['footer'] extends string
+	? true
+	: false;
+const _assertGroupFooterIsString: AssertGroupFooterIsString = true;
+
+// A variant whose values are keyed only by group names stays a value union
+type GroupSizeProp = VariantValue<typeof _groupsFn, 'size'>;
+type AssertGroupSizeProp = GroupSizeProp extends 'sm' | 'lg' ? true : false;
+const _assertGroupSizeProp: AssertGroupSizeProp = true;
+
+// A variant whose only value is a group object is a boolean shorthand
+const _groupShorthandFn = sv({
+	slots: { header: 'h', body: 'b' },
+	groups: { content: ['header', 'body'] },
+	variants: {
+		bordered: { content: 'border' }
+	}
+});
+
+type AssertGroupShorthand = VariantValue<
+	typeof _groupShorthandFn,
+	'bordered'
+> extends boolean
+	? true
+	: false;
+const _assertGroupShorthand: AssertGroupShorthand = true;
+
+// The group name is accepted by the class prop
+_groupsFn({ class: { content: 'px-2' } });
+
+void _groupsFn;
+void _assertNoGroupKey;
+void _assertGroupHeaderIsFn;
+void _assertGroupBodyIsFn;
+void _assertGroupFooterIsString;
+void _assertGroupSizeProp;
+void _groupShorthandFn;
+void _assertGroupShorthand;

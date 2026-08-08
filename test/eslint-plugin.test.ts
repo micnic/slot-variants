@@ -1505,6 +1505,11 @@ const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyConfig', data: { key: 'presets' } }]
 	},
 	{
+		code: IMPORT + "sv({ base: 'flex', groups: {} });",
+		output: IMPORT + "sv({ base: 'flex' });",
+		errors: [{ messageId: 'emptyConfig', data: { key: 'groups' } }]
+	},
+	{
 		// As the only property there's nothing left to remove it from, so the
 		// finding stands without a fix.
 		code: IMPORT + 'sv({ defaultVariants: {} });',
@@ -4603,6 +4608,24 @@ const NO_SHARED_TOKENS_INVALID = [
 		errors: repeat(shared('rounded', 'size'), 2)
 	},
 	{
+		// Shared token under a group name — the group has no `slots` entry of
+		// its own to lift the token into, so it's reported without a fix.
+		code:
+			IMPORT +
+			`sv({
+				slots: { root: 'flex', body: 'p-4' },
+				groups: { content: ['root', 'body'] },
+				variants: {
+					size: {
+						sm: { content: 'rounded text-sm' },
+						lg: { content: 'rounded text-lg' }
+					}
+				},
+				defaultVariants: { size: 'sm' }
+			});`,
+		errors: repeat(shared('rounded', 'size', 'content'), 2)
+	},
+	{
 		// Shared token in a non-base slot — must be flagged for the actual
 		// slot, not base. The slot's target and every value are plain string
 		// literals, so the fix lifts the token into `slots.root` and strips
@@ -5154,7 +5177,7 @@ const SV_CONFIG_STYLE_ORDER_VALID = [
 	{
 		code:
 			IMPORT +
-			"sv({ base: 'flex', slots: { icon: 'w-4' }, multiSlots: true, variants: { size: { sm: 'text-sm' } }, presets: {}, compoundSlots: [], compoundVariants: [], defaultVariants: { size: 'sm' }, requiredVariants: { size: true }, cacheSize: 10, introspection: true, postProcess: (c) => c });"
+			"sv({ base: 'flex', slots: { icon: 'w-4' }, groups: { all: ['icon'] }, multiSlots: true, variants: { size: { sm: 'text-sm' } }, presets: {}, compoundSlots: [], compoundVariants: [], defaultVariants: { size: 'sm' }, requiredVariants: { size: true }, cacheSize: 10, introspection: true, postProcess: (c) => c });"
 	},
 	{
 		// Single property stays as-is.

@@ -547,6 +547,62 @@ card({ highlighted: true });
 // header: 'font-bold bg-blue-100'
 ```
 
+### Slot Groups
+
+A group is a name for a set of slots. Declare groups with the `groups` config, then use a group name anywhere a slot name is accepted — in variant and compound variant class objects, in `compoundSlots`, in `multiSlots`, and in the runtime `class`/`className` prop:
+
+```typescript
+const card = sv('border', {
+  slots: {
+    header: 'font-bold',
+    body: 'py-4',
+    footer: 'text-xs'
+  },
+  groups: {
+    content: ['header', 'body']
+  },
+  variants: {
+    size: {
+      sm: { content: 'text-sm' },
+      lg: { content: 'text-lg', footer: 'text-sm' }
+    }
+  }
+});
+
+const { base, header, body, footer } = card({ size: 'lg' });
+// base:   'border'
+// header: 'font-bold text-lg'
+// body:   'py-4 text-lg'
+// footer: 'text-xs text-sm'
+```
+
+Groups are a way to write one class value for several slots — they never become keys of the result, which always holds exactly `base` plus each declared slot.
+
+When the same object names both a group and one of its slots, the group's classes are applied first, so the slot-specific value always comes last and wins under [`tailwind-merge`](#post-processing), no matter which key was written first:
+
+```typescript
+const card = sv({
+  slots: {
+    header: 'h',
+    body: 'b'
+  },
+  groups: {
+    content: ['header', 'body']
+  },
+  variants: {
+    size: {
+      lg: { header: 'px-6', content: 'px-2' }
+    }
+  }
+});
+
+card({ size: 'lg' });
+// header: 'h px-2 px-6' — the group's class, then the slot's
+// body:   'b px-2'
+```
+
+A group holds slot names only — it cannot name another group. Group names must not collide with a slot name (including `base`), a group must list at least one slot, and every listed slot must exist; otherwise `sv()` throws when the config is evaluated.
+
 ### Compound Slots
 
 Apply classes to multiple slots at once, optionally conditioned on variant values:
@@ -586,11 +642,11 @@ const result = dialog({ size: 'sm' });
 // actions: 'flex gap-2 px-6 text-sm'
 ```
 
-Compound slots support the same array matching and [`preset` matchers](#compound-variants) as compound variants.
+Compound slots support the same array matching and [`preset` matchers](#compound-variants) as compound variants. The `slots` array accepts [group names](#slot-groups) alongside slot names, and a slot reached through more than one name in the same entry still gets the class once.
 
 ### Multi Slots
 
-By default each slot in the result object is a plain class string. The `multiSlots` option turns the listed slots into reconfigurable functions instead. A slot function accepts variant prop overrides, a `preset` name when the config declares [presets](#presets), and a `class`/`className` override, and returns that slot's class string.
+By default each slot in the result object is a plain class string. The `multiSlots` option turns the listed slots into reconfigurable functions instead — the list accepts [group names](#slot-groups) as well, turning every slot of the group into a function. A slot function accepts variant prop overrides, a `preset` name when the config declares [presets](#presets), and a `class`/`className` override, and returns that slot's class string.
 
 This is designed for cases where a single slot is rendered multiple times with different props — for example a list of items where each item needs its own variant values:
 
@@ -688,6 +744,8 @@ card({ class: { base: 'shadow-xl', header: 'text-blue-700', body: 'min-h-24' } }
 // base: 'border shadow-xl', header: 'font-bold text-blue-700', body: 'py-4 min-h-24'
 ```
 
+A key of that object can also be a [group name](#slot-groups), targeting every slot of the group at once.
+
 Both `class` and `className` are supported, but `class` takes priority when both are passed at the same time.
 
 ### Post-Processing
@@ -770,6 +828,9 @@ const button = sv('btn', {
   slots: {
     icon: 'w-4 h-4'
   },
+  groups: {
+    all: ['base', 'icon']
+  },
   variants: {
     size: {
       sm: 'text-sm',
@@ -794,6 +855,8 @@ button.variantKeys;                 // ['size', 'intent']
 button.variants;                    // { size: { sm: 'text-sm', lg: 'text-lg' }, intent: { ... } }
 button.slotKeys;                    // ['base', 'icon']
 button.slots;                       // { icon: 'w-4 h-4' }
+button.groupKeys;                   // ['all']
+button.groups;                      // { all: ['base', 'icon'] }
 button.defaultVariants;             // { size: 'sm' }
 button.requiredVariants;            // ['intent']
 button.multiSlots;                  // [] (slot names exposed as functions)
@@ -810,7 +873,7 @@ Without `introspection: true`, only the variant function itself is returned — 
 
 ### Errors & Validation
 
-`sv()` validates both the config and the runtime props, throwing an `Error` on misconfiguration. Config problems (an unknown variant referenced by `requiredVariants`, `defaultVariants`, a preset, or a compound entry; a value that isn't one of the variant's defined values; a preset named after a variant; an unknown preset named by a compound entry; a compound or slot entry missing required fields) throw as soon as the config is evaluated. Runtime problems (a missing required variant, an invalid variant value, or an unknown preset name) throw when the variant function is called — these guard against untyped input, such as a value coming from a form or API, since TypeScript already prevents most of these at compile time.
+`sv()` validates both the config and the runtime props, throwing an `Error` on misconfiguration. Config problems (an unknown variant referenced by `requiredVariants`, `defaultVariants`, a preset, or a compound entry; a value that isn't one of the variant's defined values; a preset named after a variant; an unknown preset named by a compound entry; a group named after a slot, left empty, or naming a slot that doesn't exist; a compound or slot entry missing required fields) throw as soon as the config is evaluated. Runtime problems (a missing required variant, an invalid variant value, or an unknown preset name) throw when the variant function is called — these guard against untyped input, such as a value coming from a form or API, since TypeScript already prevents most of these at compile time.
 
 ## TypeScript
 
@@ -911,6 +974,7 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 | `base` | `string \| string[]` | Additional base classes merged with the base argument and `slots.base` |
 | `variants` | `Record<string, Record<string \| number, string \| string[]>>` | Variant definitions mapping variant names to their possible values |
 | `slots` | `Record<string, string \| string[]>` | Named slot definitions for multi-element components |
+| `groups` | `Record<string, string[]>` | Named sets of slot names, usable anywhere a slot name is accepted |
 | `compoundVariants` | `Array` | Additional classes applied when multiple variant conditions match |
 | `compoundSlots` | `Array` | Classes applied to multiple slots based on variant conditions |
 | `defaultVariants` | `Object` | Default values for variants (static values or functions) |
@@ -1195,7 +1259,7 @@ Move the `sv()` call to a module-level `const` so it's compiled once and its cac
 
 #### `slot-variants/sv-config-style`
 
-Enforces a canonical `sv()`/`createSV()` config key order (`base`, `slots`, `multiSlots`, `variants`, `presets`, `compoundSlots`, `compoundVariants`, `defaultVariants`, `requiredVariants`, `cacheSize`, `introspection`, `postProcess`) and a single style for expressing base classes, selected via the `baseStyle` option (`'field'` by default):
+Enforces a canonical `sv()`/`createSV()` config key order (`base`, `slots`, `groups`, `multiSlots`, `variants`, `presets`, `compoundSlots`, `compoundVariants`, `defaultVariants`, `requiredVariants`, `cacheSize`, `introspection`, `postProcess`) and a single style for expressing base classes, selected via the `baseStyle` option (`'field'` by default):
 
 - `'field'` — a `base` field inside the config (tv-style)
 - `'separateArg'` — a leading class argument before the config object (cva-style)
