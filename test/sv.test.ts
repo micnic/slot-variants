@@ -2947,6 +2947,34 @@ t.test('function default resolves based on other props', (t) => {
 	t.end();
 });
 
+t.test('function default is evaluated once per call', (t) => {
+	let calls = 0;
+
+	const button = sv('rounded-lg', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			}
+		},
+		defaultVariants: {
+			size: () => {
+				calls++;
+
+				return 'sm' as const;
+			}
+		}
+	});
+
+	t.equal(button(), 'rounded-lg text-sm', 'function default applied');
+	t.equal(calls, 1, 'evaluated once while computing an uncached result');
+
+	t.equal(button(), 'rounded-lg text-sm', 'cached result matches');
+	t.equal(calls, 2, 'evaluated once more while reading a cached result');
+
+	t.end();
+});
+
 t.test('function default returns undefined to skip variant', (t) => {
 	const button = createFunctionDefaultIntentButton();
 

@@ -23,6 +23,9 @@ type RuntimeVariantState = Record<
 
 type ResolvedVariantState = Record<string, RuntimeVariantValue | undefined>;
 
+/** Resolved variant values, positionally aligned with the compiled variants. */
+type ResolvedVariantValues = (RuntimeVariantValue | undefined)[];
+
 type RuntimeVariantMatcher =
 	| RuntimeVariantValue
 	| readonly RuntimeVariantValue[];
@@ -281,6 +284,8 @@ type CompiledConfig = {
 	normalizedVariants: NormalizedVariants;
 	variantData: readonly VariantData[];
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
+	/** Whether any default is a function, so resolving twice would call it twice. */
+	hasFunctionDefaults: boolean;
 	requiredVariants: readonly string[];
 	multiSlots: ReadonlySet<string>;
 	presets: Record<string, ResolvedVariantState>;
@@ -584,7 +589,20 @@ export type SlotClassProps<T extends AnyFn> =
 			>;
 
 const { isArray } = Array;
-const { assign, entries, hasOwn, keys } = Object;
+const { assign, entries, hasOwn, keys, values } = Object;
+
+const hasFunctionDefault = (
+	defaultVariants: Record<string, RuntimeDefaultVariant>
+): boolean => {
+
+	for (const value of values(defaultVariants)) {
+		if (typeof value === 'function') {
+			return true;
+		}
+	}
+
+	return false;
+};
 
 /**
  * Number of variant results retained by an `sv()` function when `cacheSize` is
@@ -616,9 +634,6 @@ const createInvalidCompoundMatcherValueError = (
 
 const noopCacheReturn = (_cacheKey: string, value: CacheEntry): CacheEntry =>
 	value;
-
-/** Stands in for a missing group's slots, so lookups don't allocate. */
-const noSlots: readonly string[] = [];
 
 const createCache = (
 	cacheSize: number
@@ -1156,30 +1171,40 @@ const isSlotObjectValue = <T>(
 
 // Pushes a per-slot object onto its slots. Group entries are applied before
 // slot entries, so a class written for a single slot always lands after the
-// one its group contributes, no matter the order the keys were written in.
+// one its group contributes, no matter the order the keys were written in. The
+// slot keys are deferred in a single pass rather than re-walked afterwards.
 const pushSlotObjectValue = (
 	slotClasses: SlotClasses,
 	value: Record<string, ConfigClassValue>,
 	groups: CompiledGroups
 ) => {
 
-	if (groups.size > 0) {
+	if (groups.size === 0) {
 		for (const [targetKey, targetValue] of entries(value)) {
+			slotClasses[targetKey]?.push(targetValue);
+		}
 
-			const groupSlots = groups.get(targetKey);
+		return;
+	}
 
-			if (groupSlots !== undefined) {
-				for (const slotKey of groupSlots) {
-					slotClasses[slotKey]?.push(targetValue);
-				}
-			}
+	const slotTargets: string[] = [];
+
+	for (const [targetKey, targetValue] of entries(value)) {
+
+		const groupSlots = groups.get(targetKey);
+
+		if (groupSlots === undefined) {
+			slotTargets.push(targetKey);
+			continue;
+		}
+
+		for (const slotKey of groupSlots) {
+			slotClasses[slotKey]?.push(targetValue);
 		}
 	}
 
-	for (const [targetKey, targetValue] of entries(value)) {
-		if (!groups.has(targetKey)) {
-			slotClasses[targetKey]?.push(targetValue);
-		}
+	for (const targetKey of slotTargets) {
+		slotClasses[targetKey]?.push(value[targetKey]);
 	}
 };
 
@@ -1309,6 +1334,7 @@ const compileConfig = <
 		normalizedVariants,
 		variantData,
 		defaultVariants,
+		hasFunctionDefaults: hasFunctionDefault(defaultVariants),
 		requiredVariants: resolvedRequiredVariants,
 		multiSlots: resolvedMultiSlots,
 		presets,
@@ -1373,11 +1399,18 @@ const resolveVariantValue = (
 	return defaultValue;
 };
 
+// Builds the cache key from the resolved value of every variant. A `values`
+// array records those values positionally, so a cache miss can build its state
+// without resolving a second time. It is only passed for configs holding a
+// function default, where resolving twice would call that function twice;
+// every other config resolves through plain lookups worth less than the
+// allocation, on a path taken by every call.
 const buildCacheKey = (
 	variantData: readonly VariantData[],
 	defaultVariants: Record<string, RuntimeDefaultVariant>,
 	props: RuntimeProps,
-	presetValues: ResolvedVariantState | undefined
+	presetValues: ResolvedVariantState | undefined,
+	values: ResolvedVariantValues | undefined
 ): string => {
 
 	let cacheKey = '';
@@ -1390,6 +1423,8 @@ const buildCacheKey = (
 			props,
 			presetValues
 		);
+
+		values?.push(value);
 
 		if (value === undefined) {
 			cacheKey += '.';
@@ -1425,6 +1460,29 @@ const resolveVariantState = (
 			props,
 			presetValues
 		);
+
+		if (value !== undefined) {
+			resolvedProps[key] = value;
+		}
+	}
+
+	return resolvedProps;
+};
+
+const toVariantState = (
+	variantData: readonly VariantData[],
+	values: ResolvedVariantValues
+): ResolvedVariantState => {
+
+	const resolvedProps: ResolvedVariantState = {};
+
+	let index = 0;
+
+	for (const { key } of variantData) {
+
+		const value = values[index];
+
+		index++;
 
 		if (value !== undefined) {
 			resolvedProps[key] = value;
@@ -1585,7 +1643,8 @@ const collectSlotValues = (
 
 // Merges a per-slot object into an already computed slot map. Group entries
 // are merged before slot entries, so a slot's own class always lands after the
-// ones its groups contribute.
+// ones its groups contribute. The slot keys are deferred in a single pass
+// rather than re-walked afterwards.
 const mergeSlotObjectIntoResult = (
 	baseResult: Record<string, string>,
 	classProp: Partial<Record<string, ClassValue>>,
@@ -1594,18 +1653,32 @@ const mergeSlotObjectIntoResult = (
 
 	const result: Record<string, string> = { ...baseResult };
 
-	if (groups.size > 0) {
+	if (groups.size === 0) {
 		for (const [targetKey, targetValue] of entries(classProp)) {
-			for (const slotKey of groups.get(targetKey) ?? noSlots) {
-				result[slotKey] = cn(result[slotKey], targetValue);
-			}
+			result[targetKey] = cn(result[targetKey], targetValue);
+		}
+
+		return result;
+	}
+
+	const slotTargets: string[] = [];
+
+	for (const [targetKey, targetValue] of entries(classProp)) {
+
+		const groupSlots = groups.get(targetKey);
+
+		if (groupSlots === undefined) {
+			slotTargets.push(targetKey);
+			continue;
+		}
+
+		for (const slotKey of groupSlots) {
+			result[slotKey] = cn(result[slotKey], targetValue);
 		}
 	}
 
-	for (const [targetKey, targetValue] of entries(classProp)) {
-		if (!groups.has(targetKey)) {
-			result[targetKey] = cn(result[targetKey], targetValue);
-		}
+	for (const targetKey of slotTargets) {
+		result[targetKey] = cn(result[targetKey], classProp[targetKey]);
 	}
 
 	return result;
@@ -1698,6 +1771,7 @@ const runVariant = (
 		presets,
 		variantData,
 		defaultVariants,
+		hasFunctionDefaults,
 		cache,
 		postProcess,
 		targetKeys,
@@ -1707,23 +1781,38 @@ const runVariant = (
 	const classProp = props.class ?? props.className;
 	const presetValues = resolvePresetValues(presets, props.preset);
 
+	let resolvedValues: ResolvedVariantValues | undefined;
+
+	// Function defaults are resolved once, their values kept for the miss path
+	// below rather than resolved a second time
+	if (hasFunctionDefaults) {
+		resolvedValues = [];
+	}
+
 	const cacheKey = buildCacheKey(
 		variantData,
 		defaultVariants,
 		props,
-		presetValues
+		presetValues,
+		resolvedValues
 	);
 
 	let entry = cache.get(cacheKey);
 
 	if (entry === undefined) {
 
-		const resolvedProps = resolveVariantState(
-			variantData,
-			defaultVariants,
-			props,
-			presetValues
-		);
+		let resolvedProps: ResolvedVariantState;
+
+		if (resolvedValues === undefined) {
+			resolvedProps = resolveVariantState(
+				variantData,
+				defaultVariants,
+				props,
+				presetValues
+			);
+		} else {
+			resolvedProps = toVariantState(variantData, resolvedValues);
+		}
 
 		entry = buildCacheEntry(config, cacheKey, resolvedProps);
 	}
