@@ -332,6 +332,53 @@ compoundVariants: [
 
 `className` is accepted as an alternative to `class`.
 
+When the config declares [presets](#presets), a compound entry can name one instead of restating the variant values it stands for:
+
+```typescript
+const button = sv('btn', {
+  variants: {
+    intent: {
+      primary: 'bg-blue-500',
+      secondary: 'bg-gray-200'
+    },
+    size: {
+      sm: 'text-sm',
+      lg: 'text-lg'
+    }
+  },
+  presets: {
+    cta: { intent: 'primary', size: 'lg' }
+  },
+  compoundVariants: [
+    {
+      preset: 'cta',
+      class: 'uppercase font-bold'
+    }
+  ]
+});
+
+button({ preset: 'cta' });
+// 'btn bg-blue-500 text-lg uppercase font-bold'
+
+button({ intent: 'primary', size: 'lg' });
+// 'btn bg-blue-500 text-lg uppercase font-bold'
+```
+
+The name expands to the preset's variant values when the config is evaluated, so the entry matches those values however they were reached — passing the preset is not required. Conditions written alongside `preset` override the values it contributes, mirroring how an explicit prop overrides a preset value at call time:
+
+```typescript
+compoundVariants: [
+  {
+    preset: 'cta',
+    size: 'sm',
+    class: 'tracking-tight'
+  }
+]
+// matches intent: 'primary' with size: 'sm'
+```
+
+An unknown preset name is rejected by TypeScript and throws when the config is evaluated.
+
 ### Required Variants
 
 Mark variants as required so they must be provided at call time. Required variants cannot have default values:
@@ -405,6 +452,8 @@ button({ preset: 'cta', size: 'sm' });
 Presets can satisfy required variants at runtime. Passing `null` for a variant prop overrides the preset's value for that variant too, skipping it entirely. An invalid preset name throws an error.
 
 A preset name must not match a variant name — such a config is rejected by TypeScript and throws when the config is evaluated.
+
+A preset name can also stand in for its variant values inside a [compound variant](#compound-variants) or compound slot matcher.
 
 ### Slots
 
@@ -537,7 +586,7 @@ const result = dialog({ size: 'sm' });
 // actions: 'flex gap-2 px-6 text-sm'
 ```
 
-Compound slots support the same array matching as compound variants.
+Compound slots support the same array matching and [`preset` matchers](#compound-variants) as compound variants.
 
 ### Multi Slots
 
@@ -761,7 +810,7 @@ Without `introspection: true`, only the variant function itself is returned — 
 
 ### Errors & Validation
 
-`sv()` validates both the config and the runtime props, throwing an `Error` on misconfiguration. Config problems (an unknown variant referenced by `requiredVariants`, `defaultVariants`, a preset, or a compound entry; a value that isn't one of the variant's defined values; a preset named after a variant; a compound or slot entry missing required fields) throw as soon as the config is evaluated. Runtime problems (a missing required variant, an invalid variant value, or an unknown preset name) throw when the variant function is called — these guard against untyped input, such as a value coming from a form or API, since TypeScript already prevents most of these at compile time.
+`sv()` validates both the config and the runtime props, throwing an `Error` on misconfiguration. Config problems (an unknown variant referenced by `requiredVariants`, `defaultVariants`, a preset, or a compound entry; a value that isn't one of the variant's defined values; a preset named after a variant; an unknown preset named by a compound entry; a compound or slot entry missing required fields) throw as soon as the config is evaluated. Runtime problems (a missing required variant, an invalid variant value, or an unknown preset name) throw when the variant function is called — these guard against untyped input, such as a value coming from a form or API, since TypeScript already prevents most of these at compile time.
 
 ## TypeScript
 

@@ -84,6 +84,12 @@ type CompoundMatcher = {
 	expected: RuntimeVariantMatcher;
 };
 
+// A compound entry as the compiler reads it: arbitrary matcher keys, with
+// `preset` pinned to a string so its name can be looked up without a cast
+type CompoundEntry = Record<string, unknown> & {
+	preset?: string | undefined;
+};
+
 type CompiledCompoundSlot = {
 	matchers: readonly CompoundMatcher[];
 	classValue: ConfigClassValue;
@@ -135,18 +141,33 @@ type VariantConditions<S extends MaybeSlots, V extends MaybeVariants<S>> = {
 		| undefined;
 };
 
+// A compound entry may name a preset instead of restating the variant values
+// it stands for. The name is expanded into matchers when the config compiles,
+// so it is sugar over those values rather than a match on the `preset` prop.
+// With no `presets` config, `keyof P & string` is `never`, which makes the key
+// unwritable.
+type CompoundConditions<
+	S extends MaybeSlots,
+	V extends MaybeVariants<S>,
+	P extends MaybePresets<S, V>
+> = VariantConditions<S, V> & {
+	preset?: (keyof P & string) | undefined;
+};
+
 type CompoundVariants<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>
-> = readonly (VariantConditions<S, V> &
+	V extends MaybeVariants<S>,
+	P extends MaybePresets<S, V>
+> = readonly (CompoundConditions<S, V, P> &
 	EitherClassProp<SlotValue<S, ConfigClassValue>>)[];
 
 type CompoundSlots<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S>
+	V extends MaybeVariants<S>,
+	P extends MaybePresets<S, V>
 > = readonly ({
 	slots: readonly [SlotKey<S>, ...SlotKey<S>[]];
-} & VariantConditions<S, V> &
+} & CompoundConditions<S, V, P> &
 	EitherClassProp<ConfigClassValue>)[];
 
 type VariantPropsInternal<S extends MaybeSlots, V extends MaybeVariants<S>> = {
@@ -284,10 +305,10 @@ type Config<
 	variants?: V | undefined;
 	/** Named slots, each with its own base classes, turning the return value into a per-slot class map. */
 	slots?: S | undefined;
-	/** Extra classes applied only when a specific combination of variant values matches. */
-	compoundVariants?: CompoundVariants<S, V> | undefined;
-	/** Extra per-slot classes applied only when a specific combination of variant values matches. */
-	compoundSlots?: CompoundSlots<S, V> | undefined;
+	/** Extra classes applied only when a specific combination of variant values matches. A `preset` name stands for the variant values it holds. */
+	compoundVariants?: CompoundVariants<S, V, P> | undefined;
+	/** Extra per-slot classes applied only when a specific combination of variant values matches. A `preset` name stands for the variant values it holds. */
+	compoundSlots?: CompoundSlots<S, V, P> | undefined;
 	/** Variant values used when the caller doesn't pass a value for that variant. */
 	defaultVariants?: DefaultVariants<S, V, RV> | undefined;
 	/** Variant keys the caller must always provide, dropping their `?` from the props type. */
@@ -564,7 +585,8 @@ const createCache = (
 const isCompoundMetaKey = (compoundKey: string): boolean =>
 	compoundKey === 'class' ||
 	compoundKey === 'className' ||
-	compoundKey === 'slots';
+	compoundKey === 'slots' ||
+	compoundKey === 'preset';
 
 const resolveCompoundMatcherExpected = (
 	variant: string,
@@ -592,12 +614,46 @@ const resolveCompoundMatcherExpected = (
 	return value;
 };
 
+// Seeds the matcher map from a `preset` name, if the entry names one. The
+// preset's values were already validated against the variants, so they only
+// need to be skipped where the preset leaves a variant undefined.
+const seedPresetMatchers = (
+	matchers: Map<string, RuntimeVariantMatcher>,
+	presets: Record<string, ResolvedVariantState>,
+	preset: string | undefined
+) => {
+
+	if (preset === undefined) {
+		return;
+	}
+
+	const presetValues = presets[preset];
+
+	if (presetValues === undefined) {
+		throw new Error(
+			`Compound matcher references unknown preset "${preset}"`
+		);
+	}
+
+	for (const [variant, value] of entries(presetValues)) {
+		if (value !== undefined) {
+			matchers.set(variant, value);
+		}
+	}
+};
+
 const compileCompoundMatchers = (
-	compound: Record<string, unknown>,
-	normalizedVariants: NormalizedVariants
+	compound: CompoundEntry,
+	normalizedVariants: NormalizedVariants,
+	presets: Record<string, ResolvedVariantState>
 ): readonly CompoundMatcher[] => {
 
-	const matchers: CompoundMatcher[] = [];
+	// Keyed by variant so a matcher written on the entry replaces the value the
+	// preset seeded for that variant, matching the runtime priority of an
+	// explicit prop over a preset value
+	const matchers = new Map<string, RuntimeVariantMatcher>();
+
+	seedPresetMatchers(matchers, presets, compound.preset);
 
 	for (const [compoundKey, value] of entries(compound)) {
 
@@ -611,17 +667,19 @@ const compileCompoundMatchers = (
 			`Compound matcher references unknown variant "${compoundKey}"`
 		);
 
-		matchers.push({
-			key: compoundKey,
-			expected: resolveCompoundMatcherExpected(
-				compoundKey,
-				value,
-				variantValues
-			)
-		});
+		matchers.set(
+			compoundKey,
+			resolveCompoundMatcherExpected(compoundKey, value, variantValues)
+		);
 	}
 
-	return matchers;
+	const result: CompoundMatcher[] = [];
+
+	for (const [key, expected] of matchers) {
+		result.push({ key, expected });
+	}
+
+	return result;
 };
 
 const matchesCompound = (
@@ -1045,7 +1103,11 @@ const compileConfig = <
 	const compiledCompoundVariants = compoundVariants.map(
 		(compound): CompiledCompoundVariant => ({
 			classValue: requireCompoundClassValue(compound, 'variant'),
-			matchers: compileCompoundMatchers(compound, normalizedVariants)
+			matchers: compileCompoundMatchers(
+				compound,
+				normalizedVariants,
+				presets
+			)
 		})
 	);
 
@@ -1054,7 +1116,11 @@ const compileConfig = <
 			assertKnownCompoundSlots(compound.slots, slotKeys);
 			return {
 				classValue: requireCompoundClassValue(compound, 'slot'),
-				matchers: compileCompoundMatchers(compound, normalizedVariants),
+				matchers: compileCompoundMatchers(
+					compound,
+					normalizedVariants,
+					presets
+				),
 				slots: compound.slots
 			};
 		}

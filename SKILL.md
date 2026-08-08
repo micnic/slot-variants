@@ -105,6 +105,16 @@ compoundVariants: [
 ]
 ```
 
+A `preset` name may stand in for the variant values it holds, in `compoundVariants` and `compoundSlots` alike. It expands when the config is evaluated, so the entry matches those values however they were reached; a matcher written alongside it overrides the value it contributes:
+
+```typescript
+presets: { cta: { size: 'lg', intent: 'primary' } },
+compoundVariants: [
+	{ preset: 'cta', class: 'font-bold uppercase' },
+	{ preset: 'cta', size: 'sm', class: 'tracking-tight' } // intent: 'primary', size: 'sm'
+]
+```
+
 ### 8. Use Function-Based Default Variants for Dynamic Defaults
 
 A default can be a function of the other variant values:
@@ -161,7 +171,7 @@ const button = sv('btn', {
 button({ preset: 'cta' }); // applies size: 'lg', intent: 'primary'
 ```
 
-A preset name must not match a variant name — TypeScript rejects it and the config throws.
+A preset name must not match a variant name — TypeScript rejects it and the config throws. A preset name can also be used as a compound matcher, see above.
 
 ### 12. Pass `null` to Explicitly Opt Out of a Defaulted Variant
 
@@ -260,7 +270,7 @@ Class values inside the config (`base`, `variants` values, `slots` values, and `
 
 ## Errors & Validation
 
-`sv()` throws on misconfiguration. Config errors (unknown variant referenced by `requiredVariants`/`defaultVariants`/a preset/a compound entry, an invalid default/preset/compound value, a preset sharing a name with a variant, a compound entry missing `class`/`className`) throw when the config is evaluated. Runtime errors (missing required variant, invalid variant value, unknown preset name) throw when the variant function is called with bad props. Treat a thrown error as expected validation, not a library bug — fix the config or the calling props.
+`sv()` throws on misconfiguration. Config errors (unknown variant referenced by `requiredVariants`/`defaultVariants`/a preset/a compound entry, an invalid default/preset/compound value, a preset sharing a name with a variant, an unknown preset named by a compound entry, a compound entry missing `class`/`className`) throw when the config is evaluated. Runtime errors (missing required variant, invalid variant value, unknown preset name) throw when the variant function is called with bad props. Treat a thrown error as expected validation, not a library bug — fix the config or the calling props.
 
 ## Linting
 

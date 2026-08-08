@@ -1005,7 +1005,16 @@ const extractVariantTokens = (
 	}
 };
 
-const COMPOUND_NON_MATCHER_KEYS = new Set(['class', 'className', 'slots']);
+// `preset` names the variant values a compound matches instead of being a
+// matcher key itself. Expanding it would need the `presets` config in hand, so
+// it is skipped: a compound left with no other matcher falls back to the
+// never-exclusive compound source, which can only under-suppress a report.
+const COMPOUND_NON_MATCHER_KEYS = new Set([
+	'class',
+	'className',
+	'slots',
+	'preset'
+]);
 
 // Strings, booleans, and numbers align with variant value keys (`{ true: … }`,
 // `{ 2: … }`), which getKeyName also reads as strings.

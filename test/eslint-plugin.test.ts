@@ -2318,6 +2318,28 @@ const NO_CONFLICTING_DUP_INVALID = [
 			IMPORT_CREATE_SV +
 			"const customSV = createSV({ cacheSize: 512 });\nconst c = customSV({ base: 'flex flex' });",
 		errors: repeat(dup('flex'), 2)
+	},
+	{
+		// A `preset` matcher names variant values rather than being one, so it
+		// proves no exclusivity — `cta` and `big` both match `size: 'lg'` with
+		// `intent: 'primary'`, so the shared token really does duplicate.
+		code:
+			IMPORT +
+			`sv({
+				variants: {
+					size: { sm: 'text-sm', lg: 'text-lg' },
+					intent: { primary: 'lowercase', danger: 'uppercase' }
+				},
+				presets: {
+					cta: { size: 'lg' },
+					big: { size: 'lg', intent: 'primary' }
+				},
+				compoundVariants: [
+					{ preset: 'cta', class: 'font-bold' },
+					{ preset: 'big', class: 'font-bold' }
+				]
+			});`,
+		errors: repeat(dup('font-bold'), 2)
 	}
 ];
 

@@ -4744,6 +4744,154 @@ t.test('presets is empty object when none provided', (t) => {
 	t.end();
 });
 
+t.test('compound variant matches a preset by name', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+		},
+		presets: {
+			cta: { size: 'lg', intent: 'primary' }
+		},
+		compoundVariants: [{ preset: 'cta', class: 'uppercase' }]
+	});
+
+	t.equal(
+		button({ preset: 'cta' }),
+		'btn text-lg bg-blue-500 uppercase',
+		'preset matcher applies its class'
+	);
+
+	t.equal(
+		button({ size: 'lg', intent: 'primary' }),
+		'btn text-lg bg-blue-500 uppercase',
+		'explicit values matching the preset also match'
+	);
+
+	t.equal(
+		button({ size: 'sm', intent: 'primary' }),
+		'btn text-sm bg-blue-500',
+		'partially matching values do not match'
+	);
+
+	t.end();
+});
+
+t.test('compound variant preset matcher skips undefined values', (t) => {
+	// @ts-expect-error an explicit undefined preset value is only reachable
+	// from untyped input, the runtime skips it rather than matching on it
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+		},
+		presets: {
+			cta: { size: 'lg', intent: undefined }
+		},
+		compoundVariants: [{ preset: 'cta', class: 'uppercase' }]
+	});
+
+	t.equal(
+		button({ size: 'lg', intent: 'danger' }),
+		'btn text-lg bg-red-500 uppercase',
+		'undefined preset value is not a matcher'
+	);
+
+	t.end();
+});
+
+t.test('compound variant matcher key overrides its preset value', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+		},
+		presets: {
+			cta: { size: 'lg', intent: 'primary' }
+		},
+		compoundVariants: [{ preset: 'cta', size: 'sm', class: 'uppercase' }]
+	});
+
+	t.equal(
+		button({ size: 'sm', intent: 'primary' }),
+		'btn text-sm bg-blue-500 uppercase',
+		'explicit matcher key wins over the preset value'
+	);
+
+	t.equal(
+		button({ preset: 'cta' }),
+		'btn text-lg bg-blue-500',
+		'the preset value it overrides no longer matches'
+	);
+
+	t.end();
+});
+
+t.test('compound slot matches a preset by name', (t) => {
+	const card = sv('card', {
+		slots: { header: 'font-bold', body: 'py-4' },
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			tone: { plain: '', loud: 'font-black' }
+		},
+		presets: {
+			hero: { size: 'lg', tone: 'loud' }
+		},
+		compoundSlots: [
+			{ slots: ['header', 'body'], preset: 'hero', class: 'tracking-wide' }
+		]
+	});
+
+	t.strictSame(
+		card({ preset: 'hero' }),
+		{
+			base: 'card text-lg font-black',
+			header: 'font-bold tracking-wide',
+			body: 'py-4 tracking-wide'
+		},
+		'preset matcher applies its class to each listed slot'
+	);
+
+	t.end();
+});
+
+t.test('compound matcher throws for an unknown preset name', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error unknown preset matcher not assignable
+			sv('btn', {
+				variants: {
+					size: { sm: 'text-sm', lg: 'text-lg' }
+				},
+				presets: {
+					cta: { size: 'lg' }
+				},
+				compoundVariants: [{ preset: 'nope', class: 'uppercase' }]
+			}),
+		{ message: 'Compound matcher references unknown preset "nope"' },
+		'throws at config time for an unknown preset matcher'
+	);
+
+	t.end();
+});
+
+t.test('compound matcher rejects a preset name without presets', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error preset matcher needs a presets config
+			sv('btn', {
+				variants: {
+					size: { sm: 'text-sm', lg: 'text-lg' }
+				},
+				compoundVariants: [{ preset: 'cta', class: 'uppercase' }]
+			}),
+		{ message: 'Compound matcher references unknown preset "cta"' },
+		'throws at config time when no presets are declared'
+	);
+
+	t.end();
+});
+
 t.test('compound variant without class or className throws', (t) => {
 	t.throws(
 		() =>
