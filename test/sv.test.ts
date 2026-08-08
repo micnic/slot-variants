@@ -4570,6 +4570,30 @@ t.test('preset throws for invalid variant value at config time', (t) => {
 	t.end();
 });
 
+t.test('preset throws when it shares a name with a variant', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error - a preset name may not match a variant name
+			sv('btn', {
+				variants: {
+					size: {
+						sm: 'text-sm',
+						lg: 'text-lg'
+					}
+				},
+				presets: {
+					size: { size: 'lg' }
+				}
+			}),
+		{
+			message: 'Preset "size" cannot have the same name as a variant'
+		},
+		'throws at config time for a preset named after a variant'
+	);
+
+	t.end();
+});
+
 t.test('preset with slots', (t) => {
 	const card = sv('card border', {
 		slots: {

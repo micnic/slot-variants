@@ -161,6 +161,8 @@ const button = sv('btn', {
 button({ preset: 'cta' }); // applies size: 'lg', intent: 'primary'
 ```
 
+A preset name must not match a variant name — TypeScript rejects it and the config throws.
+
 ### 12. Pass `null` to Explicitly Opt Out of a Defaulted Variant
 
 `undefined` (an omitted prop) falls back to `defaultVariants`/`preset`; `null` skips that resolution entirely, so no classes for that variant are applied:
@@ -258,7 +260,7 @@ Class values inside the config (`base`, `variants` values, `slots` values, and `
 
 ## Errors & Validation
 
-`sv()` throws on misconfiguration. Config errors (unknown variant referenced by `requiredVariants`/`defaultVariants`/a preset/a compound entry, an invalid default/preset/compound value, a compound entry missing `class`/`className`) throw when the config is evaluated. Runtime errors (missing required variant, invalid variant value, unknown preset name) throw when the variant function is called with bad props. Treat a thrown error as expected validation, not a library bug — fix the config or the calling props.
+`sv()` throws on misconfiguration. Config errors (unknown variant referenced by `requiredVariants`/`defaultVariants`/a preset/a compound entry, an invalid default/preset/compound value, a preset sharing a name with a variant, a compound entry missing `class`/`className`) throw when the config is evaluated. Runtime errors (missing required variant, invalid variant value, unknown preset name) throw when the variant function is called with bad props. Treat a thrown error as expected validation, not a library bug — fix the config or the calling props.
 
 ## Linting
 

@@ -185,6 +185,13 @@ type Presets<S extends MaybeSlots, V extends MaybeVariants<S>> = Record<
 type MaybePresets<S extends MaybeSlots, V extends MaybeVariants<S>> =
 	Presets<S, V> | undefined;
 
+type PresetNameCollision<V extends MaybeVariants<MaybeSlots>, P> = {
+	[K in Extract<
+		keyof P,
+		StringKeyof<V>
+	>]: 'Preset name must not match a variant name';
+};
+
 type RuntimeProps = RuntimeVariantState & {
 	class?: RuntimeClassValue;
 	className?: RuntimeClassValue;
@@ -287,8 +294,8 @@ type Config<
 	requiredVariants?: RV | undefined;
 	/** Slot keys whose class function accepts variant props per call, for slots repeated across multiple elements. */
 	multiSlots?: MS | undefined;
-	/** Named bundles of variant values selectable by passing a single `preset` prop. */
-	presets?: P | undefined;
+	/** Named bundles of variant values selectable by passing a single `preset` prop. Preset names must not match a variant name. */
+	presets?: (P & PresetNameCollision<V, P>) | undefined;
 	/** Number of distinct prop combinations whose computed classes are cached. Defaults to 256. */
 	cacheSize?: number | undefined;
 	/** Exposes variant metadata and cache controls as properties on the returned function. */
@@ -880,12 +887,19 @@ const assertKnownDefaultVariants = (
 	}
 };
 
-const assertKnownPresetVariants = (
+const assertValidPresets = (
 	presets: Record<string, ResolvedVariantState>,
 	normalizedVariants: NormalizedVariants
 ) => {
 
 	for (const [presetName, presetValues] of entries(presets)) {
+
+		if (hasOwn(normalizedVariants, presetName)) {
+			throw new Error(
+				`Preset "${presetName}" cannot have the same name as a variant`
+			);
+		}
+
 		for (const [variant, value] of entries(presetValues)) {
 			const variantValues = getKnownVariantValues(
 				normalizedVariants,
@@ -1024,8 +1038,9 @@ const compileConfig = <
 		normalizedVariants,
 		defaultVariants
 	);
+
 	assertKnownDefaultVariants(defaultVariants, normalizedVariants);
-	assertKnownPresetVariants(presets, normalizedVariants);
+	assertValidPresets(presets, normalizedVariants);
 
 	const compiledCompoundVariants = compoundVariants.map(
 		(compound): CompiledCompoundVariant => ({

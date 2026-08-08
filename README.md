@@ -404,6 +404,8 @@ button({ preset: 'cta', size: 'sm' });
 
 Presets can satisfy required variants at runtime. Passing `null` for a variant prop overrides the preset's value for that variant too, skipping it entirely. An invalid preset name throws an error.
 
+A preset name must not match a variant name — such a config is rejected by TypeScript and throws when the config is evaluated.
+
 ### Slots
 
 Slots allow you to define multiple named class targets for multi-element components. When slots are defined, the returned function produces an object with `base` and each named slot as keys:
@@ -759,7 +761,7 @@ Without `introspection: true`, only the variant function itself is returned — 
 
 ### Errors & Validation
 
-`sv()` validates both the config and the runtime props, throwing an `Error` on misconfiguration. Config problems (an unknown variant referenced by `requiredVariants`, `defaultVariants`, a preset, or a compound entry; a value that isn't one of the variant's defined values; a compound or slot entry missing required fields) throw as soon as the config is evaluated. Runtime problems (a missing required variant, an invalid variant value, or an unknown preset name) throw when the variant function is called — these guard against untyped input, such as a value coming from a form or API, since TypeScript already prevents most of these at compile time.
+`sv()` validates both the config and the runtime props, throwing an `Error` on misconfiguration. Config problems (an unknown variant referenced by `requiredVariants`, `defaultVariants`, a preset, or a compound entry; a value that isn't one of the variant's defined values; a preset named after a variant; a compound or slot entry missing required fields) throw as soon as the config is evaluated. Runtime problems (a missing required variant, an invalid variant value, or an unknown preset name) throw when the variant function is called — these guard against untyped input, such as a value coming from a form or API, since TypeScript already prevents most of these at compile time.
 
 ## TypeScript
 
