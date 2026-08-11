@@ -1,9 +1,7 @@
 import type { Rule } from 'eslint';
-import {
-	createTrackedCallListeners,
-	DOCS_URL,
-	findRepeatedEvaluation
-} from '../analyzer.ts';
+import { DOCS_URL } from '../analyzer/config-keys.ts';
+import { findRepeatedEvaluation } from '../analyzer/repeated-evaluation.ts';
+import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
 /**
  * Flags `sv()` calls made with a config object that aren't at the module top

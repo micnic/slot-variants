@@ -1,9 +1,7 @@
 import type { Rule } from 'eslint';
-import {
-	analyzeSharedTokens,
-	createTrackedCallListeners,
-	DOCS_URL
-} from '../analyzer.ts';
+import { DOCS_URL } from '../analyzer/config-keys.ts';
+import { analyzeSharedTokens } from '../analyzer/shared-tokens.ts';
+import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
 /**
  * Flags class name tokens that appear in every value of an exhaustively-covered

@@ -9,15 +9,13 @@ import type {
 } from 'estree';
 import {
 	CONFIG_KEY_ORDER,
-	createTrackedCallListeners,
 	DOCS_URL,
-	getKeyName,
-	getStaticStringText
-} from '../analyzer.ts';
+	getKeyName
+} from '../analyzer/config-keys.ts';
+import { getStaticStringText } from '../analyzer/literals.ts';
+import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
-const ORDER_INDEX = new Map(
-	CONFIG_KEY_ORDER.map((key, index) => [key, index])
-);
+const ORDER_INDEX = new Map(CONFIG_KEY_ORDER.map((key, index) => [key, index]));
 
 type KeyEntry = {
 	prop: Property;
@@ -85,7 +83,10 @@ const DEFAULT_SEPARATOR = ',\n\t';
 // that inline separator and collapses a multi-line object onto one line.
 // Accepted as cosmetic: the result is still valid, correctly ordered code, and
 // a formatter pass restores the layout.
-const getEntrySeparator = (sourceCode: SourceCode, entries: ReadonlyArray<KeyEntry>): string => {
+const getEntrySeparator = (
+	sourceCode: SourceCode,
+	entries: ReadonlyArray<KeyEntry>
+): string => {
 	const first = entries[0];
 	const second = entries[1];
 
@@ -105,7 +106,9 @@ const buildReorderFix = (
 ): ((fixer: Rule.RuleFixer) => Rule.Fix | null) => {
 	const sorted = [...entries].sort((a, b) => a.index - b.index);
 	const separator = getEntrySeparator(sourceCode, entries);
-	const text = sorted.map((entry) => sourceCode.getText(entry.prop)).join(separator);
+	const text = sorted
+		.map((entry) => sourceCode.getText(entry.prop))
+		.join(separator);
 
 	return (fixer) => {
 		const first = entries[0];
@@ -123,7 +126,10 @@ const buildReorderFix = (
 	};
 };
 
-const checkKeyOrder = (context: Rule.RuleContext, configNode: ObjectExpression) => {
+const checkKeyOrder = (
+	context: Rule.RuleContext,
+	configNode: ObjectExpression
+) => {
 	const { entries, fixable } = collectOrderedEntries(configNode.properties);
 	let fix: ((fixer: Rule.RuleFixer) => Rule.Fix | null) | undefined;
 
@@ -166,7 +172,11 @@ const normalizeBaseStyle = (option: BaseStyle | undefined): BaseStyle => {
 
 const findProperty = (obj: ObjectExpression, key: string): Property | null => {
 	for (const prop of obj.properties) {
-		if (prop.type === 'Property' && !prop.computed && getKeyName(prop) === key) {
+		if (
+			prop.type === 'Property' &&
+			!prop.computed &&
+			getKeyName(prop) === key
+		) {
 			return prop;
 		}
 	}
@@ -174,7 +184,9 @@ const findProperty = (obj: ObjectExpression, key: string): Property | null => {
 	return null;
 };
 
-const getSlotsObject = (configNode: ObjectExpression): ObjectExpression | null => {
+const getSlotsObject = (
+	configNode: ObjectExpression
+): ObjectExpression | null => {
 	const slotsProp = findProperty(configNode, 'slots');
 
 	if (slotsProp && slotsProp.value.type === 'ObjectExpression') {
@@ -352,11 +364,22 @@ const buildBaseStyleFix = (
 		const fixes: Rule.Fix[] = [];
 
 		if (source.style === 'separateArg') {
-			fixes.push(removeLeadingArgFix(fixer, sourceCode, source.arg, configNode));
+			fixes.push(
+				removeLeadingArgFix(fixer, sourceCode, source.arg, configNode)
+			);
 		} else if (source.style === 'field') {
-			fixes.push(removePropertyFix(fixer, sourceCode, configNode, source.prop));
+			fixes.push(
+				removePropertyFix(fixer, sourceCode, configNode, source.prop)
+			);
 		} else {
-			fixes.push(removePropertyFix(fixer, sourceCode, source.slotsObj, source.prop));
+			fixes.push(
+				removePropertyFix(
+					fixer,
+					sourceCode,
+					source.slotsObj,
+					source.prop
+				)
+			);
 		}
 
 		if (target === 'separateArg') {
@@ -365,7 +388,14 @@ const buildBaseStyleFix = (
 		}
 
 		if (target === 'field') {
-			fixes.push(insertAsFirstPropertyFix(fixer, sourceCode, configNode, propertyText));
+			fixes.push(
+				insertAsFirstPropertyFix(
+					fixer,
+					sourceCode,
+					configNode,
+					propertyText
+				)
+			);
 			return fixes;
 		}
 
@@ -376,7 +406,9 @@ const buildBaseStyleFix = (
 			return [];
 		}
 
-		fixes.push(insertAsFirstPropertyFix(fixer, sourceCode, slotsObj, propertyText));
+		fixes.push(
+			insertAsFirstPropertyFix(fixer, sourceCode, slotsObj, propertyText)
+		);
 
 		return fixes;
 	};
@@ -447,7 +479,12 @@ const checkBaseStyle = (
 		onlySource &&
 		canFixBaseStyle(call, configNode, args, onlySource, baseStyle)
 	) {
-		fix = buildBaseStyleFix(context.sourceCode, configNode, onlySource, baseStyle);
+		fix = buildBaseStyleFix(
+			context.sourceCode,
+			configNode,
+			onlySource,
+			baseStyle
+		);
 	}
 
 	for (const source of mismatched) {

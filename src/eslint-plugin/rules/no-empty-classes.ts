@@ -1,12 +1,12 @@
 import type { Rule } from 'eslint';
+import { DOCS_URL } from '../analyzer/config-keys.ts';
 import {
-    checkConfigForEmptyClasses,
-	createTrackedCallListeners,
-	DOCS_URL,
-    forEachStaticItem,
-    makeListFix,
-    visitForEmptyClasses
-} from '../analyzer.ts';
+	checkConfigForEmptyClasses,
+	visitForEmptyClasses
+} from '../analyzer/empty-classes.ts';
+import { makeListFix } from '../analyzer/list-fix.ts';
+import { forEachStaticItem } from '../analyzer/token-extraction.ts';
+import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
 /**
  * Flags empty class values — empty strings, empty arrays, and empty objects —

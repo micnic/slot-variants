@@ -1,10 +1,10 @@
 import type { Rule } from 'eslint';
+import { DOCS_URL } from '../analyzer/config-keys.ts';
 import {
 	analyzeCnForRule,
-	analyzeConfigForRule,
-	createTrackedCallListeners,
-	DOCS_URL
-} from '../analyzer.ts';
+	analyzeConfigForRule
+} from '../analyzer/conflicts.ts';
+import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 import {
 	buildExclusiveGroupMap,
 	normalizePrefix

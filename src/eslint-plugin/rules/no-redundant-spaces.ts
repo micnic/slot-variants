@@ -1,12 +1,12 @@
 import type { Rule } from 'eslint';
+import { DOCS_URL } from '../analyzer/config-keys.ts';
 import {
-	createTrackedCallListeners,
 	dispatchSvConfigCheckers,
-	DOCS_URL,
-	forEachStaticItem,
 	svRedundantSpacesConfigValueCheckers,
 	visitForRedundantSpaces
-} from '../analyzer.ts';
+} from '../analyzer/redundant-spaces.ts';
+import { forEachStaticItem } from '../analyzer/token-extraction.ts';
+import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
 /**
  * Flags redundant whitespace inside class strings passed to `sv()` and `cn()`

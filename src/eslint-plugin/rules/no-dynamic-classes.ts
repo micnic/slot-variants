@@ -1,10 +1,7 @@
 import type { Rule } from 'eslint';
-import {
-	checkCnArguments,
-	checkSvConfig,
-	createTrackedCallListeners,
-	DOCS_URL
-} from '../analyzer.ts';
+import { DOCS_URL } from '../analyzer/config-keys.ts';
+import { checkCnArguments, checkSvConfig } from '../analyzer/static-values.ts';
+import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
 /**
  * Flags dynamic values in `sv()` and `cn()` calls. Only statically inferrable
