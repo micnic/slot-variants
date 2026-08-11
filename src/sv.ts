@@ -342,8 +342,8 @@ type Props<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, G, V>
+	P extends MaybePresets<S, G, V>,
+	RV extends RequiredVariants<V>
 > = Prettify<
 	P extends undefined
 		? VariantPropsWithRequired<S, G, V, RV>
@@ -357,9 +357,9 @@ type Config<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	RV extends RequiredVariants<V>,
 	P extends MaybePresets<S, G, V>,
 	MS extends MultiSlots<S, G>,
+	RV extends RequiredVariants<V>,
 	I extends boolean = false
 > = {
 	/** Classes always applied, alongside any matched variant/compound classes. */
@@ -394,18 +394,18 @@ type ConfigKey = keyof Config<
 	undefined,
 	undefined,
 	undefined,
-	[],
 	undefined,
-	false
+	false,
+	[]
 >;
 
 type IntrospectionValues<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	RV extends RequiredVariants<V>,
 	P extends MaybePresets<S, G, V>,
-	MS extends MultiSlots<S, G>
+	MS extends MultiSlots<S, G>,
+	RV extends RequiredVariants<V>
 > = {
 	/** The `variants` config passed in, as-is. */
 	variants: V extends undefined ? Record<string, never> : V;
@@ -445,18 +445,18 @@ type VariantFn<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	RV extends RequiredVariants<V>,
 	P extends MaybePresets<S, G, V>,
 	MS extends MultiSlots<S, G>,
+	RV extends RequiredVariants<V>,
 	I extends boolean
 > = {
 	(
 		...args: [RequiredVariantKeys<V, RV>] extends [never]
-			? [props?: Prettify<Props<S, G, V, RV, P>> | undefined]
-			: [props: Prettify<Props<S, G, V, RV, P>>]
+			? [props?: Prettify<Props<S, G, V, P, RV>> | undefined]
+			: [props: Prettify<Props<S, G, V, P, RV>>]
 	): ReturnValue<S, G, V, P, MS>;
 } & (I extends true
-	? Prettify<IntrospectionValues<S, G, V, RV, P, MS>>
+	? Prettify<IntrospectionValues<S, G, V, P, MS, RV>>
 	: unknown);
 
 type NonConfigClassArg<T> =
@@ -478,13 +478,13 @@ type RawConfig = Config<
 	MaybeSlots,
 	MaybeGroups<MaybeSlots>,
 	MaybeVariants<MaybeSlots, MaybeGroups<MaybeSlots>>,
-	RequiredVariants<AnyVariants>,
 	MaybePresets<
 		MaybeSlots,
 		MaybeGroups<MaybeSlots>,
 		MaybeVariants<MaybeSlots, MaybeGroups<MaybeSlots>>
 	>,
 	MultiSlots<MaybeSlots, MaybeGroups<MaybeSlots>>,
+	RequiredVariants<AnyVariants>,
 	boolean
 >;
 
@@ -498,24 +498,24 @@ export type SV<DI extends boolean = false> = {
 		S extends MaybeSlots = undefined,
 		G extends MaybeGroups<S> = undefined,
 		V extends MaybeVariants<S, G> = undefined,
-		RV extends RequiredVariants<V> = false,
 		P extends MaybePresets<S, G, V> = undefined,
 		MS extends MultiSlots<S, G> = false,
+		RV extends RequiredVariants<V> = false,
 		I extends boolean = DI
 	>(
-		config: Config<S, G, V, RV, P, MS, I>
-	): VariantFn<S, G, V, RV, P, MS, I>;
+		config: Config<S, G, V, P, MS, RV, I>
+	): VariantFn<S, G, V, P, MS, RV, I>;
 	<
 		S extends MaybeSlots = undefined,
 		G extends MaybeGroups<S> = undefined,
 		V extends MaybeVariants<S, G> = undefined,
-		RV extends RequiredVariants<V> = false,
 		P extends MaybePresets<S, G, V> = undefined,
 		MS extends MultiSlots<S, G> = false,
+		RV extends RequiredVariants<V> = false,
 		I extends boolean = DI
 	>(
-		...args: [...ClassValue[], Config<S, G, V, RV, P, MS, I>]
-	): VariantFn<S, G, V, RV, P, MS, I>;
+		...args: [...ClassValue[], Config<S, G, V, P, MS, RV, I>]
+	): VariantFn<S, G, V, P, MS, RV, I>;
 	<const T extends ClassValue[]>(
 		...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
 	): string;
@@ -900,13 +900,13 @@ const isConfig = <
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	RV extends RequiredVariants<V>,
 	P extends MaybePresets<S, G, V>,
 	MS extends MultiSlots<S, G>,
+	RV extends RequiredVariants<V>,
 	I extends boolean = false
 >(
-	value: ClassValue | Config<S, G, V, RV, P, MS, I>
-): value is Config<S, G, V, RV, P, MS, I> =>
+	value: ClassValue | Config<S, G, V, P, MS, RV, I>
+): value is Config<S, G, V, P, MS, RV, I> =>
 	value !== null &&
 	typeof value === 'object' &&
 	!isArray(value) &&
@@ -1239,13 +1239,13 @@ const compileConfig = <
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	RV extends RequiredVariants<V>,
 	P extends MaybePresets<S, G, V>,
 	MS extends MultiSlots<S, G>,
+	RV extends RequiredVariants<V>,
 	I extends boolean = false
 >(
 	baseArgs: ClassValue[],
-	config: Config<S, G, V, RV, P, MS, I>
+	config: Config<S, G, V, P, MS, RV, I>
 ): CompiledConfig => {
 
 	const {
