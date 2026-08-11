@@ -299,6 +299,6 @@ Class values inside the config (`base`, `variants` values, `slots` values, and `
 - `VariantProps<T, E>` — Extract variant props from an `sv()` return, optionally excluding keys
 - `VariantValue<T, K>` — Extract the value union for a single variant key, without `undefined`
 - `SlotClassProps<T>` — Extract the per-slot class injection shape from an `sv()` return type
-- `SV<DI>` — The shape of an `sv()` function (the return type of `createSV()`), carrying the factory's introspection default `DI`
+- `SV<D>` — The shape of an `sv()` function (the return type of `createSV()`), carrying the factory's introspection default `D`
 
 Functions are imported as named values; types via `import type { ... } from 'slot-variants'`.

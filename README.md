@@ -958,7 +958,7 @@ When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{
 | `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E` |
 | `VariantValue<T, K>` | Extracts the value union for a single variant key `K`, without `undefined` |
 | `SlotClassProps<T>` | Extracts the per-slot class injection shape from an `sv()` return type |
-| `SV<DI>` | The shape of an `sv()` function, with the factory's introspection default `DI`; the return type of `createSV()` |
+| `SV<D>` | The shape of an `sv()` function, with the factory's introspection default `D`; the return type of `createSV()` |
 
 ### Return Type
 
