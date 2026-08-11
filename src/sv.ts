@@ -829,6 +829,22 @@ const isBooleanVariantRecord = (
 ): boolean =>
 	keys(variantValue).every((key) => key === 'true' || key === 'false');
 
+// A variant value left `undefined` applies no classes, the same as an empty
+// string. Rewriting it once here keeps a missing value at runtime meaning an
+// undeclared one, and keeps the empty case off the class list entirely.
+const withoutUndefinedValues = (
+	variantValues: NormalizedVariantValues
+): NormalizedVariantValues => {
+
+	const result: NormalizedVariantValues = {};
+
+	for (const [valueKey, value] of entries(variantValues)) {
+		result[valueKey] = value ?? '';
+	}
+
+	return result;
+};
+
 const normalizeVariantValue = (
 	variantValue: RuntimeVariantConfigValue,
 	targetKeys: ReadonlySet<string>
@@ -840,7 +856,7 @@ const normalizeVariantValue = (
 	) {
 		return {
 			false: '',
-			true: variantValue
+			true: variantValue ?? ''
 		};
 	}
 
@@ -848,11 +864,11 @@ const normalizeVariantValue = (
 		return {
 			true: '',
 			false: '',
-			...variantValue
+			...withoutUndefinedValues(variantValue)
 		};
 	}
 
-	return variantValue;
+	return withoutUndefinedValues(variantValue);
 };
 
 const coerceVariantKeyValue = (value: string): string | number | boolean => {

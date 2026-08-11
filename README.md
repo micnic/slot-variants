@@ -967,7 +967,7 @@ When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{
 
 ## Config Reference
 
-Class values inside the config (`base`, `variants`, `slots`, and `compound*` `class`/`className`) accept `string`, `string[]`, or `undefined`. Dynamic class values (objects, booleans, nested arrays) are only accepted at call time via the `class`/`className` prop.
+Class values inside the config (`base`, `variants`, `slots`, and `compound*` `class`/`className`) accept `string`, `string[]`, or `undefined`, where `undefined` applies no classes, the same as an empty string. Dynamic class values (objects, booleans, nested arrays) are only accepted at call time via the `class`/`className` prop.
 
 | Option | Type | Description |
 | --- | --- | --- |

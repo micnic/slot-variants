@@ -635,6 +635,60 @@ t.test('throws for invalid variant value', (t) => {
 	t.end();
 });
 
+t.test('treats an undefined variant value as no classes', (t) => {
+	const button = sv('rounded-lg', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: undefined
+			}
+		}
+	});
+
+	t.equal(
+		button({ size: 'lg' }),
+		'rounded-lg',
+		'undefined value applies no classes'
+	);
+
+	t.equal(button({ size: 'sm' }), 'rounded-lg text-sm', 'sibling value applies');
+
+	const badge = sv('flex', {
+		variants: {
+			loading: undefined
+		}
+	});
+
+	t.equal(
+		badge({ loading: true }),
+		'flex',
+		'undefined boolean shorthand applies no classes'
+	);
+
+	const chip = sv('inline-flex', {
+		variants: {
+			active: {
+				true: undefined,
+				false: 'opacity-50'
+			}
+		}
+	});
+
+	t.equal(
+		chip({ active: true }),
+		'inline-flex',
+		'undefined true key applies no classes'
+	);
+
+	t.equal(
+		chip({ active: false }),
+		'inline-flex opacity-50',
+		'defined false key still applies'
+	);
+
+	t.end();
+});
+
 // =============================================================================
 // sv() - default variants
 // =============================================================================
