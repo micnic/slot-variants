@@ -22,7 +22,7 @@ npm install slot-variants
 
 ## Why slot-variants
 
-Compared to CVA and tailwind-variants, `sv()` adds required variants, shared variant presets, and a built-in result cache, while staying dependency-free and noticeably faster at runtime — see the benchmarks in [`bench/`](bench) if you want the numbers. `tailwind-merge` integration is opt-in (via `postProcess`) rather than always on, and the bundled ESLint / oxlint plugin catches class conflicts and duplication at lint time.
+Compared to CVA and tailwind-variants, `sv()` adds required variants, shared variant presets, slot groups, and a built-in result cache, while staying dependency-free and noticeably faster at runtime — see the benchmarks in [`bench/`](bench) if you want the numbers. `tailwind-merge` integration is opt-in (via `postProcess`) rather than always on, and the bundled ESLint / oxlint plugin catches class conflicts and duplication at lint time.
 
 ## Quick Start
 
@@ -509,7 +509,7 @@ const card = sv('card border rounded-lg', {
       lg: {
         base: 'p-6 text-lg',
         header: 'pb-4',
-        body: 'py-4',
+        body: 'py-6',
         footer: 'pt-4'
       }
     }
@@ -522,7 +522,7 @@ const card = sv('card border rounded-lg', {
 const { base, header, body, footer } = card({ size: 'lg' });
 // base:   'card border rounded-lg p-6 text-lg'
 // header: 'font-bold pb-4'
-// body:   'py-4 py-4'
+// body:   'py-4 py-6'
 // footer: 'border-t pt-4'
 ```
 
@@ -656,13 +656,13 @@ const card = sv('border', {
     header: 'font-bold',
     body: 'py-4'
   },
+  multiSlots: ['header'],
   variants: {
     size: {
       sm: { base: 'p-2', header: 'text-sm' },
       lg: { base: 'p-6', header: 'text-lg' }
     }
-  },
-  multiSlots: ['header']
+  }
 });
 
 const result = card({ size: 'sm' });
@@ -684,6 +684,7 @@ const badge = sv({
   slots: {
     label: 'font-medium'
   },
+  multiSlots: ['label'],
   variants: {
     tone: {
       neutral: { label: 'text-gray-900' },
@@ -693,8 +694,7 @@ const badge = sv({
   presets: {
     alert: { tone: 'danger' },
     plain: { tone: 'neutral' }
-  },
-  multiSlots: ['label']
+  }
 });
 
 const result = badge({ preset: 'alert' });
@@ -780,8 +780,8 @@ import { createSV } from 'slot-variants';
 import { twMerge } from 'tailwind-merge';
 
 export const customSV = createSV({
-  postProcess: twMerge,
-  cacheSize: 512
+  cacheSize: 512,
+  postProcess: twMerge
 });
 
 // twMerge is applied without restating it per component
@@ -815,6 +815,8 @@ const button = sv('btn', {
 });
 ```
 
+Each entry corresponds to one distinct combination of resolved variant values, so raising `cacheSize` only helps when a definition has more combinations than the current size — below that the cache never evicts. With `introspection: true`, `getMaxEntries()` reports that number for a given definition.
+
 Setting `cacheSize` to `0` (or a negative number) disables caching entirely — every call recomputes its result. This is useful when variant combinations are effectively unbounded and you'd rather not retain any entries.
 
 Cache inspection and control methods (`getCacheSize`, `clearCache`, `getMaxEntries`) are exposed on the returned function only when `introspection: true` is set — see [Introspection](#introspection).
@@ -841,13 +843,13 @@ const button = sv('btn', {
       danger: 'bg-red-500'
     }
   },
+  presets: {
+    cta: { size: 'lg', intent: 'primary' }
+  },
   defaultVariants: {
     size: 'sm'
   },
   requiredVariants: ['intent'],
-  presets: {
-    cta: { size: 'lg', intent: 'primary' }
-  },
   introspection: true
 });
 
@@ -859,7 +861,7 @@ button.groupKeys;                   // ['all']
 button.groups;                      // { all: ['base', 'icon'] }
 button.defaultVariants;             // { size: 'sm' }
 button.requiredVariants;            // ['intent']
-button.multiSlots;                  // [] (slot names exposed as functions)
+button.multiSlots;                  // [] — no slots exposed as functions
 button.presetKeys;                  // ['cta']
 button.presets;                     // { cta: { size: 'lg', intent: 'primary' } }
 button.getVariantValues('size');    // ['sm', 'lg']
@@ -969,21 +971,23 @@ When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{
 
 Class values inside the config (`base`, `variants`, `slots`, and `compound*` `class`/`className`) accept `string`, `string[]`, or `undefined`, where `undefined` applies no classes, the same as an empty string. Dynamic class values (objects, booleans, nested arrays) are only accepted at call time via the `class`/`className` prop.
 
+The table lists the options in the canonical key order enforced by the opt-in [`sv-config-style`](#slot-variantssv-config-style) lint rule.
+
 | Option | Type | Description |
 | --- | --- | --- |
 | `base` | `string \| string[]` | Additional base classes merged with the base argument and `slots.base` |
-| `variants` | `Record<string, Record<string \| number, string \| string[]>>` | Variant definitions mapping variant names to their possible values |
 | `slots` | `Record<string, string \| string[]>` | Named slot definitions for multi-element components |
 | `groups` | `Record<string, string[]>` | Named sets of slot names, usable anywhere a slot name is accepted |
-| `compoundVariants` | `Array` | Additional classes applied when multiple variant conditions match |
+| `multiSlots` | `string[] \| boolean` | Slot names exposed as reconfigurable functions instead of strings; `true` makes every slot a function, `false` none |
+| `variants` | `Record<string, Record<string \| number, string \| string[]>>` | Variant definitions mapping variant names to their possible values |
+| `presets` | `Record<string, Partial<VariantProps>>` | Named combinations of variant values selectable via `preset` prop |
 | `compoundSlots` | `Array` | Classes applied to multiple slots based on variant conditions |
+| `compoundVariants` | `Array` | Additional classes applied when multiple variant conditions match |
 | `defaultVariants` | `Object` | Default values for variants (static values or functions) |
 | `requiredVariants` | `string[] \| boolean` | Variant names that must be provided at call time; `true` makes every variant required, `false` none |
-| `multiSlots` | `string[] \| boolean` | Slot names exposed as reconfigurable functions instead of strings; `true` makes every slot a function, `false` none |
-| `presets` | `Record<string, Partial<VariantProps>>` | Named combinations of variant values selectable via `preset` prop |
-| `postProcess` | `(className: string) => string` | Custom transformation applied to final class strings |
 | `cacheSize` | `number` | Maximum number of cached results (default: `256`); `0` or a negative value disables caching |
 | `introspection` | `boolean` | When `true`, exposes variant/slot/preset introspection and cache methods on the returned function (default: `false`) |
+| `postProcess` | `(className: string) => string` | Custom transformation applied to final class strings |
 
 ## Framework Usage
 
@@ -1077,8 +1081,8 @@ If a slot is listed in [`multiSlots`](#multi-slots), it resolves to a function i
 ```typescript
 const list = sv({
   slots: { item: 'px-2 py-1' },
-  variants: { active: { true: 'bg-blue-100', false: '' } },
-  multiSlots: ['item']
+  multiSlots: ['item'],
+  variants: { active: 'bg-blue-100' }
 });
 ```
 
@@ -1243,7 +1247,7 @@ This entry only matches `variant: 'link'` — merge `hover:underline` into `vari
 
 #### `slot-variants/require-top-level-config`
 
-Flags `sv()` calls with a config object that aren't at module top level (e.g. inside a function body or a non-static class field), since the config form compiles the variant function and seeds its cache once, and re-entering the call throws that work away every time.
+Flags `sv()` calls with a config object that aren't at module top level (e.g. inside a function body or a non-static class field), since the config form does its setup work once per call and starts with an empty cache — re-entering the call repeats that work and discards everything cached so far.
 
 ```typescript
 function createButton() {
