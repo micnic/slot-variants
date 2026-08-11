@@ -42,22 +42,27 @@ type SlotKey<S extends MaybeSlots> = 'base' | StringKeyof<S>;
 type Groups<S extends MaybeSlots> = Record<string, readonly SlotKey<S>[]>;
 type MaybeGroups<S extends MaybeSlots> = Groups<S> | undefined;
 
+/** Any `groups` config, for the few helpers that take no `S` to constrain against. */
+type AnyGroups = MaybeGroups<Slots>;
+
 /** Every name that stands for one or more slots: a slot key or a group name. */
-type SlotTarget<S extends MaybeSlots, G> = SlotKey<S> | StringKeyof<G>;
+type SlotTarget<S extends MaybeSlots, G extends MaybeGroups<S>> =
+	| SlotKey<S>
+	| StringKeyof<G>;
 
 /** The slot keys a group name expands to, or `never` for a non-group key. */
-type GroupSlots<G, K extends string> = K extends keyof G
+type GroupSlots<G extends AnyGroups, K extends string> = K extends keyof G
 	? G[K] extends readonly (infer U extends string)[]
 		? U
 		: never
 	: never;
 
-type BooleanShorthandKeys<S extends MaybeSlots, G> =
+type BooleanShorthandKeys<S extends MaybeSlots, G extends MaybeGroups<S>> =
 	| (S extends Slots ? SlotTarget<S, G> : never)
 	| 'true'
 	| 'false';
 
-type VariantPropType<T, S extends MaybeSlots, G = undefined> =
+type VariantPropType<S extends MaybeSlots, G extends MaybeGroups<S>, T> =
 	T extends Record<string | number, unknown>
 		? [Extract<keyof T, number>] extends [never]
 			? StringKeyof<T> extends BooleanShorthandKeys<S, G>
@@ -118,13 +123,13 @@ type CompiledCompoundSlot = {
 	slots: readonly string[];
 };
 
-type MultiSlots<S extends MaybeSlots, G = undefined> =
+type MultiSlots<S extends MaybeSlots, G extends MaybeGroups<S>> =
 	| readonly SlotTarget<S, G>[]
 	| boolean;
 
 type MultiSlotKeys<
 	S extends MaybeSlots,
-	G,
+	G extends MaybeGroups<S>,
 	MS extends MultiSlots<S, G>
 > = MS extends true
 	? SlotKey<S>
@@ -134,45 +139,45 @@ type MultiSlotKeys<
 
 type ReturnValue<
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, V, G>,
-	MS extends MultiSlots<S, G>,
-	G
+	P extends MaybePresets<S, G, V>,
+	MS extends MultiSlots<S, G>
 > = S extends undefined
 	? string
 	: Prettify<{
 			readonly [K in SlotKey<S>]: K extends MultiSlotKeys<S, G, MS>
-				? (props?: MultiSlotFnProps<S, V, P, G>) => string
+				? (props?: MultiSlotFnProps<S, G, V, P>) => string
 				: string;
 		}>;
 
-type SlotValue<S extends MaybeSlots, V, G = undefined> = S extends Slots
-	? Partial<Record<SlotTarget<S, G>, V>> | V
-	: V;
+type SlotValue<S extends MaybeSlots, G extends MaybeGroups<S>, V> =
+	S extends Slots ? Partial<Record<SlotTarget<S, G>, V>> | V : V;
 
-type ClassProp<S extends MaybeSlots, V, G> = EitherClassProp<
-	SlotValue<S, V, G>,
-	true
->;
+type ClassProp<S extends MaybeSlots, G extends MaybeGroups<S>, V> =
+	EitherClassProp<SlotValue<S, G, V>, true>;
 
-type Variants<S extends MaybeSlots, G = undefined> = Record<
+type Variants<S extends MaybeSlots, G extends MaybeGroups<S>> = Record<
 	string,
-	| Record<string | number, SlotValue<S, ConfigClassValue, G>>
-	| SlotValue<S, ConfigClassValue, G>
+	| Record<string | number, SlotValue<S, G, ConfigClassValue>>
+	| SlotValue<S, G, ConfigClassValue>
 >;
 
-type MaybeVariants<S extends MaybeSlots, G = undefined> =
+type MaybeVariants<S extends MaybeSlots, G extends MaybeGroups<S>> =
 	| Variants<S, G>
 	| undefined;
 
+/** Any `variants` config, for the helpers that only read its keys. */
+type AnyVariants = MaybeVariants<MaybeSlots, undefined>;
+
 type VariantConditions<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S, G>,
-	G
+	G extends MaybeGroups<S>,
+	V extends MaybeVariants<S, G>
 > = {
 	[K in StringKeyof<V>]?:
-		| VariantPropType<V[K], S, G>
-		| readonly VariantPropType<V[K], S, G>[]
+		| VariantPropType<S, G, V[K]>
+		| readonly VariantPropType<S, G, V[K]>[]
 		| undefined;
 };
 
@@ -183,48 +188,48 @@ type VariantConditions<
 // unwritable.
 type CompoundConditions<
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, V, G>,
-	G
-> = VariantConditions<S, V, G> & {
+	P extends MaybePresets<S, G, V>
+> = VariantConditions<S, G, V> & {
 	preset?: (keyof P & string) | undefined;
 };
 
 type CompoundVariants<
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, V, G>,
-	G
-> = readonly (CompoundConditions<S, V, P, G> &
-	EitherClassProp<SlotValue<S, ConfigClassValue, G>>)[];
+	P extends MaybePresets<S, G, V>
+> = readonly (CompoundConditions<S, G, V, P> &
+	EitherClassProp<SlotValue<S, G, ConfigClassValue>>)[];
 
 type CompoundSlots<
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, V, G>,
-	G
+	P extends MaybePresets<S, G, V>
 > = readonly ({
 	slots: readonly [SlotTarget<S, G>, ...SlotTarget<S, G>[]];
-} & CompoundConditions<S, V, P, G> &
+} & CompoundConditions<S, G, V, P> &
 	EitherClassProp<ConfigClassValue>)[];
 
 type VariantPropsInternal<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S, G>,
-	G
+	G extends MaybeGroups<S>,
+	V extends MaybeVariants<S, G>
 > = {
-	[K in StringKeyof<V>]: VariantPropType<V[K], S, G>;
+	[K in StringKeyof<V>]: VariantPropType<S, G, V[K]>;
 };
 
 type MultiSlotFnProps<
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, V, G>,
-	G
+	P extends MaybePresets<S, G, V>
 > = Prettify<
 	P extends undefined
-		? PartialNullable<VariantPropsInternal<S, V, G>>
-		: PartialNullable<VariantPropsInternal<S, V, G>> & {
+		? PartialNullable<VariantPropsInternal<S, G, V>>
+		: PartialNullable<VariantPropsInternal<S, G, V>> & {
 				preset?: StringKeyof<P> | undefined;
 			}
 > &
@@ -232,29 +237,29 @@ type MultiSlotFnProps<
 
 type DefaultVariantValue<
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	K extends StringKeyof<V>,
-	G
+	K extends StringKeyof<V>
 > =
-	| VariantPropType<V[K], S, G>
-	| ((props: RuntimeVariantState) => VariantPropType<V[K], S, G> | undefined)
+	| VariantPropType<S, G, V[K]>
+	| ((props: RuntimeVariantState) => VariantPropType<S, G, V[K]> | undefined)
 	| undefined;
 
-type RuntimeClassValue = SlotValue<Slots, ClassValue>;
+type RuntimeClassValue = SlotValue<Slots, undefined, ClassValue>;
 
 type Presets<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S, G>,
-	G
-> = Record<string, Partial<VariantPropsInternal<S, V, G>>>;
+	G extends MaybeGroups<S>,
+	V extends MaybeVariants<S, G>
+> = Record<string, Partial<VariantPropsInternal<S, G, V>>>;
 
 type MaybePresets<
 	S extends MaybeSlots,
-	V extends MaybeVariants<S, G>,
-	G
-> = Presets<S, V, G> | undefined;
+	G extends MaybeGroups<S>,
+	V extends MaybeVariants<S, G>
+> = Presets<S, G, V> | undefined;
 
-type PresetNameCollision<V extends MaybeVariants<MaybeSlots>, P> = {
+type PresetNameCollision<V extends AnyVariants, P> = {
 	[K in Extract<
 		keyof P,
 		StringKeyof<V>
@@ -269,7 +274,7 @@ type RuntimeProps = RuntimeVariantState & {
 
 type CompiledCompoundVariant = {
 	matchers: readonly CompoundMatcher[];
-	classValue: SlotValue<Slots, ConfigClassValue>;
+	classValue: SlotValue<Slots, undefined, ConfigClassValue>;
 };
 
 type CompiledConfig = {
@@ -280,7 +285,7 @@ type CompiledConfig = {
 	targetKeys: ReadonlySet<string>;
 	originalGroups: RuntimeGroups;
 	groups: CompiledGroups;
-	originalVariants: Variants<MaybeSlots>;
+	originalVariants: Variants<MaybeSlots, undefined>;
 	normalizedVariants: NormalizedVariants;
 	variantData: readonly VariantData[];
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
@@ -297,12 +302,12 @@ type CompiledConfig = {
 	postProcess: ((className: string) => string) | undefined;
 };
 
-type RequiredVariants<V extends MaybeVariants<MaybeSlots>> =
+type RequiredVariants<V extends AnyVariants> =
 	| readonly StringKeyof<V>[]
 	| boolean;
 
 type RequiredVariantKeys<
-	V extends MaybeVariants<MaybeSlots>,
+	V extends AnyVariants,
 	RV extends RequiredVariants<V>
 > = RV extends true
 	? StringKeyof<V>
@@ -312,50 +317,50 @@ type RequiredVariantKeys<
 
 type DefaultVariants<
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	RV extends RequiredVariants<V>,
-	G
+	RV extends RequiredVariants<V>
 > = {
 	[K in Exclude<
 		StringKeyof<V>,
 		RequiredVariantKeys<V, RV>
-	>]?: DefaultVariantValue<S, V, K, G>;
+	>]?: DefaultVariantValue<S, G, V, K>;
 };
 
 type VariantPropsWithRequired<
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	RV extends RequiredVariants<V>,
-	G
-> = Pick<VariantPropsInternal<S, V, G>, RequiredVariantKeys<V, RV>> &
+	RV extends RequiredVariants<V>
+> = Pick<VariantPropsInternal<S, G, V>, RequiredVariantKeys<V, RV>> &
 	Omit<
-		PartialNullable<VariantPropsInternal<S, V, G>>,
+		PartialNullable<VariantPropsInternal<S, G, V>>,
 		RequiredVariantKeys<V, RV>
 	>;
 
 type Props<
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V, G>,
-	G
+	P extends MaybePresets<S, G, V>
 > = Prettify<
 	P extends undefined
-		? VariantPropsWithRequired<S, V, RV, G>
-		: PartialNullable<VariantPropsInternal<S, V, G>> & {
+		? VariantPropsWithRequired<S, G, V, RV>
+		: PartialNullable<VariantPropsInternal<S, G, V>> & {
 				preset?: StringKeyof<P> | undefined;
 			}
 > &
-	ClassProp<S, ClassValue, G>;
+	ClassProp<S, G, ClassValue>;
 
 type Config<
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V, G>,
+	P extends MaybePresets<S, G, V>,
 	MS extends MultiSlots<S, G>,
-	I extends boolean = false,
-	G extends MaybeGroups<S> = undefined
+	I extends boolean = false
 > = {
 	/** Classes always applied, alongside any matched variant/compound classes. */
 	base?: ConfigClassValue;
@@ -366,11 +371,11 @@ type Config<
 	/** Named sets of slots, usable anywhere a slot name is, to target several slots at once. Group names must not match a slot name. */
 	groups?: G | undefined;
 	/** Extra classes applied only when a specific combination of variant values matches. A `preset` name stands for the variant values it holds. */
-	compoundVariants?: CompoundVariants<S, V, P, G> | undefined;
+	compoundVariants?: CompoundVariants<S, G, V, P> | undefined;
 	/** Extra per-slot classes applied only when a specific combination of variant values matches. A `preset` name stands for the variant values it holds. */
-	compoundSlots?: CompoundSlots<S, V, P, G> | undefined;
+	compoundSlots?: CompoundSlots<S, G, V, P> | undefined;
 	/** Variant values used when the caller doesn't pass a value for that variant. */
-	defaultVariants?: DefaultVariants<S, V, RV, G> | undefined;
+	defaultVariants?: DefaultVariants<S, G, V, RV> | undefined;
 	/** Variant keys the caller must always provide, dropping their `?` from the props type. */
 	requiredVariants?: RV | undefined;
 	/** Slot keys whose class function accepts variant props per call, for slots repeated across multiple elements. */
@@ -385,15 +390,22 @@ type Config<
 	postProcess?: ((className: string) => string) | undefined;
 };
 
-type ConfigKey = keyof Config<undefined, undefined, [], undefined, false>;
+type ConfigKey = keyof Config<
+	undefined,
+	undefined,
+	undefined,
+	[],
+	undefined,
+	false
+>;
 
 type IntrospectionValues<
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V, G>,
-	MS extends MultiSlots<S, G>,
-	G
+	P extends MaybePresets<S, G, V>,
+	MS extends MultiSlots<S, G>
 > = {
 	/** The `variants` config passed in, as-is. */
 	variants: V extends undefined ? Record<string, never> : V;
@@ -408,7 +420,7 @@ type IntrospectionValues<
 	/** Names of all declared groups. */
 	groupKeys: G extends undefined ? [] : StringKeyof<G>[];
 	/** The effective default variant values, after `defaultVariants` and `requiredVariants` are merged. */
-	defaultVariants: DefaultVariants<S, V, RV, G>;
+	defaultVariants: DefaultVariants<S, G, V, RV>;
 	/** Names of the variants the caller must always provide. */
 	requiredVariants: RV extends true ? StringKeyof<V>[] : RV;
 	/** The `multiSlots` config passed in, as-is. */
@@ -420,7 +432,7 @@ type IntrospectionValues<
 	/** Lists every valid value for a given variant. */
 	getVariantValues: V extends undefined
 		? (key: never) => never[]
-		: <K extends StringKeyof<V>>(key: K) => VariantPropType<V[K], S, G>[];
+		: <K extends StringKeyof<V>>(key: K) => VariantPropType<S, G, V[K]>[];
 	/** The configured cache size (`cacheSize`, or the default of 256). */
 	getMaxEntries: () => number;
 	/** Empties the cache of computed class results. */
@@ -431,20 +443,20 @@ type IntrospectionValues<
 
 type VariantFn<
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V, G>,
+	P extends MaybePresets<S, G, V>,
 	MS extends MultiSlots<S, G>,
-	I extends boolean,
-	G
+	I extends boolean
 > = {
 	(
 		...args: [RequiredVariantKeys<V, RV>] extends [never]
-			? [props?: Prettify<Props<S, V, RV, P, G>> | undefined]
-			: [props: Prettify<Props<S, V, RV, P, G>>]
-	): ReturnValue<S, V, P, MS, G>;
+			? [props?: Prettify<Props<S, G, V, RV, P>> | undefined]
+			: [props: Prettify<Props<S, G, V, RV, P>>]
+	): ReturnValue<S, G, V, P, MS>;
 } & (I extends true
-	? Prettify<IntrospectionValues<S, V, RV, P, MS, G>>
+	? Prettify<IntrospectionValues<S, G, V, RV, P, MS>>
 	: unknown);
 
 type NonConfigClassArg<T> =
@@ -464,16 +476,16 @@ type MultiSlotResult = Record<
 // precise variant types and these defaults are merged in underneath.
 type RawConfig = Config<
 	MaybeSlots,
+	MaybeGroups<MaybeSlots>,
 	MaybeVariants<MaybeSlots, MaybeGroups<MaybeSlots>>,
-	RequiredVariants<MaybeVariants<MaybeSlots>>,
+	RequiredVariants<AnyVariants>,
 	MaybePresets<
 		MaybeSlots,
-		MaybeVariants<MaybeSlots, MaybeGroups<MaybeSlots>>,
-		MaybeGroups<MaybeSlots>
+		MaybeGroups<MaybeSlots>,
+		MaybeVariants<MaybeSlots, MaybeGroups<MaybeSlots>>
 	>,
 	MultiSlots<MaybeSlots, MaybeGroups<MaybeSlots>>,
-	boolean,
-	MaybeGroups<MaybeSlots>
+	boolean
 >;
 
 /**
@@ -484,26 +496,26 @@ type RawConfig = Config<
 export type SV<DI extends boolean = false> = {
 	<
 		S extends MaybeSlots = undefined,
+		G extends MaybeGroups<S> = undefined,
 		V extends MaybeVariants<S, G> = undefined,
 		RV extends RequiredVariants<V> = false,
-		P extends MaybePresets<S, V, G> = undefined,
+		P extends MaybePresets<S, G, V> = undefined,
 		MS extends MultiSlots<S, G> = false,
-		I extends boolean = DI,
-		G extends MaybeGroups<S> = undefined
+		I extends boolean = DI
 	>(
-		config: Config<S, V, RV, P, MS, I, G>
-	): VariantFn<S, V, RV, P, MS, I, G>;
+		config: Config<S, G, V, RV, P, MS, I>
+	): VariantFn<S, G, V, RV, P, MS, I>;
 	<
 		S extends MaybeSlots = undefined,
+		G extends MaybeGroups<S> = undefined,
 		V extends MaybeVariants<S, G> = undefined,
 		RV extends RequiredVariants<V> = false,
-		P extends MaybePresets<S, V, G> = undefined,
+		P extends MaybePresets<S, G, V> = undefined,
 		MS extends MultiSlots<S, G> = false,
-		I extends boolean = DI,
-		G extends MaybeGroups<S> = undefined
+		I extends boolean = DI
 	>(
-		...args: [...ClassValue[], Config<S, V, RV, P, MS, I, G>]
-	): VariantFn<S, V, RV, P, MS, I, G>;
+		...args: [...ClassValue[], Config<S, G, V, RV, P, MS, I>]
+	): VariantFn<S, G, V, RV, P, MS, I>;
 	<const T extends ClassValue[]>(
 		...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
 	): string;
@@ -886,22 +898,22 @@ const configKeys: ReadonlySet<string> = new Set(keys(configKeysRecord));
 
 const isConfig = <
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V, G>,
+	P extends MaybePresets<S, G, V>,
 	MS extends MultiSlots<S, G>,
-	I extends boolean,
-	G extends MaybeGroups<S>
+	I extends boolean = false
 >(
-	value: ClassValue | Config<S, V, RV, P, MS, I, G>
-): value is Config<S, V, RV, P, MS, I, G> =>
+	value: ClassValue | Config<S, G, V, RV, P, MS, I>
+): value is Config<S, G, V, RV, P, MS, I> =>
 	value !== null &&
 	typeof value === 'object' &&
 	!isArray(value) &&
 	keys(value).every((key) => configKeys.has(key));
 
 const createNormalizedVariants = <S extends MaybeSlots>(
-	variants: Variants<S>,
+	variants: Variants<S, undefined>,
 	targetKeys: ReadonlySet<string>
 ): NormalizedVariants => {
 
@@ -1161,7 +1173,7 @@ const hasOnlySlotKeys = (
 };
 
 const isSlotObjectValue = <T>(
-	value: SlotValue<Slots, T>,
+	value: SlotValue<Slots, undefined, T>,
 	targetKeys: ReadonlySet<string>
 ): value is Partial<Record<string, T>> =>
 	value !== null &&
@@ -1225,15 +1237,15 @@ const applyValueToSlotClasses = (
 
 const compileConfig = <
 	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
 	RV extends RequiredVariants<V>,
-	P extends MaybePresets<S, V, G>,
+	P extends MaybePresets<S, G, V>,
 	MS extends MultiSlots<S, G>,
-	I extends boolean,
-	G extends MaybeGroups<S>
+	I extends boolean = false
 >(
 	baseArgs: ClassValue[],
-	config: Config<S, V, RV, P, MS, I, G>
+	config: Config<S, G, V, RV, P, MS, I>
 ): CompiledConfig => {
 
 	const {
