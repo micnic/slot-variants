@@ -79,7 +79,7 @@ const card = sv('border', {
 card({ size: 'lg' }); // header and body both get 'text-lg'
 ```
 
-Groups never become keys of the result — it always holds `base` plus each declared slot. When one object names both a group and one of its slots, the group's classes apply first, so the slot-specific value wins under `tailwind-merge` regardless of key order. A group lists slot names only (it cannot name another group), must be non-empty, and its name must not match a slot name (including `base`).
+Groups never become keys of the result — it always holds `base` plus each declared slot. The keys of a slot object are applied in the order they are written, so when one object names both a group and one of its slots, the key written first lands first. A group lists slot names only (it cannot name another group), must be non-empty, and its name must not match a slot name (including `base`).
 
 ### 6. Use Multi Slots for Repeated Renders
 

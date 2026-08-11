@@ -42,16 +42,14 @@ type SlotKey<S extends MaybeSlots> = 'base' | StringKeyof<S>;
 type Groups<S extends MaybeSlots> = Record<string, readonly SlotKey<S>[]>;
 type MaybeGroups<S extends MaybeSlots> = Groups<S> | undefined;
 
-/** Any `groups` config, for the few helpers that take no `S` to constrain against. */
-type AnyGroups = MaybeGroups<Slots>;
-
-/** Every name that stands for one or more slots: a slot key or a group name. */
 type SlotTarget<S extends MaybeSlots, G extends MaybeGroups<S>> =
 	| SlotKey<S>
 	| StringKeyof<G>;
 
-/** The slot keys a group name expands to, or `never` for a non-group key. */
-type GroupSlots<G extends AnyGroups, K extends string> = K extends keyof G
+type GroupSlots<
+	G extends MaybeGroups<Slots>,
+	K extends string
+> = K extends keyof G
 	? G[K] extends readonly (infer U extends string)[]
 		? U
 		: never
@@ -99,11 +97,7 @@ type RuntimeDefaultVariant =
 	| undefined;
 
 type SlotClasses = Record<string, ConfigClassValue[]>;
-
-/** The `groups` config with its slot names widened for runtime use. */
 type RuntimeGroups = Record<string, readonly string[]>;
-
-/** Each group name mapped to the slot names it stands for. */
 type CompiledGroups = ReadonlyMap<string, readonly string[]>;
 
 type CompoundMatcher = {
@@ -111,8 +105,6 @@ type CompoundMatcher = {
 	expected: RuntimeVariantMatcher;
 };
 
-// A compound entry as the compiler reads it: arbitrary matcher keys, with
-// `preset` pinned to a string so its name can be looked up without a cast
 type CompoundEntry = Record<string, unknown> & {
 	preset?: string | undefined;
 };
@@ -181,11 +173,6 @@ type VariantConditions<
 		| undefined;
 };
 
-// A compound entry may name a preset instead of restating the variant values
-// it stands for. The name is expanded into matchers when the config compiles,
-// so it is sugar over those values rather than a match on the `preset` prop.
-// With no `presets` config, `keyof P & string` is `never`, which makes the key
-// unwritable.
 type CompoundConditions<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
@@ -471,9 +458,6 @@ type MultiSlotResult = Record<
 	string | ((props?: RuntimeProps) => string)
 >;
 
-// A config whose generic parameters are widened to their constraints. Used as
-// the default bag for createSV(), where each call's own config drives the
-// precise variant types and these defaults are merged in underneath.
 type RawConfig = Config<
 	MaybeSlots,
 	MaybeGroups<MaybeSlots>,
@@ -616,10 +600,6 @@ const hasFunctionDefault = (
 	return false;
 };
 
-/**
- * Number of variant results retained by an `sv()` function when `cacheSize` is
- * not set in its config
- */
 const defaultCacheSize = 256;
 
 const looseEquals = (
@@ -712,9 +692,6 @@ const resolveCompoundMatcherExpected = (
 	return value;
 };
 
-// Seeds the matcher map from a `preset` name, if the entry names one. The
-// preset's values were already validated against the variants, so they only
-// need to be skipped where the preset leaves a variant undefined.
 const seedPresetMatchers = (
 	matchers: Map<string, RuntimeVariantMatcher>,
 	presets: Record<string, ResolvedVariantState>,
@@ -746,9 +723,6 @@ const compileCompoundMatchers = (
 	presets: Record<string, ResolvedVariantState>
 ): readonly CompoundMatcher[] => {
 
-	// Keyed by variant so a matcher written on the entry replaces the value the
-	// preset seeded for that variant, matching the runtime priority of an
-	// explicit prop over a preset value
 	const matchers = new Map<string, RuntimeVariantMatcher>();
 
 	seedPresetMatchers(matchers, presets, compound.preset);
@@ -829,9 +803,6 @@ const isBooleanVariantRecord = (
 ): boolean =>
 	keys(variantValue).every((key) => key === 'true' || key === 'false');
 
-// A variant value left `undefined` applies no classes, the same as an empty
-// string. Rewriting it once here keeps a missing value at runtime meaning an
-// undeclared one, and keeps the empty case off the class list entirely.
 const withoutUndefinedValues = (
 	variantValues: NormalizedVariantValues
 ): NormalizedVariantValues => {
@@ -1120,8 +1091,6 @@ const resolveGroups = (
 	return result;
 };
 
-// Flattens a list of slot names and group names into the slot names it covers,
-// keeping the first occurrence of a slot reached through more than one name
 const expandSlotTargets = (
 	targets: readonly string[],
 	groups: CompiledGroups,
@@ -1197,10 +1166,6 @@ const isSlotObjectValue = <T>(
 	!isArray(value) &&
 	hasOnlySlotKeys(value, targetKeys);
 
-// Pushes a per-slot object onto its slots. Group entries are applied before
-// slot entries, so a class written for a single slot always lands after the
-// one its group contributes, no matter the order the keys were written in. The
-// slot keys are deferred in a single pass rather than re-walked afterwards.
 const pushSlotObjectValue = (
 	slotClasses: SlotClasses,
 	value: Record<string, ConfigClassValue>,
@@ -1215,24 +1180,18 @@ const pushSlotObjectValue = (
 		return;
 	}
 
-	const slotTargets: string[] = [];
-
 	for (const [targetKey, targetValue] of entries(value)) {
 
 		const groupSlots = groups.get(targetKey);
 
 		if (groupSlots === undefined) {
-			slotTargets.push(targetKey);
+			slotClasses[targetKey]?.push(targetValue);
 			continue;
 		}
 
 		for (const slotKey of groupSlots) {
 			slotClasses[slotKey]?.push(targetValue);
 		}
-	}
-
-	for (const targetKey of slotTargets) {
-		slotClasses[targetKey]?.push(value[targetKey]);
 	}
 };
 
@@ -1427,12 +1386,6 @@ const resolveVariantValue = (
 	return defaultValue;
 };
 
-// Builds the cache key from the resolved value of every variant. A `values`
-// array records those values positionally, so a cache miss can build its state
-// without resolving a second time. It is only passed for configs holding a
-// function default, where resolving twice would call that function twice;
-// every other config resolves through plain lookups worth less than the
-// allocation, on a path taken by every call.
 const buildCacheKey = (
 	variantData: readonly VariantData[],
 	defaultVariants: Record<string, RuntimeDefaultVariant>,
@@ -1648,8 +1601,6 @@ const applyPostProcess = (
 	return result;
 };
 
-// Collects the values a per-slot object contributes to a single slot: every
-// group holding that slot first, then the slot's own entry
 const collectSlotValues = (
 	value: Partial<Record<string, ClassValue>>,
 	slotKey: string,
@@ -1659,20 +1610,14 @@ const collectSlotValues = (
 	const result: ClassValue[] = [];
 
 	for (const [targetKey, targetValue] of entries(value)) {
-		if (groups.get(targetKey)?.includes(slotKey)) {
+		if (targetKey === slotKey || groups.get(targetKey)?.includes(slotKey)) {
 			result.push(targetValue);
 		}
 	}
 
-	result.push(value[slotKey]);
-
 	return result;
 };
 
-// Merges a per-slot object into an already computed slot map. Group entries
-// are merged before slot entries, so a slot's own class always lands after the
-// ones its groups contribute. The slot keys are deferred in a single pass
-// rather than re-walked afterwards.
 const mergeSlotObjectIntoResult = (
 	baseResult: Record<string, string>,
 	classProp: Partial<Record<string, ClassValue>>,
@@ -1689,24 +1634,18 @@ const mergeSlotObjectIntoResult = (
 		return result;
 	}
 
-	const slotTargets: string[] = [];
-
 	for (const [targetKey, targetValue] of entries(classProp)) {
 
 		const groupSlots = groups.get(targetKey);
 
 		if (groupSlots === undefined) {
-			slotTargets.push(targetKey);
+			result[targetKey] = cn(result[targetKey], targetValue);
 			continue;
 		}
 
 		for (const slotKey of groupSlots) {
 			result[slotKey] = cn(result[slotKey], targetValue);
 		}
-	}
-
-	for (const targetKey of slotTargets) {
-		result[targetKey] = cn(result[targetKey], classProp[targetKey]);
 	}
 
 	return result;
@@ -1811,8 +1750,6 @@ const runVariant = (
 
 	let resolvedValues: ResolvedVariantValues | undefined;
 
-	// Function defaults are resolved once, their values kept for the miss path
-	// below rather than resolved a second time
 	if (hasFunctionDefaults) {
 		resolvedValues = [];
 	}
@@ -1884,7 +1821,6 @@ const buildSlotFn =
 
 		const mergedProps: RuntimeProps = { ...outerProps, ...innerProps };
 
-		// A defined inner class takes precedence over the spread `className`
 		if (innerClass !== undefined) {
 			mergedProps.class = mergeMultiSlotClass(
 				config.targetKeys,
@@ -1911,8 +1847,6 @@ const applyMultiSlots = (
 
 	const output: MultiSlotResult = {};
 
-	// A string result means a base-only config; reaching here implies a
-	// non-empty `multiSlots`, which can only be the `base` slot.
 	if (typeof result === 'string') {
 		output.base = buildSlotFn(config, props, 'base');
 
@@ -1977,9 +1911,6 @@ const runVariantResult = (
 	return applyMultiSlots(config, props, result);
 };
 
-// Wraps a compiled config in its callable form, attaching the introspection
-// surface only when the config enables it. Operates on the already-compiled
-// (non-generic) config so callers stay free of S/V variance concerns.
 const createVariantFn = (config: CompiledConfig) => {
 
 	const variantFn = (props: RuntimeProps = {}) =>

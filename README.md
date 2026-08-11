@@ -578,7 +578,7 @@ const { base, header, body, footer } = card({ size: 'lg' });
 
 Groups are a way to write one class value for several slots — they never become keys of the result, which always holds exactly `base` plus each declared slot.
 
-When the same object names both a group and one of its slots, the group's classes are applied first, so the slot-specific value always comes last and wins under [`tailwind-merge`](#post-processing), no matter which key was written first:
+The keys of a slot object are applied in the order they are written, so when the same object names both a group and one of its slots, the key written first lands first:
 
 ```typescript
 const card = sv({
@@ -597,7 +597,7 @@ const card = sv({
 });
 
 card({ size: 'lg' });
-// header: 'h px-2 px-6' — the group's class, then the slot's
+// header: 'h px-6 px-2' — the slot's class, then the group's
 // body:   'b px-2'
 ```
 

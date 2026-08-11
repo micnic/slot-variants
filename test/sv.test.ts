@@ -5944,8 +5944,8 @@ t.test('group can name the base slot', (t) => {
 	t.end();
 });
 
-t.test('group classes apply before slot classes', (t) => {
-	const card = sv({
+t.test('group and slot classes apply in written key order', (t) => {
+	const slotFirst = sv({
 		slots: {
 			header: 'a',
 			body: 'b'
@@ -5961,9 +5961,30 @@ t.test('group classes apply before slot classes', (t) => {
 	});
 
 	t.strictSame(
-		card({ size: 'lg' }),
+		slotFirst({ size: 'lg' }),
+		{ base: '', header: 'a slot group', body: 'b group' },
+		'the slot key written first lands first'
+	);
+
+	const groupFirst = sv({
+		slots: {
+			header: 'a',
+			body: 'b'
+		},
+		groups: {
+			content: ['header', 'body']
+		},
+		variants: {
+			size: {
+				lg: { content: 'group', header: 'slot' }
+			}
+		}
+	});
+
+	t.strictSame(
+		groupFirst({ size: 'lg' }),
 		{ base: '', header: 'a group slot', body: 'b group' },
-		'the group wins the earlier position even when written last'
+		'the group key written first lands first'
 	);
 
 	t.end();
@@ -6069,7 +6090,13 @@ t.test('runtime class prop accepts a group name', (t) => {
 	t.strictSame(
 		card({ className: { content: 'px-2', header: 'px-4' } }),
 		{ base: '', header: 'h px-2 px-4', body: 'b px-2', footer: 'f' },
-		'slot class prop merges after its group'
+		'the group key written first lands first'
+	);
+
+	t.strictSame(
+		card({ className: { header: 'px-4', content: 'px-2' } }),
+		{ base: '', header: 'h px-4 px-2', body: 'b px-2', footer: 'f' },
+		'the slot key written first lands first'
 	);
 
 	t.end();
@@ -6086,6 +6113,18 @@ t.test('group class prop works without slots', (t) => {
 		button({ class: { everything: 'px-2' } }),
 		'btn px-2',
 		'group reaching base merges into the string result'
+	);
+
+	t.equal(
+		button({ class: { everything: 'px-2', base: 'px-4' } }),
+		'btn px-2 px-4',
+		'the group key written first lands first'
+	);
+
+	t.equal(
+		button({ class: { base: 'px-4', everything: 'px-2' } }),
+		'btn px-4 px-2',
+		'the base key written first lands first'
 	);
 
 	t.end();
