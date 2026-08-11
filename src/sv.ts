@@ -22,8 +22,6 @@ type RuntimeVariantState = Record<
 >;
 
 type ResolvedVariantState = Record<string, RuntimeVariantValue | undefined>;
-
-/** Resolved variant values, positionally aligned with the compiled variants. */
 type ResolvedVariantValues = (RuntimeVariantValue | undefined)[];
 
 type RuntimeVariantMatcher =
@@ -268,7 +266,6 @@ type CompiledConfig = {
 	slots: Slots;
 	slotEntries: readonly [string, ConfigClassValue][];
 	slotKeys: ReadonlySet<string>;
-	/** Slot keys plus group names, the keys a per-slot object may hold. */
 	targetKeys: ReadonlySet<string>;
 	originalGroups: RuntimeGroups;
 	groups: CompiledGroups;
@@ -276,7 +273,6 @@ type CompiledConfig = {
 	normalizedVariants: NormalizedVariants;
 	variantData: readonly VariantData[];
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
-	/** Whether any default is a function, so resolving twice would call it twice. */
 	hasFunctionDefaults: boolean;
 	requiredVariants: readonly string[];
 	multiSlots: ReadonlySet<string>;
@@ -1963,28 +1959,25 @@ const createVariantFn = (config: CompiledConfig) => {
  */
 export const createSV = <I extends boolean = false>(
 	defaults?: RawConfig & { introspection?: I | undefined }
-): SV<I> => {
-
-	const configuredSv = (...args: ClassValue[]) => {
+): SV<I> =>
+	((...args: ClassValue[]) => {
 
 		const last = args.at(-1);
 
-		// Without a trailing config there is nothing to merge defaults into
+		// Treat this as a `cn()`-style call when no config is provided
 		if (!isConfig(last)) {
 			return cn(...args);
 		}
 
-		if (!defaults) {
-			return createVariantFn(compileConfig(args.slice(0, -1), last));
+		// When defaults are provided, merge them with the per-call config
+		if (defaults) {
+			return createVariantFn(
+				compileConfig(args.slice(0, -1), { ...defaults, ...last })
+			);
 		}
 
-		return createVariantFn(
-			compileConfig(args.slice(0, -1), { ...defaults, ...last })
-		);
-	};
-
-	return configuredSv as unknown as SV<I>;
-};
+		return createVariantFn(compileConfig(args.slice(0, -1), last));
+	}) as unknown as SV<I>;
 
 /**
  * Builds a class name string or a variant-based class name generator.

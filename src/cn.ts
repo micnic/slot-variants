@@ -68,7 +68,7 @@ const appendRecord = (result: string, record: ClassRecord): string => {
  * Strings are included directly, arrays are flattened, object keys are included
  * if their values are truthy, other value types are ignored.
  */
-export function cn(...args: ClassValue[]): string {
+export const cn = (...args: ClassValue[]): string => {
 
 	let result = '';
 
@@ -99,4 +99,4 @@ export function cn(...args: ClassValue[]): string {
 	}
 
 	return result;
-}
+};
