@@ -51,3 +51,10 @@ export const isStaticTernaryTemplate = (node: Node): node is TemplateLiteral =>
 	node.type === 'TemplateLiteral' &&
 	node.expressions.every(isStaticStringConditional) &&
 	node.quasis.every(quasiIsolatesExpression);
+
+// The weaker guard `no-restyle` needs when a substitution isn't a static
+// string at all: the quasi text still tokenizes on its own, so the literal
+// classes written around the substitution can be read even though the
+// substitution's own value can't.
+export const hasIsolatedQuasis = (node: TemplateLiteral): boolean =>
+	node.quasis.every(quasiIsolatesExpression);

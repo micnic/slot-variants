@@ -1,6 +1,7 @@
 import type { Rule } from 'eslint';
 import { DOCS_URL } from '../analyzer/config-keys.ts';
 import { checkCnArguments, checkSvConfig } from '../analyzer/static-values.ts';
+import { resolveStyledClasses } from '../analyzer/styled-values.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
 /**
@@ -8,6 +9,10 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  * values — string literals, template literals without expressions, arrays of
  * those, and ObjectExpressions whose keys/values are themselves inferrable —
  * are allowed in class-bearing positions.
+ *
+ * A `cn()`-style argument that resolves to another `sv()`/`cn()` call's output
+ * (`cn(classes.base, 'p-4')`) is exempt: its classes are known at lint time,
+ * and `no-restyle` is what checks them against what sits beside them.
  */
 export const noDynamicClasses: Rule.RuleModule = {
 	meta: {
@@ -25,8 +30,12 @@ export const noDynamicClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		return createTrackedCallListeners(context, (_node, call) => {
-			checkCnArguments(context, call.args);
+		return createTrackedCallListeners(context, (_node, call, ctx) => {
+			checkCnArguments(
+				context,
+				call.args,
+				(node) => resolveStyledClasses(node, ctx) !== null
+			);
 
 			if (call.config) {
 				checkSvConfig(context, call.config);

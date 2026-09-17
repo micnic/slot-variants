@@ -1157,6 +1157,8 @@ const classes = computed(() => list());
 
 Rules analyze `sv`/`cn` imported from `'slot-variants'` (including aliased and namespace imports), same-file `const` aliases of them, and `const` bindings to a [`createSV()`](#shared-defaults-with-createsv) result. Values reachable only through `let`/`var`, imported bindings, or destructuring are treated as dynamic and are not analyzed.
 
+Most rules look only at the `sv()`/`cn()` call itself. [`no-restyle`](#slot-variantsno-restyle) also reads the places a call's result is used — class lists and framework class attributes — and follows an imported component back to the module that declares it.
+
 #### `slot-variants/no-conflicting-classes`
 
 Flags class tokens that collide within the output of an `sv()` or `cn()` call: exact duplicates and distinct tokens targeting the same Tailwind utility (e.g. `w-100`/`w-200`, or shorthand/longhand overlaps like `px-4`/`pl-2`). It skips positions that can't actually co-occur, like different values of the same variant. Single-word utilities (`flex`, `block`) are ignored by default; set `exclusiveGroups: true` to catch conflicts between them too (`display`, `position`, etc.), or pass your own list of mutually-exclusive groups. If your Tailwind v3 config sets a `prefix`, pass the same value via the `prefix` option so the rule can read the namespace correctly.
@@ -1189,7 +1191,15 @@ sv({ variants: { [key]: 'x' } }); // computed variant key
 cn(extra, 'flex');                // identifier argument
 ```
 
-Replace dynamic class strings with static ones, or move them to the runtime `class` / `className` prop on the returned function, which is intentionally outside the analyzer's scope.
+Replace dynamic class strings with static ones, or move them to the runtime `class` / `className` prop on the returned function, which this rule intentionally leaves alone ([`no-restyle`](#slot-variantsno-restyle) is what checks that prop).
+
+An argument that resolves to another `sv()`/`cn()` call's output is not dynamic — its classes are known at lint time even though they aren't spelled as a literal:
+
+```tsx
+const classes = card();
+
+cn(classes.base, 'p-4'); // allowed — `classes.base` resolves to card()'s base slot
+```
 
 #### `slot-variants/no-empty-classes`
 
@@ -1211,6 +1221,76 @@ sv({ base: 'flex  items-center' }); // double space
 ```
 
 Run `eslint --fix` to rewrite these to the canonical single-space form.
+
+#### `slot-variants/no-restyle`
+
+Flags class names written on a component or element that collide with the classes its `sv()` / `cn()` config already applies there — the same duplicate/same-namespace analysis [`no-conflicting-classes`](#slot-variantsno-conflicting-classes) does inside one config, applied where that config's output meets hand-written classes. It reads three positions, in whichever framework spells them:
+
+```tsx
+const card = sv('border p-2', { slots: { header: 'font-bold px-4' } });
+
+// 1. The runtime `class` / `className` override, including the per-slot form
+card({ class: 'p-4' });                  // p-4 vs p-2
+card({ class: { header: 'px-8' } });     // px-8 vs px-4
+
+// 2. Literal classes written next to a slot-variants result in one class list
+const classes = card();
+
+<div className={cn(classes.base, 'p-4')} />;
+<div className={`${classes.header} px-8`} />;
+
+// 3. The class attribute of a same-file component that forwards the prop
+function Button({ className }) {
+  return <button className={card({ class: className }).base} />;
+}
+
+<Button className="p-4" />;              // p-4 vs p-2
+```
+
+The same positions in the other frameworks:
+
+```svelte
+<div class="p-4 {classes.base}">…</div>
+```
+
+```vue
+<div class="p-4" :class="classes.base">…</div>
+<div :class="[classes.base, 'p-4']">…</div>
+```
+
+Vue and Svelte need their own parser (`vue-eslint-parser` / `svelte-eslint-parser`) configured for those files, as usual.
+
+Following an import reads and parses the imported module, which only ESLint itself can do — under oxlint the rule still checks everything inside the current file, but imported components are left alone.
+
+Classes that can't render together are not flagged: the variant values a call site fixes — directly, or through [`defaultVariants`](#default-variants) — rule out every variant and compound entry requiring a different value, so `card({ size: 'sm', class: 'mt-4' })` doesn't collide with a `size: 'lg'` margin.
+
+A component imported from another module is followed to the file that declares it, through any re-export or barrel file in between:
+
+```tsx
+// ui/button.tsx
+const button = sv({ base: 'p-2 rounded' });
+
+export function Button({ className }) {
+  return <button className={button({ class: className })} />;
+}
+
+// page.tsx
+import { Button } from './ui/button.tsx';
+
+<Button className="p-4" />; // p-4 vs the button's own p-2
+```
+
+Relative and absolute specifiers resolve on their own, with the usual extension and directory-index lookup (and a `./button.js` specifier falls back to the `./button.tsx` behind it). A path alias needs the `alias` option, mapping each prefix to a directory — relative entries resolve against the ESLint working directory, and the longest matching prefix wins:
+
+```js
+'slot-variants/no-restyle': ['error', { alias: { '@/': './src' } }]
+```
+
+Bare package specifiers are not resolved: a component from `node_modules` is left alone. Nothing is reported when a module can't be read or parsed, so an unconfigured alias means missed reports, never false ones.
+
+`exclusiveGroups` and `prefix` mean exactly what they do in [`no-conflicting-classes`](#slot-variantsno-conflicting-classes).
+
+Either drop the overriding class, or — if the override is deliberate — move it into the config as a variant, so the component owns the choice instead of each call site.
 
 #### `slot-variants/no-shared-tokens`
 
@@ -1302,6 +1382,7 @@ export default [
       'slot-variants/no-dynamic-classes': 'error',
       'slot-variants/no-empty-classes': 'error',
       'slot-variants/no-redundant-spaces': 'error',
+      'slot-variants/no-restyle': 'error',
       'slot-variants/no-shared-tokens': 'error',
       'slot-variants/require-top-level-config': 'error',
       'slot-variants/sv-config-style': ['error', { baseStyle: 'field' }]
@@ -1320,6 +1401,7 @@ export default [
     "slot-variants/no-dynamic-classes": "error",
     "slot-variants/no-empty-classes": "error",
     "slot-variants/no-redundant-spaces": "error",
+    "slot-variants/no-restyle": "error",
     "slot-variants/no-shared-tokens": "error",
     "slot-variants/require-top-level-config": "error",
     "slot-variants/sv-config-style": ["error", { "baseStyle": "field" }]

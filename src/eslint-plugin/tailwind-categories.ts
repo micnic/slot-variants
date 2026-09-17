@@ -1908,3 +1908,29 @@ export const getConflictKey = (
 		overlap: wordOverlap ?? getOverlapNode(firstSegment, category)
 	};
 };
+// The pairwise form of the grouping `no-conflicting-classes` does over whole
+// token sets: two tokens collide when they share a conflict key, or when their
+// overlap nodes are the same or adjacent in the covers relation (`p` vs `px`).
+// Tokens under different variant prefixes never collide.
+export const areConflictingKeys = (
+	a: ConflictKeyInfo,
+	b: ConflictKeyInfo
+): boolean => {
+	if (a.key === b.key) {
+		return true;
+	}
+
+	if (a.variantPrefix !== b.variantPrefix) {
+		return false;
+	}
+
+	if (a.overlap === null || b.overlap === null) {
+		return false;
+	}
+
+	if (a.overlap === b.overlap) {
+		return true;
+	}
+
+	return overlapNeighbors(a.overlap).includes(b.overlap);
+};

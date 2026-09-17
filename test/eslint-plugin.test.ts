@@ -1,10 +1,41 @@
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import t from 'tap';
 import { Linter, RuleTester } from 'eslint';
+import * as svelteParser from 'svelte-eslint-parser';
+import * as vueParser from 'vue-eslint-parser';
 import pkg from '../package.json' with { type: 'json' };
 import plugin, { rules } from '../src/eslint-plugin.ts';
 
 const tester = new RuleTester({
 	languageOptions: {
+		ecmaVersion: 'latest',
+		sourceType: 'module'
+	}
+});
+
+// `no-restyle` reads JSX and the two template dialects, so it needs testers of
+// its own alongside the plain-script one above.
+const jsxTester = new RuleTester({
+	languageOptions: {
+		ecmaVersion: 'latest',
+		sourceType: 'module',
+		parserOptions: { ecmaFeatures: { jsx: true } }
+	}
+});
+
+const svelteTester = new RuleTester({
+	languageOptions: {
+		parser: svelteParser,
+		ecmaVersion: 'latest',
+		sourceType: 'module'
+	}
+});
+
+const vueTester = new RuleTester({
+	languageOptions: {
+		parser: vueParser,
 		ecmaVersion: 'latest',
 		sourceType: 'module'
 	}
@@ -40,6 +71,13 @@ const dupCn = (token: string) => err('duplicateCn', { token });
 
 const conflict = (tokens: string, slot = 'base') =>
 	err('conflict', { tokens, slot });
+
+const IMPORT_SV_CN = "import { cn, sv } from 'slot-variants';\n";
+
+// `no-restyle` names both sides of a collision, so its `conflict` data differs
+// from the one `no-conflicting-classes` reports above.
+const restyle = (token: string, internal: string, slot = 'base') =>
+	err('conflict', { token, internal, slot });
 
 const conflictCn = (tokens: string) => err('conflictCn', { tokens });
 
@@ -540,6 +578,12 @@ t.test('no-redundant-spaces', (t) => {
 const NO_DYNAMIC_CLASSES_VALID = [
 	// Static class strings in cn-style call.
 	IMPORT + "sv('flex', 'items-center');",
+	// Another sv()/cn() call's output is not a literal, but its classes are
+	// still known at lint time — `no-restyle` is what checks them.
+	`import { cn, sv } from 'slot-variants';
+		const card = sv({ slots: { header: 'px-4' } });
+		const classes = card();
+		cn(classes.header, 'font-bold');`,
 	// Static base in config.
 	IMPORT + "sv({ base: 'flex' });",
 	// Array of static class values.
@@ -5596,6 +5640,851 @@ t.test('sv-config-style (base style)', (t) => {
 		tester.run('sv-config-style', styleRule, {
 			valid: SV_CONFIG_STYLE_BASE_VALID,
 			invalid: SV_CONFIG_STYLE_BASE_INVALID
+		});
+	}, 'rule tester passes');
+	t.end();
+});
+
+const RESTYLE_CARD = `const card = sv('border p-2', {
+	slots: { header: 'font-bold px-4', body: 'py-4' },
+	groups: { content: ['header', 'body'] },
+	variants: {
+		size: { sm: { content: 'text-sm' }, lg: { content: 'text-lg' } },
+		flat: 'shadow-none'
+	},
+	compoundVariants: [{ size: 'lg', flat: true, class: 'gap-2' }],
+	compoundSlots: [{ slots: ['header'], size: 'sm', class: 'tracking-wide' }],
+	defaultVariants: { size: 'sm' }
+});\n`;
+
+// Groups that nothing ever targets, so their bucket stays empty.
+const RESTYLE_PANEL = `const panel = sv({
+	slots: { head: 'px-4', foot: 'py-2' },
+	groups: { all: ['head', 'foot'] }
+});\n`;
+
+const RESTYLE_BUTTON = `const button = sv({
+	base: 'p-2 rounded',
+	variants: { size: { sm: 'text-sm', lg: 'mt-8' } },
+	defaultVariants: { size: 'sm' }
+});\n`;
+
+const RESTYLE_VALID = [
+	// No slot-variants import at all — nothing is tracked.
+	"const card = sv({ base: 'p-2' });\ncard({ class: 'p-4' });",
+	// A call with no arguments, and one whose props carry no class override.
+	IMPORT + RESTYLE_BUTTON + 'button();',
+	IMPORT + RESTYLE_BUTTON + "button({ size: 'lg' });",
+	// A spread props object, and a spread inside it — neither is readable.
+	IMPORT + RESTYLE_BUTTON + 'button(...rest);',
+	IMPORT + RESTYLE_BUTTON + 'button({ ...rest });',
+	// An override that collides with nothing the call can render: `mt-8` only
+	// ships with `size: 'lg'`, which defaultVariants rules out here.
+	IMPORT + RESTYLE_BUTTON + "button({ class: 'mt-4' });",
+	// A dynamic override is left alone, exactly like no-dynamic-classes does.
+	IMPORT + RESTYLE_BUTTON + 'button({ class: extra });',
+	// The same exclusion spelled out at the call site.
+	IMPORT + RESTYLE_BUTTON + "button({ size: 'sm', class: 'mt-4' });",
+	// A dynamic variant value leaves every variant entry in play, so the
+	// override is compared against `mt-8` and `text-sm` both — `gap-1` hits
+	// neither.
+	IMPORT + RESTYLE_BUTTON + "button({ size: dynamic, class: 'gap-1' });",
+	// Single-word utilities have no namespace unless exclusiveGroups says so.
+	IMPORT + "const b = sv({ base: 'flex' });\nb({ class: 'block' });",
+	// The callee isn't a compiled variant function: a plain call, a config-less
+	// `sv()` (which returns a string), and a `createSV()` factory.
+	IMPORT + "other({ class: 'p-4' });",
+	IMPORT + "const s = sv('p-2');\ns({ class: 'p-4' });",
+	IMPORT_CREATE_SV + "const make = createSV({});\nmake({ class: 'p-4' });",
+	// A callee that isn't an identifier at all.
+	IMPORT + RESTYLE_BUTTON + "(0, button)({ class: 'p-4' });",
+	// A `let` binding is never read through.
+	IMPORT + "let card = sv({ base: 'p-2' });\ncard({ class: 'p-4' });",
+	// Slot reads that don't name a real slot, or can't be read statically.
+	IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c.footer, 'px-8');",
+	// A private field read is a member expression with no readable name.
+	IMPORT_SV_CN +
+		"class A { #s = 'p-2'; m() { return cn(this.#s, 'p-4'); } }",
+	// A method call is not a variant-function call.
+	IMPORT_SV_CN + RESTYLE_BUTTON + "console.log('p-4');",
+	IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c['header'], 'px-8');",
+	IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c[key], 'px-8');",
+	// A slotted result carries no classes of its own until a slot is read.
+	IMPORT_SV_CN + RESTYLE_CARD + "cn(card(), 'p-4');",
+	// A member read off something that isn't a call.
+	IMPORT_SV_CN + "const o = { base: 'p-2' };\ncn(o.base, 'p-4');",
+	// A slot function of a slot that isn't multi-slot still resolves to its
+	// slot, but an unrelated call does not.
+	IMPORT_SV_CN + RESTYLE_CARD + "cn(other().base, 'p-4');",
+	// A variant function that hasn't been called yields no classes yet.
+	IMPORT_SV_CN + RESTYLE_BUTTON + "cn(button, 'p-4');",
+	// cn() with no slot-variants part is `no-conflicting-classes` territory.
+	IMPORT_SV_CN + "cn('p-2', 'p-4');",
+	// A substitution that isn't whitespace-isolated can't be tokenized, so the
+	// surrounding text is skipped rather than guessed at.
+	IMPORT_SV_CN + RESTYLE_CARD + 'const c = card();\ncn(`${c.base}p-4`);',
+	// JSX positions with nothing to read.
+	IMPORT + '<div className />;',
+	IMPORT + '<div {...props} />;',
+	IMPORT + '<div id="p-4" />;',
+	IMPORT + RESTYLE_CARD + '<svg xlink:href="p-4" />;',
+	// A dotted component name never resolves to a same-file binding.
+	IMPORT + RESTYLE_CARD + '<Foo.Bar className="p-4" />;',
+	// A host element whose class list has no slot-variants part.
+	IMPORT + RESTYLE_CARD + '<div className="p-4 p-2" />;',
+	// Components the rule can't read: imported, `let`-bound, not a function,
+	// declared twice, and one that never forwards its class prop.
+	IMPORT +
+		RESTYLE_BUTTON +
+		"import { Button } from './button.tsx';\n<Button className=\"p-4\" />;",
+	IMPORT +
+		RESTYLE_BUTTON +
+		'let Button = () => null;\n<Button className="p-4" />;',
+	IMPORT + RESTYLE_BUTTON + 'const Button = 5;\n<Button className="p-4" />;',
+	IMPORT +
+		RESTYLE_BUTTON +
+		'var Button = () => null;\nvar Button = () => null;\n<Button className="p-4" />;',
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button() { return <button className={button()} />; }\n<Button className="p-4" />;',
+	// The component forwards `class`, so a `className` attribute isn't the
+	// prop it reads.
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button({ class: cls }) { return <button className={button({ class: cls })} />; }\n<Button className="p-4" />;',
+	// A props-object read that doesn't name this function's parameter, a
+	// destructured binding that shadows nothing, and a computed prop read.
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button(props) { return <button className={button({ class: other.className })} />; }\n<Button className="p-4" />;',
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button({ className }) { return <button className={button({ class: props.className })} />; }\n<Button className="p-4" />;',
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button(props) { return <button className={button({ class: props[key] })} />; }\n<Button className="p-4" />;',
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button(props) { return <button className={button({ class: props.title })} />; }\n<Button className="p-4" />;',
+	// A rest element, a computed key and a renamed non-identifier target in the
+	// props pattern are all skipped.
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button({ class: [cls], [key]: k, ...rest }) { return <button className={button({ class: rest })} />; }\n<Button className="p-4" />;',
+	// An outer binding of the same name is not this function's parameter.
+	IMPORT +
+		RESTYLE_BUTTON +
+		'const className = "x";\nfunction Button() { return <button className={button({ class: className })} />; }\n<Button className="p-4" />;',
+	// A variant prefix is its own namespace, so `hover:p-4` doesn't collide
+	// with an unprefixed `p-2`.
+	IMPORT + RESTYLE_BUTTON + "button({ class: 'hover:p-4' });",
+	// A props-object read through something that isn't the parameter itself.
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button(props) { return <button className={button({ class: props.style.className })} />; }\n<Button className="p-4" />;',
+	// A binding that shadows the parameter inside a nested scope is not the
+	// prop, in either spelling.
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button(props) { const f = () => { const props = {}; return button({ class: props.className }); }; return <button className={f()} />; }\n<Button className="p-4" />;',
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button({ className }) { const f = () => { const className = x; return button({ class: className }); }; return <button className={f()} />; }\n<Button className="p-4" />;'
+];
+
+// Svelte: a class attribute with no slot-variants substitution, and a
+// directive rather than a plain attribute.
+const RESTYLE_SVELTE_VALID = [
+	{
+		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<div class="m-1" id="x" class:active={on}>y</div>`,
+		filename: 'a.svelte'
+	}
+];
+
+// Vue: a bound attribute that isn't `class`, an empty binding, a dynamic
+// directive argument, a `v-if`, and a class object with no styled sibling.
+const RESTYLE_VUE_VALID = [
+	{
+		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<template><div :id="c" v-if="on" :class="{ 'p-4': on }">a</div></template>`,
+		filename: 'a.vue'
+	},
+	{
+		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });</script>\n<template><div :class="" :[key]="c" class>a</div></template>`,
+		filename: 'a.vue'
+	}
+];
+
+const RESTYLE_INVALID = [
+	// The runtime override, against base and against a named slot.
+	{
+		code: IMPORT + RESTYLE_CARD + "card({ class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code: IMPORT + RESTYLE_CARD + "card({ className: 'border' });",
+		errors: [dup('border')]
+	},
+	{
+		code: IMPORT + RESTYLE_CARD + "card({ class: { header: 'px-8' } });",
+		errors: [restyle('px-8', 'px-4', 'header')]
+	},
+	// `class` wins over `className` when a call passes both.
+	{
+		code: IMPORT + RESTYLE_CARD + "card({ class: 'p-4', className: 'px-8' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// A group key targets every slot it names — the class is reported once, at
+	// the first slot it collides in, rather than once per member slot.
+	{
+		code: IMPORT + RESTYLE_CARD + "card({ class: { content: 'text-base' } });",
+		errors: [restyle('text-base', 'text-sm', 'header')]
+	},
+	{
+		code: IMPORT + RESTYLE_CARD + "card({ class: { body: 'text-base' } });",
+		errors: [restyle('text-base', 'text-sm', 'body')]
+	},
+	// A compoundSlots class is reachable under the default variants.
+	{
+		code: IMPORT + RESTYLE_CARD + "card({ class: { header: 'tracking-wide' } });",
+		errors: [dup('tracking-wide', 'header')]
+	},
+	// A compoundVariants class needs both its matchers; `size: 'sm'` rules it
+	// out, `size: 'lg'` lets it through.
+	{
+		code:
+			IMPORT + RESTYLE_CARD + "card({ size: 'lg', flat: true, class: 'gap-4' });",
+		errors: [restyle('gap-4', 'gap-2')]
+	},
+	// Fixing the variant the other way lets its own classes through.
+	{
+		code: IMPORT + RESTYLE_BUTTON + "button({ size: 'lg', class: 'mt-4' });",
+		errors: [restyle('mt-4', 'mt-8')]
+	},
+	// Arrays, records, conditionals and logical operands in the override.
+	{
+		code: IMPORT + RESTYLE_BUTTON + "button({ class: ['mt-1', 'p-4'] });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code: IMPORT + RESTYLE_BUTTON + "button({ class: { 'p-4': on } });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code: IMPORT + RESTYLE_BUTTON + "button({ class: on ? 'p-4' : 'p-8' });",
+		errors: [restyle('p-4', 'p-2'), restyle('p-8', 'p-2')]
+	},
+	{
+		code: IMPORT + RESTYLE_BUTTON + "button({ class: on && 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// A hoisted const override, and a hoisted props object.
+	{
+		code:
+			IMPORT + RESTYLE_BUTTON + "const extra = 'p-4';\nbutton({ class: extra });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			"const props = { class: 'p-4' };\nbutton(props);",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// Shorthand/longhand overlap: `px-8` covers what `p-2` sets.
+	{
+		code: IMPORT + RESTYLE_BUTTON + "button({ class: 'px-8' });",
+		errors: [restyle('px-8', 'p-2')]
+	},
+	// Single-word utilities only collide once exclusiveGroups is on.
+	{
+		code: IMPORT + "const b = sv({ base: 'flex' });\nb({ class: 'block' });",
+		options: [{ exclusiveGroups: true }],
+		errors: [restyle('block', 'flex')]
+	},
+	// A Tailwind v3 prefix is stripped before the namespace is read.
+	{
+		code:
+			IMPORT +
+			"const b = sv({ base: 'tw-p-2' });\nb({ class: 'tw-p-4' });",
+		options: [{ prefix: 'tw-' }],
+		errors: [restyle('tw-p-4', 'tw-p-2')]
+	},
+	// A multi-slot slot function pins the slot its override targets, and its
+	// own props refine the ones the result already fixed.
+	{
+		code:
+			IMPORT +
+			`const list = sv({
+	slots: { item: 'px-2 py-1' },
+	multiSlots: ['item'],
+	variants: { active: 'bg-blue-100' }
+});
+const classes = list();
+classes.item({ class: 'px-4' });`,
+		errors: [restyle('px-4', 'px-2', 'item')]
+	},
+	// A slot function's own result is class-valued, under its slot.
+	{
+		code:
+			IMPORT_SV_CN +
+			`const list = sv({
+	slots: { item: 'px-2 py-1' },
+	multiSlots: ['item'],
+	variants: { active: 'bg-blue-100' }
+});
+const classes = list();
+cn(classes.item({ active: true }), 'px-4');`,
+		errors: [restyle('px-4', 'px-2', 'item')]
+	},
+	// A slot whose group bucket was never written to still reads its own.
+	{
+		code: IMPORT_SV_CN + RESTYLE_PANEL + "const p = panel();\ncn(p.head, 'px-8');",
+		errors: [restyle('px-8', 'px-4', 'head')]
+	},
+	// Two tokens of one overlap node that don't share a conflict key — they
+	// differ in segment count, so only the overlap node unites them.
+	{
+		code:
+			IMPORT +
+			"const b = sv({ base: 'mt-4' });\nb({ class: 'mt-safe-offset-4' });",
+		errors: [restyle('mt-safe-offset-4', 'mt-4')]
+	},
+	// Classes written next to a slot read, in every shape a class list takes.
+	{
+		code: IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c.base, 'p-4');",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code: IMPORT_SV_CN + RESTYLE_CARD + 'const c = card();\ncn(`${c.header} px-8`);',
+		errors: [restyle('px-8', 'px-4', 'header')]
+	},
+	{
+		code: IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn([c.body, 'py-8']);",
+		errors: [restyle('py-8', 'py-4', 'body')]
+	},
+	{
+		code:
+			IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c.base, on && 'p-4');",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_CARD +
+			"const c = card();\ncn(c.base, on ? 'p-4' : 'p-8');",
+		errors: [restyle('p-4', 'p-2'), restyle('p-8', 'p-2')]
+	},
+	{
+		code:
+			IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c.base, { 'p-4': on });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// A spread argument is skipped; the literal beside it still counts.
+	{
+		code: IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c.base, ...rest, 'p-4');",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// A config-less `sv()` call is a class list too, and its own result can be
+	// the styled side once it's bound.
+	{
+		code: IMPORT + RESTYLE_CARD + "const c = card();\nsv(c.base, 'p-4');",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT_SV_CN +
+			"const base = cn('p-2 rounded');\ncn(base, 'p-4');\ncn(base, 'p-8');",
+		errors: [restyle('p-4', 'p-2'), restyle('p-8', 'p-2')]
+	},
+	// A slotless variant function's result is class-valued on its own.
+	{
+		code: IMPORT_SV_CN + RESTYLE_BUTTON + "cn(button(), 'p-4');",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// Two styled parts in one list: the literal is reported once.
+	{
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_CARD +
+			"const c = card();\ncn(c.base, c.header, 'p-4');",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// JSX: literals mixed with a slot read, on a host element.
+	{
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_CARD +
+			'const c = card();\n<div className={`${c.base} p-4`} />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_CARD +
+			"const c = card();\n<div class={cn(c.header, 'px-8')} />;",
+		errors: [restyle('px-8', 'px-4', 'header')]
+	},
+	// JSX: a same-file component that forwards its class prop, reached from a
+	// destructured binding, a renamed one, and the props object.
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'function Button({ id, className }) { return <button id={id} className={button({ class: className })} />; }\n<Button className="p-4 rounded" />;',
+		errors: [restyle('p-4', 'p-2'), dup('rounded')]
+	},
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'const Button = ({ class: cls }) => <button className={button({ class: cls })} />;\n<Button class="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'function Button(props) { return <button className={button({ class: props.className })} />; }\n<Button className="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// A usage written above the component's own declaration still resolves.
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'const App = () => <Button className="p-4" />;\nfunction Button({ className }) { return <button className={button({ class: className })} />; }',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// A wrapper between the component and the call (Solid's createMemo shape)
+	// still attributes the forward to the component.
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'function Button(props) { const c = createMemo(() => button({ class: props.class })); return <button class={c()} />; }\n<Button class="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// Only the first forward a component makes is recorded.
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			"function Button({ className }) { button({ class: className }); return <button className={button({ class: className, size: 'lg' })} />; }\n<Button className=\"p-4\" />;",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// A slot-keyed override on a component reached through its own attribute
+	// resolves against the slot the string targets.
+	{
+		code:
+			IMPORT +
+			RESTYLE_CARD +
+			'function Card({ className }) { return <div className={card({ class: className }).base} />; }\n<Card className="border" />;',
+		errors: [dup('border')]
+	}
+];
+
+const RESTYLE_SVELTE_INVALID = [
+	// Svelte: literal runs around a substitution, and a `class` attribute that
+	// is a single substitution beside a static one.
+	{
+		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2 rounded' });\nconst c = card();</script>\n<div class="p-4 {c} rounded">y</div>`,
+		filename: 'a.svelte',
+		errors: [restyle('p-4', 'p-2'), dup('rounded')]
+	},
+	{
+		code: `<script>import { sv, cn } from 'slot-variants';\nconst card = sv({ slots: { header: 'px-4' } });\nconst c = card();</script>\n<div class={cn(c.header, 'px-8')}>y</div>`,
+		filename: 'a.svelte',
+		errors: [restyle('px-8', 'px-4', 'header')]
+	}
+];
+
+const RESTYLE_VUE_INVALID = [
+	// Vue: a static `class` merged with a `:class` binding on one element, an
+	// array binding, a template binding, and a conditional inside one.
+	{
+		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<template><div class="p-4" :class="c">a</div></template>`,
+		filename: 'a.vue',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<template><div :class="[c, 'p-8']">a</div><div :class="\`\${c} p-6\`">b</div></template>`,
+		filename: 'a.vue',
+		errors: [restyle('p-8', 'p-2'), restyle('p-6', 'p-2')]
+	},
+	// Vue: an identifier the script never binds is left as itself.
+	{
+		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<template><div :class="[c, unknown, 'p-8']">a</div></template>`,
+		filename: 'a.vue',
+		errors: [restyle('p-8', 'p-2')]
+	}
+];
+
+// Cross-file resolution needs modules that really exist on disk, so the
+// fixtures below are written to a temp directory for the duration of the run.
+const fixtureDir = mkdtempSync(join(tmpdir(), 'slot-variants-'));
+
+const writeFixture = (name: string, content: string): string => {
+	const path = join(fixtureDir, name);
+
+	mkdirSync(join(path, '..'), { recursive: true });
+	writeFileSync(path, content);
+
+	return path;
+};
+
+t.teardown(() => {
+	rmSync(fixtureDir, { recursive: true, force: true });
+});
+
+writeFixture(
+	'ui/button.tsx',
+	`${IMPORT}const button = sv({
+		base: 'p-2 rounded',
+		variants: { size: { sm: 'text-sm', lg: 'mt-8' } },
+		defaultVariants: { size: 'sm' }
+	});
+
+	export function Button({ className, size }) {
+		return <button className={button({ size, class: className })} />;
+	}
+
+	export default function Chip({ className }) {
+		return <span className={button({ class: className })} />;
+	}
+
+	export const NotAComponent = 5;
+	`
+);
+
+writeFixture(
+	'ui/card.tsx',
+	`${IMPORT}const card = sv('border rounded-lg', { slots: { header: 'px-4' } });
+
+	const Card = ({ class: cls }) => <div class={card({ class: cls }).base} />;
+
+	export { Card };
+	export { Card as Panel };
+	`
+);
+
+// A barrel: one named re-export, one star re-export.
+writeFixture(
+	'ui/index.ts',
+	`export { Button } from './button.tsx';
+	export * from './card.tsx';
+	`
+);
+
+// A component whose own file never calls sv().
+writeFixture('ui/plain.tsx', 'export function Plain({ className }) { return <i className={className} />; }\n');
+
+// Every default-export shape, plus an export declaration that is neither a
+// function nor a variable, and an export name that isn't an identifier.
+writeFixture(
+	'ui/anon.tsx',
+	`${IMPORT}const anon = sv({ base: 'm-1' });
+
+	export class Ignored {}
+
+	export default function ({ className }) {
+		return <i className={anon({ class: className })} />;
+	}
+	`
+);
+
+writeFixture(
+	'ui/arrow.tsx',
+	`${IMPORT}const arrow = sv({ base: 'm-2' });
+
+	export default ({ className }) => <i className={arrow({ class: className })} />;
+	`
+);
+
+writeFixture(
+	'ui/named-default.tsx',
+	`${IMPORT}const named = sv({ base: 'm-3' });
+
+	function Named({ className }) {
+		return <i className={named({ class: className })} />;
+	}
+
+	export default Named;
+	export { Named as "odd name" };
+	`
+);
+
+// An anonymous default export that forwards nothing.
+writeFixture(
+	'ui/bare.tsx',
+	'export default ({ id }) => <i id={id} />;\n'
+);
+
+// Two modules re-exporting each other — the walk must stop rather than loop.
+writeFixture('ui/loop-a.ts', "export { Looped } from './loop-b.ts';\n");
+writeFixture('ui/loop-b.ts', "export { Looped } from './loop-a.ts';\n");
+
+// A file the parser can't read at all.
+writeFixture('ui/broken.tsx', 'export function Broken( { unclosed\n');
+
+// Imported with a `.js` specifier that only exists as `.tsx`.
+writeFixture(
+	'ui/badge.tsx',
+	`${IMPORT}const badge = sv({ base: 'px-1 text-xs' });
+
+	export function Badge({ className }) {
+		return <b className={badge({ class: className })} />;
+	}
+	`
+);
+
+// A re-export chain longer than the loader will follow.
+const HOP_COUNT = 12;
+
+for (let index = 0; index < HOP_COUNT; index++) {
+	writeFixture(
+		`hops/hop${index}.ts`,
+		`export { Hopped } from './hop${index + 1}.ts';\n`
+	);
+}
+
+writeFixture(
+	`hops/hop${HOP_COUNT}.tsx`,
+	`${IMPORT}const hopped = sv({ base: 'p-2' });
+
+	export function Hopped({ className }) {
+		return <i className={hopped({ class: className })} />;
+	}
+	`
+);
+
+// Enough modules to push the loader's bounded cache past its limit, so the
+// oldest entry is evicted rather than the map growing without end.
+const CACHED_MODULE_COUNT = 210;
+const cacheImports: string[] = [];
+const cacheUsages: string[] = [];
+
+for (let index = 0; index < CACHED_MODULE_COUNT; index++) {
+	writeFixture(
+		`many/mod${index}.tsx`,
+		`${IMPORT}const mod = sv({ base: 'p-2' });
+
+		export function Mod${index}({ className }) {
+			return <i className={mod({ class: className })} />;
+		}
+		`
+	);
+	cacheImports.push(
+		`import { Mod${index} } from './many/mod${index}.tsx';`
+	);
+	cacheUsages.push(`<Mod${index} className="gap-1" />;`);
+}
+
+const CROSS_FILE_VALID = [
+	{
+		// The chain runs past the hop limit, so the component at its end is
+		// never reached.
+		code: `import { Hopped } from './hops/hop0.ts';\n<Hopped className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		code: `${cacheImports.join('\n')}\n${cacheUsages.join('\n')}`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// A class that collides with nothing the imported component applies.
+		code: `import { Button } from './ui/button.tsx';\n<Button className="gap-1" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// `mt-8` only ships with `size: 'lg'`, which the component's own
+		// defaultVariants rules out — exclusivity survives the file boundary.
+		code: `import { Button } from './ui/button.tsx';\n<Button className="mt-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// The component forwards `class`, so `className` isn't its prop.
+		code: `import { Card } from './ui/card.tsx';\n<Card className="rounded-lg" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// An export that isn't a function, a module that doesn't exist, a bare
+		// package specifier with no alias, and a component with no sv() call.
+		code: `import { NotAComponent } from './ui/button.tsx';\n<NotAComponent className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		code: `import { Button } from './ui/missing.tsx';\n<Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		code: `import { Button } from 'some-package';\n<Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		code: `import { Plain } from './ui/plain.tsx';\n<Plain className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// A name the barrel doesn't export is followed and then given up on.
+		code: `import { Nothing } from './ui';\n<Nothing className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// A namespace import is read through a dotted name, which never
+		// resolves to a component binding.
+		code: `import * as UI from './ui/button.tsx';\n<UI.Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// A namespace binding used as an element name directly names no export.
+		code: `import * as Button from './ui/button.tsx';\n<Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// A `.js` specifier with no source file behind it.
+		code: `import { Badge } from './ui/nothing.js';\n<Badge className="px-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// An anonymous default export that never forwards a class prop.
+		code: `import Bare from './ui/bare.tsx';\n<Bare className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// A file the parser can't read leaves its usages alone.
+		code: `import { Broken } from './ui/broken.tsx';\n<Broken className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// Mutually re-exporting modules terminate instead of looping.
+		code: `import { Looped } from './ui/loop-a.ts';\n<Looped className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// An alias whose prefix doesn't match the specifier.
+		code: `import { Button } from '~other/button.tsx';\n<Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		options: [{ alias: { '@ui/': join(fixtureDir, 'ui') } }]
+	}
+];
+
+const CROSS_FILE_INVALID = [
+	{
+		// A named import, resolved through the file that declares it.
+		code: `import { Button } from './ui/button.tsx';\n<Button className="p-4 rounded" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('p-4', 'p-2'), dup('rounded')]
+	},
+	{
+		// A default import.
+		code: `import Chip from './ui/button.tsx';\n<Chip className="p-8" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('p-8', 'p-2')]
+	},
+	{
+		// Through a barrel's named re-export, and a directory import that
+		// lands on its index file.
+		code: `import { Button } from './ui';\n<Button className="p-6" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('p-6', 'p-2')]
+	},
+	{
+		// Through the barrel's `export *`, to a renamed export.
+		code: `import { Panel } from './ui/index.ts';\n<Panel class="rounded-lg" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [dup('rounded-lg')]
+	},
+	{
+		// A `.js` specifier resolved to the `.tsx` file behind it.
+		code: `import { Badge } from './ui/badge.js';\n<Badge className="px-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('px-4', 'px-1')]
+	},
+	{
+		// A path alias, mapped by the `alias` option.
+		code: `import { Button } from '@ui/button.tsx';\n<Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		options: [{ alias: { '@ui/': join(fixtureDir, 'ui') } }],
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		// The imported component's own variant props still narrow what it can
+		// render, so `mt-4` collides once `size: 'lg'` is what it applies.
+		code: `import { Button } from './ui/button.tsx';\n<Button className="text-base" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('text-base', 'text-sm')]
+	},
+	{
+		// An anonymous default export has no name to look up, so the function
+		// node itself is the target.
+		code: `import Anon from './ui/anon.tsx';\n<Anon className="m-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('m-4', 'm-1')]
+	},
+	{
+		code: `import Arrow from './ui/arrow.tsx';\n<Arrow className="m-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('m-4', 'm-2')]
+	},
+	{
+		// `export default <identifier>` resolves through the module scope.
+		code: `import Named from './ui/named-default.tsx';\n<Named className="m-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('m-4', 'm-3')]
+	},
+	{
+		// A string export name, imported under one.
+		code: `import { "odd name" as Odd } from './ui/named-default.tsx';\n<Odd className="m-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('m-4', 'm-3')]
+	},
+	{
+		// An absolute specifier resolves straight to the file.
+		code: `import { Button } from '${join(fixtureDir, 'ui/button.tsx')}';\n<Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		// The longest matching alias wins over a broader one.
+		code: `import { Button } from '@/ui/button.tsx';\n<Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		options: [
+			{
+				alias: {
+					'@/': join(fixtureDir, 'nowhere'),
+					'@/ui/': join(fixtureDir, 'ui')
+				}
+			}
+		],
+		errors: [restyle('p-4', 'p-2')]
+	}
+];
+
+t.test('no-restyle', (t) => {
+	t.doesNotThrow(() => {
+		jsxTester.run('no-restyle', rules['no-restyle'], {
+			valid: [...RESTYLE_VALID, ...CROSS_FILE_VALID],
+			invalid: [...RESTYLE_INVALID, ...CROSS_FILE_INVALID]
+		});
+	}, 'rule tester passes');
+	t.end();
+});
+
+t.test('no-restyle (svelte)', (t) => {
+	t.doesNotThrow(() => {
+		svelteTester.run('no-restyle', rules['no-restyle'], {
+			valid: RESTYLE_SVELTE_VALID,
+			invalid: RESTYLE_SVELTE_INVALID
+		});
+	}, 'rule tester passes');
+	t.end();
+});
+
+t.test('no-restyle (vue)', (t) => {
+	t.doesNotThrow(() => {
+		vueTester.run('no-restyle', rules['no-restyle'], {
+			valid: RESTYLE_VUE_VALID,
+			invalid: RESTYLE_VUE_INVALID
 		});
 	}, 'rule tester passes');
 	t.end();

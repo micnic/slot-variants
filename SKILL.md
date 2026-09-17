@@ -310,7 +310,7 @@ The table lists the options in the canonical key order enforced by the opt-in `s
 
 ## Linting
 
-`slot-variants/eslint-plugin` (ESLint v9+ flat config, or oxlint via `jsPlugins`) catches issues in `sv()`/`cn()` calls before runtime: conflicting/duplicate classes, non-static (dynamic) class values, empty classes, non-canonical whitespace, tokens repeated across every variant value that belong in `base` instead, and `sv()` calls with a config object placed outside module scope. If a project has this plugin enabled, prefer static, deduplicated class strings and module-level `sv()` calls so generated code doesn't trip these rules.
+`slot-variants/eslint-plugin` (ESLint v9+ flat config, or oxlint via `jsPlugins`) catches issues in `sv()`/`cn()` calls before runtime: conflicting/duplicate classes, non-static (dynamic) class values, empty classes, non-canonical whitespace, tokens repeated across every variant value that belong in `base` instead, `sv()` calls with a config object placed outside module scope, and class names passed to a component or element that conflict with the classes its config already applies (JSX, Svelte and Vue class attributes included). If a project has this plugin enabled, prefer static, deduplicated class strings and module-level `sv()` calls so generated code doesn't trip these rules.
 
 An opt-in `sv-config-style` rule additionally enforces a canonical config key order — `base`, `slots`, `groups`, `multiSlots`, `variants`, `presets`, `compoundSlots`, `compoundVariants`, `defaultVariants`, `requiredVariants`, `cacheSize`, `introspection`, `postProcess` — and a single way of expressing base classes. Follow that order when writing configs; it is a safe default whether or not the rule is enabled.
 

@@ -25,7 +25,10 @@ import {
 	withMatcher
 } from './token-model.ts';
 
-const pushTokensFromText = (
+// Exported for `no-restyle`, which tokenizes raw class text that no estree
+// string literal covers: template quasis around a substitution, and the text
+// runs of a Svelte `class` attribute.
+export const pushTokensFromText = (
 	text: string,
 	base: number,
 	slot: string,

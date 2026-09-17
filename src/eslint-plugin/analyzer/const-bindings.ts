@@ -84,3 +84,26 @@ export const resolveStaticValue = (
 
 	return current;
 };
+
+// Resolves an identifier against a fixed scope instead of the one it sits in.
+// Vue template expressions live in a scope of their own that never reaches the
+// `<script>` bindings they name, so the script's module scope is passed in.
+export const resolveStaticValueFrom = (
+	node: Node,
+	sourceCode: SourceCode,
+	scope: Scope.Scope
+): Node => {
+	if (node.type !== 'Identifier') {
+		return resolveStaticValue(node, sourceCode);
+	}
+
+	const init = getConstBindingInit(findVariable(scope, node.name));
+
+	if (init === null) {
+		return node;
+	}
+
+	// The initializer lives in the script, where ordinary scope resolution
+	// applies again.
+	return resolveStaticValue(init, sourceCode);
+};

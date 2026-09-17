@@ -30,17 +30,29 @@ type StaticClassValueOptions = {
 	allowLogicalString?: boolean;
 	allowConditionalString?: boolean;
 	allowClassRecord?: boolean;
+	// Reads a value as slot-variants-produced classes. A `cn()` argument that
+	// resolves to another `sv()`/`cn()` call's output is statically known after
+	// all — it just isn't spelled as a literal — so it is not dynamic.
+	isStyled?: (node: Node) => boolean;
 };
 
 // The cn-style affordances that propagate into nested positions. `allowNestedArrays`
 // and `allowUndefined` are top-level-only concerns and deliberately dropped.
 const branchOptions = (
 	options: StaticClassValueOptions
-): StaticClassValueOptions => ({
-	allowLogicalString: options.allowLogicalString === true,
-	allowConditionalString: options.allowConditionalString === true,
-	allowClassRecord: options.allowClassRecord === true
-});
+): StaticClassValueOptions => {
+	const branch: StaticClassValueOptions = {
+		allowLogicalString: options.allowLogicalString === true,
+		allowConditionalString: options.allowConditionalString === true,
+		allowClassRecord: options.allowClassRecord === true
+	};
+
+	if (options.isStyled) {
+		branch.isStyled = options.isStyled;
+	}
+
+	return branch;
+};
 
 // Like forEachStaticItem, but spreads are reported as dynamic rather than skipped.
 const forEachItemReportingSpread = (
@@ -147,6 +159,10 @@ const checkClassValueIsStatic = (
 
 	if (options.allowClassRecord && node.type === 'ObjectExpression') {
 		checkClassRecordKeys(context, node);
+		return;
+	}
+
+	if (options.isStyled?.(node) === true) {
 		return;
 	}
 
@@ -409,13 +425,15 @@ export const checkSvConfig = (
 
 export const checkCnArguments = (
 	context: Rule.RuleContext,
-	args: ReadonlyArray<Expression | SpreadElement>
+	args: ReadonlyArray<Expression | SpreadElement>,
+	isStyled: (node: Node) => boolean
 ) => {
 	forEachItemReportingSpread(context, args, (arg) => {
 		checkClassValueIsStatic(context, arg, {
 			allowLogicalString: true,
 			allowConditionalString: true,
-			allowClassRecord: true
+			allowClassRecord: true,
+			isStyled
 		});
 	});
 };

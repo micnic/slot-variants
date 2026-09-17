@@ -8,6 +8,7 @@ import {
 	type TrackedNames
 } from './call-matching.ts';
 import { findVariable, resolveStaticValue } from './const-bindings.ts';
+import type { StyledContext } from './styled-values.ts';
 
 const getImportedName = (
 	specifier: ImportDeclaration['specifiers'][number]
@@ -272,30 +273,52 @@ const matchTrackedCall = (
 	return null;
 };
 
+// The import tracker plus an on-demand classifier, for rules that need to ask
+// whether an arbitrary call is a tracked sv/cn call outside a CallExpression
+// visitor (`no-restyle` resolves callees and class-list parts that way).
+// `ImportDeclaration` is visited before any call in source order, so by the
+// time `matchCall` runs the tracked names are already complete.
+export const createTrackedCallResolver = (context: Rule.RuleContext) => {
+	const { names, importsTracker } = createImportsTracker();
+
+	const hasTrackedImports = (): boolean =>
+		names.svNames.size > 0 ||
+		names.cnNames.size > 0 ||
+		names.createSvNames.size > 0 ||
+		names.namespaceNames.size > 0;
+
+	const matchCall = (node: CallExpression): CallMatch | null => {
+		if (!hasTrackedImports()) {
+			return null;
+		}
+
+		return matchTrackedCall(context, node, names);
+	};
+
+	return { importsTracker, matchCall };
+};
+
 export const createTrackedCallListeners = (
 	context: Rule.RuleContext,
-	onCall: (node: CallExpression, call: CallMatch) => void
+	onCall: (node: CallExpression, call: CallMatch, ctx: StyledContext) => void
 ) => {
-	const { names, importsTracker } = createImportsTracker();
+	const { importsTracker, matchCall } = createTrackedCallResolver(context);
+	const { sourceCode } = context;
+	const ctx: StyledContext = {
+		sourceCode,
+		matchCall,
+		resolve: (node) => resolveStaticValue(node, sourceCode)
+	};
 
 	return {
 		ImportDeclaration(node: ImportDeclaration) {
 			importsTracker(node);
 		},
 		CallExpression(node: CallExpression) {
-			if (
-				names.svNames.size === 0 &&
-				names.cnNames.size === 0 &&
-				names.createSvNames.size === 0 &&
-				names.namespaceNames.size === 0
-			) {
-				return;
-			}
-
-			const call = matchTrackedCall(context, node, names);
+			const call = matchCall(node);
 
 			if (call) {
-				onCall(node, call);
+				onCall(node, call, ctx);
 			}
 		}
 	};
