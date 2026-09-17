@@ -462,33 +462,25 @@ t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 	t.equal(plugin.meta.name, 'slot-variants', 'meta.name is set');
 	t.equal(plugin.meta.version, pkg.version, 'meta.version matches package.json');
 	t.ok(plugin.rules, 'rules object present');
+
+	// One structural assertion per rule rather than a field-by-field chain: the
+	// optional-chain guards that walking `meta` by hand needs can never fire on
+	// a well-formed rule, so they only added unreachable branches.
+	const ruleShape = {
+		meta: {
+			type: /^(problem|suggestion|layout)$/,
+			schema: Array,
+			messages: Object,
+			docs: {
+				description: String,
+				url: /^https:\/\//
+			}
+		},
+		create: Function
+	};
+
 	for (const [name, r] of Object.entries(plugin.rules)) {
-		t.ok(r.meta, `${name}: has meta`);
-		t.ok(r.meta?.messages, `${name}: has messages`);
-		t.ok(r.meta?.schema !== undefined, `${name}: has schema`);
-
-		const type = r.meta?.type;
-
-		t.ok(
-			type === 'problem' || type === 'suggestion' || type === 'layout',
-			`${name}: has a valid meta.type`
-		);
-
-		const description = r.meta?.docs?.description;
-
-		t.equal(
-			typeof description,
-			'string',
-			`${name}: has a docs.description`
-		);
-
-		const url = r.meta?.docs?.url;
-
-		t.ok(
-			typeof url === 'string' && url.startsWith('https://'),
-			`${name}: has a docs.url`
-		);
-		t.equal(typeof r.create, 'function', `${name}: has create()`);
+		t.match(r, ruleShape, `${name}: has the required rule shape`);
 	}
 	t.end();
 });
