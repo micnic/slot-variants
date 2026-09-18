@@ -1239,7 +1239,7 @@ const classes = card();
 <div className={cn(classes.base, 'p-4')} />;
 <div className={`${classes.header} px-8`} />;
 
-// 3. The class attribute of a same-file component that forwards the prop
+// 3. The class attribute of a component that forwards the prop into 1. or 2.
 function Button({ className }) {
   return <button className={card({ class: className }).base} />;
 }
@@ -1256,9 +1256,52 @@ The same positions in the other frameworks:
 ```vue
 <div class="p-4" :class="classes.base">…</div>
 <div :class="[classes.base, 'p-4']">…</div>
+<div :class="cn(classes.base, 'p-4')">…</div>
 ```
 
 Vue and Svelte need their own parser (`vue-eslint-parser` / `svelte-eslint-parser`) configured for those files, as usual.
+
+A component forwards its `class` / `className` prop when the prop ends up in a variant call's override, or beside a slot-variants result in one class list — `cn(button({ size }), className)`, `` `${button()} ${className}` ``, `:class="[button(), props.class]"`, `class="{button()} {className}"`. Inside a `cn()` list the literals count too: a component built on `cn('p-2 rounded', className)` alone applies `p-2` just as a config would, and `<Button className="p-4" />` is flagged against it. The prop is read off the component's first parameter — destructured, with or without a default, or as a whole props object, including one derived from it with Solid's `splitProps` / `mergeProps` — and a wrapper like `React.forwardRef()` or `memo()` around the function is looked through:
+
+```tsx
+const Button = React.forwardRef(({ className, ...props }, ref) => (
+  <button ref={ref} className={cn(button(), className)} {...props} />
+));
+
+const Chip = (props) => {
+  const [local, others] = splitProps(props, ['class']);
+
+  return <span class={chip({ class: local.class })} {...others} />;
+};
+```
+
+A Svelte or Vue single-file component is a component too. Its props are the ones its script declares at the top level — `$props()` in Svelte, `defineProps()` (bare or under `withDefaults()`) or `useAttrs()` in Vue — and a usage of the component in another file's template is checked against what it forwards, whether the tag is written `<MyButton>` or `<my-button>`:
+
+```svelte
+<!-- Button.svelte -->
+<script>
+  let { class: className, ...rest } = $props();
+</script>
+
+<button class={button({ class: className })} {...rest}>…</button>
+
+<!-- page.svelte -->
+<Button class="p-4" />  <!-- p-4 vs the button's own p-2 -->
+```
+
+```vue
+<!-- Button.vue -->
+<script setup>
+const props = defineProps({ class: String });
+</script>
+
+<template>
+  <button :class="cn(button(), props.class)">…</button>
+</template>
+
+<!-- page.vue -->
+<my-button class="p-4" />  <!-- p-4 vs the button's own p-2 -->
+```
 
 Following an import reads and parses the imported module, which only ESLint itself can do — under oxlint the rule still checks everything inside the current file, but imported components are left alone.
 
@@ -1286,7 +1329,7 @@ Relative and absolute specifiers resolve on their own, with the usual extension 
 'slot-variants/no-restyle': ['error', { alias: { '@/': './src' } }]
 ```
 
-Bare package specifiers are not resolved: a component from `node_modules` is left alone. Nothing is reported when a module can't be read or parsed, so an unconfigured alias means missed reports, never false ones.
+Bare package specifiers are not resolved: a component from `node_modules` is left alone. The imported module is parsed with the same parser as the file that imports it, so a `.vue` page reaches a `.vue` component and a `.svelte` page a `.svelte` one. Nothing is reported when a module can't be read or parsed, so an unconfigured alias means missed reports, never false ones.
 
 `exclusiveGroups` and `prefix` mean exactly what they do in [`no-conflicting-classes`](#slot-variantsno-conflicting-classes).
 

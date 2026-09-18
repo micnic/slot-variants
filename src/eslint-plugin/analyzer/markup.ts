@@ -61,8 +61,15 @@ export type SvelteStartTag = {
 	attributes: ReadonlyArray<SvelteAttribute | SvelteOtherAttribute>;
 };
 
+// A component element names its import (`<Button>`); a host element and a
+// special one (`<svelte:head>`) carry a `SvelteName`, and a dotted component
+// (`<Foo.Bar>`) a member name that never resolves to a same-file binding.
 export type SvelteElement = {
 	type: 'SvelteElement';
+	kind: 'component' | 'html' | 'special';
+	name:
+		| { type: 'Identifier'; name: string }
+		| { type: 'SvelteName' | 'SvelteMemberExpressionName' };
 	startTag: SvelteStartTag;
 };
 
@@ -89,6 +96,9 @@ export type VAttribute = {
 
 export type VElement = {
 	type: 'VElement';
+	// The tag as written — `name` is lowercased, which would fold `<Button>`
+	// into the `<button>` host element.
+	rawName: string;
 	startTag: { attributes: ReadonlyArray<VAttribute> };
 };
 
@@ -158,6 +168,37 @@ export const getJsxComponentName = (node: JsxOpeningElement): string | null => {
 	}
 
 	return name;
+};
+
+/** The component a Svelte element renders, or null for a host element. */
+export const getSvelteComponentName = (node: SvelteElement): string | null => {
+	if (node.kind !== 'component' || node.name.type !== 'Identifier') {
+		return null;
+	}
+
+	return node.name.name;
+};
+
+const capitalize = (word: string): string =>
+	word.charAt(0).toUpperCase() + word.slice(1);
+
+/**
+ * The binding a Vue template element refers to, or null for a host element.
+ * A PascalCase tag names its import directly; a kebab-case one (`<my-button>`)
+ * is the PascalCase import spelled the HTML way.
+ */
+export const getVueComponentName = (node: VElement): string | null => {
+	const { rawName } = node;
+
+	if (rawName.includes('-')) {
+		return rawName.split('-').map(capitalize).join('');
+	}
+
+	if (rawName === capitalize(rawName)) {
+		return rawName;
+	}
+
+	return null;
 };
 
 /** The `class` name a Vue attribute binds, plain or through `v-bind`. */

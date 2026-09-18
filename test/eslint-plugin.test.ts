@@ -5781,7 +5781,42 @@ const RESTYLE_VALID = [
 		'function Button(props) { const f = () => { const props = {}; return button({ class: props.className }); }; return <button className={f()} />; }\n<Button className="p-4" />;',
 	IMPORT +
 		RESTYLE_BUTTON +
-		'function Button({ className }) { const f = () => { const className = x; return button({ class: className }); }; return <button className={f()} />; }\n<Button className="p-4" />;'
+		'function Button({ className }) { const f = () => { const className = x; return button({ class: className }); }; return <button className={f()} />; }\n<Button className="p-4" />;',
+	// A forwarded prop merged with nothing slot-variants produces is not a
+	// forward worth recording — and a plain template is not a `cn()` list, so
+	// its literals aren't classes the component applies through slot-variants.
+	IMPORT_SV_CN +
+		RESTYLE_BUTTON +
+		'function Button({ className }) { return <button className={cn(className)} />; }\n<Button className="p-4" />;',
+	IMPORT_SV_CN +
+		RESTYLE_BUTTON +
+		'function Button({ className }) { return <button className={`p-2 ${className}`} />; }\n<Button className="p-4" />;',
+	// A dynamic value that is a declared binding but not a prop.
+	IMPORT + RESTYLE_BUTTON + 'let extra;\nbutton({ class: extra });',
+	// A wrapper call with no function among its arguments, and a props
+	// parameter that is neither a pattern nor an identifier.
+	IMPORT +
+		RESTYLE_BUTTON +
+		'const Button = wrap(...args, 5);\n<Button className="p-4" />;',
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button([className]) { return <button className={button({ class: className })} />; }\n<Button className="p-4" />;',
+	// A derived props object needs a real props object among the call's
+	// arguments: an unbound name, a binding that isn't one, and no identifier
+	// at all leave the result untracked.
+	IMPORT +
+		RESTYLE_BUTTON +
+		"const Button = (props) => { const [local] = splitProps(other, ['class']); return <button class={button({ class: local.class })} />; };\n<Button class=\"p-4\" />;",
+	IMPORT +
+		RESTYLE_BUTTON +
+		"const other = {};\nconst Button = (props) => { const [local] = splitProps(other, ['class']); return <button class={button({ class: local.class })} />; };\n<Button class=\"p-4\" />;",
+	IMPORT +
+		RESTYLE_BUTTON +
+		"const Button = (props) => { const [local] = splitProps(...rest); return <button class={button({ class: local.class })} />; };\n<Button class=\"p-4\" />;",
+	// A property read that isn't a plain name.
+	IMPORT_SV_CN +
+		RESTYLE_BUTTON +
+		'class A { #s; m(o) { return cn(button(), o.#s); } }'
 ];
 
 // Svelte: a class attribute with no slot-variants substitution, and a
@@ -5789,6 +5824,11 @@ const RESTYLE_VALID = [
 const RESTYLE_SVELTE_VALID = [
 	{
 		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<div class="m-1" id="x" class:active={on}>y</div>`,
+		filename: 'a.svelte'
+	},
+	// A dotted component name and a special element never name an import.
+	{
+		code: `<script>import * as UI from './ui/Button.svelte';</script>\n<UI.Button class="p-4" /><svelte:element this="div" class="p-4" />`,
 		filename: 'a.svelte'
 	}
 ];
@@ -6072,6 +6112,68 @@ cn(classes.item({ active: true }), 'px-4');`,
 			RESTYLE_CARD +
 			'function Card({ className }) { return <div className={card({ class: className }).base} />; }\n<Card className="border" />;',
 		errors: [dup('border')]
+	},
+	// The prop forwarded as a sibling of the variant result in one class list
+	// — a `cn()` call, and a template — rather than as its override.
+	{
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_BUTTON +
+			'function Button({ className, size }) { return <button className={cn(button({ size }), className)} />; }\n<Button className="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'function Button({ className }) { return <button className={`${button()} ${className}`} />; }\n<Button className="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// Inside a `cn()` list the literals are classes the component applies
+	// itself, with no config at all.
+	{
+		code:
+			IMPORT_CN +
+			'function Button({ className }) { return <button className={cn("p-2 rounded", className)} />; }\n<Button className="p-4 rounded" />;',
+		errors: [restyle('p-4', 'p-2'), dup('rounded')]
+	},
+	// A default value keeps the binding a prop.
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			"function Button({ className = '' }) { return <button className={button({ class: className })} />; }\n<Button className=\"p-4\" />;",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// A component wrapped in `forwardRef()` / `memo()`, however deeply.
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'const Button = React.forwardRef(({ className }, ref) => <button ref={ref} className={button({ class: className })} />);\n<Button className="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'const Button = memo(forwardRef(function Button({ className }, ref) { return <button ref={ref} className={button({ class: className })} />; }));\n<Button className="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// Solid: the props object split or merged into another object.
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			"const Button = (props) => { const [local, others] = splitProps(props, ['class']); return <button class={button({ class: local.class })} {...others} />; };\n<Button class=\"p-4\" />;",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			"const Button = (props) => { const merged = mergeProps({ size: 'sm' }, props); return <button class={button({ class: merged.class })} />; };\n<Button class=\"p-4\" />;",
+		errors: [restyle('p-4', 'p-2')]
 	}
 ];
 
@@ -6108,6 +6210,13 @@ const RESTYLE_VUE_INVALID = [
 		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<template><div :class="[c, unknown, 'p-8']">a</div></template>`,
 		filename: 'a.vue',
 		errors: [restyle('p-8', 'p-2')]
+	},
+	// Vue: a `cn()` call and a variant call's override written inside the
+	// template itself.
+	{
+		code: `<script setup>import { cn, sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<template><div :class="cn(c, 'p-8')">a</div><div :class="card({ class: 'p-6' })">b</div></template>`,
+		filename: 'a.vue',
+		errors: [restyle('p-8', 'p-2'), restyle('p-6', 'p-2')]
 	}
 ];
 
@@ -6205,11 +6314,13 @@ writeFixture(
 	`
 );
 
-// An anonymous default export that forwards nothing.
+// An anonymous default export that forwards nothing, and one that is neither
+// a function nor a call.
 writeFixture(
 	'ui/bare.tsx',
 	'export default ({ id }) => <i id={id} />;\n'
 );
+writeFixture('ui/object.tsx', "export default { name: 'x' };\n");
 
 // Two modules re-exporting each other — the walk must stop rather than loop.
 writeFixture('ui/loop-a.ts', "export { Looped } from './loop-b.ts';\n");
@@ -6217,6 +6328,77 @@ writeFixture('ui/loop-b.ts', "export { Looped } from './loop-a.ts';\n");
 
 // A file the parser can't read at all.
 writeFixture('ui/broken.tsx', 'export function Broken( { unclosed\n');
+
+// Components wrapped in `forwardRef()` / `memo()`, exported both ways.
+writeFixture(
+	'ui/wrapped.tsx',
+	`${IMPORT}const wrapped = sv({ base: 'm-5' });
+
+	export const Memoized = memo(function Memoized({ className }) {
+		return <i className={wrapped({ class: className })} />;
+	});
+
+	export default forwardRef(({ className }, ref) => <i ref={ref} className={wrapped({ class: className })} />);
+	`
+);
+
+// Single-file components: the module itself is the component, whose props
+// come from `$props()` (Svelte) or `defineProps()` / `useAttrs()` (Vue).
+writeFixture(
+	'ui/Button.svelte',
+	`<script>
+	${IMPORT}const button = sv({ base: 'p-2 rounded' });
+	let { class: className = '', ...rest } = $props();
+	</script>
+	<button class={button({ class: className })} {...rest}>x</button>`
+);
+
+// The template above the script, a whole-props object, and a `cn()` sibling.
+writeFixture(
+	'ui/Chip.svelte',
+	`<span class={cn(chip(), props.class)}>x</span>
+	<script>
+	${IMPORT_SV_CN}const chip = sv({ base: 'px-1' });
+	const props = $props();
+	</script>`
+);
+
+writeFixture(
+	'ui/Plain.svelte',
+	'<script>let { id } = $props();</script>\n<i {id}></i>'
+);
+
+writeFixture(
+	'ui/Button.vue',
+	`<script setup>
+	${IMPORT}const button = sv({ base: 'p-2 rounded', variants: { size: { sm: 'text-sm' } } });
+	const props = defineProps({ class: String, size: String });
+	</script>
+	<template><button :class="button({ size: props.size, class: props.class })">x</button></template>`
+);
+
+writeFixture(
+	'ui/Chip.vue',
+	`<script setup>
+	${IMPORT_SV_CN}const chip = sv({ base: 'px-1' });
+	const { class: cls } = withDefaults(defineProps(), {});
+	</script>
+	<template><span :class="cn(chip(), cls)">x</span></template>`
+);
+
+writeFixture(
+	'ui/Tag.vue',
+	`<script setup>
+	${IMPORT}const tag = sv({ base: 'm-1' });
+	const attrs = useAttrs();
+	</script>
+	<template><span :class="[tag(), attrs.class]">x</span></template>`
+);
+
+writeFixture(
+	'ui/Plain.vue',
+	'<script setup>defineProps({ id: String });</script>\n<template><i /></template>'
+);
 
 // Imported with a `.js` specifier that only exists as `.tsx`.
 writeFixture(
@@ -6338,8 +6520,13 @@ const CROSS_FILE_VALID = [
 		filename: join(fixtureDir, 'page.tsx')
 	},
 	{
-		// An anonymous default export that never forwards a class prop.
+		// An anonymous default export that never forwards a class prop, and a
+		// default export that is no component at all.
 		code: `import Bare from './ui/bare.tsx';\n<Bare className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		code: `import Obj from './ui/object.tsx';\n<Obj className="p-4" />;`,
 		filename: join(fixtureDir, 'page.tsx')
 	},
 	{
@@ -6437,6 +6624,12 @@ const CROSS_FILE_INVALID = [
 		errors: [restyle('p-4', 'p-2')]
 	},
 	{
+		// A wrapped component, as a named and as a default export.
+		code: `import Ref, { Memoized } from './ui/wrapped.tsx';\n<><Memoized className="m-4" /><Ref className="m-6" /></>;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('m-4', 'm-5'), restyle('m-6', 'm-5')]
+	},
+	{
 		// The longest matching alias wins over a broader one.
 		code: `import { Button } from '@/ui/button.tsx';\n<Button className="p-4" />;`,
 		filename: join(fixtureDir, 'page.tsx'),
@@ -6449,6 +6642,43 @@ const CROSS_FILE_INVALID = [
 			}
 		],
 		errors: [restyle('p-4', 'p-2')]
+	}
+];
+
+// Single-file components are always another file, so a component usage in
+// Svelte and Vue is cross-file by nature.
+const SVELTE_CROSS_FILE_VALID = [
+	{
+		// A component that forwards no class prop, and one the module never
+		// imports.
+		code: `<script>import Plain from './ui/Plain.svelte';</script>\n<Plain class="p-4" /><Missing class="p-4" />`,
+		filename: join(fixtureDir, 'page.svelte')
+	}
+];
+
+const SVELTE_CROSS_FILE_INVALID = [
+	{
+		code: `<script>import Button from './ui/Button.svelte';\nimport Chip from './ui/Chip.svelte';</script>\n<Button class="p-4 rounded" /><Chip class="px-4" />`,
+		filename: join(fixtureDir, 'page.svelte'),
+		errors: [restyle('p-4', 'p-2'), dup('rounded'), restyle('px-4', 'px-1')]
+	}
+];
+
+const VUE_CROSS_FILE_VALID = [
+	{
+		// A component that forwards no class prop, a globally registered one
+		// the module never imports, and a host element.
+		code: `<script setup>import Plain from './ui/Plain.vue';</script>\n<template><Plain class="p-4" /><router-link class="p-4" /><div class="p-4" /></template>`,
+		filename: join(fixtureDir, 'page.vue')
+	}
+];
+
+const VUE_CROSS_FILE_INVALID = [
+	{
+		// A PascalCase tag, a kebab-case one, and a bound literal.
+		code: `<script setup>import Button from './ui/Button.vue';\nimport MyChip from './ui/Chip.vue';\nimport Tag from './ui/Tag.vue';</script>\n<template><Button class="p-4" /><my-chip class="px-4" /><Tag :class="'m-4'" /></template>`,
+		filename: join(fixtureDir, 'page.vue'),
+		errors: [restyle('p-4', 'p-2'), restyle('px-4', 'px-1'), restyle('m-4', 'm-1')]
 	}
 ];
 
@@ -6465,8 +6695,8 @@ t.test('no-restyle', (t) => {
 t.test('no-restyle (svelte)', (t) => {
 	t.doesNotThrow(() => {
 		svelteTester.run('no-restyle', rules['no-restyle'], {
-			valid: RESTYLE_SVELTE_VALID,
-			invalid: RESTYLE_SVELTE_INVALID
+			valid: [...RESTYLE_SVELTE_VALID, ...SVELTE_CROSS_FILE_VALID],
+			invalid: [...RESTYLE_SVELTE_INVALID, ...SVELTE_CROSS_FILE_INVALID]
 		});
 	}, 'rule tester passes');
 	t.end();
@@ -6475,8 +6705,8 @@ t.test('no-restyle (svelte)', (t) => {
 t.test('no-restyle (vue)', (t) => {
 	t.doesNotThrow(() => {
 		vueTester.run('no-restyle', rules['no-restyle'], {
-			valid: RESTYLE_VUE_VALID,
-			invalid: RESTYLE_VUE_INVALID
+			valid: [...RESTYLE_VUE_VALID, ...VUE_CROSS_FILE_VALID],
+			invalid: [...RESTYLE_VUE_INVALID, ...VUE_CROSS_FILE_INVALID]
 		});
 	}, 'rule tester passes');
 	t.end();

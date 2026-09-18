@@ -2,21 +2,17 @@ import { readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import type { Linter, Rule, Scope } from 'eslint';
-import type { ImportDeclaration, Program } from 'estree';
-import {
-	type ComponentFunction,
-	type ForwardedStyles,
-	resolveComponentFunction
-} from './components.ts';
-import { createForwardingScan } from './forwarding.ts';
-import { findExportTargets } from './module-exports.ts';
+import type { Program } from 'estree';
+import { type Component, resolveComponentFunction } from './components.ts';
+import { createForwardingScan, type ForwardedStyles } from './forwarding.ts';
+import { DEFAULT_EXPORT, findExportTargets } from './module-exports.ts';
 import { type AliasMap, resolveModulePath } from './module-paths.ts';
 
 /** What one imported module contributes: its components and their configs. */
 export type ModuleAnalysis = {
 	ast: Program;
 	moduleScope: Scope.Scope;
-	forwarded: Map<ComponentFunction, ForwardedStyles>;
+	forwarded: ReadonlyMap<Component, ForwardedStyles>;
 };
 
 type LinterConstructor = new (options: { cwd: string }) => Linter;
@@ -79,29 +75,18 @@ type Collected = { analysis: ModuleAnalysis | null };
 
 const createCollector = (collected: Collected): Rule.RuleModule => ({
 	create(context) {
-		const scan = createForwardingScan(context);
-
-		return {
-			ImportDeclaration(node: ImportDeclaration) {
-				scan.importsTracker(node);
-			},
-			':function'(node: Rule.Node) {
-				scan.enterFunction(node);
-			},
-			':function:exit'() {
-				scan.exitFunction();
-			},
-			CallExpression(node) {
-				scan.visitCall(node);
-			},
-			'Program:exit'() {
+		const scan = createForwardingScan(context, {
+			onPosition() {},
+			onExit() {
 				collected.analysis = {
 					ast: context.sourceCode.ast,
 					moduleScope: scan.moduleScope(),
 					forwarded: scan.forwarded
 				};
 			}
-		};
+		});
+
+		return scan.listener;
 	}
 });
 
@@ -273,6 +258,12 @@ export const resolveImportedComponent = (
 		if (found !== null) {
 			return found;
 		}
+	}
+
+	// A single-file component (Svelte, Vue) declares no export of its own: the
+	// module itself is what a default import receives.
+	if (exportName === DEFAULT_EXPORT) {
+		return analysis.forwarded.get(analysis.ast) ?? null;
 	}
 
 	return null;

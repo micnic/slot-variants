@@ -1,4 +1,4 @@
-import type { SourceCode } from 'eslint';
+import type { Scope, SourceCode } from 'eslint';
 import type {
 	CallExpression,
 	Expression,
@@ -8,7 +8,7 @@ import type {
 } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import type { CallMatch } from './call-matching.ts';
-import { getKeyName } from './config-keys.ts';
+import { resolveStaticValueFrom } from './const-bindings.ts';
 import {
 	collectSlotKeyedProperties,
 	getConfigSlotNames,
@@ -167,10 +167,26 @@ const getStyles = (
 export type StyledContext = {
 	sourceCode: SourceCode;
 	matchCall: (node: CallExpression) => CallMatch | null;
-	// How an expression is read through `const` bindings. Plain JS resolves
-	// from the node's own scope; a Vue template resolves from the script's.
+	// The scope an identifier is looked up from. Plain JS uses the node's own;
+	// a Vue template expression lives in a scope of its own that never reaches
+	// the `<script>` bindings it names, so it resolves from the script's.
+	scopeOf: (node: Node) => Scope.Scope;
+	// How an expression is read through `const` bindings, from that scope.
 	resolve: (node: Node) => Node;
 };
+
+export const createStyledContext = (
+	sourceCode: SourceCode,
+	matchCallFrom: (
+		scopeOf: StyledContext['scopeOf']
+	) => StyledContext['matchCall'],
+	scopeOf: StyledContext['scopeOf']
+): StyledContext => ({
+	sourceCode,
+	matchCall: matchCallFrom(scopeOf),
+	scopeOf,
+	resolve: (node) => resolveStaticValueFrom(node, sourceCode, scopeOf(node))
+});
 
 // `defaultVariants` values a call site doesn't override, merged under the
 // values it passes.
@@ -320,6 +336,28 @@ const resolveStyledMember = (
 	return { styles: invocation.styles, slot, matchers: invocation.matchers };
 };
 
+// Classes with no config behind them: the literals of a `cn()`-style list.
+const buildLiteralStyles = (entries: ReadonlyArray<Entry>): InternalStyles => ({
+	bySlot: indexEntriesBySlotAndToken(entries),
+	slotNames: EMPTY_SLOT_NAMES,
+	defaults: EMPTY_MATCHERS,
+	groupSlots: EMPTY_GROUPS,
+	slotGroups: EMPTY_GROUPS
+});
+
+/**
+ * The literal classes a `cn()`-style list applies on its own, as a styled part
+ * — what a forwarded `class` prop is merged with when the list holds no
+ * slot-variants part beside it.
+ */
+export const literalStyles = (
+	literals: ReadonlyArray<Entry>
+): StyledClasses => ({
+	styles: buildLiteralStyles(literals),
+	slot: 'base',
+	matchers: EMPTY_MATCHERS
+});
+
 const cnStyles = (
 	call: CallMatch,
 	sourceCode: SourceCode,
@@ -345,13 +383,7 @@ const cnStyles = (
 		);
 	}
 
-	const styles: InternalStyles = {
-		bySlot: indexEntriesBySlotAndToken(entries),
-		slotNames: EMPTY_SLOT_NAMES,
-		defaults: EMPTY_MATCHERS,
-		groupSlots: EMPTY_GROUPS,
-		slotGroups: EMPTY_GROUPS
-	};
+	const styles = buildLiteralStyles(entries);
 
 	stylesCache.set(node, styles);
 
@@ -463,38 +495,6 @@ export const getOverrideValue = (
 	// `class` wins over `className` when both are passed, exactly as `sv()`
 	// resolves them at runtime.
 	return properties.get('class') ?? properties.get('className') ?? null;
-};
-
-/**
- * The local binding names a component function's first parameter destructures
- * `class` / `className` into, mapped to the prop name a call site would pass.
- */
-export const getClassPropBindings = (
-	param: Node | undefined
-): Map<string, string> => {
-	const bindings = new Map<string, string>();
-
-	if (!param || param.type !== 'ObjectPattern') {
-		return bindings;
-	}
-
-	for (const property of param.properties) {
-		if (property.type !== 'Property' || property.computed) {
-			continue;
-		}
-
-		const key = getKeyName(property);
-
-		if (key !== 'class' && key !== 'className') {
-			continue;
-		}
-
-		if (property.value.type === 'Identifier') {
-			bindings.set(property.value.name, key);
-		}
-	}
-
-	return bindings;
 };
 
 /**

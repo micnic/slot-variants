@@ -1,7 +1,8 @@
 import type { ExportNamedDeclaration, Node, Program } from 'estree';
 import {
 	type ComponentFunction,
-	isComponentFunction
+	isComponentFunction,
+	unwrapComponentFunction
 } from './components.ts';
 
 /**
@@ -109,9 +110,9 @@ const collectDefaultExport = (
 	const { declaration } = node;
 
 	// A named function or a re-exported binding is reached through the module
-	// scope; an anonymous function has no name to look up, so the node itself
-	// is the target. Anything else a default export can be carries no
-	// component.
+	// scope; an anonymous function — bare, or inside a wrapper call like
+	// `forwardRef()` — has no name to look up, so the node itself is the
+	// target. Anything else a default export can be carries no component.
 	if (declaration.type === 'FunctionDeclaration' && declaration.id) {
 		targets.push({ kind: 'local', name: declaration.id.name });
 
@@ -126,6 +127,18 @@ const collectDefaultExport = (
 
 	if (isComponentFunction(declaration)) {
 		targets.push({ kind: 'node', node: declaration });
+
+		return;
+	}
+
+	if (declaration.type !== 'CallExpression') {
+		return;
+	}
+
+	const wrapped = unwrapComponentFunction(declaration);
+
+	if (wrapped !== null) {
+		targets.push({ kind: 'node', node: wrapped });
 	}
 };
 

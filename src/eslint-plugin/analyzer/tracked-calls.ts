@@ -1,5 +1,10 @@
-import type { Rule, SourceCode } from 'eslint';
-import type { CallExpression, Identifier, ImportDeclaration } from 'estree';
+import type { Rule, Scope, SourceCode } from 'eslint';
+import type {
+	CallExpression,
+	Identifier,
+	ImportDeclaration,
+	Node
+} from 'estree';
 import {
 	type CallMatch,
 	matchCnCall,
@@ -7,8 +12,15 @@ import {
 	matchSvCnCall,
 	type TrackedNames
 } from './call-matching.ts';
-import { findVariable, resolveStaticValue } from './const-bindings.ts';
-import type { StyledContext } from './styled-values.ts';
+import { findVariable, resolveStaticValueFrom } from './const-bindings.ts';
+import { createStyledContext, type StyledContext } from './styled-values.ts';
+
+/**
+ * The scope an identifier is looked up from. Plain JS uses the node's own; a
+ * Vue template expression, whose own scope never reaches the `<script>`
+ * bindings it names, uses the script's module scope.
+ */
+export type ScopeOf = (node: Node) => Scope.Scope;
 
 const getImportedName = (
 	specifier: ImportDeclaration['specifiers'][number]
@@ -72,17 +84,21 @@ const createImportsTracker = () => {
 	return { names, importsTracker };
 };
 
+// Everything the classifier needs from the rule that owns it.
+type MatchContext = {
+	sourceCode: SourceCode;
+	names: TrackedNames;
+	scopeOf: ScopeOf;
+};
+
 // A tracked-name identifier could still be a local binding that shadows the
 // import (e.g. a function parameter named `cn`), so confirm it resolves to
 // an import binding.
 const identifierResolvesToImport = (
-	context: Rule.RuleContext,
+	{ scopeOf }: MatchContext,
 	identifier: Identifier
 ): boolean => {
-	const variable = findVariable(
-		context.sourceCode.getScope(identifier),
-		identifier.name
-	);
+	const variable = findVariable(scopeOf(identifier), identifier.name);
 
 	/* c8 ignore next 3 -- a tracked-name identifier always resolves to a binding */
 	if (!variable) {
@@ -92,18 +108,23 @@ const identifierResolvesToImport = (
 	return variable.defs.some((def) => def.type === 'ImportBinding');
 };
 
-// Reads the callee through same-file `const` aliases (`const cx = cn`) so
-// aliased sv/cn bindings stay tracked. Null when the callee isn't an
-// identifier, or is an alias of a non-identifier value.
+// Reads a node through same-file `const` aliases (`const cx = cn`) from the
+// scope the context assigns it.
+const resolve = ({ sourceCode, scopeOf }: MatchContext, node: Node): Node =>
+	resolveStaticValueFrom(node, sourceCode, scopeOf(node));
+
+// Reads the callee through same-file `const` aliases so aliased sv/cn bindings
+// stay tracked. Null when the callee isn't an identifier, or is an alias of a
+// non-identifier value.
 const resolveCalleeIdentifier = (
-	context: Rule.RuleContext,
+	match: MatchContext,
 	node: CallExpression
 ): Identifier | null => {
 	if (node.callee.type !== 'Identifier') {
 		return null;
 	}
 
-	const resolved = resolveStaticValue(node.callee, context.sourceCode);
+	const resolved = resolve(match, node.callee);
 
 	if (resolved.type !== 'Identifier') {
 		return null;
@@ -117,9 +138,8 @@ const resolveCalleeIdentifier = (
 // a tracked namespace binding, including a computed one (`SV[name](…)`), whose
 // export can't be read statically.
 const resolveNamespaceExportName = (
-	context: Rule.RuleContext,
-	node: CallExpression,
-	namespaceNames: Set<string>
+	match: MatchContext,
+	node: CallExpression
 ): string | null => {
 	const { callee } = node;
 
@@ -134,8 +154,8 @@ const resolveNamespaceExportName = (
 	}
 
 	if (
-		!namespaceNames.has(object.name) ||
-		!identifierResolvesToImport(context, object)
+		!match.names.namespaceNames.has(object.name) ||
+		!identifierResolvesToImport(match, object)
 	) {
 		return null;
 	}
@@ -146,12 +166,12 @@ const resolveNamespaceExportName = (
 // A namespace member call names its export outright, so there are no aliases to
 // resolve — `SV.sv(…)` is an `sv()` call by construction.
 const matchNamespaceCall = (
+	match: MatchContext,
 	node: CallExpression,
-	exportName: string,
-	sourceCode: SourceCode
+	exportName: string
 ): CallMatch | null => {
 	if (exportName === 'sv') {
-		return matchSvCall(node, sourceCode);
+		return matchSvCall(node, match.sourceCode);
 	}
 
 	if (exportName === 'cn') {
@@ -159,7 +179,7 @@ const matchNamespaceCall = (
 	}
 
 	if (exportName === 'createSV') {
-		return matchFactoryCall(node, sourceCode);
+		return matchFactoryCall(match, node);
 	}
 
 	return null;
@@ -170,26 +190,22 @@ const matchNamespaceCall = (
 // binding it initializes is a pre-configured `sv()`, so its call sites are
 // analyzed exactly like `sv()` calls.
 const isCreateSvFactoryCall = (
-	context: Rule.RuleContext,
-	node: CallExpression,
-	names: TrackedNames
+	match: MatchContext,
+	node: CallExpression
 ): boolean => {
-	if (
-		resolveNamespaceExportName(context, node, names.namespaceNames) ===
-		'createSV'
-	) {
+	if (resolveNamespaceExportName(match, node) === 'createSV') {
 		return true;
 	}
 
-	const factoryCallee = resolveCalleeIdentifier(context, node);
+	const factoryCallee = resolveCalleeIdentifier(match, node);
 
 	if (!factoryCallee) {
 		return false;
 	}
 
 	return (
-		names.createSvNames.has(factoryCallee.name) &&
-		identifierResolvesToImport(context, factoryCallee)
+		match.names.createSvNames.has(factoryCallee.name) &&
+		identifierResolvesToImport(match, factoryCallee)
 	);
 };
 
@@ -198,8 +214,8 @@ const isCreateSvFactoryCall = (
 // any object argument here is the config — so a spread or computed key is
 // reported as dynamic rather than gating the whole object out.
 const matchFactoryCall = (
-	node: CallExpression,
-	sourceCode: SourceCode
+	match: MatchContext,
+	node: CallExpression
 ): CallMatch => {
 	const [defaults] = node.arguments;
 
@@ -207,7 +223,7 @@ const matchFactoryCall = (
 		return { config: null, args: [], isFactoryConfig: true };
 	}
 
-	const resolved = resolveStaticValue(defaults, sourceCode);
+	const resolved = resolve(match, defaults);
 
 	if (resolved.type === 'ObjectExpression') {
 		return { config: resolved, args: [], isFactoryConfig: true };
@@ -222,30 +238,25 @@ const matchFactoryCall = (
 // treated like `sv`; a direct `createSV` import names a factory call; a direct
 // sv/cn import uses the sv/cn convention. Null for anything untracked.
 const matchTrackedCall = (
-	context: Rule.RuleContext,
-	node: CallExpression,
-	names: TrackedNames
+	match: MatchContext,
+	node: CallExpression
 ): CallMatch | null => {
-	const namespaceExport = resolveNamespaceExportName(
-		context,
-		node,
-		names.namespaceNames
-	);
+	const namespaceExport = resolveNamespaceExportName(match, node);
 
 	if (namespaceExport !== null) {
-		return matchNamespaceCall(node, namespaceExport, context.sourceCode);
+		return matchNamespaceCall(match, node, namespaceExport);
 	}
 
 	if (node.callee.type !== 'Identifier') {
 		return null;
 	}
 
-	const resolved = resolveStaticValue(node.callee, context.sourceCode);
+	const resolved = resolve(match, node.callee);
 
 	// A `const button = createSV(...)(…)` binding behaves like `sv`.
 	if (resolved.type === 'CallExpression') {
-		if (isCreateSvFactoryCall(context, resolved, names)) {
-			return matchSvCall(node, context.sourceCode);
+		if (isCreateSvFactoryCall(match, resolved)) {
+			return matchSvCall(node, match.sourceCode);
 		}
 
 		return null;
@@ -256,17 +267,22 @@ const matchTrackedCall = (
 	}
 
 	// The `createSV(defaults)` factory call itself — validate its defaults.
-	if (names.createSvNames.has(resolved.name)) {
-		if (identifierResolvesToImport(context, resolved)) {
-			return matchFactoryCall(node, context.sourceCode);
+	if (match.names.createSvNames.has(resolved.name)) {
+		if (identifierResolvesToImport(match, resolved)) {
+			return matchFactoryCall(match, node);
 		}
 
 		return null;
 	}
 
-	const call = matchSvCnCall(node, resolved.name, names, context.sourceCode);
+	const call = matchSvCnCall(
+		node,
+		resolved.name,
+		match.names,
+		match.sourceCode
+	);
 
-	if (call && identifierResolvesToImport(context, resolved)) {
+	if (call && identifierResolvesToImport(match, resolved)) {
 		return call;
 	}
 
@@ -287,35 +303,39 @@ export const createTrackedCallResolver = (context: Rule.RuleContext) => {
 		names.createSvNames.size > 0 ||
 		names.namespaceNames.size > 0;
 
-	const matchCall = (node: CallExpression): CallMatch | null => {
-		if (!hasTrackedImports()) {
-			return null;
-		}
+	// A classifier whose identifiers are looked up from the given scopes.
+	const matchCallFrom =
+		(scopeOf: ScopeOf) =>
+		(node: CallExpression): CallMatch | null => {
+			if (!hasTrackedImports()) {
+				return null;
+			}
 
-		return matchTrackedCall(context, node, names);
-	};
+			return matchTrackedCall(
+				{ sourceCode: context.sourceCode, names, scopeOf },
+				node
+			);
+		};
 
-	return { importsTracker, matchCall };
+	return { importsTracker, matchCallFrom };
 };
 
 export const createTrackedCallListeners = (
 	context: Rule.RuleContext,
 	onCall: (node: CallExpression, call: CallMatch, ctx: StyledContext) => void
 ) => {
-	const { importsTracker, matchCall } = createTrackedCallResolver(context);
+	const { importsTracker, matchCallFrom } = createTrackedCallResolver(context);
 	const { sourceCode } = context;
-	const ctx: StyledContext = {
-		sourceCode,
-		matchCall,
-		resolve: (node) => resolveStaticValue(node, sourceCode)
-	};
+	const ctx = createStyledContext(sourceCode, matchCallFrom, (node) =>
+		sourceCode.getScope(node)
+	);
 
 	return {
 		ImportDeclaration(node: ImportDeclaration) {
 			importsTracker(node);
 		},
 		CallExpression(node: CallExpression) {
-			const call = matchCall(node);
+			const call = ctx.matchCall(node);
 
 			if (call) {
 				onCall(node, call, ctx);

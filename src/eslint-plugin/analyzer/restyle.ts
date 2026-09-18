@@ -1,5 +1,11 @@
 import type { Rule, SourceCode } from 'eslint';
-import type { CallExpression, Node, TemplateLiteral } from 'estree';
+import type {
+	CallExpression,
+	Identifier,
+	MemberExpression,
+	Node,
+	TemplateLiteral
+} from 'estree';
 import {
 	areConflictingKeys,
 	type ConflictOptions,
@@ -31,15 +37,27 @@ import {
 } from './token-model.ts';
 
 /**
- * One class-list position, split into the parts slot-variants produces itself
- * and the literal classes written alongside them.
+ * One class-list position, split into the parts slot-variants produces itself,
+ * the literal classes written alongside them, and the values that resolve to
+ * neither.
  */
 export type ClassParts = {
 	styled: StyledClasses[];
 	literals: Entry[];
+	// Identifiers and property reads with no static value — where a component
+	// forwards its `class` prop, that prop is one of these.
+	dynamic: Array<Identifier | MemberExpression>;
+	// Whether the position is a `cn()`-style merge, whose literals are classes
+	// the position applies on its own rather than a plain attribute value.
+	merged: boolean;
 };
 
-export const emptyParts = (): ClassParts => ({ styled: [], literals: [] });
+export const emptyParts = (): ClassParts => ({
+	styled: [],
+	literals: [],
+	dynamic: [],
+	merged: false
+});
 
 // Template quasis carry classes no string literal covers, so their text is
 // tokenized directly. `hasIsolatedQuasis` has already established that every
@@ -62,15 +80,17 @@ const pushQuasiTokens = (
 	}
 };
 
-const isClassListCall = (
+/**
+ * A config-less `sv()`/`cn()` call: a class list in its own right, whose
+ * arguments are walked as siblings of one another — and of whatever surrounds
+ * the call when it is written inline.
+ */
+export const isClassListCall = (
 	node: CallExpression,
 	ctx: StyledContext
 ): boolean => {
 	const call = ctx.matchCall(node);
 
-	// A config-less `sv()`/`cn()` call written inline is part of the same class
-	// list rather than a unit of its own — its arguments are walked as siblings
-	// of whatever surrounds the call.
 	return (
 		call !== null && call.isFactoryConfig !== true && call.config === null
 	);
@@ -82,6 +102,8 @@ export const collectCallParts = (
 	ctx: StyledContext,
 	parts: ClassParts
 ) => {
+	parts.merged = true;
+
 	for (const arg of node.arguments) {
 		if (arg.type !== 'SpreadElement') {
 			collectParts(arg, ctx, parts);
@@ -91,9 +113,9 @@ export const collectCallParts = (
 
 /**
  * Walks one class-list position, separating slot-variants-produced parts from
- * the literal classes written next to them. Dynamic values that resolve to
- * neither are skipped, matching how the other rules leave runtime class props
- * alone.
+ * the literal classes written next to them. Values that resolve to neither are
+ * recorded as dynamic and otherwise left alone, matching how the other rules
+ * treat runtime class props.
  */
 export const collectParts = (
 	node: Node,
@@ -115,6 +137,15 @@ export const collectParts = (
 	}
 
 	const resolved = ctx.resolve(node);
+
+	if (
+		resolved.type === 'Identifier' ||
+		resolved.type === 'MemberExpression'
+	) {
+		parts.dynamic.push(resolved);
+
+		return;
+	}
 
 	if (resolved.type === 'ArrayExpression') {
 		forEachStaticItem(resolved.elements, (element) => {
@@ -164,6 +195,31 @@ export const collectParts = (
 		ctx.sourceCode,
 		true
 	);
+};
+
+/**
+ * The `class` / `className` value a call site passes, as one position per
+ * slot it targets: the slot's own classes are the styled parts, and the value
+ * written for that slot is walked next to them.
+ */
+export const forEachOverrideParts = (
+	value: Node,
+	invocation: Invocation,
+	ctx: StyledContext,
+	visit: (parts: ClassParts) => void
+) => {
+	const { styles, matchers } = invocation;
+
+	forEachOverrideTarget(value, styles, invocation.slot, (slotKey, node) => {
+		const parts = emptyParts();
+
+		for (const slot of resolveTargetSlots(styles, slotKey)) {
+			parts.styled.push({ styles, slot, matchers });
+		}
+
+		collectParts(node, ctx, parts);
+		visit(parts);
+	});
 };
 
 // An internal entry counts only when it can render under the variant values
@@ -247,8 +303,7 @@ const reportEntry = (
 const entryKey = (entry: Entry): string =>
 	`${entry.start}:${entry.end}:${entry.token}`;
 
-/** Reports the literal classes that collide with one styled part's output. */
-export const reportAgainstStyled = (
+const reportAgainstStyled = (
 	context: Rule.RuleContext,
 	styled: StyledClasses,
 	literals: ReadonlyArray<Entry>,
@@ -271,51 +326,28 @@ export const reportAgainstStyled = (
 };
 
 /**
- * Reports each literal class in `parts` that duplicates or collides with a
- * class the slot-variants parts alongside it already apply. A literal is
- * reported once even when several styled parts would flag it.
+ * Reports each literal that duplicates or collides with a class one of the
+ * styled parts applies. A literal is reported once even when several parts
+ * would flag it.
  */
+export const reportLiterals = (
+	context: Rule.RuleContext,
+	styled: ReadonlyArray<StyledClasses>,
+	literals: ReadonlyArray<Entry>,
+	reported: Set<string>,
+	options: ConflictOptions
+) => {
+	for (const part of styled) {
+		reportAgainstStyled(context, part, literals, reported, options);
+	}
+};
+
+/** Reports a position's literals against the styled parts beside them. */
 export const reportParts = (
 	context: Rule.RuleContext,
 	parts: ClassParts,
 	reported: Set<string>,
 	options: ConflictOptions
 ) => {
-	for (const styled of parts.styled) {
-		reportAgainstStyled(context, styled, parts.literals, reported, options);
-	}
-};
-
-/**
- * Checks one `class` / `className` value against the config it is merged into,
- * per slot it targets. Literal classes sitting next to a styled part inside
- * the same value are checked against that part too.
- */
-export const checkOverrideValue = (
-	context: Rule.RuleContext,
-	value: Node,
-	invocation: Invocation,
-	ctx: StyledContext,
-	reported: Set<string>,
-	options: ConflictOptions
-) => {
-	const { styles, matchers } = invocation;
-
-	forEachOverrideTarget(value, styles, invocation.slot, (slotKey, node) => {
-		const parts = emptyParts();
-
-		collectParts(node, ctx, parts);
-
-		for (const slot of resolveTargetSlots(styles, slotKey)) {
-			reportAgainstStyled(
-				context,
-				{ styles, slot, matchers },
-				parts.literals,
-				reported,
-				options
-			);
-		}
-
-		reportParts(context, parts, reported, options);
-	});
+	reportLiterals(context, parts.styled, parts.literals, reported, options);
 };
