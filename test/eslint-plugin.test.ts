@@ -1514,10 +1514,40 @@ const NO_EMPTY_CLASSES_VALID = [
 	// Non-empty ternary branches.
 	IMPORT_CN + "cn(isActive ? 'flex' : 'block');",
 	// A hoisted `const` non-empty-string alias.
-	IMPORT_CN + "const cls = 'flex';\ncn(cls);"
+	IMPORT_CN + "const cls = 'flex';\ncn(cls);",
+	// An empty string is a meaningful "this value adds no classes" variant
+	// declaration, the same way it is for a slot.
+	IMPORT + "sv({ variants: { size: { sm: '', lg: 'text-lg' } } });",
+	// The same allowance in the slot-keyed variant value form.
+	IMPORT +
+		"sv({ slots: { body: 'p-4' }, variants: { size: { sm: { body: '' } } } });",
+	// And in a boolean-shorthand variant value.
+	IMPORT + "sv({ variants: { disabled: '' } });",
+	// An empty string reached through a hoisted `const` alias.
+	IMPORT + "const none = '';\nsv({ variants: { size: { sm: none } } });"
 ];
 
 const NO_EMPTY_CLASSES_INVALID = [
+	{
+		// The allowance covers empty strings only — an empty array still
+		// contributes nothing while looking like a class list.
+		code: IMPORT + "sv({ variants: { size: { sm: [], lg: 'text-lg' } } });",
+		errors: [{ messageId: 'emptyArray' }]
+	},
+	{
+		// The allowance is scoped to a direct variant value — an empty string
+		// inside an array is not one.
+		code: IMPORT + "sv({ variants: { size: { sm: ['text-sm', ''] } } });",
+		output: IMPORT + "sv({ variants: { size: { sm: ['text-sm'] } } });",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// Nor is a compound class value.
+		code:
+			IMPORT +
+			"sv({ variants: { size: { sm: 'text-sm' } }, compoundVariants: [{ size: 'sm', class: '' }] });",
+		errors: [{ messageId: 'emptyString' }]
+	},
 	{
 		// A config container that holds no class values of its own is inert when
 		// empty, so the property is reported and removed.
@@ -1669,29 +1699,9 @@ const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyObject' }]
 	},
 	{
-		// Empty boolean-shorthand variant value.
-		code: IMPORT + "sv({ variants: { disabled: '' } });",
-		errors: [{ messageId: 'emptyString' }]
-	},
-	{
 		// Empty variant value record.
 		code: IMPORT + 'sv({ variants: { size: {} } });',
 		errors: [{ messageId: 'emptyObject' }]
-	},
-	{
-		// Empty string inside a variant value record.
-		code: IMPORT + "sv({ variants: { size: { sm: '' } } });",
-		errors: [{ messageId: 'emptyString' }]
-	},
-	{
-		// Empty string inside a slot-keyed variant branch.
-		code:
-			IMPORT +
-			`sv({
-				slots: { body: 'p-4' },
-				variants: { size: { sm: { body: '' } } }
-			});`,
-		errors: [{ messageId: 'emptyString' }]
 	},
 	{
 		// Empty array inside a variant value record.

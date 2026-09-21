@@ -139,6 +139,12 @@ const visitVariantRecordForEmpty = (
 	}
 };
 
+// Empty strings are allowed at a direct variant-value position — a plain
+// value, a slot-keyed branch, a boolean shorthand — the same way `slots[key]`
+// allows them: a variant value that adds no classes is a meaningful
+// declaration. The records along the way are containers, so they're still
+// reported when empty, and `visitForEmptyClasses` doesn't carry the allowance
+// into array elements.
 const visitVariantValueForEmpty = (
 	context: Rule.RuleContext,
 	variantValue: Node
@@ -148,7 +154,7 @@ const visitVariantValueForEmpty = (
 		return;
 	}
 
-	visitForEmptyClasses(context, variantValue, false);
+	visitForEmptyClasses(context, variantValue, true);
 };
 
 const checkVariantsForEmpty = (

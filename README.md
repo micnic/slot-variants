@@ -1206,10 +1206,20 @@ cn(classes.base, 'p-4'); // allowed — `classes.base` resolves to card()'s base
 Flags empty class values (empty strings, arrays, objects) and zero-argument `sv()` / `cn()` calls, plus an empty-array matcher in `compoundVariants`/`compoundSlots` (which can never match, making the entry permanently unreachable). Partially auto-fixable.
 
 ```typescript
-sv({ base: '' });                       // empty base
-sv({ variants: { size: { sm: '' } } });  // empty variant value
+sv({ base: '' });                        // empty base
+sv({ variants: { size: { sm: [] } } });  // empty variant value
 sv();                                    // zero-arg call — always produces ''
 ```
+
+An empty string is allowed at a direct `slots` or `variants` value position — declaring a slot or a variant value that contributes no classes of its own is a meaningful thing to write:
+
+```typescript
+sv({ slots: { body: '' } });                            // allowed
+sv({ variants: { size: { sm: '', lg: 'text-lg' } } });  // allowed
+sv({ slots: { body: 'p-4' }, variants: { size: { sm: { body: '' } } } }); // allowed
+```
+
+That allowance is for empty strings in that position only. An empty array or object still reports, so does an empty `variants: {}`, `slots: {}` or variant record, and so does an empty string anywhere else — inside an array, in `base`, in a compound entry's classes, or as a call argument.
 
 #### `slot-variants/no-redundant-spaces`
 

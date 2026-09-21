@@ -12,8 +12,9 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  * Flags empty class values — empty strings, empty arrays, and empty objects —
  * in `sv()` and `cn()` calls, plus zero-argument `sv()` / `cn()` calls (which
  * always produce an empty class string). Inside an `sv()` config, an empty
- * string is still allowed as a direct `slots[key]` value, since declaring a
- * slot with no default classes is a meaningful use case. Also flags an empty
+ * string is still allowed at a direct `slots[key]` or `variants` value
+ * position, since declaring a slot or a variant value with no classes of its
+ * own is a meaningful use case. Also flags an empty
  * array (`[]`) as a `compoundVariants`/`compoundSlots` matcher value — since
  * `matchesCompound` in `sv.ts` tests it with `.some()`, an empty array can
  * never match, so the whole compound entry is permanently unreachable.
