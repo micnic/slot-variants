@@ -4200,6 +4200,232 @@ t.test('getMaxEntries bounds the actual cache size', (t) => {
 	t.end();
 });
 
+t.test('splitProps separates declared variant props from the rest', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+		},
+		introspection: true
+	});
+
+	const [variantProps, rest] = button.splitProps({
+		size: 'lg',
+		intent: 'danger',
+		id: 'submit',
+		disabled: true
+	});
+
+	t.same(
+		variantProps,
+		{ size: 'lg', intent: 'danger' },
+		'declared variant props'
+	);
+	t.same(rest, { id: 'submit', disabled: true }, 'everything else');
+
+	t.end();
+});
+
+t.test('splitProps keeps class, className and preset on the variant side', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' }
+		},
+		presets: {
+			cta: { size: 'lg' }
+		},
+		introspection: true
+	});
+
+	const [variantProps, rest] = button.splitProps({
+		preset: 'cta',
+		class: 'mt-2',
+		className: 'mb-2',
+		id: 'submit'
+	});
+
+	t.same(
+		variantProps,
+		{ preset: 'cta', class: 'mt-2', className: 'mb-2' },
+		'reserved props stay with the variant props'
+	);
+	t.same(rest, { id: 'submit' }, 'reserved props are not forwarded');
+
+	t.end();
+});
+
+t.test('splitProps output feeds back into the variant function', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' }
+		},
+		introspection: true
+	});
+
+	const [variantProps] = button.splitProps({
+		size: 'lg',
+		class: 'mt-2',
+		id: 'submit'
+	});
+
+	t.equal(button(variantProps), 'btn text-lg mt-2', 'round trip');
+
+	t.end();
+});
+
+t.test('splitProps sends everything to the rest when no variants exist', (t) => {
+	const box = sv('flex', { introspection: true });
+
+	const [variantProps, rest] = box.splitProps({ id: 'box', role: 'group' });
+
+	t.same(variantProps, {}, 'no variant props');
+	t.same(rest, { id: 'box', role: 'group' }, 'all props forwarded');
+
+	t.end();
+});
+
+t.test('splitProps omits variant keys absent from the input', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500' }
+		},
+		introspection: true
+	});
+
+	const [variantProps, rest] = button.splitProps({ size: 'sm' });
+
+	t.same(variantProps, { size: 'sm' }, 'only the props that were passed');
+	t.same(rest, {}, 'nothing left over');
+
+	t.end();
+});
+
+t.test('splitProps keeps null and undefined variant values', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' }
+		},
+		defaultVariants: { size: 'sm' },
+		introspection: true
+	});
+
+	const [variantProps, rest] = button.splitProps({
+		size: null,
+		title: undefined
+	});
+
+	t.same(variantProps, { size: null }, 'null opt-out stays a variant prop');
+	t.same(rest, { title: undefined }, 'undefined rest prop is preserved');
+	t.equal(button(variantProps), 'btn', 'null still opts out of the default');
+
+	t.end();
+});
+
+t.test('splitProps splits props for a slotted component', (t) => {
+	const card = sv('border', {
+		slots: { header: 'font-bold' },
+		variants: {
+			size: { sm: 'p-2', lg: 'p-6' }
+		},
+		introspection: true
+	});
+
+	const [variantProps, rest] = card.splitProps({ size: 'lg', id: 'card' });
+
+	t.same(variantProps, { size: 'lg' }, 'variant props');
+	t.same(rest, { id: 'card' }, 'rest props');
+	t.equal(card(variantProps).base, 'border p-6', 'result still computed');
+
+	t.end();
+});
+
+// --- splitProps type tests ---
+
+const _spFn = sv('btn', {
+	variants: {
+		size: { sm: 'text-sm', lg: 'text-lg' }
+	},
+	introspection: true
+});
+
+type SpButtonProps = {
+	size?: 'sm' | 'lg' | undefined;
+	class?: string | undefined;
+	id: string;
+	onClick: () => void;
+};
+
+const _spProps: SpButtonProps = {
+	size: 'lg',
+	class: 'mt-2',
+	id: 'submit',
+	onClick: () => undefined
+};
+
+const [_spVariantProps, _spRest] = _spFn.splitProps(_spProps);
+
+// Variant keys keep their declared types on the variant side
+type AssertSpVariantSize = (typeof _spVariantProps)['size'] extends
+	| 'sm'
+	| 'lg'
+	| undefined
+	? true
+	: false;
+const _assertSpVariantSize: AssertSpVariantSize = true;
+
+// The reserved class prop stays on the variant side
+type AssertSpVariantClass = 'class' extends keyof typeof _spVariantProps
+	? true
+	: false;
+const _assertSpVariantClass: AssertSpVariantClass = true;
+
+// Variant keys are gone from the rest side
+type AssertSpRestHasNoSize = 'size' extends keyof typeof _spRest ? true : false;
+const _assertSpRestHasNoSize: AssertSpRestHasNoSize = false;
+
+type AssertSpRestHasNoClass = 'class' extends keyof typeof _spRest
+	? true
+	: false;
+const _assertSpRestHasNoClass: AssertSpRestHasNoClass = false;
+
+// Unrelated props keep their own types on the rest side
+type AssertSpRestOnClick = (typeof _spRest)['onClick'] extends () => void
+	? true
+	: false;
+const _assertSpRestOnClick: AssertSpRestOnClick = true;
+
+type AssertSpRestId = (typeof _spRest)['id'] extends string ? true : false;
+const _assertSpRestId: AssertSpRestId = true;
+
+// An interface, which has no implicit index signature, is accepted too
+interface SpInterfaceProps {
+	size?: 'sm' | 'lg' | undefined;
+	id: string;
+}
+
+const _spInterfaceProps: SpInterfaceProps = { size: 'sm', id: 'submit' };
+
+const [_spInterfaceVariantProps, _spInterfaceRest] =
+	_spFn.splitProps(_spInterfaceProps);
+
+// The variant half is accepted by the variant function
+_spFn(_spVariantProps);
+
+void _spFn;
+void _spProps;
+void _spInterfaceProps;
+void _spVariantProps;
+void _spRest;
+void _assertSpVariantSize;
+void _assertSpVariantClass;
+void _assertSpRestHasNoSize;
+void _assertSpRestHasNoClass;
+void _assertSpRestOnClick;
+void _assertSpRestId;
+void _spInterfaceVariantProps;
+void _spInterfaceRest;
+
 // --- getVariantValues type tests ---
 
 const _gvvFn = sv('btn', {

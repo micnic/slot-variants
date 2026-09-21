@@ -392,6 +392,20 @@ type ConfigValueCheck =
 	| 'number'
 	| 'object';
 
+/** Props consumed by a variant function rather than forwarded to an element. */
+type VariantPropKeys<V extends AnyVariants> =
+	| StringKeyof<V>
+	| 'class'
+	| 'className'
+	| 'preset';
+
+type SplitProps<V extends AnyVariants> = <const T extends object>(
+	props: T
+) => [
+	Prettify<Pick<T, Extract<keyof T, VariantPropKeys<V>>>>,
+	Prettify<Omit<T, VariantPropKeys<V>>>
+];
+
 type IntrospectionValues<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
@@ -422,6 +436,12 @@ type IntrospectionValues<
 	presets: P extends undefined ? Record<string, never> : P;
 	/** Names of all declared presets. */
 	presetKeys: P extends undefined ? [] : StringKeyof<P>[];
+	/**
+	 * Splits a props object into the props this variant function consumes
+	 * (its variants plus `class`, `className` and `preset`) and everything
+	 * else, which is safe to forward to an element.
+	 */
+	splitProps: SplitProps<V>;
 	/** Lists every valid value for a given variant. */
 	getVariantValues: V extends undefined
 		? (key: never) => never[]
@@ -1941,6 +1961,31 @@ const runVariantResult = (
 	return applyMultiSlots(config, props, result);
 };
 
+const isVariantFnProp = (key: string, variants: NormalizedVariants): boolean =>
+	key === 'class' ||
+	key === 'className' ||
+	key === 'preset' ||
+	hasOwn(variants, key);
+
+const splitVariantProps = (
+	variants: NormalizedVariants,
+	props: Record<string, unknown>
+): [Record<string, unknown>, Record<string, unknown>] => {
+
+	const variantProps: Record<string, unknown> = {};
+	const restProps: Record<string, unknown> = {};
+
+	for (const [key, value] of entries(props)) {
+		if (isVariantFnProp(key, variants)) {
+			variantProps[key] = value;
+		} else {
+			restProps[key] = value;
+		}
+	}
+
+	return [variantProps, restProps];
+};
+
 const createVariantFn = (config: CompiledConfig) => {
 
 	const variantFn = (props: RuntimeProps = {}) =>
@@ -1963,6 +2008,8 @@ const createVariantFn = (config: CompiledConfig) => {
 		multiSlots: [...config.multiSlots],
 		presets: config.presets,
 		presetKeys: keys(config.presets),
+		splitProps: (props: Record<string, unknown>) =>
+			splitVariantProps(config.normalizedVariants, props),
 		getVariantValues: (key: string) =>
 			keys(config.normalizedVariants[key] ?? {}).map(
 				coerceVariantKeyValue

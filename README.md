@@ -873,12 +873,39 @@ button.presetKeys;                  // ['cta']
 button.presets;                     // { cta: { size: 'lg', intent: 'primary' } }
 button.getVariantValues('size');    // ['sm', 'lg']
 button.getVariantValues('intent');  // ['primary', 'danger']
+button.splitProps(props);           // [variantProps, restProps]
 button.getMaxEntries();             // 4 — distinct variant combinations
 button.getCacheSize();              // current number of cached entries
 button.clearCache();                // clear all cached entries
 ```
 
 Without `introspection: true`, only the variant function itself is returned — accessing introspection or cache properties is a type error.
+
+#### Splitting Props
+
+`splitProps()` divides a props object in two: the props the variant function consumes — its declared variants plus `class`, `className` and `preset` — and everything else, ready to forward to an element. Both halves keep the types they had on the original object:
+
+```tsx
+const button = sv('btn', {
+  variants: {
+    size: { sm: 'text-sm', lg: 'text-lg' },
+    intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+  },
+  introspection: true
+});
+
+type ButtonProps = VariantProps<typeof button> &
+  ComponentProps<'button'>;
+
+const Button = (props: ButtonProps) => {
+
+  const [variantProps, rest] = button.splitProps(props);
+
+  return <button className={button(variantProps)} {...rest} />;
+};
+```
+
+Keeping `class` and `className` on the variant side is what lets a caller's own classes reach the variant function instead of overwriting its result.
 
 ### Errors & Validation
 

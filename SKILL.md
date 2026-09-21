@@ -217,7 +217,7 @@ button({ size: null });      // no size classes at all, default and preset skipp
 
 ### 15. Use Introspection for Single Source of Truth
 
-Set `introspection: true` to expose configuration and cache members on the returned function (off by default): `variantKeys`, `variants`, `slotKeys`, `slots`, `groupKeys`, `groups`, `defaultVariants`, `requiredVariants`, `multiSlots`, `presetKeys`, `presets`, `getVariantValues(key)`, `getMaxEntries()`, `getCacheSize()`, and `clearCache()`.
+Set `introspection: true` to expose configuration and cache members on the returned function (off by default): `variantKeys`, `variants`, `slotKeys`, `slots`, `groupKeys`, `groups`, `defaultVariants`, `requiredVariants`, `multiSlots`, `presetKeys`, `presets`, `getVariantValues(key)`, `splitProps(props)`, `getMaxEntries()`, `getCacheSize()`, and `clearCache()`. `splitProps(props)` returns `[variantProps, restProps]`, keeping the declared variants plus `class`, `className` and `preset` on the variant side and leaving everything else to forward to an element.
 
 Without `introspection: true`, accessing these is a type error. Use it to centralize variant/slot definitions and reuse them across the codebase.
 
