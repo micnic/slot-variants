@@ -585,16 +585,8 @@ const { assign, entries, hasOwn, keys, values } = Object;
 
 const hasFunctionDefault = (
 	defaultVariants: Record<string, RuntimeDefaultVariant>
-): boolean => {
-
-	for (const value of values(defaultVariants)) {
-		if (typeof value === 'function') {
-			return true;
-		}
-	}
-
-	return false;
-};
+): boolean =>
+	values(defaultVariants).some((value) => typeof value === 'function');
 
 const defaultCacheSize = 256;
 
