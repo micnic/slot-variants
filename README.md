@@ -97,6 +97,13 @@ sv({ btn: true, disabled: false });          // 'btn'
 sv('flex', ['items-center'], { gap: true }); // 'flex items-center gap'
 ```
 
+An object argument counts as a config only when every one of its keys is a config option *and* holds a value of the shape that option expects. An object that merely happens to be keyed by a config option name still merges like `cn()` does:
+
+```typescript
+sv({ base: true, hidden: false }); // 'base' — a class record
+sv({ base: 'btn' });               // a variant function based on 'btn'
+```
+
 ### Config-Only Call
 
 When called with a single config object (no separate base argument), `sv()` returns a variant function. Use the `base` field inside the config:

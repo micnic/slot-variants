@@ -382,6 +382,16 @@ type ConfigKey = keyof Config<
 	[]
 >;
 
+/** The value shape each config key expects, used to tell a config from a class record. */
+type ConfigValueCheck =
+	| 'array'
+	| 'boolean'
+	| 'boolean-or-array'
+	| 'class'
+	| 'function'
+	| 'number'
+	| 'object';
+
 type IntrospectionValues<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
@@ -853,23 +863,54 @@ const coerceVariantKeyValue = (value: string): string | number | boolean => {
 	return numericValue;
 };
 
-const configKeysRecord: Record<ConfigKey, true> = {
-	base: true,
-	variants: true,
-	slots: true,
-	groups: true,
-	compoundVariants: true,
-	compoundSlots: true,
-	defaultVariants: true,
-	requiredVariants: true,
-	multiSlots: true,
-	presets: true,
-	cacheSize: true,
-	postProcess: true,
-	introspection: true
+const configKeysRecord: Record<ConfigKey, ConfigValueCheck> = {
+	base: 'class',
+	variants: 'object',
+	slots: 'object',
+	groups: 'object',
+	compoundVariants: 'array',
+	compoundSlots: 'array',
+	defaultVariants: 'object',
+	requiredVariants: 'boolean-or-array',
+	multiSlots: 'boolean-or-array',
+	presets: 'object',
+	cacheSize: 'number',
+	postProcess: 'function',
+	introspection: 'boolean'
 };
 
-const configKeys: ReadonlySet<string> = new Set(keys(configKeysRecord));
+const configKeyChecks: ReadonlyMap<string, ConfigValueCheck> = new Map(
+	entries(configKeysRecord)
+);
+
+const matchesConfigValue = (
+	check: ConfigValueCheck,
+	value: unknown
+): boolean => {
+
+	// Every config key accepts an explicit `undefined`
+	if (value === undefined) {
+		return true;
+	}
+
+	if (check === 'class') {
+		return typeof value === 'string' || isArray(value);
+	}
+
+	if (check === 'object') {
+		return value !== null && typeof value === 'object' && !isArray(value);
+	}
+
+	if (check === 'array') {
+		return isArray(value);
+	}
+
+	if (check === 'boolean-or-array') {
+		return typeof value === 'boolean' || isArray(value);
+	}
+
+	return typeof value === check;
+};
 
 const isConfig = <
 	S extends MaybeSlots,
@@ -881,11 +922,26 @@ const isConfig = <
 	I extends boolean = false
 >(
 	value: ClassValue | Config<S, G, V, P, M, R, I>
-): value is Config<S, G, V, P, M, R, I> =>
-	value !== null &&
-	typeof value === 'object' &&
-	!isArray(value) &&
-	keys(value).every((key) => configKeys.has(key));
+): value is Config<S, G, V, P, M, R, I> => {
+
+	if (value === null || typeof value !== 'object' || isArray(value)) {
+		return false;
+	}
+
+	// A config is an object whose every key is a config key holding a value of
+	// the shape that key expects, so class records keyed by a config key name
+	// keep merging like `cn()` does
+	for (const [key, keyValue] of entries(value)) {
+
+		const check = configKeyChecks.get(key);
+
+		if (check === undefined || !matchesConfigValue(check, keyValue)) {
+			return false;
+		}
+	}
+
+	return true;
+};
 
 const createNormalizedVariants = <S extends MaybeSlots>(
 	variants: Variants<S, undefined>,
