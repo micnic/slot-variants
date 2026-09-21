@@ -4200,6 +4200,20 @@ t.test('getMaxEntries bounds the actual cache size', (t) => {
 	t.end();
 });
 
+t.test('getMaxEntries returns the same count on repeated calls', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' }
+		},
+		introspection: true
+	});
+
+	t.equal(button.getMaxEntries(), 3, 'first call');
+	t.equal(button.getMaxEntries(), 3, 'second call');
+
+	t.end();
+});
+
 t.test('splitProps separates declared variant props from the rest', (t) => {
 	const button = sv('btn', {
 		variants: {

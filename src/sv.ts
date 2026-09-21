@@ -1996,6 +1996,9 @@ const createVariantFn = (config: CompiledConfig) => {
 		return variantFn;
 	}
 
+	// The combination count never changes, so it is computed on first use only
+	let maxEntries: number | undefined;
+
 	return assign(variantFn, {
 		variants: config.originalVariants,
 		variantKeys: keys(config.normalizedVariants),
@@ -2014,7 +2017,14 @@ const createVariantFn = (config: CompiledConfig) => {
 			keys(config.normalizedVariants[key] ?? {}).map(
 				coerceVariantKeyValue
 			),
-		getMaxEntries: () => countMaxEntries(config),
+		getMaxEntries: () => {
+
+			if (maxEntries === undefined) {
+				maxEntries = countMaxEntries(config);
+			}
+
+			return maxEntries;
+		},
 		clearCache: () => config.cache.clear(),
 		getCacheSize: () => config.cache.size
 	});
