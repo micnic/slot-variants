@@ -1558,11 +1558,10 @@ const applyCompoundClasses = (
 
 const finalizeVariantResult = (
 	slotEntries: readonly [string, ConfigClassValue][],
-	slotKeys: ReadonlySet<string>,
 	slotClasses: SlotClasses
 ): CacheValue => {
 
-	if (slotKeys.size === 1) {
+	if (slotEntries.length === 1) {
 		return cn(slotClasses.base);
 	}
 
@@ -1684,7 +1683,6 @@ const buildCacheEntry = (
 	const {
 		requiredVariants,
 		slotEntries,
-		slotKeys,
 		targetKeys,
 		groups,
 		variantData,
@@ -1719,7 +1717,7 @@ const buildCacheEntry = (
 		resolvedProps
 	);
 
-	const raw = finalizeVariantResult(slotEntries, slotKeys, slotClasses);
+	const raw = finalizeVariantResult(slotEntries, slotClasses);
 	const processed = applyPostProcess(postProcess, raw);
 
 	return cacheReturn(cacheKey, { raw, processed });
