@@ -1154,32 +1154,36 @@ const isSlotObjectValue = <T>(
 	!isArray(value) &&
 	hasOnlySlotKeys(value, targetKeys);
 
+/** Applies a target key to the slot it names, or to every slot of its group. */
+const forEachTargetSlot = (
+	groups: CompiledGroups,
+	targetKey: string,
+	apply: (slotKey: string) => void
+) => {
+
+	const groupSlots = groups.get(targetKey);
+
+	if (groupSlots === undefined) {
+		apply(targetKey);
+
+		return;
+	}
+
+	for (const slotKey of groupSlots) {
+		apply(slotKey);
+	}
+};
+
 const pushSlotObjectValue = (
 	slotClasses: SlotClasses,
 	value: Record<string, ConfigClassValue>,
 	groups: CompiledGroups
 ) => {
 
-	if (groups.size === 0) {
-		for (const [targetKey, targetValue] of entries(value)) {
-			slotClasses[targetKey]?.push(targetValue);
-		}
-
-		return;
-	}
-
 	for (const [targetKey, targetValue] of entries(value)) {
-
-		const groupSlots = groups.get(targetKey);
-
-		if (groupSlots === undefined) {
-			slotClasses[targetKey]?.push(targetValue);
-			continue;
-		}
-
-		for (const slotKey of groupSlots) {
+		forEachTargetSlot(groups, targetKey, (slotKey) => {
 			slotClasses[slotKey]?.push(targetValue);
-		}
+		});
 	}
 };
 
@@ -1613,26 +1617,10 @@ const mergeSlotObjectIntoResult = (
 
 	const result: Record<string, string> = { ...baseResult };
 
-	if (groups.size === 0) {
-		for (const [targetKey, targetValue] of entries(classProp)) {
-			result[targetKey] = cn(result[targetKey], targetValue);
-		}
-
-		return result;
-	}
-
 	for (const [targetKey, targetValue] of entries(classProp)) {
-
-		const groupSlots = groups.get(targetKey);
-
-		if (groupSlots === undefined) {
-			result[targetKey] = cn(result[targetKey], targetValue);
-			continue;
-		}
-
-		for (const slotKey of groupSlots) {
+		forEachTargetSlot(groups, targetKey, (slotKey) => {
 			result[slotKey] = cn(result[slotKey], targetValue);
-		}
+		});
 	}
 
 	return result;
