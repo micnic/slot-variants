@@ -7,5 +7,6 @@
 			"slot-variants": ["../../src/index.ts"]
 		}
 	},
-	"include": ["."]
+	"include": ["."],
+	"exclude": []
 }
