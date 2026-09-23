@@ -791,9 +791,10 @@ const matchesCompound = (
 	return true;
 };
 
-const isObjectRecord = (
-	value: RuntimeVariantConfigValue
-): value is NormalizedVariantValues =>
+/** Narrows a value to its object members, excluding `null` and arrays. */
+const isPlainObject = <T>(
+	value: T
+): value is Exclude<Extract<T, object>, readonly unknown[]> =>
 	value !== null && typeof value === 'object' && !isArray(value);
 
 const isSlotObjectVariantValue = (
@@ -834,7 +835,7 @@ const normalizeVariantValue = (
 ): NormalizedVariantValues => {
 
 	if (
-		!isObjectRecord(variantValue) ||
+		!isPlainObject(variantValue) ||
 		isSlotObjectVariantValue(variantValue, targetKeys)
 	) {
 		return {
@@ -912,7 +913,7 @@ const matchesConfigValue = (
 	}
 
 	if (check === 'object') {
-		return value !== null && typeof value === 'object' && !isArray(value);
+		return isPlainObject(value);
 	}
 
 	if (check === 'array') {
@@ -1183,29 +1184,15 @@ const requireCompoundClassValue = <T>(
 };
 
 const hasOnlySlotKeys = (
-	value:
-		| Record<string, unknown>
-		| Partial<Record<SlotKey<Slots>, ClassValue>>,
+	value: object,
 	targetKeys: ReadonlySet<string>
-): boolean => {
-
-	for (const key of keys(value)) {
-		if (!targetKeys.has(key)) {
-			return false;
-		}
-	}
-
-	return true;
-};
+): boolean => keys(value).every((key) => targetKeys.has(key));
 
 const isSlotObjectValue = <T>(
 	value: SlotValue<Slots, undefined, T>,
 	targetKeys: ReadonlySet<string>
 ): value is Partial<Record<string, T>> =>
-	value !== null &&
-	typeof value === 'object' &&
-	!isArray(value) &&
-	hasOnlySlotKeys(value, targetKeys);
+	isPlainObject(value) && hasOnlySlotKeys(value, targetKeys);
 
 /** Applies a target key to the slot it names, or to every slot of its group. */
 const forEachTargetSlot = (
