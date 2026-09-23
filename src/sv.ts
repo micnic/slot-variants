@@ -1807,7 +1807,7 @@ const mergeMultiSlotClass = (
 
 	const merged: Record<string, ClassValue> = {};
 
-	if (outerClass !== undefined && isSlotObjectValue(outerClass, targetKeys)) {
+	if (isSlotObjectValue(outerClass, targetKeys)) {
 		assign(merged, outerClass);
 	} else {
 		merged.base = outerClass;
