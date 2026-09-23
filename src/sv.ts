@@ -610,7 +610,7 @@ export type SlotClassProps<T extends AnyFn> =
 				>
 			>;
 
-const { isArray } = Array;
+const { isArray, from } = Array;
 const { assign, entries, hasOwn, keys, values } = Object;
 
 const hasFunctionDefault = (
@@ -763,13 +763,7 @@ const compileCompoundMatchers = (
 		);
 	}
 
-	const result: CompoundMatcher[] = [];
-
-	for (const [key, expected] of matchers) {
-		result.push({ key, expected });
-	}
-
-	return result;
+	return from(matchers, ([key, expected]) => ({ key, expected }));
 };
 
 const matchesCompound = (
