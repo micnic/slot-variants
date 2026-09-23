@@ -932,17 +932,7 @@ const matchesConfigValue = (
 	return typeof value === check;
 };
 
-const isConfig = <
-	S extends MaybeSlots,
-	G extends MaybeGroups<S>,
-	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, G, V>,
-	M extends MultiSlots<S, G>,
-	R extends RequiredVariants<V>,
-	I extends boolean = false
->(
-	value: ClassValue | Config<S, G, V, P, M, R, I>
-): value is Config<S, G, V, P, M, R, I> => {
+const isConfig = (value: ClassValue | RawConfig): value is RawConfig => {
 
 	if (value === null || typeof value !== 'object' || isArray(value)) {
 		return false;
@@ -1278,17 +1268,9 @@ const applyValueToSlotClasses = (
 	slotClasses.base?.push(value);
 };
 
-const compileConfig = <
-	S extends MaybeSlots,
-	G extends MaybeGroups<S>,
-	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, G, V>,
-	M extends MultiSlots<S, G>,
-	R extends RequiredVariants<V>,
-	I extends boolean = false
->(
+const compileConfig = (
 	baseArgs: ClassValue[],
-	config: Config<S, G, V, P, M, R, I>
+	config: RawConfig
 ): CompiledConfig => {
 
 	const {
