@@ -735,6 +735,21 @@ const seedPresetMatchers = (
 	}
 };
 
+const getKnownVariantValues = (
+	normalizedVariants: NormalizedVariants,
+	variant: string,
+	errorMessage: string
+): NormalizedVariantValues => {
+
+	const variantValues = normalizedVariants[variant];
+
+	if (variantValues === undefined) {
+		throw new Error(errorMessage);
+	}
+
+	return variantValues;
+};
+
 const compileCompoundMatchers = (
 	compound: CompoundEntry,
 	normalizedVariants: NormalizedVariants,
@@ -982,21 +997,6 @@ const createVariantData = (
 		};
 	});
 
-const getKnownVariantValues = (
-	normalizedVariants: NormalizedVariants,
-	variant: string,
-	errorMessage: string
-): NormalizedVariantValues => {
-
-	const variantValues = normalizedVariants[variant];
-
-	if (variantValues === undefined) {
-		throw new Error(errorMessage);
-	}
-
-	return variantValues;
-};
-
 const resolveRequiredVariants = (
 	requiredVariants: readonly string[] | boolean,
 	normalizedVariants: NormalizedVariants
@@ -1011,6 +1011,49 @@ const resolveRequiredVariants = (
 	}
 
 	return requiredVariants;
+};
+
+/** Applies a target key to the slot it names, or to every slot of its group. */
+const forEachTargetSlot = (
+	groups: CompiledGroups,
+	targetKey: string,
+	apply: (slotKey: string) => void
+) => {
+
+	const groupSlots = groups.get(targetKey);
+
+	if (groupSlots === undefined) {
+		apply(targetKey);
+
+		return;
+	}
+
+	for (const slotKey of groupSlots) {
+		apply(slotKey);
+	}
+};
+
+const expandSlotTargets = (
+	targets: readonly string[],
+	groups: CompiledGroups,
+	slotKeys: ReadonlySet<string>,
+	label: 'Compound slot' | 'Multi slot'
+): readonly string[] => {
+
+	const result = new Set<string>();
+
+	for (const target of targets) {
+
+		if (!groups.has(target) && !slotKeys.has(target)) {
+			throw new Error(`${label} references unknown slot "${target}"`);
+		}
+
+		forEachTargetSlot(groups, target, (slotKey) => {
+			result.add(slotKey);
+		});
+	}
+
+	return [...result];
 };
 
 const resolveMultiSlots = (
@@ -1140,29 +1183,6 @@ const resolveGroups = (
 	return result;
 };
 
-const expandSlotTargets = (
-	targets: readonly string[],
-	groups: CompiledGroups,
-	slotKeys: ReadonlySet<string>,
-	label: 'Compound slot' | 'Multi slot'
-): readonly string[] => {
-
-	const result = new Set<string>();
-
-	for (const target of targets) {
-
-		if (!groups.has(target) && !slotKeys.has(target)) {
-			throw new Error(`${label} references unknown slot "${target}"`);
-		}
-
-		forEachTargetSlot(groups, target, (slotKey) => {
-			result.add(slotKey);
-		});
-	}
-
-	return [...result];
-};
-
 const assertNonEmptyCompoundSlots = (compoundSlots: readonly string[]) => {
 	if (compoundSlots.length === 0) {
 		throw new Error('Compound slot must define at least one slot');
@@ -1193,26 +1213,6 @@ const isSlotObjectValue = <T>(
 	targetKeys: ReadonlySet<string>
 ): value is Partial<Record<string, T>> =>
 	isPlainObject(value) && hasOnlySlotKeys(value, targetKeys);
-
-/** Applies a target key to the slot it names, or to every slot of its group. */
-const forEachTargetSlot = (
-	groups: CompiledGroups,
-	targetKey: string,
-	apply: (slotKey: string) => void
-) => {
-
-	const groupSlots = groups.get(targetKey);
-
-	if (groupSlots === undefined) {
-		apply(targetKey);
-
-		return;
-	}
-
-	for (const slotKey of groupSlots) {
-		apply(slotKey);
-	}
-};
 
 const pushSlotObjectValue = (
 	slotClasses: SlotClasses,
