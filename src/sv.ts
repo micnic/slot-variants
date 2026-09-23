@@ -2042,14 +2042,9 @@ export const createSV = <I extends boolean = false>(
 			return cn(...args);
 		}
 
-		// When defaults are provided, merge them with the per-call config
-		if (defaults) {
-			return createVariantFn(
-				compileConfig(args.slice(0, -1), { ...defaults, ...last })
-			);
-		}
-
-		return createVariantFn(compileConfig(args.slice(0, -1), last));
+		return createVariantFn(
+			compileConfig(args.slice(0, -1), { ...defaults, ...last })
+		);
 	}) as unknown as SV<I>;
 
 /**
