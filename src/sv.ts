@@ -1156,20 +1156,13 @@ const expandSlotTargets = (
 
 	for (const target of targets) {
 
-		const groupSlots = groups.get(target);
-
-		if (groupSlots !== undefined) {
-			for (const slot of groupSlots) {
-				result.add(slot);
-			}
-			continue;
-		}
-
-		if (!slotKeys.has(target)) {
+		if (!groups.has(target) && !slotKeys.has(target)) {
 			throw new Error(`${label} references unknown slot "${target}"`);
 		}
 
-		result.add(target);
+		forEachTargetSlot(groups, target, (slotKey) => {
+			result.add(slotKey);
+		});
 	}
 
 	return [...result];
