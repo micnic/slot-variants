@@ -168,6 +168,11 @@ type PrefixSpec = {
 	// `bg-[linear-gradient(...)]`) that classify as an image rather than
 	// falling into the color fallback.
 	arbitraryImage?: boolean;
+	// A one-word value that isn't a keyword is a theme color named after its
+	// `--color-*` variable (`text-primary`, `border-accent`), not the `short`
+	// bucket — the prefix's own one-word sizes are listed as keywords instead,
+	// the same split tailwind-merge makes.
+	namedColors?: boolean;
 	fallback: string;
 };
 
@@ -192,6 +197,9 @@ const selfMap = (tokens: ReadonlyArray<string>): ReadonlyMap<string, string> =>
 	categoryMap(tokens.map((token) => [token, [token]] as const));
 
 const COLOR_KEYWORDS = ['inherit', 'current', 'transparent', 'black', 'white'];
+// The one-word named sizes; the digit-led ones (`2xl`, `2xs`) aren't words, so
+// they never read as a named color and reach the `short` bucket on their own.
+const SIZE_KEYWORDS = ['xs', 'sm', 'md', 'lg', 'xl'];
 const SIDES = ['t', 'r', 'b', 'l', 'x', 'y', 's', 'e', 'bs', 'be'];
 const CORNERS = [
 	't',
@@ -244,6 +252,7 @@ const offsetSpec: PrefixSpec = {
 	keywords: categoryMap([['color', COLOR_KEYWORDS]]),
 	short: 'width',
 	long: 'color',
+	namedColors: true,
 	fallback: 'color'
 };
 
@@ -254,6 +263,7 @@ const borderSideSpec: PrefixSpec = {
 	keywords: categoryMap([['color', COLOR_KEYWORDS]]),
 	short: 'width',
 	long: 'color',
+	namedColors: true,
 	fallback: 'width'
 };
 
@@ -262,9 +272,13 @@ const borderSideSpec: PrefixSpec = {
 // the default preset, itself a size — unlike `offsetSpec`/`borderSideSpec`,
 // whose bare form is a width.
 const shadowSizeSpec: PrefixSpec = {
-	keywords: categoryMap([['color', COLOR_KEYWORDS]]),
+	keywords: categoryMap([
+		['color', COLOR_KEYWORDS],
+		['size', [...SIZE_KEYWORDS, 'none']]
+	]),
 	short: 'size',
 	long: 'color',
+	namedColors: true,
 	fallback: 'size'
 };
 
@@ -474,11 +488,13 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 			['wrap', ['wrap', 'nowrap', 'balance', 'pretty']],
 			['overflow', ['ellipsis', 'clip']],
 			['color', COLOR_KEYWORDS],
+			['size', [...SIZE_KEYWORDS, 'base']],
 			['opacity', ['opacity']]
 		]),
 		nested: new Map([['shadow', shadowSizeSpec]]),
 		short: 'size',
 		long: 'color',
+		namedColors: true,
 		fallback: 'color'
 	},
 	bg: {
@@ -521,6 +537,7 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		]),
 		short: 'width',
 		long: 'color',
+		namedColors: true,
 		fallback: 'color'
 	},
 	ring: {
@@ -532,6 +549,7 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		nested: new Map([['offset', offsetSpec]]),
 		short: 'width',
 		long: 'color',
+		namedColors: true,
 		fallback: 'color'
 	},
 	outline: {
@@ -545,6 +563,7 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		]),
 		short: 'width',
 		long: 'color',
+		namedColors: true,
 		fallback: 'color'
 	},
 	divide: {
@@ -574,6 +593,7 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		variable: 'thickness',
 		short: 'thickness',
 		long: 'color',
+		namedColors: true,
 		fallback: 'color'
 	},
 	stroke: {
@@ -583,12 +603,17 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		keywords: categoryMap([['color', [...COLOR_KEYWORDS, 'none']]]),
 		short: 'width',
 		long: 'color',
+		namedColors: true,
 		fallback: 'color'
 	},
 	shadow: {
-		keywords: categoryMap([['color', COLOR_KEYWORDS]]),
+		keywords: categoryMap([
+			['color', COLOR_KEYWORDS],
+			['box', [...SIZE_KEYWORDS, 'none', 'inner']]
+		]),
 		short: 'box',
 		long: 'color',
+		namedColors: true,
 		fallback: 'color'
 	},
 	mask: {
@@ -1082,6 +1107,14 @@ const baseCategory = (
 		return arbitrary;
 	}
 
+	if (
+		spec.namedColors === true &&
+		value.length === 1 &&
+		/^[a-z]+$/.test(unmodified)
+	) {
+		return 'color';
+	}
+
 	if (value.length === 1 && spec.short !== undefined) {
 		return spec.short;
 	}
@@ -1244,11 +1277,11 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 	['border-color-x', ['border-color-r', 'border-color-l']],
 	['border-color-y', ['border-color-t', 'border-color-b']],
 	['touch', ['touch-x', 'touch-y', 'touch-pz']],
-	// A font-size (bare or modifier-bearing) always reaches `leading` — every
-	// font-size preset bundles a default line-height, so it conflicts with an
-	// explicit `leading-*` utility even without a `/leading` modifier (see
-	// `getConflictKey`).
-	['text-size', ['text-size-leading', 'leading']],
+	// Only a modifier-bearing font size reaches `leading` — a plain one reads
+	// its line-height through `--tw-leading`, which `leading-*` sets, so the two
+	// compose (`text-sm leading-6`), while a `/leading` modifier sets the
+	// line-height directly (see `getConflictKey`).
+	['text-size', ['text-size-leading']],
 	['text-size-leading', ['leading']],
 	// `flex-1`/`flex-auto`/`flex-none` set flex-grow, flex-shrink, and
 	// flex-basis at once.
