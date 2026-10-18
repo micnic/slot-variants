@@ -2798,7 +2798,6 @@ t.test('required variant throws when missing at runtime', (t) => {
 t.test('required variant throws when not defined in variants', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error - intentionally passing an undefined required variant for the runtime check
 			sv('rounded-lg', {
 				variants: {
 					size: {
@@ -2806,6 +2805,7 @@ t.test('required variant throws when not defined in variants', (t) => {
 						lg: 'text-lg'
 					}
 				},
+				// @ts-expect-error - intentionally passing an undefined required variant for the runtime check
 				requiredVariants: ['color']
 			}),
 		{ message: 'Required variant "color" is not defined in variants' },
@@ -2912,7 +2912,6 @@ t.test('requiredVariants: true exposes all keys via introspection', (t) => {
 t.test('default variant throws when not defined in variants', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error - intentionally passing an undefined default variant for the runtime check
 			sv('rounded-lg', {
 				variants: {
 					size: {
@@ -2921,6 +2920,7 @@ t.test('default variant throws when not defined in variants', (t) => {
 					}
 				},
 				defaultVariants: {
+					// @ts-expect-error - intentionally passing an undefined default variant for the runtime check
 					color: 'primary'
 				}
 			}),
@@ -2934,7 +2934,6 @@ t.test('default variant throws when not defined in variants', (t) => {
 t.test('default variant throws for invalid value at config time', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error - intentionally passing an invalid default variant value for the runtime check
 			sv('rounded-lg', {
 				variants: {
 					size: {
@@ -2943,6 +2942,7 @@ t.test('default variant throws for invalid value at config time', (t) => {
 					}
 				},
 				defaultVariants: {
+					// @ts-expect-error - intentionally passing an invalid default variant value for the runtime check
 					size: 'xl'
 				}
 			}),
@@ -4953,7 +4953,6 @@ t.test('throws for invalid preset name', (t) => {
 t.test('preset throws when it references an unknown variant', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error - intentionally passing an undefined preset variant for the runtime check
 			sv('btn', {
 				variants: {
 					size: {
@@ -4962,6 +4961,7 @@ t.test('preset throws when it references an unknown variant', (t) => {
 					}
 				},
 				presets: {
+					// @ts-expect-error - intentionally passing an undefined preset variant for the runtime check
 					large: { sze: 'lg' }
 				}
 			}),
@@ -4975,7 +4975,6 @@ t.test('preset throws when it references an unknown variant', (t) => {
 t.test('preset throws for invalid variant value at config time', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error - intentionally passing an invalid preset variant value for the runtime check
 			sv('btn', {
 				variants: {
 					size: {
@@ -4984,6 +4983,7 @@ t.test('preset throws for invalid variant value at config time', (t) => {
 					}
 				},
 				presets: {
+					// @ts-expect-error - intentionally passing an invalid preset variant value for the runtime check
 					large: { size: 'xl' }
 				}
 			}),
@@ -5000,7 +5000,6 @@ t.test('preset throws for invalid variant value at config time', (t) => {
 t.test('preset throws when it shares a name with a variant', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error - a preset name may not match a variant name
 			sv('btn', {
 				variants: {
 					size: {
@@ -5009,6 +5008,7 @@ t.test('preset throws when it shares a name with a variant', (t) => {
 					}
 				},
 				presets: {
+					// @ts-expect-error - a preset name may not match a variant name
 					size: { size: 'lg' }
 				}
 			}),
@@ -5205,16 +5205,17 @@ t.test('compound variant matches a preset by name', (t) => {
 });
 
 t.test('compound variant preset matcher skips undefined values', (t) => {
-	// @ts-expect-error an explicit undefined preset value is only reachable
-	// from untyped input, the runtime skips it rather than matching on it
 	const button = sv('btn', {
 		variants: {
 			size: { sm: 'text-sm', lg: 'text-lg' },
 			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
 		},
 		presets: {
+			// @ts-expect-error an explicit undefined preset value is only reachable
+			// from untyped input, the runtime skips it rather than matching on it
 			cta: { size: 'lg', intent: undefined }
 		},
+		// @ts-expect-error references the preset holding the undefined value
 		compoundVariants: [{ preset: 'cta', class: 'uppercase' }]
 	});
 
@@ -5285,7 +5286,6 @@ t.test('compound slot matches a preset by name', (t) => {
 t.test('compound matcher throws for an unknown preset name', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error unknown preset matcher not assignable
 			sv('btn', {
 				variants: {
 					size: { sm: 'text-sm', lg: 'text-lg' }
@@ -5293,6 +5293,7 @@ t.test('compound matcher throws for an unknown preset name', (t) => {
 				presets: {
 					cta: { size: 'lg' }
 				},
+				// @ts-expect-error unknown preset matcher not assignable
 				compoundVariants: [{ preset: 'nope', class: 'uppercase' }]
 			}),
 		{ message: 'Compound matcher references unknown preset "nope"' },
@@ -5305,11 +5306,11 @@ t.test('compound matcher throws for an unknown preset name', (t) => {
 t.test('compound matcher rejects a preset name without presets', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error preset matcher needs a presets config
 			sv('btn', {
 				variants: {
 					size: { sm: 'text-sm', lg: 'text-lg' }
 				},
+				// @ts-expect-error preset matcher needs a presets config
 				compoundVariants: [{ preset: 'cta', class: 'uppercase' }]
 			}),
 		{ message: 'Compound matcher references unknown preset "cta"' },
@@ -5322,11 +5323,11 @@ t.test('compound matcher rejects a preset name without presets', (t) => {
 t.test('compound variant without class or className throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error class/className required on compound variant
 			sv('btn', {
 				variants: {
 					size: { sm: 'text-sm', lg: 'text-lg' }
 				},
+				// @ts-expect-error class/className required on compound variant
 				compoundVariants: [{ size: 'lg' }]
 			}),
 		/"class" or "className"/
@@ -5338,11 +5339,11 @@ t.test('compound variant without class or className throws', (t) => {
 t.test('compound variant with unknown matcher throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error unknown variant matcher not assignable
 			sv('btn', {
 				variants: {
 					size: { sm: 'text-sm', lg: 'text-lg' }
 				},
+				// @ts-expect-error unknown variant matcher not assignable
 				compoundVariants: [{ sze: 'lg', class: 'uppercase' }]
 			}),
 		{ message: 'Compound matcher references unknown variant "sze"' }
@@ -5354,11 +5355,11 @@ t.test('compound variant with unknown matcher throws', (t) => {
 t.test('compound variant with invalid matcher value throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error invalid matcher value not assignable
 			sv('btn', {
 				variants: {
 					size: { sm: 'text-sm', lg: 'text-lg' }
 				},
+				// @ts-expect-error invalid matcher value not assignable
 				compoundVariants: [{ size: 'xl', class: 'uppercase' }]
 			}),
 		{
@@ -5373,11 +5374,11 @@ t.test('compound variant with invalid matcher value throws', (t) => {
 t.test('compound variant with invalid matcher value type throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error invalid matcher value not assignable
 			sv('btn', {
 				variants: {
 					size: { sm: 'text-sm', lg: 'text-lg' }
 				},
+				// @ts-expect-error invalid matcher value not assignable
 				compoundVariants: [{ size: { bad: true }, class: 'uppercase' }]
 			}),
 		{
@@ -5392,11 +5393,11 @@ t.test('compound variant with invalid matcher value type throws', (t) => {
 t.test('compound variant with undefined matcher value throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error undefined matcher value not assignable
 			sv('btn', {
 				variants: {
 					size: { sm: 'text-sm', lg: 'text-lg' }
 				},
+				// @ts-expect-error undefined matcher value not assignable
 				compoundVariants: [{ size: undefined, class: 'uppercase' }]
 			}),
 		{
@@ -5411,12 +5412,12 @@ t.test('compound variant with undefined matcher value throws', (t) => {
 t.test('compound variant with invalid matcher array value type throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error invalid matcher value not assignable
 			sv('btn', {
 				variants: {
 					size: { sm: 'text-sm', lg: 'text-lg' }
 				},
 				compoundVariants: [
+					// @ts-expect-error invalid matcher value not assignable
 					{ size: ['sm', { bad: true }], class: 'uppercase' }
 				]
 			}),
@@ -5432,9 +5433,9 @@ t.test('compound variant with invalid matcher array value type throws', (t) => {
 t.test('compound slot without class or className throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error class/className required on compound slot
 			sv('border', {
 				slots: { header: 'font-bold' },
+				// @ts-expect-error class/className required on compound slot
 				compoundSlots: [{ slots: ['header'] }]
 			}),
 		/"class" or "className"/
@@ -5446,7 +5447,6 @@ t.test('compound slot without class or className throws', (t) => {
 t.test('compound slot with unknown matcher throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error unknown variant matcher not assignable
 			sv('border', {
 				slots: { header: 'font-bold' },
 				variants: {
@@ -5456,6 +5456,7 @@ t.test('compound slot with unknown matcher throws', (t) => {
 					}
 				},
 				compoundSlots: [
+					// @ts-expect-error unknown variant matcher not assignable
 					{ slots: ['header'], sze: 'lg', class: 'uppercase' }
 				]
 			}),
@@ -5468,7 +5469,6 @@ t.test('compound slot with unknown matcher throws', (t) => {
 t.test('compound slot with invalid matcher array value throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error invalid matcher value not assignable
 			sv('border', {
 				slots: { header: 'font-bold' },
 				variants: {
@@ -5478,6 +5478,7 @@ t.test('compound slot with invalid matcher array value throws', (t) => {
 					}
 				},
 				compoundSlots: [
+					// @ts-expect-error invalid matcher value not assignable
 					{ slots: ['header'], size: ['sm', 'xl'], class: 'uppercase' }
 				]
 		}),
@@ -5493,9 +5494,9 @@ t.test('compound slot with invalid matcher array value throws', (t) => {
 t.test('compound slot with empty slots array throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error empty slots tuple not assignable
 			sv('border', {
 				slots: { header: 'font-bold' },
+				// @ts-expect-error empty slots tuple not assignable
 				compoundSlots: [{ slots: [], class: 'ignored' }]
 			}),
 		/at least one slot/
@@ -5507,9 +5508,9 @@ t.test('compound slot with empty slots array throws', (t) => {
 t.test('compound slot with unknown slot throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error unknown slot name not assignable
 			sv('border', {
 				slots: { header: 'font-bold' },
+				// @ts-expect-error unknown slot name not assignable
 				compoundSlots: [{ slots: ['footer'], class: 'px-4' }]
 			}),
 		{ message: 'Compound slot references unknown slot "footer"' }
@@ -5916,11 +5917,11 @@ t.test('multiSlots on a base-only config returns a function', (t) => {
 t.test('multiSlots throws for an unknown slot', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error - intentionally referencing an unknown slot
 			sv('border', {
 				slots: {
 					header: 'font-bold'
 				},
+				// @ts-expect-error - intentionally referencing an unknown slot
 				multiSlots: ['footer']
 			}),
 		{ message: 'Multi slot references unknown slot "footer"' },
@@ -6599,9 +6600,9 @@ t.test('empty group throws', (t) => {
 t.test('group with unknown slot throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error unknown slot name not assignable
 			sv({
 				slots: { header: 'h' },
+				// @ts-expect-error unknown slot name not assignable
 				groups: { content: ['header', 'footer'] }
 			}),
 		{ message: 'Group "content" references unknown slot "footer"' }
@@ -6613,11 +6614,11 @@ t.test('group with unknown slot throws', (t) => {
 t.test('group cannot reference another group', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error group name is not a slot name
 			sv({
 				slots: { header: 'h', body: 'b', footer: 'f' },
 				groups: {
 					content: ['header', 'body'],
+					// @ts-expect-error group name is not a slot name
 					all: ['content', 'footer']
 				}
 			}),
@@ -6630,10 +6631,10 @@ t.test('group cannot reference another group', (t) => {
 t.test('compoundSlots with unknown target throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error unknown target name not assignable
 			sv({
 				slots: { header: 'h' },
 				groups: { content: ['header'] },
+				// @ts-expect-error unknown target name not assignable
 				compoundSlots: [{ slots: ['missing'], class: 'px-4' }]
 			}),
 		{ message: 'Compound slot references unknown slot "missing"' }
@@ -6645,10 +6646,10 @@ t.test('compoundSlots with unknown target throws', (t) => {
 t.test('multiSlots with unknown target throws', (t) => {
 	t.throws(
 		() =>
-			// @ts-expect-error unknown target name not assignable
 			sv({
 				slots: { header: 'h' },
 				groups: { content: ['header'] },
+				// @ts-expect-error unknown target name not assignable
 				multiSlots: ['missing']
 			}),
 		{ message: 'Multi slot references unknown slot "missing"' }

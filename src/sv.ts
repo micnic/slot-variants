@@ -498,37 +498,45 @@ type RawConfig = Config<
 >;
 
 /**
+ * An `sv()` call signature taking class args of shape `C` before a config.
+ */
+type ConfigCall<B extends boolean, C extends ClassValue[]> = <
+	S extends MaybeSlots = undefined,
+	G extends MaybeGroups<S> = undefined,
+	V extends MaybeVariants<S, G> = undefined,
+	P extends MaybePresets<S, G, V> = undefined,
+	M extends MultiSlots<S, G> = false,
+	R extends RequiredVariants<V> = false,
+	I extends boolean = B
+>(
+	...args: [...C, Config<S, G, V, P, M, R, I>]
+) => VariantFn<S, G, V, P, M, R, I>;
+
+type ClassCall = <const T extends ClassValue[]>(
+	...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
+) => string;
+
+/**
+ * Never matches. When a call fails every overload, TypeScript reports the
+ * last one's error at the offending config property only if more than three
+ * overloads were tried, otherwise it flags the whole call.
+ */
+type UnmatchedCall = (...args: never[]) => never;
+
+/**
  * The shape of an `sv()` function. Mirrors the overloads of the exported `sv`,
  * with the introspection default `D` baked in by `createSV()` so configs that
  * omit `introspection` inherit the factory default in their return type.
+ *
+ * The fixed-arity config overloads come last so an invalid config is reported
+ * at the offending property rather than across the whole call.
  */
-export type SV<D extends boolean = false> = {
-	<
-		S extends MaybeSlots = undefined,
-		G extends MaybeGroups<S> = undefined,
-		V extends MaybeVariants<S, G> = undefined,
-		P extends MaybePresets<S, G, V> = undefined,
-		M extends MultiSlots<S, G> = false,
-		R extends RequiredVariants<V> = false,
-		I extends boolean = D
-	>(
-		config: Config<S, G, V, P, M, R, I>
-	): VariantFn<S, G, V, P, M, R, I>;
-	<
-		S extends MaybeSlots = undefined,
-		G extends MaybeGroups<S> = undefined,
-		V extends MaybeVariants<S, G> = undefined,
-		P extends MaybePresets<S, G, V> = undefined,
-		M extends MultiSlots<S, G> = false,
-		R extends RequiredVariants<V> = false,
-		I extends boolean = D
-	>(
-		...args: [...ClassValue[], Config<S, G, V, P, M, R, I>]
-	): VariantFn<S, G, V, P, M, R, I>;
-	<const T extends ClassValue[]>(
-		...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
-	): string;
-};
+export type SV<D extends boolean = false> = ConfigCall<D, ClassValue[]> &
+	ClassCall &
+	UnmatchedCall &
+	ConfigCall<D, []> &
+	ConfigCall<D, [ClassValue]> &
+	ConfigCall<D, [ClassValue, ClassValue]>;
 
 /**
  * Extracts the variant props object from an `sv()` return type
