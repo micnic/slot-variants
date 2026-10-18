@@ -2011,8 +2011,28 @@ const createVariantFn = (config: CompiledConfig) => {
  */
 export const createSV = <I extends boolean = false>(
 	defaults?: RawConfig & { introspection?: I | undefined }
-): SV<I> =>
-	((...args: ClassValue[]) => {
+): SV<I> => {
+
+	// These overloads cover every `SV` signature, so `customSV` is checked
+	// against `SV<I>` on return instead of being asserted to it
+	function customSV<
+		S extends MaybeSlots = undefined,
+		G extends MaybeGroups<S> = undefined,
+		V extends MaybeVariants<S, G> = undefined,
+		P extends MaybePresets<S, G, V> = undefined,
+		M extends MultiSlots<S, G> = false,
+		R extends RequiredVariants<V> = false,
+		J extends boolean = I
+	>(
+		...args: [...ClassValue[], Config<S, G, V, P, M, R, J>]
+	): VariantFn<S, G, V, P, M, R, J>;
+	function customSV<const T extends ClassValue[]>(
+		...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
+	): string;
+	function customSV(...args: never[]): never;
+	function customSV(
+		...args: ClassValue[]
+	): string | AnyFn {
 
 		const last = args.at(-1);
 
@@ -2024,7 +2044,10 @@ export const createSV = <I extends boolean = false>(
 		return createVariantFn(
 			compileConfig(args.slice(0, -1), { ...defaults, ...last })
 		);
-	}) as unknown as SV<I>;
+	}
+
+	return customSV;
+};
 
 /**
  * Builds a class name string or a variant-based class name generator.
