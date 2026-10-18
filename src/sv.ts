@@ -825,19 +825,18 @@ const isPlainObject = <T>(
 ): value is Exclude<Extract<T, object>, readonly unknown[]> =>
 	value !== null && typeof value === 'object' && !isArray(value);
 
+const hasOnlySlotKeys = (
+	value: object,
+	targetKeys: ReadonlySet<string>
+): boolean => keys(value).every((key) => targetKeys.has(key));
+
 const isSlotObjectVariantValue = (
 	variantValue: NormalizedVariantValues,
 	targetKeys: ReadonlySet<string>
-): variantValue is Record<string, ConfigClassValue> => {
-
-	if (targetKeys.size <= 1) {
-		return false;
-	}
-
-	const valueKeys = keys(variantValue);
-
-	return valueKeys.length > 0 && valueKeys.every((key) => targetKeys.has(key));
-};
+): variantValue is Record<string, ConfigClassValue> =>
+	targetKeys.size > 1 &&
+	keys(variantValue).length > 0 &&
+	hasOnlySlotKeys(variantValue, targetKeys);
 
 const isBooleanVariantRecord = (
 	variantValue: NormalizedVariantValues
@@ -1213,11 +1212,6 @@ const requireCompoundClassValue = <T>(
 
 	return classValue;
 };
-
-const hasOnlySlotKeys = (
-	value: object,
-	targetKeys: ReadonlySet<string>
-): boolean => keys(value).every((key) => targetKeys.has(key));
 
 const isSlotObjectValue = <T>(
 	value: SlotValue<Slots, undefined, T>,
