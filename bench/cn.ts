@@ -74,7 +74,12 @@ bench.add('classnames - complex', () => {
 	);
 });
 bench.add('clsx - complex', () => {
-	clsx('btn', ['btn-primary', { 'btn-lg': true }], { disabled: false }, 'mx-2');
+	clsx(
+		'btn',
+		['btn-primary', { 'btn-lg': true }],
+		{ disabled: false },
+		'mx-2'
+	);
 });
 
 // Validate that all competitors produce identical output for each case
@@ -104,14 +109,24 @@ assertSameOutput('nested arrays', {
 	clsx: clsx('foo', ['bar', ['baz', 'qux']])
 });
 assertSameOutput('complex', {
-	cn: cn('btn', ['btn-primary', { 'btn-lg': true }], { disabled: false }, 'mx-2'),
+	cn: cn(
+		'btn',
+		['btn-primary', { 'btn-lg': true }],
+		{ disabled: false },
+		'mx-2'
+	),
 	classnames: classnames(
 		'btn',
 		['btn-primary', { 'btn-lg': true }],
 		{ disabled: false },
 		'mx-2'
 	),
-	clsx: clsx('btn', ['btn-primary', { 'btn-lg': true }], { disabled: false }, 'mx-2')
+	clsx: clsx(
+		'btn',
+		['btn-primary', { 'btn-lg': true }],
+		{ disabled: false },
+		'mx-2'
+	)
 });
 
 await bench.run();

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import t from 'tap';
 import { Linter, RuleTester } from 'eslint';
+import { RuleTester as OxlintRuleTester } from 'oxlint/plugins-dev';
 import * as svelteParser from 'svelte-eslint-parser';
 import * as vueParser from 'vue-eslint-parser';
 import pkg from '../package.json' with { type: 'json' };
@@ -460,7 +461,11 @@ t.test('shared plugin run reuses cached property analysis', (t) => {
 t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 	t.ok(plugin.meta, 'meta is present');
 	t.equal(plugin.meta.name, 'slot-variants', 'meta.name is set');
-	t.equal(plugin.meta.version, pkg.version, 'meta.version matches package.json');
+	t.equal(
+		plugin.meta.version,
+		pkg.version,
+		'meta.version matches package.json'
+	);
 	t.ok(plugin.rules, 'rules object present');
 
 	// One structural assertion per rule rather than a field-by-field chain: the
@@ -726,11 +731,13 @@ const NO_DYNAMIC_CLASSES_VALID = [
 	IMPORT_CN +
 		"cn(`${a ? 'flex-col' : 'flex-row'} ${b ? 'gap-2' : 'gap-4'}`);",
 	// Template-literal ternary nested inside a cn array argument.
-	IMPORT_CN + "cn(['flex', `items-center ${col ? 'flex-col' : 'flex-row'}`]);",
+	IMPORT_CN +
+		"cn(['flex', `items-center ${col ? 'flex-col' : 'flex-row'}`]);",
 	// Ternary branch may itself be an expression-free template literal.
 	IMPORT_CN + 'cn(`gap-2 ${col ? `flex-col` : `flex-row`}`);',
 	// Chained ternary — every branch is a static string.
-	IMPORT_CN + "cn(size === 'lg' ? 'text-lg' : size === 'sm' ? 'text-sm' : 'text-base');",
+	IMPORT_CN +
+		"cn(size === 'lg' ? 'text-lg' : size === 'sm' ? 'text-sm' : 'text-base');",
 	// Ternary branch may itself be an array of static values.
 	IMPORT_CN + "cn(cond ? ['flex', 'flex-col'] : 'block');",
 	// Ternary branch may itself be a logical-AND.
@@ -744,7 +751,8 @@ const NO_DYNAMIC_CLASSES_VALID = [
 	// clsx-style record: keys are class names, values are runtime conditions.
 	IMPORT_CN + "cn({ 'text-red-500': hasError });",
 	// Record mixed with other static cn arguments.
-	IMPORT_CN + "cn('px-2 py-1', isActive && 'px-4', { 'text-red-500': hasError });",
+	IMPORT_CN +
+		"cn('px-2 py-1', isActive && 'px-4', { 'text-red-500': hasError });",
 	// Record nested inside a cn array argument.
 	IMPORT_CN + "cn(['flex', { active: isActive }]);",
 	// Record as an sv() cn-style leading argument.
@@ -1247,17 +1255,17 @@ const NO_DYNAMIC_CLASSES_INVALID = [
 	},
 	{
 		// A destructuring binding isn't a plain `const name = value`.
-		code: IMPORT_CN + "const { base } = obj;\ncn(base);",
+		code: IMPORT_CN + 'const { base } = obj;\ncn(base);',
 		errors: 1
 	},
 	{
 		// A `const` whose initializer is dynamic is reported at the initializer.
-		code: IMPORT_CN + "const base = make();\ncn(base);",
+		code: IMPORT_CN + 'const base = make();\ncn(base);',
 		errors: 1
 	},
 	{
 		// A reference cycle terminates and is reported as dynamic.
-		code: IMPORT_CN + "const a = b;\nconst b = a;\ncn(a);",
+		code: IMPORT_CN + 'const a = b;\nconst b = a;\ncn(a);',
 		errors: 1
 	},
 	{
@@ -1269,8 +1277,7 @@ const NO_DYNAMIC_CLASSES_INVALID = [
 	{
 		// A hoisted config after cn-style leading arguments — the config is
 		// still detached and the dynamic leading argument is reported.
-		code:
-			IMPORT + "const config = { base: 'flex' };\nsv(dynamic, config);",
+		code: IMPORT + "const config = { base: 'flex' };\nsv(dynamic, config);",
 		errors: 1
 	},
 	{
@@ -1292,14 +1299,14 @@ const NO_DYNAMIC_CLASSES_INVALID = [
 		// A `createSV()`-derived binding is validated as sv (dynamic config).
 		code:
 			IMPORT_CREATE_SV +
-			"const customSV = createSV({ cacheSize: 512 });\ncustomSV({ base: dynamic });",
+			'const customSV = createSV({ cacheSize: 512 });\ncustomSV({ base: dynamic });',
 		errors: 1
 	},
 	{
 		// A `createSV()`-derived binding used cn-style is validated as sv.
 		code:
 			IMPORT_CREATE_SV +
-			"const customSV = createSV({ cacheSize: 512 });\ncustomSV(dynamic);",
+			'const customSV = createSV({ cacheSize: 512 });\ncustomSV(dynamic);',
 		errors: 1
 	},
 	{
@@ -1558,7 +1565,9 @@ const NO_EMPTY_CLASSES_INVALID = [
 	{
 		code: IMPORT + "sv({ base: 'flex', requiredVariants: [] });",
 		output: IMPORT + "sv({ base: 'flex' });",
-		errors: [{ messageId: 'emptyConfig', data: { key: 'requiredVariants' } }]
+		errors: [
+			{ messageId: 'emptyConfig', data: { key: 'requiredVariants' } }
+		]
 	},
 	{
 		code: IMPORT + "sv({ base: 'flex', multiSlots: [] });",
@@ -2496,8 +2505,7 @@ const NO_CONFLICTING_NS_VALID = [
 	// through `p`, which a different, mutually-exclusive value sets alone —
 	// the siblings must not be compared against each other just because they
 	// share a bridge with a branch neither of them can ever render alongside.
-	IMPORT +
-		"sv({ variants: { inset: { edge: 'px-4 pb-4', full: 'p-4' } } });",
+	IMPORT + "sv({ variants: { inset: { edge: 'px-4 pb-4', full: 'p-4' } } });",
 	// Compounds matching different values of one variant can never co-occur.
 	IMPORT +
 		`sv({
@@ -2643,7 +2651,8 @@ const NO_CONFLICTING_NS_VALID = [
 	// does conflict with its own positive counterpart.
 	IMPORT + "sv({ base: 'mask-no-clip mask-no-repeat' });",
 	// scrollbar-thumb and scrollbar-track colors are distinct properties.
-	IMPORT + "sv({ base: 'scrollbar-thumb-red-500 scrollbar-track-blue-500' });",
+	IMPORT +
+		"sv({ base: 'scrollbar-thumb-red-500 scrollbar-track-blue-500' });",
 	// scrollbar-thumb color and the bare scrollbar width are distinct.
 	IMPORT + "sv({ base: 'scrollbar-thumb-red-500 scrollbar-thin' });",
 	// scrollbar-gutter and the bare scrollbar width are distinct.
@@ -2683,7 +2692,8 @@ const NO_CONFLICTING_NS_VALID = [
 	// Arbitrary image values are a background-image, not a color — including
 	// when the value contains colons or dashes inside the brackets.
 	IMPORT + "sv({ base: 'bg-[url(data:image/png;base64,abc)] bg-red-500' });",
-	IMPORT + "sv({ base: 'bg-[linear-gradient(to_right,red,blue)] bg-white' });",
+	IMPORT +
+		"sv({ base: 'bg-[linear-gradient(to_right,red,blue)] bg-white' });",
 	IMPORT + "sv({ base: 'bg-[image:var(--hero)] bg-red-500' });",
 	// A dashed arbitrary value is one segment, so a hinted `text-[length:…]`
 	// stays in the short (font-size) bucket instead of misreading as a color.
@@ -3005,7 +3015,10 @@ const NO_CONFLICTING_NS_INVALID = [
 	{
 		// Two ring offset colors conflict.
 		code: IMPORT_CN + "cn('ring-offset-red-500', 'ring-offset-blue-500');",
-		errors: repeat(conflictCn('ring-offset-blue-500, ring-offset-red-500'), 2)
+		errors: repeat(
+			conflictCn('ring-offset-blue-500, ring-offset-red-500'),
+			2
+		)
 	},
 	{
 		// Two text-shadow sizes conflict.
@@ -3100,7 +3113,8 @@ const NO_CONFLICTING_NS_INVALID = [
 	},
 	{
 		// Two scrollbar-gutter values conflict.
-		code: IMPORT_CN + "cn('scrollbar-gutter-auto', 'scrollbar-gutter-both');",
+		code:
+			IMPORT_CN + "cn('scrollbar-gutter-auto', 'scrollbar-gutter-both');",
 		errors: repeat(
 			conflictCn('scrollbar-gutter-auto, scrollbar-gutter-both'),
 			2
@@ -3324,7 +3338,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		// check runs against its `px` neighbor — the array matcher's value set
 		// (`sm`/`lg`) overlaps `p-2`'s own values on the shared `size` key, so
 		// the compound can still render alongside it: a real conflict.
-		code: IMPORT +
+		code:
+			IMPORT +
 			`sv({
 				variants: { size: { sm: 'p-2', lg: 'p-2' } },
 				compoundVariants: [{ size: ['sm', 'lg'], class: 'px-4' }]
@@ -3335,7 +3350,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		// `p` and `px` each come from a different variant, so neither is
 		// exclusive with the other on shared-key grounds — both can be active
 		// (`size: 'sm', shade: 'red'`) at once, a real conflict.
-		code: IMPORT +
+		code:
+			IMPORT +
 			`sv({
 				variants: {
 					size: { sm: 'p-2' },
@@ -3349,7 +3365,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		// edge check reaches its `px` neighbor — a wholly dynamic compound
 		// matcher can't prove exclusivity, so the overlap still counts as a
 		// real conflict.
-		code: IMPORT +
+		code:
+			IMPORT +
 			`sv({
 				variants: { size: { sm: 'p-2', lg: 'p-2' } },
 				compoundVariants: [{ size: dyn, class: 'px-4' }]
@@ -3425,7 +3442,10 @@ const NO_CONFLICTING_NS_INVALID = [
 	},
 	{
 		code: IMPORT_CN + "cn('bg-position-(position:--spot)', 'bg-center');",
-		errors: repeat(conflictCn('bg-center, bg-position-(position:--spot)'), 2)
+		errors: repeat(
+			conflictCn('bg-center, bg-position-(position:--spot)'),
+			2
+		)
 	},
 	{
 		// Same for the mask namespaces.
@@ -3630,7 +3650,8 @@ const NO_CONFLICTING_NS_INVALID = [
 	{
 		// A nested conditional shares its outer condition with a plain
 		// same-condition token — they co-occur whenever both conditions hold.
-		code: IMPORT_CN + "cn(active && 'p-2', active && (dense ? 'p-4' : ''));",
+		code:
+			IMPORT_CN + "cn(active && 'p-2', active && (dense ? 'p-4' : ''));",
 		errors: repeat(conflictCn('p-2, p-4'), 2)
 	},
 	{
@@ -3896,7 +3917,9 @@ const NO_CONFLICTING_NS_INVALID = [
 	},
 	{
 		// cn() conflict between a static string and a logical-AND string.
-		code: IMPORT_CN + "cn('px-2 py-1', isActive && 'px-4', { 'text-red-500': hasError });",
+		code:
+			IMPORT_CN +
+			"cn('px-2 py-1', isActive && 'px-4', { 'text-red-500': hasError });",
 		errors: repeat(conflictCn('px-2, px-4'), 2)
 	},
 	{
@@ -4039,10 +4062,7 @@ const NO_CONFLICTING_NS_INVALID = [
 	{
 		// Two transition-behavior values conflict.
 		code: IMPORT_CN + "cn('transition-normal', 'transition-discrete');",
-		errors: repeat(
-			conflictCn('transition-discrete, transition-normal'),
-			2
-		)
+		errors: repeat(conflictCn('transition-discrete, transition-normal'), 2)
 	},
 	{
 		// Two overflow-wrap values conflict, despite differing dash counts.
@@ -4085,10 +4105,7 @@ const NO_CONFLICTING_NS_INVALID = [
 		// Two mix-blend-mode values conflict, regardless of keyword segment
 		// count.
 		code: IMPORT_CN + "cn('mix-blend-normal', 'mix-blend-color-dodge');",
-		errors: repeat(
-			conflictCn('mix-blend-color-dodge, mix-blend-normal'),
-			2
-		)
+		errors: repeat(conflictCn('mix-blend-color-dodge, mix-blend-normal'), 2)
 	},
 	{
 		// Two perspective-origin values conflict, regardless of keyword
@@ -4135,8 +4152,7 @@ const NO_CONFLICTING_NS_INVALID = [
 		// The static parts of a ternary-bearing template are tokenized the same
 		// way.
 		code:
-			IMPORT_CN +
-			"cn(`w-1\\u0020w-2 ${col ? 'flex-col' : 'flex-row'}`);",
+			IMPORT_CN + "cn(`w-1\\u0020w-2 ${col ? 'flex-col' : 'flex-row'}`);",
 		errors: repeat(conflictCn('w-1, w-2'), 2)
 	},
 	{
@@ -5100,8 +5116,7 @@ const REQUIRE_TOP_LEVEL_CONFIG_VALID = [
 	// Member-expression callee is not tracked.
 	IMPORT + "function f() { return obj.sv({ base: 'flex' }); }",
 	// A createSV() factory call compiles nothing, so nesting it is fine.
-	IMPORT_CREATE_SV +
-		"function f() { return createSV({ base: 'flex' }); }",
+	IMPORT_CREATE_SV + "function f() { return createSV({ base: 'flex' }); }",
 	// A namespace config call at the top level is fine.
 	IMPORT_NS + "SV.sv({ base: 'flex' });",
 	// A `static` field initializer runs once, with the class definition.
@@ -5218,7 +5233,9 @@ t.test('require-top-level-config', (t) => {
 
 const SV_CONFIG_STYLE_ORDER_VALID = [
 	{
-		code: IMPORT + "sv({ base: 'flex', variants: { size: { sm: 'text-sm' } } });"
+		code:
+			IMPORT +
+			"sv({ base: 'flex', variants: { size: { sm: 'text-sm' } } });"
 	},
 	{
 		code:
@@ -5231,15 +5248,26 @@ const SV_CONFIG_STYLE_ORDER_VALID = [
 	},
 	{
 		// Three properties in order.
-		code: IMPORT + "sv({ base: 'flex', slots: { body: 'p-4' }, variants: { size: { sm: 'text-sm' } } });"
+		code:
+			IMPORT +
+			"sv({ base: 'flex', slots: { body: 'p-4' }, variants: { size: { sm: 'text-sm' } } });"
 	}
 ];
 
 const SV_CONFIG_STYLE_ORDER_INVALID = [
 	{
-		code: IMPORT + "sv({ variants: { size: { sm: 'text-sm' } }, base: 'flex' });",
-		errors: [{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }],
-		output: IMPORT + "sv({ base: 'flex', variants: { size: { sm: 'text-sm' } } });"
+		code:
+			IMPORT +
+			"sv({ variants: { size: { sm: 'text-sm' } }, base: 'flex' });",
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		],
+		output:
+			IMPORT +
+			"sv({ base: 'flex', variants: { size: { sm: 'text-sm' } } });"
 	},
 	{
 		// Multiple out-of-order keys each report their own violation.
@@ -5247,8 +5275,14 @@ const SV_CONFIG_STYLE_ORDER_INVALID = [
 			IMPORT +
 			"sv({ defaultVariants: { size: 'sm' }, variants: { size: { sm: 'text-sm' } }, base: 'flex' });",
 		errors: [
-			{ messageId: 'wrongOrder', data: { key: 'variants', before: 'defaultVariants' } },
-			{ messageId: 'wrongOrder', data: { key: 'base', before: 'defaultVariants' } }
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'variants', before: 'defaultVariants' }
+			},
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'defaultVariants' }
+			}
 		],
 		output:
 			IMPORT +
@@ -5268,14 +5302,24 @@ const SV_CONFIG_STYLE_ORDER_INVALID = [
 		code:
 			IMPORT_CREATE_SV +
 			"const key = 'variants';\ncreateSV({ variants: { size: { sm: 'text-sm' } }, [key]: 1, base: 'flex' });",
-		errors: [{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }]
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		]
 	},
 	{
 		// createSV() factory defaults are checked too.
 		code:
 			IMPORT_CREATE_SV +
 			"createSV({ variants: { size: { sm: 'text-sm' } }, base: 'flex' });",
-		errors: [{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }],
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		],
 		output:
 			IMPORT_CREATE_SV +
 			"createSV({ base: 'flex', variants: { size: { sm: 'text-sm' } } });"
@@ -5287,7 +5331,12 @@ const SV_CONFIG_STYLE_ORDER_INVALID = [
 		code:
 			IMPORT_CREATE_SV +
 			"createSV({ variants: { size: { sm: 'text-sm' } }, foo: 1, base: 'flex' });",
-		errors: [{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }]
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		]
 	},
 	{
 		// A spread element inside the config disables the fixer too — the spread's
@@ -5296,7 +5345,12 @@ const SV_CONFIG_STYLE_ORDER_INVALID = [
 		code:
 			IMPORT_CREATE_SV +
 			"const extra = getExtra();\ncreateSV({ variants: { size: { sm: 'text-sm' } }, ...extra, base: 'flex' });",
-		errors: [{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }]
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		]
 	},
 	{
 		// A comment anywhere inside the config disables the fixer: reattaching it
@@ -5304,16 +5358,31 @@ const SV_CONFIG_STYLE_ORDER_INVALID = [
 		code:
 			IMPORT +
 			"sv({\n\tvariants: { size: { sm: 'text-sm' } },\n\t// keep base last\n\tbase: 'flex'\n});",
-		errors: [{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }]
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		]
 	},
 	{
 		// Multiple reorderings trigger error for each misplaced key.
-		code: IMPORT + "sv({ variants: { size: { sm: 'text-sm' } }, slots: { body: 'p-4' }, base: 'flex' });",
+		code:
+			IMPORT +
+			"sv({ variants: { size: { sm: 'text-sm' } }, slots: { body: 'p-4' }, base: 'flex' });",
 		errors: [
-			{ messageId: 'wrongOrder', data: { key: 'slots', before: 'variants' } },
-			{ messageId: 'wrongOrder', data: { key: 'base', before: 'variants' } }
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'slots', before: 'variants' }
+			},
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
 		],
-		output: IMPORT + "sv({ base: 'flex', slots: { body: 'p-4' }, variants: { size: { sm: 'text-sm' } } });"
+		output:
+			IMPORT +
+			"sv({ base: 'flex', slots: { body: 'p-4' }, variants: { size: { sm: 'text-sm' } } });"
 	}
 ];
 
@@ -5341,7 +5410,9 @@ const SV_CONFIG_STYLE_BASE_VALID = [
 	},
 	// slotsBase configured and used.
 	{
-		code: IMPORT + "sv({ slots: { base: 'flex', icon: 'w-4' }, variants: {} });",
+		code:
+			IMPORT +
+			"sv({ slots: { base: 'flex', icon: 'w-4' }, variants: {} });",
 		options: [{ baseStyle: 'slotsBase' }]
 	},
 	// slotsBase configured but call has no slots at all: skipped entirely, so a
@@ -5396,7 +5467,9 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 	{
 		// field present, target configured as slotsBase, slots already exists:
 		// reports and fixes, moving base into slots.
-		code: IMPORT + "sv({ base: 'flex', slots: { icon: 'w-4' }, variants: {} });",
+		code:
+			IMPORT +
+			"sv({ base: 'flex', slots: { icon: 'w-4' }, variants: {} });",
 		options: [{ baseStyle: 'slotsBase' }],
 		errors: [
 			{
@@ -5407,11 +5480,15 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 				}
 			}
 		],
-		output: IMPORT + "sv({ slots: { base: 'flex', icon: 'w-4' }, variants: {} });"
+		output:
+			IMPORT +
+			"sv({ slots: { base: 'flex', icon: 'w-4' }, variants: {} });"
 	},
 	{
 		// Dynamic (non-static) base value: reported, not fixed.
-		code: IMPORT + 'const extra = getExtra();\nsv({ base: extra, variants: {} });',
+		code:
+			IMPORT +
+			'const extra = getExtra();\nsv({ base: extra, variants: {} });',
 		errors: [
 			{
 				messageId: 'wrongBaseStyle',
@@ -5492,7 +5569,9 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 		// one, not the first): exercises the last-property removal branch.
 		// `slots`' own key order isn't covered by the key-order check, so this
 		// doesn't also trigger `wrongOrder`.
-		code: IMPORT + "sv({ slots: { icon: 'w-4', base: 'flex' }, variants: {} });",
+		code:
+			IMPORT +
+			"sv({ slots: { icon: 'w-4', base: 'flex' }, variants: {} });",
 		errors: [
 			{
 				messageId: 'wrongBaseStyle',
@@ -5502,7 +5581,9 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 				}
 			}
 		],
-		output: IMPORT + "sv({ base: 'flex', slots: { icon: 'w-4' }, variants: {} });"
+		output:
+			IMPORT +
+			"sv({ base: 'flex', slots: { icon: 'w-4' }, variants: {} });"
 	},
 	{
 		// Base value is an array with a spread element: not statically
@@ -5564,7 +5645,9 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 				}
 			}
 		],
-		output: IMPORT + "sv({ slots: { base: 'flex', icon: 'w-4' }, variants: {} });"
+		output:
+			IMPORT +
+			"sv({ slots: { base: 'flex', icon: 'w-4' }, variants: {} });"
 	},
 	{
 		// More than one leading class argument: reported, but never fixed —
@@ -5602,9 +5685,7 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 		// Same hoisting hazard from the other direction: the leading argument is
 		// real, but removing it spans the range up to the config *literal*, which
 		// lives in the declaration above. Reported, never fixed.
-		code:
-			IMPORT +
-			"const config = { variants: {} };\nsv('flex', config);",
+		code: IMPORT + "const config = { variants: {} };\nsv('flex', config);",
 		errors: [
 			{
 				messageId: 'wrongBaseStyle',
@@ -5629,9 +5710,14 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 					found: 'a separate leading argument'
 				}
 			},
-			{ messageId: 'wrongOrder', data: { key: 'slots', before: 'variants' } }
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'slots', before: 'variants' }
+			}
 		],
-		output: IMPORT + "sv({ base: 'flex', variants: {}, slots: { icon: 'w-4' } });"
+		output:
+			IMPORT +
+			"sv({ base: 'flex', variants: {}, slots: { icon: 'w-4' } });"
 	}
 ];
 
@@ -5705,8 +5791,7 @@ const RESTYLE_VALID = [
 	// Slot reads that don't name a real slot, or can't be read statically.
 	IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c.footer, 'px-8');",
 	// A private field read is a member expression with no readable name.
-	IMPORT_SV_CN +
-		"class A { #s = 'p-2'; m() { return cn(this.#s, 'p-4'); } }",
+	IMPORT_SV_CN + "class A { #s = 'p-2'; m() { return cn(this.#s, 'p-4'); } }",
 	// A method call is not a variant-function call.
 	IMPORT_SV_CN + RESTYLE_BUTTON + "console.log('p-4');",
 	IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c['header'], 'px-8');",
@@ -5738,7 +5823,7 @@ const RESTYLE_VALID = [
 	// declared twice, and one that never forwards its class prop.
 	IMPORT +
 		RESTYLE_BUTTON +
-		"import { Button } from './button.tsx';\n<Button className=\"p-4\" />;",
+		'import { Button } from \'./button.tsx\';\n<Button className="p-4" />;',
 	IMPORT +
 		RESTYLE_BUTTON +
 		'let Button = () => null;\n<Button className="p-4" />;',
@@ -5816,13 +5901,13 @@ const RESTYLE_VALID = [
 	// at all leave the result untracked.
 	IMPORT +
 		RESTYLE_BUTTON +
-		"const Button = (props) => { const [local] = splitProps(other, ['class']); return <button class={button({ class: local.class })} />; };\n<Button class=\"p-4\" />;",
+		'const Button = (props) => { const [local] = splitProps(other, [\'class\']); return <button class={button({ class: local.class })} />; };\n<Button class="p-4" />;',
 	IMPORT +
 		RESTYLE_BUTTON +
-		"const other = {};\nconst Button = (props) => { const [local] = splitProps(other, ['class']); return <button class={button({ class: local.class })} />; };\n<Button class=\"p-4\" />;",
+		'const other = {};\nconst Button = (props) => { const [local] = splitProps(other, [\'class\']); return <button class={button({ class: local.class })} />; };\n<Button class="p-4" />;',
 	IMPORT +
 		RESTYLE_BUTTON +
-		"const Button = (props) => { const [local] = splitProps(...rest); return <button class={button({ class: local.class })} />; };\n<Button class=\"p-4\" />;",
+		'const Button = (props) => { const [local] = splitProps(...rest); return <button class={button({ class: local.class })} />; };\n<Button class="p-4" />;',
 	// A property read that isn't a plain name.
 	IMPORT_SV_CN +
 		RESTYLE_BUTTON +
@@ -5872,13 +5957,19 @@ const RESTYLE_INVALID = [
 	},
 	// `class` wins over `className` when a call passes both.
 	{
-		code: IMPORT + RESTYLE_CARD + "card({ class: 'p-4', className: 'px-8' });",
+		code:
+			IMPORT +
+			RESTYLE_CARD +
+			"card({ class: 'p-4', className: 'px-8' });",
 		errors: [restyle('p-4', 'p-2')]
 	},
 	// A group key targets every slot it names — the class is reported once, at
 	// the first slot it collides in, rather than once per member slot.
 	{
-		code: IMPORT + RESTYLE_CARD + "card({ class: { content: 'text-base' } });",
+		code:
+			IMPORT +
+			RESTYLE_CARD +
+			"card({ class: { content: 'text-base' } });",
 		errors: [restyle('text-base', 'text-sm', 'header')]
 	},
 	{
@@ -5887,19 +5978,25 @@ const RESTYLE_INVALID = [
 	},
 	// A compoundSlots class is reachable under the default variants.
 	{
-		code: IMPORT + RESTYLE_CARD + "card({ class: { header: 'tracking-wide' } });",
+		code:
+			IMPORT +
+			RESTYLE_CARD +
+			"card({ class: { header: 'tracking-wide' } });",
 		errors: [dup('tracking-wide', 'header')]
 	},
 	// A compoundVariants class needs both its matchers; `size: 'sm'` rules it
 	// out, `size: 'lg'` lets it through.
 	{
 		code:
-			IMPORT + RESTYLE_CARD + "card({ size: 'lg', flat: true, class: 'gap-4' });",
+			IMPORT +
+			RESTYLE_CARD +
+			"card({ size: 'lg', flat: true, class: 'gap-4' });",
 		errors: [restyle('gap-4', 'gap-2')]
 	},
 	// Fixing the variant the other way lets its own classes through.
 	{
-		code: IMPORT + RESTYLE_BUTTON + "button({ size: 'lg', class: 'mt-4' });",
+		code:
+			IMPORT + RESTYLE_BUTTON + "button({ size: 'lg', class: 'mt-4' });",
 		errors: [restyle('mt-4', 'mt-8')]
 	},
 	// Arrays, records, conditionals and logical operands in the override.
@@ -5912,7 +6009,8 @@ const RESTYLE_INVALID = [
 		errors: [restyle('p-4', 'p-2')]
 	},
 	{
-		code: IMPORT + RESTYLE_BUTTON + "button({ class: on ? 'p-4' : 'p-8' });",
+		code:
+			IMPORT + RESTYLE_BUTTON + "button({ class: on ? 'p-4' : 'p-8' });",
 		errors: [restyle('p-4', 'p-2'), restyle('p-8', 'p-2')]
 	},
 	{
@@ -5922,7 +6020,9 @@ const RESTYLE_INVALID = [
 	// A hoisted const override, and a hoisted props object.
 	{
 		code:
-			IMPORT + RESTYLE_BUTTON + "const extra = 'p-4';\nbutton({ class: extra });",
+			IMPORT +
+			RESTYLE_BUTTON +
+			"const extra = 'p-4';\nbutton({ class: extra });",
 		errors: [restyle('p-4', 'p-2')]
 	},
 	{
@@ -5939,7 +6039,8 @@ const RESTYLE_INVALID = [
 	},
 	// Single-word utilities only collide once exclusiveGroups is on.
 	{
-		code: IMPORT + "const b = sv({ base: 'flex' });\nb({ class: 'block' });",
+		code:
+			IMPORT + "const b = sv({ base: 'flex' });\nb({ class: 'block' });",
 		options: [{ exclusiveGroups: true }],
 		errors: [restyle('block', 'flex')]
 	},
@@ -5980,7 +6081,10 @@ cn(classes.item({ active: true }), 'px-4');`,
 	},
 	// A slot whose group bucket was never written to still reads its own.
 	{
-		code: IMPORT_SV_CN + RESTYLE_PANEL + "const p = panel();\ncn(p.head, 'px-8');",
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_PANEL +
+			"const p = panel();\ncn(p.head, 'px-8');",
 		errors: [restyle('px-8', 'px-4', 'head')]
 	},
 	// Two tokens of one overlap node that don't share a conflict key — they
@@ -5993,20 +6097,31 @@ cn(classes.item({ active: true }), 'px-4');`,
 	},
 	// Classes written next to a slot read, in every shape a class list takes.
 	{
-		code: IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c.base, 'p-4');",
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_CARD +
+			"const c = card();\ncn(c.base, 'p-4');",
 		errors: [restyle('p-4', 'p-2')]
 	},
 	{
-		code: IMPORT_SV_CN + RESTYLE_CARD + 'const c = card();\ncn(`${c.header} px-8`);',
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_CARD +
+			'const c = card();\ncn(`${c.header} px-8`);',
 		errors: [restyle('px-8', 'px-4', 'header')]
 	},
 	{
-		code: IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn([c.body, 'py-8']);",
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_CARD +
+			"const c = card();\ncn([c.body, 'py-8']);",
 		errors: [restyle('py-8', 'py-4', 'body')]
 	},
 	{
 		code:
-			IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c.base, on && 'p-4');",
+			IMPORT_SV_CN +
+			RESTYLE_CARD +
+			"const c = card();\ncn(c.base, on && 'p-4');",
 		errors: [restyle('p-4', 'p-2')]
 	},
 	{
@@ -6018,12 +6133,17 @@ cn(classes.item({ active: true }), 'px-4');`,
 	},
 	{
 		code:
-			IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c.base, { 'p-4': on });",
+			IMPORT_SV_CN +
+			RESTYLE_CARD +
+			"const c = card();\ncn(c.base, { 'p-4': on });",
 		errors: [restyle('p-4', 'p-2')]
 	},
 	// A spread argument is skipped; the literal beside it still counts.
 	{
-		code: IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c.base, ...rest, 'p-4');",
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_CARD +
+			"const c = card();\ncn(c.base, ...rest, 'p-4');",
 		errors: [restyle('p-4', 'p-2')]
 	},
 	// A config-less `sv()` call is a class list too, and its own result can be
@@ -6111,7 +6231,7 @@ cn(classes.item({ active: true }), 'px-4');`,
 		code:
 			IMPORT +
 			RESTYLE_BUTTON +
-			"function Button({ className }) { button({ class: className }); return <button className={button({ class: className, size: 'lg' })} />; }\n<Button className=\"p-4\" />;",
+			'function Button({ className }) { button({ class: className }); return <button className={button({ class: className, size: \'lg\' })} />; }\n<Button className="p-4" />;',
 		errors: [restyle('p-4', 'p-2')]
 	},
 	// A slot-keyed override on a component reached through its own attribute
@@ -6152,7 +6272,7 @@ cn(classes.item({ active: true }), 'px-4');`,
 		code:
 			IMPORT +
 			RESTYLE_BUTTON +
-			"function Button({ className = '' }) { return <button className={button({ class: className })} />; }\n<Button className=\"p-4\" />;",
+			'function Button({ className = \'\' }) { return <button className={button({ class: className })} />; }\n<Button className="p-4" />;',
 		errors: [restyle('p-4', 'p-2')]
 	},
 	// A component wrapped in `forwardRef()` / `memo()`, however deeply.
@@ -6175,14 +6295,14 @@ cn(classes.item({ active: true }), 'px-4');`,
 		code:
 			IMPORT +
 			RESTYLE_BUTTON +
-			"const Button = (props) => { const [local, others] = splitProps(props, ['class']); return <button class={button({ class: local.class })} {...others} />; };\n<Button class=\"p-4\" />;",
+			'const Button = (props) => { const [local, others] = splitProps(props, [\'class\']); return <button class={button({ class: local.class })} {...others} />; };\n<Button class="p-4" />;',
 		errors: [restyle('p-4', 'p-2')]
 	},
 	{
 		code:
 			IMPORT +
 			RESTYLE_BUTTON +
-			"const Button = (props) => { const merged = mergeProps({ size: 'sm' }, props); return <button class={button({ class: merged.class })} />; };\n<Button class=\"p-4\" />;",
+			'const Button = (props) => { const merged = mergeProps({ size: \'sm\' }, props); return <button class={button({ class: merged.class })} />; };\n<Button class="p-4" />;',
 		errors: [restyle('p-4', 'p-2')]
 	}
 ];
@@ -6287,7 +6407,10 @@ writeFixture(
 );
 
 // A component whose own file never calls sv().
-writeFixture('ui/plain.tsx', 'export function Plain({ className }) { return <i className={className} />; }\n');
+writeFixture(
+	'ui/plain.tsx',
+	'export function Plain({ className }) { return <i className={className} />; }\n'
+);
 
 // Every default-export shape, plus an export declaration that is neither a
 // function nor a variable, and an export name that isn't an identifier.
@@ -6326,10 +6449,7 @@ writeFixture(
 
 // An anonymous default export that forwards nothing, and one that is neither
 // a function nor a call.
-writeFixture(
-	'ui/bare.tsx',
-	'export default ({ id }) => <i id={id} />;\n'
-);
+writeFixture('ui/bare.tsx', 'export default ({ id }) => <i id={id} />;\n');
 writeFixture('ui/object.tsx', "export default { name: 'x' };\n");
 
 // Two modules re-exporting each other — the walk must stop rather than loop.
@@ -6457,9 +6577,7 @@ for (let index = 0; index < CACHED_MODULE_COUNT; index++) {
 		}
 		`
 	);
-	cacheImports.push(
-		`import { Mod${index} } from './many/mod${index}.tsx';`
-	);
+	cacheImports.push(`import { Mod${index} } from './many/mod${index}.tsx';`);
 	cacheUsages.push(`<Mod${index} className="gap-1" />;`);
 }
 
@@ -6688,7 +6806,11 @@ const VUE_CROSS_FILE_INVALID = [
 		// A PascalCase tag, a kebab-case one, and a bound literal.
 		code: `<script setup>import Button from './ui/Button.vue';\nimport MyChip from './ui/Chip.vue';\nimport Tag from './ui/Tag.vue';</script>\n<template><Button class="p-4" /><my-chip class="px-4" /><Tag :class="'m-4'" /></template>`,
 		filename: join(fixtureDir, 'page.vue'),
-		errors: [restyle('p-4', 'p-2'), restyle('px-4', 'px-1'), restyle('m-4', 'm-1')]
+		errors: [
+			restyle('p-4', 'p-2'),
+			restyle('px-4', 'px-1'),
+			restyle('m-4', 'm-1')
+		]
 	}
 ];
 
@@ -6719,5 +6841,91 @@ t.test('no-restyle (vue)', (t) => {
 			invalid: [...RESTYLE_VUE_INVALID, ...VUE_CROSS_FILE_INVALID]
 		});
 	}, 'rule tester passes');
+	t.end();
+});
+
+// oxlint runs ESLint-style rules through its `jsPlugins` API, so every
+// plain-script and JSX suite above runs again under oxlint's `RuleTester`.
+// Vue and Svelte need custom parsers oxlint cannot load, and cross-file
+// `no-restyle` resolution is ESLint-only, so those suites stay ESLint-only.
+type OxlintRule = Parameters<OxlintRuleTester['run']>[1];
+
+const isOxlintRule = (value: object): value is OxlintRule =>
+	'create' in value && typeof value.create === 'function';
+
+const oxlintTester = new OxlintRuleTester({ eslintCompat: true });
+
+const oxlintJsxTester = new OxlintRuleTester({
+	eslintCompat: true,
+	languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } }
+});
+
+const OXLINT_SUITES = [
+	[
+		'no-redundant-spaces',
+		NO_REDUNDANT_SPACES_VALID,
+		NO_REDUNDANT_SPACES_INVALID
+	],
+	[
+		'no-dynamic-classes',
+		NO_DYNAMIC_CLASSES_VALID,
+		NO_DYNAMIC_CLASSES_INVALID
+	],
+	['no-empty-classes', NO_EMPTY_CLASSES_VALID, NO_EMPTY_CLASSES_INVALID],
+	[
+		'no-conflicting-classes',
+		NO_CONFLICTING_DUP_VALID,
+		NO_CONFLICTING_DUP_INVALID
+	],
+	[
+		'no-conflicting-classes',
+		NO_CONFLICTING_NS_VALID,
+		NO_CONFLICTING_NS_INVALID
+	],
+	['no-shared-tokens', NO_SHARED_TOKENS_VALID, NO_SHARED_TOKENS_INVALID],
+	[
+		'require-top-level-config',
+		REQUIRE_TOP_LEVEL_CONFIG_VALID,
+		REQUIRE_TOP_LEVEL_CONFIG_INVALID
+	],
+	[
+		'sv-config-style',
+		SV_CONFIG_STYLE_ORDER_VALID,
+		SV_CONFIG_STYLE_ORDER_INVALID
+	],
+	[
+		'sv-config-style',
+		SV_CONFIG_STYLE_BASE_VALID,
+		SV_CONFIG_STYLE_BASE_INVALID
+	]
+] as const;
+
+t.test('oxlint compatibility', (t) => {
+	for (const [name, valid, invalid] of OXLINT_SUITES) {
+		const oxlintRule = rules[name];
+
+		if (!isOxlintRule(oxlintRule)) {
+			t.fail(`${name}: not an oxlint rule`);
+			continue;
+		}
+
+		t.doesNotThrow(() => {
+			oxlintTester.run(name, oxlintRule, { valid, invalid });
+		}, `${name}: oxlint rule tester passes`);
+	}
+
+	const restyleRule = rules['no-restyle'];
+
+	if (isOxlintRule(restyleRule)) {
+		t.doesNotThrow(() => {
+			oxlintJsxTester.run('no-restyle', restyleRule, {
+				valid: [...RESTYLE_VALID, ...CROSS_FILE_VALID],
+				invalid: RESTYLE_INVALID
+			});
+		}, 'no-restyle: oxlint rule tester passes');
+	} else {
+		t.fail('no-restyle: not an oxlint rule');
+	}
+
 	t.end();
 });

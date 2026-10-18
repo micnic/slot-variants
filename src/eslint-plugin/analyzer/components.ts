@@ -9,7 +9,9 @@ import type {
 import { findVariable } from './const-bindings.ts';
 
 export type ComponentFunction =
-	FunctionDeclaration | FunctionExpression | ArrowFunctionExpression;
+	| FunctionDeclaration
+	| FunctionExpression
+	| ArrowFunctionExpression;
 
 /**
  * Something a `class` prop is passed to: a component function, or a whole

@@ -490,7 +490,10 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 			// category — `bg-size-[3px_4px]` collides with `bg-cover`, and neither
 			// is mistaken for the color fallback.
 			['size', ['auto', 'cover', 'contain', 'size']],
-			['position', ['bottom', 'center', 'left', 'right', 'top', 'position']],
+			[
+				'position',
+				['bottom', 'center', 'left', 'right', 'top', 'position']
+			],
 			['repeat', ['repeat', 'no']],
 			['attach', ['fixed', 'local', 'scroll']],
 			['image', ['none', 'gradient', 'linear', 'radial', 'conic']],
@@ -549,7 +552,10 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	},
 	divide: {
 		keywords: categoryMap([
-			['style', ['solid', 'dashed', 'dotted', 'double', 'hidden', 'none']],
+			[
+				'style',
+				['solid', 'dashed', 'dotted', 'double', 'hidden', 'none']
+			],
 			['color', COLOR_KEYWORDS],
 			['width-x', ['x']],
 			['width-y', ['y']],
@@ -597,7 +603,10 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 			['mode', ['alpha', 'luminance', 'match']],
 			// `mask-position-*`/`mask-size-*` join their keyword forms, the same way
 			// the `bg` spec above pairs them.
-			['position', ['center', 'top', 'bottom', 'left', 'right', 'position']],
+			[
+				'position',
+				['center', 'top', 'bottom', 'left', 'right', 'position']
+			],
 			['size', ['auto', 'cover', 'contain', 'size']],
 			['repeat', ['repeat']],
 			['image', ['none']]
@@ -751,8 +760,14 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		]),
 		fallback: 'value'
 	},
-	min: { keywords: selfMap(['w', 'h', 'inline', 'block']), fallback: 'other' },
-	max: { keywords: selfMap(['w', 'h', 'inline', 'block']), fallback: 'other' },
+	min: {
+		keywords: selfMap(['w', 'h', 'inline', 'block']),
+		fallback: 'other'
+	},
+	max: {
+		keywords: selfMap(['w', 'h', 'inline', 'block']),
+		fallback: 'other'
+	},
 	rounded: { keywords: selfMap(CORNERS), fallback: 'all' },
 	backdrop: {
 		keywords: selfMap([
@@ -980,10 +995,7 @@ const parseArbitraryValue = (segment: string): ArbitraryValue | undefined => {
 
 // The spec's own name for the property a type hint names, or undefined when the
 // prefix has no such property.
-const hintedCategory = (
-	spec: PrefixSpec,
-	hint: string
-): string | undefined => {
+const hintedCategory = (spec: PrefixSpec, hint: string): string | undefined => {
 	const candidates = HINT_CATEGORIES.get(hint);
 
 	if (candidates === undefined) {

@@ -103,7 +103,12 @@ type PendingPosition = {
 // Calls whose result is a single-file component's props, read at the top level
 // of its script: Svelte's `$props()` rune, and Vue's `defineProps()` (bare or
 // under `withDefaults()`) and `useAttrs()`.
-const PROPS_SOURCES = new Set(['$props', 'defineProps', 'withDefaults', 'useAttrs']);
+const PROPS_SOURCES = new Set([
+	'$props',
+	'defineProps',
+	'withDefaults',
+	'useAttrs'
+]);
 
 const getJsxAttributeValue = (node: JsxAttribute): Node | null => {
 	const { value } = node;
@@ -122,9 +127,7 @@ const getJsxAttributeValue = (node: JsxAttribute): Node | null => {
 // The local names a props pattern destructures `class` / `className` into,
 // mapped to the prop name a call site would pass. A default value
 // (`{ className = '' }`) binds the same name.
-const getClassPropBindings = (
-	pattern: ObjectPattern
-): Map<string, string> => {
+const getClassPropBindings = (pattern: ObjectPattern): Map<string, string> => {
 	const bindings = new Map<string, string>();
 
 	for (const property of pattern.properties) {
@@ -169,7 +172,8 @@ export const createForwardingScan = (
 	handlers: PositionHandlers
 ): ForwardingScan => {
 	const { sourceCode } = context;
-	const { importsTracker, matchCallFrom } = createTrackedCallResolver(context);
+	const { importsTracker, matchCallFrom } =
+		createTrackedCallResolver(context);
 	const ctx = createStyledContext(sourceCode, matchCallFrom, (node) =>
 		sourceCode.getScope(node)
 	);

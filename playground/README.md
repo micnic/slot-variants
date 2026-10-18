@@ -16,11 +16,12 @@ needs components on disk and so cannot be covered by `RuleTester` alone.
 ## Running
 
 ```bash
-npm run playground          # all four
+npm run playground          # all four under ESLint, then all under oxlint
 npm run playground:react
 npm run playground:solid
 npm run playground:vue
 npm run playground:svelte
+npm run playground:oxlint
 ```
 
 Each folder has its own flat `eslint.config.ts` that enables
@@ -28,14 +29,19 @@ Each folder has its own flat `eslint.config.ts` that enables
 plugin from `src/`, so there is no build step — edit a rule, run the lint. The
 configs double as copy-pasteable setup examples.
 
+`playground:oxlint` lints all four folders with oxlint, loading the same plugin
+through the shared `.oxlintrc.json` via `jsPlugins`. oxlint only reads the
+`<script>` blocks of Vue and Svelte files and does not follow imports, so
+template classes and cross-file `no-restyle` checks stay ESLint-only.
+
 ## What each playground needs
 
-| Playground | Parser | Class attribute |
-| ---------- | ------ | --------------- |
-| React | `typescript-eslint` (JSX) | `className` |
-| Solid | `typescript-eslint` (JSX) | `class` |
-| Vue | `vue-eslint-parser` | `class` / `:class` |
-| Svelte | `svelte-eslint-parser` | `class` |
+| Playground | Parser                    | Class attribute    |
+| ---------- | ------------------------- | ------------------ |
+| React      | `typescript-eslint` (JSX) | `className`        |
+| Solid      | `typescript-eslint` (JSX) | `class`            |
+| Vue        | `vue-eslint-parser`       | `class` / `:class` |
+| Svelte     | `svelte-eslint-parser`    | `class`            |
 
 ## Editor support
 

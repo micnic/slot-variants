@@ -11,7 +11,7 @@ type PartialNullable<T> = {
 type StringKeyof<T> = Extract<keyof T, string>;
 type ConfigClassValue = string | string[] | undefined;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// oxlint-disable-next-line typescript/no-explicit-any
 type AnyFn = (...args: any[]) => unknown;
 
 type RuntimeVariantValue = string | number | boolean;
@@ -141,11 +141,17 @@ type ReturnValue<
 				: string;
 		}>;
 
-type SlotValue<S extends MaybeSlots, G extends MaybeGroups<S>, V> =
-	S extends Slots ? Partial<Record<SlotTarget<S, G>, V>> | V : V;
+type SlotValue<
+	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
+	V
+> = S extends Slots ? Partial<Record<SlotTarget<S, G>, V>> | V : V;
 
-type ClassProp<S extends MaybeSlots, G extends MaybeGroups<S>, V> =
-	EitherClassProp<SlotValue<S, G, V>, true>;
+type ClassProp<
+	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
+	V
+> = EitherClassProp<SlotValue<S, G, V>, true>;
 
 type Variants<S extends MaybeSlots, G extends MaybeGroups<S>> = Record<
 	string,
@@ -167,7 +173,10 @@ type VariantConditions<
 > = {
 	[K in StringKeyof<V>]?:
 		| VariantPropType<S, G, V[K]>
-		| readonly [VariantPropType<S, G, V[K]>, ...VariantPropType<S, G, V[K]>[]];
+		| readonly [
+				VariantPropType<S, G, V[K]>,
+				...VariantPropType<S, G, V[K]>[]
+		  ];
 };
 
 type CompoundConditions<
@@ -244,10 +253,9 @@ type MaybePresets<
 > = Presets<S, G, V> | undefined;
 
 type PresetNameCollision<V extends AnyVariants, P> = {
-	[K in Extract<
-		keyof P,
-		StringKeyof<V>
-	>]: 'Preset name must not match a variant name';
+	[
+		K in Extract<keyof P, StringKeyof<V>>
+	]: 'Preset name must not match a variant name';
 };
 
 type RuntimeProps = RuntimeVariantState & {
@@ -303,10 +311,9 @@ type DefaultVariants<
 	V extends MaybeVariants<S, G>,
 	R extends RequiredVariants<V>
 > = {
-	[K in Exclude<
-		StringKeyof<V>,
-		RequiredVariantKeys<V, R>
-	>]?: DefaultVariantValue<S, G, V, K>;
+	[
+		K in Exclude<StringKeyof<V>, RequiredVariantKeys<V, R>>
+	]?: DefaultVariantValue<S, G, V, K>;
 };
 
 type VariantPropsWithRequired<
@@ -658,7 +665,6 @@ const createCache = (
 	cache: Map<string, CacheEntry>;
 	cacheReturn: (cacheKey: string, value: CacheEntry) => CacheEntry;
 } => {
-
 	const cache = new Map<string, CacheEntry>();
 
 	if (cacheSize <= 0) {
@@ -696,7 +702,6 @@ const resolveCompoundMatcherExpected = (
 	value: unknown,
 	variantValues: NormalizedVariantValues
 ): RuntimeVariantMatcher => {
-
 	if (isRuntimeVariantValue(value)) {
 		if (!hasOwn(variantValues, `${value}`)) {
 			throw createInvalidCompoundMatcherValueError(variant, value);
@@ -728,7 +733,6 @@ const seedPresetMatchers = (
 	presets: Record<string, ResolvedVariantState>,
 	preset: string | undefined
 ) => {
-
 	if (preset === undefined) {
 		return;
 	}
@@ -753,7 +757,6 @@ const getKnownVariantValues = (
 	variant: string,
 	errorMessage: string
 ): NormalizedVariantValues => {
-
 	const variantValues = normalizedVariants[variant];
 
 	if (variantValues === undefined) {
@@ -768,13 +771,11 @@ const compileCompoundMatchers = (
 	normalizedVariants: NormalizedVariants,
 	presets: Record<string, ResolvedVariantState>
 ): readonly CompoundMatcher[] => {
-
 	const matchers = new Map<string, RuntimeVariantMatcher>();
 
 	seedPresetMatchers(matchers, presets, compound.preset);
 
 	for (const [compoundKey, value] of entries(compound)) {
-
 		if (isCompoundMetaKey(compoundKey)) {
 			continue;
 		}
@@ -798,9 +799,7 @@ const matchesCompound = (
 	props: ResolvedVariantState,
 	matchers: readonly CompoundMatcher[]
 ): boolean => {
-
 	for (const { key, expected } of matchers) {
-
 		const propValue = props[key];
 
 		if (isVariantMatcherArray(expected)) {
@@ -846,7 +845,6 @@ const isBooleanVariantRecord = (
 const withoutUndefinedValues = (
 	variantValues: NormalizedVariantValues
 ): NormalizedVariantValues => {
-
 	const result: NormalizedVariantValues = {};
 
 	for (const [valueKey, value] of entries(variantValues)) {
@@ -860,7 +858,6 @@ const normalizeVariantValue = (
 	variantValue: RuntimeVariantConfigValue,
 	targetKeys: ReadonlySet<string>
 ): NormalizedVariantValues => {
-
 	if (
 		!isPlainObject(variantValue) ||
 		isSlotObjectVariantValue(variantValue, targetKeys)
@@ -883,7 +880,6 @@ const normalizeVariantValue = (
 };
 
 const coerceVariantKeyValue = (value: string): string | number | boolean => {
-
 	if (value === 'true') {
 		return true;
 	}
@@ -927,7 +923,6 @@ const matchesConfigValue = (
 	check: ConfigValueCheck,
 	value: unknown
 ): boolean => {
-
 	// Every config key accepts an explicit `undefined`
 	if (value === undefined) {
 		return true;
@@ -953,7 +948,6 @@ const matchesConfigValue = (
 };
 
 const isConfig = (value: ClassValue | RawConfig): value is RawConfig => {
-
 	if (!isPlainObject(value)) {
 		return false;
 	}
@@ -962,7 +956,6 @@ const isConfig = (value: ClassValue | RawConfig): value is RawConfig => {
 	// the shape that key expects, so class records keyed by a config key name
 	// keep merging like `cn()` does
 	for (const [key, keyValue] of entries(value)) {
-
 		const check = configKeyChecks.get(key);
 
 		if (check === undefined || !matchesConfigValue(check, keyValue)) {
@@ -977,7 +970,6 @@ const createNormalizedVariants = <S extends MaybeSlots>(
 	variants: Variants<S, undefined>,
 	targetKeys: ReadonlySet<string>
 ): NormalizedVariants => {
-
 	const result: NormalizedVariants = {};
 
 	for (const [variantKey, variantValue] of entries(variants)) {
@@ -1011,7 +1003,6 @@ const resolveRequiredVariants = (
 	requiredVariants: readonly string[] | boolean,
 	normalizedVariants: NormalizedVariants
 ): readonly string[] => {
-
 	if (requiredVariants === true) {
 		return keys(normalizedVariants);
 	}
@@ -1029,7 +1020,6 @@ const forEachTargetSlot = (
 	targetKey: string,
 	apply: (slotKey: string) => void
 ) => {
-
 	const groupSlots = groups.get(targetKey);
 
 	if (groupSlots === undefined) {
@@ -1049,11 +1039,9 @@ const expandSlotTargets = (
 	slotKeys: ReadonlySet<string>,
 	label: 'Compound slot' | 'Multi slot'
 ): readonly string[] => {
-
 	const result = new Set<string>();
 
 	for (const target of targets) {
-
 		if (!groups.has(target) && !slotKeys.has(target)) {
 			throw new Error(`${label} references unknown slot "${target}"`);
 		}
@@ -1071,7 +1059,6 @@ const resolveMultiSlots = (
 	groups: CompiledGroups,
 	slotKeys: ReadonlySet<string>
 ): ReadonlySet<string> => {
-
 	if (multiSlots === true) {
 		return slotKeys;
 	}
@@ -1090,7 +1077,6 @@ const assertValidRequiredVariantConfig = (
 	normalizedVariants: NormalizedVariants,
 	defaultVariants: Record<string, RuntimeDefaultVariant>
 ) => {
-
 	for (const variant of requiredVariants) {
 		if (!hasOwn(normalizedVariants, variant)) {
 			throw new Error(
@@ -1110,9 +1096,7 @@ const assertKnownDefaultVariants = (
 	defaultVariants: Record<string, RuntimeDefaultVariant>,
 	normalizedVariants: NormalizedVariants
 ) => {
-
 	for (const [variant, value] of entries(defaultVariants)) {
-
 		const variantValues = getKnownVariantValues(
 			normalizedVariants,
 			variant,
@@ -1135,9 +1119,7 @@ const assertValidPresets = (
 	presets: Record<string, ResolvedVariantState>,
 	normalizedVariants: NormalizedVariants
 ) => {
-
 	for (const [presetName, presetValues] of entries(presets)) {
-
 		if (hasOwn(normalizedVariants, presetName)) {
 			throw new Error(
 				`Preset "${presetName}" cannot have the same name as a variant`
@@ -1164,11 +1146,9 @@ const resolveGroups = (
 	groups: RuntimeGroups,
 	slotKeys: ReadonlySet<string>
 ): CompiledGroups => {
-
 	const result = new Map<string, readonly string[]>();
 
 	for (const [groupName, groupSlots] of entries(groups)) {
-
 		if (slotKeys.has(groupName)) {
 			throw new Error(
 				`Group "${groupName}" cannot have the same name as a slot`
@@ -1176,7 +1156,9 @@ const resolveGroups = (
 		}
 
 		if (groupSlots.length === 0) {
-			throw new Error(`Group "${groupName}" must define at least one slot`);
+			throw new Error(
+				`Group "${groupName}" must define at least one slot`
+			);
 		}
 
 		for (const slot of groupSlots) {
@@ -1203,7 +1185,6 @@ const requireCompoundClassValue = <T>(
 	compound: { class?: T; className?: T },
 	label: 'variant' | 'slot'
 ): T => {
-
 	const classValue = compound.class ?? compound.className;
 
 	if (classValue === undefined) {
@@ -1224,7 +1205,6 @@ const pushSlotObjectValue = (
 	value: Record<string, ConfigClassValue>,
 	groups: CompiledGroups
 ) => {
-
 	for (const [targetKey, targetValue] of entries(value)) {
 		forEachTargetSlot(groups, targetKey, (slotKey) => {
 			slotClasses[slotKey]?.push(targetValue);
@@ -1238,7 +1218,6 @@ const applyValueToSlotClasses = (
 	targetKeys: ReadonlySet<string>,
 	groups: CompiledGroups
 ) => {
-
 	if (isSlotObjectValue(value, targetKeys)) {
 		pushSlotObjectValue(slotClasses, value, groups);
 		return;
@@ -1251,7 +1230,6 @@ const compileConfig = (
 	baseArgs: ClassValue[],
 	config: RawConfig
 ): CompiledConfig => {
-
 	const {
 		base: configBase,
 		variants = {},
@@ -1367,7 +1345,6 @@ const resolvePresetValues = (
 	presets: Record<string, ResolvedVariantState>,
 	presetName: string | undefined
 ): ResolvedVariantState | undefined => {
-
 	if (presetName === undefined) {
 		return undefined;
 	}
@@ -1385,7 +1362,6 @@ const resolveVariantValue = (
 	props: RuntimeVariantState,
 	presetValues: ResolvedVariantState | undefined
 ): RuntimeVariantValue | undefined => {
-
 	const propValue = props[variantKey];
 
 	// `null` explicitly opts out of this variant, skipping preset/default
@@ -1422,11 +1398,9 @@ const buildCacheKey = (
 	presetValues: ResolvedVariantState | undefined,
 	values: ResolvedVariantValues | undefined
 ): string => {
-
 	let cacheKey = '';
 
 	for (const { key, valueIds } of variantData) {
-
 		const value = resolveVariantValue(
 			defaultVariants,
 			key,
@@ -1459,11 +1433,9 @@ const resolveVariantState = (
 	props: RuntimeProps,
 	presetValues: ResolvedVariantState | undefined
 ): ResolvedVariantState => {
-
 	const resolvedProps: ResolvedVariantState = {};
 
 	for (const { key } of variantData) {
-
 		const value = resolveVariantValue(
 			defaultVariants,
 			key,
@@ -1483,13 +1455,11 @@ const toVariantState = (
 	variantData: readonly VariantData[],
 	values: ResolvedVariantValues
 ): ResolvedVariantState => {
-
 	const resolvedProps: ResolvedVariantState = {};
 
 	let index = 0;
 
 	for (const { key } of variantData) {
-
 		const value = values[index];
 
 		index++;
@@ -1506,7 +1476,6 @@ const assertRequiredVariants = (
 	requiredVariants: readonly string[],
 	resolvedProps: ResolvedVariantState
 ) => {
-
 	for (const variant of requiredVariants) {
 		if (resolvedProps[variant] === undefined) {
 			throw new Error(`Missing required variant: "${variant}"`);
@@ -1519,7 +1488,6 @@ const getVariantClasses = (
 	variantProp: RuntimeVariantValue,
 	variantValues: NormalizedVariantValues
 ): NormalizedVariantValue => {
-
 	const variantClasses = variantValues[`${variantProp}`];
 
 	if (variantClasses === undefined) {
@@ -1538,9 +1506,7 @@ const applyResolvedVariantClasses = (
 	slotClasses: SlotClasses,
 	resolvedProps: ResolvedVariantState
 ) => {
-
 	for (const { key, values } of variantData) {
-
 		const variantProp = resolvedProps[key];
 
 		if (variantProp === undefined) {
@@ -1568,7 +1534,6 @@ const applyCompoundClasses = (
 	slotClasses: SlotClasses,
 	resolvedProps: ResolvedVariantState
 ) => {
-
 	for (const compound of compoundVariants) {
 		if (matchesCompound(resolvedProps, compound.matchers)) {
 			applyValueToSlotClasses(
@@ -1593,7 +1558,6 @@ const finalizeVariantResult = (
 	slotEntries: readonly [string, ConfigClassValue][],
 	slotClasses: SlotClasses
 ): CacheValue => {
-
 	if (slotEntries.length === 1) {
 		return cn(slotClasses.base);
 	}
@@ -1611,7 +1575,6 @@ const applyPostProcess = (
 	postProcess: ((className: string) => string) | undefined,
 	value: CacheValue
 ): CacheValue => {
-
 	if (postProcess === undefined) {
 		return value;
 	}
@@ -1634,7 +1597,6 @@ const collectSlotValues = (
 	slotKey: string,
 	groups: CompiledGroups
 ): ClassValue[] => {
-
 	const result: ClassValue[] = [];
 
 	for (const [targetKey, targetValue] of entries(value)) {
@@ -1651,7 +1613,6 @@ const mergeSlotObjectIntoResult = (
 	classProp: Partial<Record<string, ClassValue>>,
 	groups: CompiledGroups
 ): Record<string, string> => {
-
 	const result: Record<string, string> = { ...baseResult };
 
 	for (const [targetKey, targetValue] of entries(classProp)) {
@@ -1669,11 +1630,9 @@ const mergeClassPropIntoResult = (
 	baseResult: CacheValue,
 	classProp: RuntimeClassValue
 ): CacheValue => {
-
 	const classPropIsSlotObject = isSlotObjectValue(classProp, targetKeys);
 
 	if (typeof baseResult === 'string') {
-
 		if (classPropIsSlotObject) {
 			return cn(baseResult, collectSlotValues(classProp, 'base', groups));
 		}
@@ -1696,7 +1655,6 @@ const buildCacheEntry = (
 	cacheKey: string,
 	resolvedProps: ResolvedVariantState
 ): CacheEntry => {
-
 	const {
 		requiredVariants,
 		slotEntries,
@@ -1744,7 +1702,6 @@ const runVariant = (
 	config: CompiledConfig,
 	props: RuntimeProps
 ): CacheValue => {
-
 	const {
 		presets,
 		variantData,
@@ -1776,7 +1733,6 @@ const runVariant = (
 	let entry = cache.get(cacheKey);
 
 	if (entry === undefined) {
-
 		let resolvedProps: ResolvedVariantState;
 
 		if (resolvedValues === undefined) {
@@ -1809,7 +1765,6 @@ const mergeMultiSlotClass = (
 	innerClass: RuntimeClassValue,
 	slotKey: string
 ): RuntimeClassValue => {
-
 	const merged: Record<string, ClassValue> = {};
 
 	if (isSlotObjectValue(outerClass, targetKeys)) {
@@ -1826,7 +1781,6 @@ const mergeMultiSlotClass = (
 const buildSlotFn =
 	(config: CompiledConfig, outerProps: RuntimeProps, slotKey: string) =>
 	(innerProps: RuntimeProps = {}): string => {
-
 		const outerClass = outerProps.class ?? outerProps.className;
 		const innerClass = innerProps.class ?? innerProps.className;
 
@@ -1855,7 +1809,6 @@ const applyMultiSlots = (
 	props: RuntimeProps,
 	result: CacheValue
 ): MultiSlotResult => {
-
 	const output: MultiSlotResult = {};
 
 	if (typeof result === 'string') {
@@ -1885,14 +1838,12 @@ const applyMultiSlots = (
  * function-based default keeps the `+ 1`, since it may return `undefined`.
  */
 const countMaxEntries = (config: CompiledConfig): number => {
-
 	const requiredVariants = new Set(config.requiredVariants);
 	const { defaultVariants } = config;
 
 	let count = 1;
 
 	for (const { key, valueIds } of config.variantData) {
-
 		const valueCount = keys(valueIds).length;
 		const defaultValue = defaultVariants[key];
 		const hasStaticDefault =
@@ -1912,7 +1863,6 @@ const runVariantResult = (
 	config: CompiledConfig,
 	props: RuntimeProps
 ): CacheValue | MultiSlotResult => {
-
 	const result = runVariant(config, props);
 
 	if (config.multiSlots.size === 0) {
@@ -1932,7 +1882,6 @@ const splitVariantProps = (
 	variants: NormalizedVariants,
 	props: Record<string, unknown>
 ): [Record<string, unknown>, Record<string, unknown>] => {
-
 	const variantProps: Record<string, unknown> = {};
 	const restProps: Record<string, unknown> = {};
 
@@ -1948,7 +1897,6 @@ const splitVariantProps = (
 };
 
 const createVariantFn = (config: CompiledConfig) => {
-
 	const variantFn = (props: RuntimeProps = {}) =>
 		runVariantResult(config, props);
 
@@ -1979,7 +1927,6 @@ const createVariantFn = (config: CompiledConfig) => {
 				coerceVariantKeyValue
 			),
 		getMaxEntries: () => {
-
 			if (maxEntries === undefined) {
 				maxEntries = countMaxEntries(config);
 			}
@@ -2012,7 +1959,6 @@ const createVariantFn = (config: CompiledConfig) => {
 export const createSV = <I extends boolean = false>(
 	defaults?: RawConfig & { introspection?: I | undefined }
 ): SV<I> => {
-
 	// These overloads cover every `SV` signature, so `customSV` is checked
 	// against `SV<I>` on return instead of being asserted to it
 	function customSV<
@@ -2030,10 +1976,7 @@ export const createSV = <I extends boolean = false>(
 		...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
 	): string;
 	function customSV(...args: never[]): never;
-	function customSV(
-		...args: ClassValue[]
-	): string | AnyFn {
-
+	function customSV(...args: ClassValue[]): string | AnyFn {
 		const last = args.at(-1);
 
 		// Treat this as a `cn()`-style call when no config is provided

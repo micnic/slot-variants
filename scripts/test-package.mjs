@@ -1,16 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import {
-	mkdtempSync,
-	mkdirSync,
-	rmSync,
-	writeFileSync
-} from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const temporaryDirectory = mkdtempSync(join(tmpdir(), 'slot-variants-package-'));
+const temporaryDirectory = mkdtempSync(
+	join(tmpdir(), 'slot-variants-package-')
+);
 const npmCache = join(temporaryDirectory, 'npm-cache');
 const environment = { ...process.env, npm_config_cache: npmCache };
 
@@ -48,24 +45,23 @@ try {
 	}
 
 	const packOutput = JSON.parse(
-		run('npm', [
-			'pack',
-			'--json',
-			'--pack-destination',
-			temporaryDirectory
-		])
+		run('npm', ['pack', '--json', '--pack-destination', temporaryDirectory])
 	)[0];
 	const tarball = join(temporaryDirectory, packOutput.filename);
 	const consumerDirectory = join(temporaryDirectory, 'consumer');
 	mkdirSync(consumerDirectory);
 
-	run('npm', [
-		'install',
-		'--ignore-scripts',
-		'--no-package-lock',
-		'--no-save',
-		tarball
-	], consumerDirectory);
+	run(
+		'npm',
+		[
+			'install',
+			'--ignore-scripts',
+			'--no-package-lock',
+			'--no-save',
+			tarball
+		],
+		consumerDirectory
+	);
 
 	writeFileSync(
 		join(consumerDirectory, 'package.json'),
@@ -103,7 +99,9 @@ try {
 		consumerDirectory
 	);
 
-	console.log('Packed package passed ESM, CommonJS, plugin, type, and contents checks.');
+	console.log(
+		'Packed package passed ESM, CommonJS, plugin, type, and contents checks.'
+	);
 } finally {
 	rmSync(temporaryDirectory, { recursive: true, force: true });
 }

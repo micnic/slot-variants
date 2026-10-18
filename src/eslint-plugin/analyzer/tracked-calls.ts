@@ -324,7 +324,8 @@ export const createTrackedCallListeners = (
 	context: Rule.RuleContext,
 	onCall: (node: CallExpression, call: CallMatch, ctx: StyledContext) => void
 ) => {
-	const { importsTracker, matchCallFrom } = createTrackedCallResolver(context);
+	const { importsTracker, matchCallFrom } =
+		createTrackedCallResolver(context);
 	const { sourceCode } = context;
 	const ctx = createStyledContext(sourceCode, matchCallFrom, (node) =>
 		sourceCode.getScope(node)

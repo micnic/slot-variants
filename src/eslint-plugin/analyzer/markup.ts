@@ -108,7 +108,10 @@ export type VElement = {
  * to it here and narrowed by `type` inside each handler.
  */
 export type MarkupNode =
-	Rule.Node | JsxOpeningElement | SvelteElement | VElement;
+	| Rule.Node
+	| JsxOpeningElement
+	| SvelteElement
+	| VElement;
 
 export const CLASS_ATTRIBUTES = new Set(['class', 'className']);
 

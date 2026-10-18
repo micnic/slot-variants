@@ -46,10 +46,10 @@ export function printBenchResults(bench: Bench): void {
 				const { latency, throughput } = task.result as BenchTaskResult;
 
 				return {
-					'Task': task.name,
+					Task: task.name,
 					'ops/sec': Math.round(throughput.mean).toLocaleString(),
 					'Mean (ns)': Math.round(latency.mean * 1_000_000),
-					'Margin': `\xb1${latency.rme.toFixed(2)}%`
+					Margin: `\xb1${latency.rme.toFixed(2)}%`
 				};
 			})
 	);

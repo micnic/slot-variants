@@ -21,7 +21,6 @@ const { keys } = Object;
  * Appends a value to the result string with a space if the result is not empty
  */
 const append = (result: string, value: string): string => {
-
 	// If the current result is empty, return the value directly
 	if (result === '') {
 		return value;
@@ -34,7 +33,6 @@ const append = (result: string, value: string): string => {
  * Appends the flattened result of an array to the result string
  */
 const appendArray = (result: string, array: ClassArray): string => {
-
 	const flattened = cn(...array);
 
 	// Skip arrays that reduce to an empty string to avoid stray spaces
@@ -49,7 +47,6 @@ const appendArray = (result: string, array: ClassArray): string => {
  * Appends record keys to the result string when their values are truthy
  */
 const appendRecord = (result: string, record: ClassRecord): string => {
-
 	let current = result;
 
 	// Iterate over the keys of the record and append those with truthy values
@@ -69,12 +66,10 @@ const appendRecord = (result: string, record: ClassRecord): string => {
  * if their values are truthy, other value types are ignored.
  */
 export const cn = (...args: ClassValue[]): string => {
-
 	let result = '';
 
 	// Process each argument in order
 	for (const item of args) {
-
 		// Skip falsy values
 		if (!item) {
 			continue;

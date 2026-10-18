@@ -1,5 +1,12 @@
 import t from 'tap';
-import { createSV, sv, type ClassValue, type SlotClassProps, type VariantProps, type VariantValue } from '../src/index.ts';
+import {
+	createSV,
+	sv,
+	type ClassValue,
+	type SlotClassProps,
+	type VariantProps,
+	type VariantValue
+} from '../src/index.ts';
 
 // =============================================================================
 // sv() - base only (no config)
@@ -124,58 +131,65 @@ t.test('config keys holding non-config values stay class records', (t) => {
 	t.end();
 });
 
-t.test('config values of the right shape still build a variant function', (t) => {
-	const stringBase = sv({ base: 'btn' });
+t.test(
+	'config values of the right shape still build a variant function',
+	(t) => {
+		const stringBase = sv({ base: 'btn' });
 
-	t.equal(stringBase(), 'btn', 'string base');
+		t.equal(stringBase(), 'btn', 'string base');
 
-	const arrayBase = sv({ base: ['btn', 'px-2'] });
+		const arrayBase = sv({ base: ['btn', 'px-2'] });
 
-	t.equal(arrayBase(), 'btn px-2', 'array base');
+		t.equal(arrayBase(), 'btn px-2', 'array base');
 
-	const undefinedBase = sv({
-		base: undefined,
-		variants: { size: { sm: 'text-sm' } }
-	});
+		const undefinedBase = sv({
+			base: undefined,
+			variants: { size: { sm: 'text-sm' } }
+		});
 
-	t.equal(undefinedBase({ size: 'sm' }), 'text-sm', 'explicit undefined base');
+		t.equal(
+			undefinedBase({ size: 'sm' }),
+			'text-sm',
+			'explicit undefined base'
+		);
 
-	const numberCacheSize = sv({ base: 'btn', cacheSize: 0 });
+		const numberCacheSize = sv({ base: 'btn', cacheSize: 0 });
 
-	t.equal(numberCacheSize(), 'btn', 'numeric cacheSize');
+		t.equal(numberCacheSize(), 'btn', 'numeric cacheSize');
 
-	const functionPostProcess = sv({
-		base: 'btn',
-		postProcess: (className) => className.toUpperCase()
-	});
+		const functionPostProcess = sv({
+			base: 'btn',
+			postProcess: (className) => className.toUpperCase()
+		});
 
-	t.equal(functionPostProcess(), 'BTN', 'function postProcess');
+		t.equal(functionPostProcess(), 'BTN', 'function postProcess');
 
-	const arrayCompound = sv({ base: 'btn', compoundVariants: [] });
+		const arrayCompound = sv({ base: 'btn', compoundVariants: [] });
 
-	t.equal(arrayCompound(), 'btn', 'array compoundVariants');
+		t.equal(arrayCompound(), 'btn', 'array compoundVariants');
 
-	const booleanMultiSlots = sv({
-		slots: { header: 'h' },
-		multiSlots: true
-	});
+		const booleanMultiSlots = sv({
+			slots: { header: 'h' },
+			multiSlots: true
+		});
 
-	t.equal(booleanMultiSlots().header(), 'h', 'boolean multiSlots');
+		t.equal(booleanMultiSlots().header(), 'h', 'boolean multiSlots');
 
-	const arrayRequiredVariants = sv({
-		base: 'btn',
-		variants: { intent: { primary: 'bg-blue-500' } },
-		requiredVariants: ['intent']
-	});
+		const arrayRequiredVariants = sv({
+			base: 'btn',
+			variants: { intent: { primary: 'bg-blue-500' } },
+			requiredVariants: ['intent']
+		});
 
-	t.equal(
-		arrayRequiredVariants({ intent: 'primary' }),
-		'btn bg-blue-500',
-		'array requiredVariants'
-	);
+		t.equal(
+			arrayRequiredVariants({ intent: 'primary' }),
+			'btn bg-blue-500',
+			'array requiredVariants'
+		);
 
-	t.end();
-});
+		t.end();
+	}
+);
 
 t.test('variadic args with config as last argument', (t) => {
 	const button = sv('flex', 'items-center', {
@@ -197,50 +211,55 @@ t.test('variadic args with config as last argument', (t) => {
 	t.end();
 });
 
-t.test('variadic args with helper-returned config use the config overload', (t) => {
-	const createButtonConfig = () => ({
-		variants: {
-			size: {
-				sm: 'text-sm',
-				lg: 'text-lg'
-			}
-		},
-		defaultVariants: {
-			size: 'sm'
-		}
-	} as const);
+t.test(
+	'variadic args with helper-returned config use the config overload',
+	(t) => {
+		const createButtonConfig = () =>
+			({
+				variants: {
+					size: {
+						sm: 'text-sm',
+						lg: 'text-lg'
+					}
+				},
+				defaultVariants: {
+					size: 'sm'
+				}
+			}) as const;
 
-	const button = sv('flex', createButtonConfig());
+		const button = sv('flex', createButtonConfig());
 
-	t.equal(
-		button({ size: 'lg' }),
-		'flex text-lg',
-		'helper-returned configs stay on the variant overload'
-	);
+		t.equal(
+			button({ size: 'lg' }),
+			'flex text-lg',
+			'helper-returned configs stay on the variant overload'
+		);
 
-	t.end();
-});
+		t.end();
+	}
+);
 
 t.test('helper-returned compound configs use the config overload', (t) => {
-	const createButtonConfig = () => ({
-		variants: {
-			size: {
-				sm: 'text-sm',
-				lg: 'text-lg'
+	const createButtonConfig = () =>
+		({
+			variants: {
+				size: {
+					sm: 'text-sm',
+					lg: 'text-lg'
+				},
+				intent: {
+					primary: 'bg-blue-500',
+					danger: 'bg-red-500'
+				}
 			},
-			intent: {
-				primary: 'bg-blue-500',
-				danger: 'bg-red-500'
+			compoundVariants: [
+				{ size: 'lg', intent: 'danger', class: 'uppercase' }
+			],
+			defaultVariants: {
+				size: 'sm',
+				intent: 'primary'
 			}
-		},
-		compoundVariants: [
-			{ size: 'lg', intent: 'danger', class: 'uppercase' }
-		],
-		defaultVariants: {
-			size: 'sm',
-			intent: 'primary'
-		}
-	} as const);
+		}) as const;
 
 	const button = sv('flex', createButtonConfig());
 
@@ -255,19 +274,20 @@ t.test('helper-returned compound configs use the config overload', (t) => {
 
 const _helperRequiredConfigFn = sv(
 	'rounded-lg',
-	(() => ({
-		variants: {
-			size: {
-				sm: 'text-sm',
-				lg: 'text-lg'
+	(() =>
+		({
+			variants: {
+				size: {
+					sm: 'text-sm',
+					lg: 'text-lg'
+				},
+				intent: {
+					primary: 'bg-blue-500',
+					danger: 'bg-red-500'
+				}
 			},
-			intent: {
-				primary: 'bg-blue-500',
-				danger: 'bg-red-500'
-			}
-		},
-		requiredVariants: ['intent']
-	}) as const)()
+			requiredVariants: ['intent']
+		}) as const)()
 );
 
 type HelperRequiredConfigProps = VariantProps<typeof _helperRequiredConfigFn>;
@@ -283,47 +303,51 @@ const _assertHelperRequiredConfig: AssertHelperRequiredConfig = true;
 void _helperRequiredConfigFn;
 void _assertHelperRequiredConfig;
 
-t.test('helper-returned compound slot configs support readonly matcher arrays', (t) => {
-	const createCardConfig = () => ({
-		slots: {
-			header: 'font-bold',
-			body: 'py-4'
-		},
-		variants: {
-			tone: {
-				info: {
-					base: 'border-blue-500',
-					header: 'text-blue-700'
+t.test(
+	'helper-returned compound slot configs support readonly matcher arrays',
+	(t) => {
+		const createCardConfig = () =>
+			({
+				slots: {
+					header: 'font-bold',
+					body: 'py-4'
 				},
-				danger: {
-					base: 'border-red-500',
-					header: 'text-red-700'
-				}
-			}
-		},
-		compoundSlots: [
+				variants: {
+					tone: {
+						info: {
+							base: 'border-blue-500',
+							header: 'text-blue-700'
+						},
+						danger: {
+							base: 'border-red-500',
+							header: 'text-red-700'
+						}
+					}
+				},
+				compoundSlots: [
+					{
+						slots: ['base', 'header'],
+						tone: ['info', 'danger'],
+						class: 'rounded-lg'
+					}
+				]
+			}) as const;
+
+		const card = sv('card', createCardConfig());
+
+		t.same(
+			card({ tone: 'info' }),
 			{
-				slots: ['base', 'header'],
-				tone: ['info', 'danger'],
-				class: 'rounded-lg'
-			}
-		]
-	} as const);
+				base: 'card border-blue-500 rounded-lg',
+				header: 'font-bold text-blue-700 rounded-lg',
+				body: 'py-4'
+			},
+			'helper-returned compound slot configs stay on the variant overload'
+		);
 
-	const card = sv('card', createCardConfig());
-
-	t.same(
-		card({ tone: 'info' }),
-		{
-			base: 'card border-blue-500 rounded-lg',
-			header: 'font-bold text-blue-700 rounded-lg',
-			body: 'py-4'
-		},
-		'helper-returned compound slot configs stay on the variant overload'
-	);
-
-	t.end();
-});
+		t.end();
+	}
+);
 
 // =============================================================================
 // sv() - config only (no base argument)
@@ -381,7 +405,11 @@ t.test('sv(config) with slots', (t) => {
 
 	const result = button({ size: 'sm' });
 
-	t.equal(result.base, 'flex gap-2 text-sm', 'merges config base with slot base');
+	t.equal(
+		result.base,
+		'flex gap-2 text-sm',
+		'merges config base with slot base'
+	);
 	t.equal(result.icon, 'size-4 size-3', 'slot variant applied');
 
 	t.end();
@@ -437,7 +465,11 @@ t.test('base config field with slots', (t) => {
 
 	const result = button();
 
-	t.equal(result.base, 'flex items-center gap-2', 'merges base, config base, and slot base');
+	t.equal(
+		result.base,
+		'flex items-center gap-2',
+		'merges base, config base, and slot base'
+	);
 	t.equal(result.icon, 'size-4', 'other slots unaffected');
 
 	t.end();
@@ -480,7 +512,11 @@ t.test('base config field with slots and variants', (t) => {
 
 	const result = button({ size: 'sm' });
 
-	t.equal(result.base, 'flex items-center gap-2 text-sm', 'merges all base sources with variant');
+	t.equal(
+		result.base,
+		'flex items-center gap-2 text-sm',
+		'merges all base sources with variant'
+	);
 	t.equal(result.icon, 'size-4 size-3', 'slot variant applied correctly');
 
 	t.end();
@@ -496,7 +532,11 @@ t.test('base config field undefined', (t) => {
 		}
 	});
 
-	t.equal(button({ size: 'sm' }), 'flex text-sm', 'undefined base config field is ignored');
+	t.equal(
+		button({ size: 'sm' }),
+		'flex text-sm',
+		'undefined base config field is ignored'
+	);
 
 	t.end();
 });
@@ -756,7 +796,11 @@ t.test('treats an undefined variant value as no classes', (t) => {
 		'undefined value applies no classes'
 	);
 
-	t.equal(button({ size: 'sm' }), 'rounded-lg text-sm', 'sibling value applies');
+	t.equal(
+		button({ size: 'sm' }),
+		'rounded-lg text-sm',
+		'sibling value applies'
+	);
 
 	const badge = sv('flex', {
 		variants: {
@@ -1411,7 +1455,11 @@ t.test('numeric variant with default', (t) => {
 	});
 
 	t.equal(heading(), 'font-bold text-4xl', 'uses numeric default');
-	t.equal(heading({}), 'font-bold text-4xl', 'uses numeric default with empty props');
+	t.equal(
+		heading({}),
+		'font-bold text-4xl',
+		'uses numeric default with empty props'
+	);
 	t.equal(
 		heading({ level: 3 }),
 		'font-bold text-2xl',
@@ -1595,7 +1643,11 @@ t.test('slots with base slot in config', (t) => {
 	});
 
 	const result = card();
-	t.equal(result.base, 'border rounded-lg shadow-md', 'base merged from both');
+	t.equal(
+		result.base,
+		'border rounded-lg shadow-md',
+		'base merged from both'
+	);
 	t.equal(result.header, 'font-bold', 'header slot');
 	t.equal(result.body, 'py-4', 'body slot');
 
@@ -1676,7 +1728,11 @@ t.test('slots with boolean shorthand targeting slots', (t) => {
 	});
 
 	const on = card({ highlighted: true });
-	t.equal(on.base, 'border rounded-lg ring-2 ring-blue-500', 'highlighted base');
+	t.equal(
+		on.base,
+		'border rounded-lg ring-2 ring-blue-500',
+		'highlighted base'
+	);
 	t.equal(on.header, 'font-bold bg-blue-100', 'highlighted header');
 	t.equal(on.body, 'py-4', 'body unchanged');
 
@@ -1687,32 +1743,39 @@ t.test('slots with boolean shorthand targeting slots', (t) => {
 	t.end();
 });
 
-t.test('slots with boolean true/false record variant with slot-object values', (t) => {
-	const card = sv('border rounded-lg', {
-		slots: {
-			header: 'font-bold',
-			body: 'py-4'
-		},
-		variants: {
-			disabled: {
-				true: { base: 'opacity-50', header: 'text-gray-400' },
-				false: { base: 'opacity-100', header: 'text-black' }
+t.test(
+	'slots with boolean true/false record variant with slot-object values',
+	(t) => {
+		const card = sv('border rounded-lg', {
+			slots: {
+				header: 'font-bold',
+				body: 'py-4'
+			},
+			variants: {
+				disabled: {
+					true: { base: 'opacity-50', header: 'text-gray-400' },
+					false: { base: 'opacity-100', header: 'text-black' }
+				}
 			}
-		}
-	});
+		});
 
-	const on = card({ disabled: true });
-	t.equal(on.base, 'border rounded-lg opacity-50', 'disabled true base');
-	t.equal(on.header, 'font-bold text-gray-400', 'disabled true header');
-	t.equal(on.body, 'py-4', 'disabled true body unchanged');
+		const on = card({ disabled: true });
+		t.equal(on.base, 'border rounded-lg opacity-50', 'disabled true base');
+		t.equal(on.header, 'font-bold text-gray-400', 'disabled true header');
+		t.equal(on.body, 'py-4', 'disabled true body unchanged');
 
-	const off = card({ disabled: false });
-	t.equal(off.base, 'border rounded-lg opacity-100', 'disabled false base');
-	t.equal(off.header, 'font-bold text-black', 'disabled false header');
-	t.equal(off.body, 'py-4', 'disabled false body unchanged');
+		const off = card({ disabled: false });
+		t.equal(
+			off.base,
+			'border rounded-lg opacity-100',
+			'disabled false base'
+		);
+		t.equal(off.header, 'font-bold text-black', 'disabled false header');
+		t.equal(off.body, 'py-4', 'disabled false body unchanged');
 
-	t.end();
-});
+		t.end();
+	}
+);
 
 t.test('slots with throws for invalid variant value', (t) => {
 	const card = sv('border', {
@@ -1809,11 +1872,7 @@ t.test('compound variant with array matching', (t) => {
 		'rounded-lg text-base font-normal',
 		'matches md in array'
 	);
-	t.equal(
-		button({ size: 'lg' }),
-		'rounded-lg text-lg',
-		'does not match lg'
-	);
+	t.equal(button({ size: 'lg' }), 'rounded-lg text-lg', 'does not match lg');
 
 	t.end();
 });
@@ -1883,12 +1942,20 @@ t.test('compound variant with slots — slot-specific class', (t) => {
 	});
 
 	const match = card({ variant: 'primary', size: 'lg' });
-	t.equal(match.base, 'border rounded-lg border-blue-500 p-6 shadow-xl', 'compound base');
+	t.equal(
+		match.base,
+		'border rounded-lg border-blue-500 p-6 shadow-xl',
+		'compound base'
+	);
 	t.equal(match.header, 'font-bold text-blue-700', 'header unchanged');
 	t.equal(match.body, 'py-4 min-h-32', 'compound body');
 
 	const noMatch = card({ variant: 'danger', size: 'lg' });
-	t.equal(noMatch.base, 'border rounded-lg border-red-500 p-6', 'no compound base');
+	t.equal(
+		noMatch.base,
+		'border rounded-lg border-red-500 p-6',
+		'no compound base'
+	);
 	t.equal(noMatch.body, 'py-4', 'no compound body');
 
 	t.end();
@@ -2515,7 +2582,10 @@ t.test('class prop as ClassRecord in non-slot mode', (t) => {
 	});
 
 	t.equal(
-		button({ size: 'sm', class: { 'mt-4': true, 'mx-auto': true, hidden: false } }),
+		button({
+			size: 'sm',
+			class: { 'mt-4': true, 'mx-auto': true, hidden: false }
+		}),
 		'rounded-lg text-sm mt-4 mx-auto',
 		'class record appended with truthy keys'
 	);
@@ -3000,8 +3070,16 @@ t.test('required variant with slots', (t) => {
 	});
 
 	const sm = card({ size: 'sm' });
-	t.equal(sm.base, 'border rounded-lg p-2', 'required variant applied to base');
-	t.equal(sm.header, 'font-bold text-sm', 'required variant applied to header');
+	t.equal(
+		sm.base,
+		'border rounded-lg p-2',
+		'required variant applied to base'
+	);
+	t.equal(
+		sm.header,
+		'font-bold text-sm',
+		'required variant applied to header'
+	);
 	t.equal(sm.body, 'py-4', 'body unchanged');
 
 	t.throws(
@@ -3064,14 +3142,14 @@ const createFunctionDefaultIntentButton = (withCompoundVariant = false) =>
 		},
 		...(withCompoundVariant
 			? {
-				compoundVariants: [
-					{
-						size: 'sm',
-						intent: 'primary',
-						class: 'uppercase'
-					}
-				]
-			}
+					compoundVariants: [
+						{
+							size: 'sm',
+							intent: 'primary',
+							class: 'uppercase'
+						}
+					]
+				}
 			: {})
 	});
 
@@ -3278,7 +3356,11 @@ t.test('getCacheSize returns current cache size', (t) => {
 	t.equal(button.getCacheSize(), 1, 'cache unchanged for same props');
 
 	button({ size: 'lg' });
-	t.equal(button.getCacheSize(), 2, 'cache has 2 entries for different props');
+	t.equal(
+		button.getCacheSize(),
+		2,
+		'cache has 2 entries for different props'
+	);
 
 	t.end();
 });
@@ -3308,21 +3390,18 @@ t.test('clearCache empties the cache', (t) => {
 });
 
 t.test('cacheSize config limits cache entries', (t) => {
-	const button = sv(
-		'rounded-lg',
-		{
-			variants: {
-				size: {
-					sm: 'text-sm',
-					md: 'text-base',
-					lg: 'text-lg',
-					xl: 'text-xl'
-				}
-			},
-			cacheSize: 2,
-			introspection: true
-		}
-	);
+	const button = sv('rounded-lg', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				md: 'text-base',
+				lg: 'text-lg',
+				xl: 'text-xl'
+			}
+		},
+		cacheSize: 2,
+		introspection: true
+	});
 
 	button({ size: 'sm' });
 	button({ size: 'md' });
@@ -3335,20 +3414,17 @@ t.test('cacheSize config limits cache entries', (t) => {
 });
 
 t.test('cacheSize 0 still produces correct results', (t) => {
-	const button = sv(
-		'rounded-lg',
-		{
-			variants: {
-				size: {
-					sm: 'text-sm',
-					md: 'text-base',
-					lg: 'text-lg'
-				}
-			},
-			cacheSize: 0,
-			introspection: true
-		}
-	);
+	const button = sv('rounded-lg', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				md: 'text-base',
+				lg: 'text-lg'
+			}
+		},
+		cacheSize: 0,
+		introspection: true
+	});
 
 	t.equal(
 		button({ size: 'sm' }),
@@ -3923,19 +3999,26 @@ t.test('introspection with all properties combined', (t) => {
 	t.end();
 });
 
-t.test('getVariantValues returns empty array for unknown key (TS bypassed)', (t) => {
-	const button = sv('btn', {
-		variants: {
-			size: { sm: 'text-sm', lg: 'text-lg' }
-		},
-		introspection: true
-	});
+t.test(
+	'getVariantValues returns empty array for unknown key (TS bypassed)',
+	(t) => {
+		const button = sv('btn', {
+			variants: {
+				size: { sm: 'text-sm', lg: 'text-lg' }
+			},
+			introspection: true
+		});
 
-	// @ts-expect-error - intentionally passing an invalid key to test the runtime fallback
-	t.same(button.getVariantValues('unknown'), [], 'returns empty array for key not in variants');
+		t.same(
+			// @ts-expect-error - intentionally passing an invalid key to test the runtime fallback
+			button.getVariantValues('unknown'),
+			[],
+			'returns empty array for key not in variants'
+		);
 
-	t.end();
-});
+		t.end();
+	}
+);
 
 t.test('getVariantValues returns string values for a string variant', (t) => {
 	const button = sv('btn', {
@@ -3949,47 +4032,57 @@ t.test('getVariantValues returns string values for a string variant', (t) => {
 		introspection: true
 	});
 
-	t.same(button.getVariantValues('size'), ['sm', 'md', 'lg'], 'string values');
-
-	t.end();
-});
-
-t.test('getVariantValues returns booleans for boolean shorthand variant', (t) => {
-	const button = sv('btn', {
-		variants: {
-			disabled: 'opacity-50'
-		},
-		introspection: true
-	});
-
 	t.same(
-		button.getVariantValues('disabled'),
-		[false, true],
-		'boolean shorthand returns [false, true]'
+		button.getVariantValues('size'),
+		['sm', 'md', 'lg'],
+		'string values'
 	);
 
 	t.end();
 });
 
-t.test('getVariantValues returns booleans for true/false record variant', (t) => {
-	const button = sv('btn', {
-		variants: {
-			disabled: {
-				true: 'opacity-50',
-				false: 'opacity-100'
-			}
-		},
-		introspection: true
-	});
+t.test(
+	'getVariantValues returns booleans for boolean shorthand variant',
+	(t) => {
+		const button = sv('btn', {
+			variants: {
+				disabled: 'opacity-50'
+			},
+			introspection: true
+		});
 
-	t.same(
-		button.getVariantValues('disabled'),
-		[true, false],
-		'true/false record returns booleans in definition order'
-	);
+		t.same(
+			button.getVariantValues('disabled'),
+			[false, true],
+			'boolean shorthand returns [false, true]'
+		);
 
-	t.end();
-});
+		t.end();
+	}
+);
+
+t.test(
+	'getVariantValues returns booleans for true/false record variant',
+	(t) => {
+		const button = sv('btn', {
+			variants: {
+				disabled: {
+					true: 'opacity-50',
+					false: 'opacity-100'
+				}
+			},
+			introspection: true
+		});
+
+		t.same(
+			button.getVariantValues('disabled'),
+			[true, false],
+			'true/false record returns booleans in definition order'
+		);
+
+		t.end();
+	}
+);
 
 t.test('getVariantValues preserves empty-string variant value keys', (t) => {
 	const example = sv('x', {
@@ -3999,7 +4092,11 @@ t.test('getVariantValues preserves empty-string variant value keys', (t) => {
 		introspection: true
 	});
 
-	t.same(example.getVariantValues('tone'), ['', 'loud'], 'empty-string key preserved as string, not coerced to 0');
+	t.same(
+		example.getVariantValues('tone'),
+		['', 'loud'],
+		'empty-string key preserved as string, not coerced to 0'
+	);
 
 	t.end();
 });
@@ -4066,24 +4163,27 @@ t.test('getVariantValues returns values the variant function accepts', (t) => {
 	t.end();
 });
 
-t.test('getVariantValues works for each key in a multi-variant component', (t) => {
-	const button = sv('btn', {
-		variants: {
-			size: { sm: 'text-sm', lg: 'text-lg' },
-			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
-		},
-		introspection: true
-	});
+t.test(
+	'getVariantValues works for each key in a multi-variant component',
+	(t) => {
+		const button = sv('btn', {
+			variants: {
+				size: { sm: 'text-sm', lg: 'text-lg' },
+				intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+			},
+			introspection: true
+		});
 
-	t.same(button.getVariantValues('size'), ['sm', 'lg'], 'size values');
-	t.same(
-		button.getVariantValues('intent'),
-		['primary', 'danger'],
-		'intent values'
-	);
+		t.same(button.getVariantValues('size'), ['sm', 'lg'], 'size values');
+		t.same(
+			button.getVariantValues('intent'),
+			['primary', 'danger'],
+			'intent values'
+		);
 
-	t.end();
-});
+		t.end();
+	}
+);
 
 t.test('getVariantValues works when slots are defined', (t) => {
 	const card = sv('border', {
@@ -4096,7 +4196,11 @@ t.test('getVariantValues works when slots are defined', (t) => {
 		introspection: true
 	});
 
-	t.same(card.getVariantValues('size'), ['sm', 'lg'], 'string values with slots');
+	t.same(
+		card.getVariantValues('size'),
+		['sm', 'lg'],
+		'string values with slots'
+	);
 
 	t.end();
 });
@@ -4162,7 +4266,9 @@ t.test('getMaxEntries keeps the unset state for a function default', (t) => {
 			size: { sm: 'text-sm', md: 'text-base', lg: 'text-lg' },
 			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
 		},
-		defaultVariants: { size: (props) => (props.intent === 'danger' ? 'lg' : undefined) },
+		defaultVariants: {
+			size: (props) => (props.intent === 'danger' ? 'lg' : undefined)
+		},
 		introspection: true
 	});
 
@@ -4188,20 +4294,23 @@ t.test('getMaxEntries drops the unset state for a required variant', (t) => {
 	t.end();
 });
 
-t.test('getMaxEntries with requiredVariants: true drops every unset state', (t) => {
-	const button = sv('btn', {
-		variants: {
-			size: { sm: 'text-sm', md: 'text-base', lg: 'text-lg' },
-			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
-		},
-		requiredVariants: true,
-		introspection: true
-	});
+t.test(
+	'getMaxEntries with requiredVariants: true drops every unset state',
+	(t) => {
+		const button = sv('btn', {
+			variants: {
+				size: { sm: 'text-sm', md: 'text-base', lg: 'text-lg' },
+				intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+			},
+			requiredVariants: true,
+			introspection: true
+		});
 
-	t.equal(button.getMaxEntries(), 6, '3 * 2');
+		t.equal(button.getMaxEntries(), 6, '3 * 2');
 
-	t.end();
-});
+		t.end();
+	}
+);
 
 t.test('getMaxEntries counts boolean variants as two values', (t) => {
 	const input = sv('input', {
@@ -4240,7 +4349,11 @@ t.test('getMaxEntries bounds the actual cache size', (t) => {
 	button({ size: 'lg', intent: 'primary' });
 	button({ size: 'lg', intent: 'danger' });
 
-	t.equal(button.getCacheSize(), max, 'every combination cached, none beyond max');
+	t.equal(
+		button.getCacheSize(),
+		max,
+		'every combination cached, none beyond max'
+	);
 
 	t.end();
 });
@@ -4285,33 +4398,36 @@ t.test('splitProps separates declared variant props from the rest', (t) => {
 	t.end();
 });
 
-t.test('splitProps keeps class, className and preset on the variant side', (t) => {
-	const button = sv('btn', {
-		variants: {
-			size: { sm: 'text-sm', lg: 'text-lg' }
-		},
-		presets: {
-			cta: { size: 'lg' }
-		},
-		introspection: true
-	});
+t.test(
+	'splitProps keeps class, className and preset on the variant side',
+	(t) => {
+		const button = sv('btn', {
+			variants: {
+				size: { sm: 'text-sm', lg: 'text-lg' }
+			},
+			presets: {
+				cta: { size: 'lg' }
+			},
+			introspection: true
+		});
 
-	const [variantProps, rest] = button.splitProps({
-		preset: 'cta',
-		class: 'mt-2',
-		className: 'mb-2',
-		id: 'submit'
-	});
+		const [variantProps, rest] = button.splitProps({
+			preset: 'cta',
+			class: 'mt-2',
+			className: 'mb-2',
+			id: 'submit'
+		});
 
-	t.same(
-		variantProps,
-		{ preset: 'cta', class: 'mt-2', className: 'mb-2' },
-		'reserved props stay with the variant props'
-	);
-	t.same(rest, { id: 'submit' }, 'reserved props are not forwarded');
+		t.same(
+			variantProps,
+			{ preset: 'cta', class: 'mt-2', className: 'mb-2' },
+			'reserved props stay with the variant props'
+		);
+		t.same(rest, { id: 'submit' }, 'reserved props are not forwarded');
 
-	t.end();
-});
+		t.end();
+	}
+);
 
 t.test('splitProps output feeds back into the variant function', (t) => {
 	const button = sv('btn', {
@@ -4332,16 +4448,22 @@ t.test('splitProps output feeds back into the variant function', (t) => {
 	t.end();
 });
 
-t.test('splitProps sends everything to the rest when no variants exist', (t) => {
-	const box = sv('flex', { introspection: true });
+t.test(
+	'splitProps sends everything to the rest when no variants exist',
+	(t) => {
+		const box = sv('flex', { introspection: true });
 
-	const [variantProps, rest] = box.splitProps({ id: 'box', role: 'group' });
+		const [variantProps, rest] = box.splitProps({
+			id: 'box',
+			role: 'group'
+		});
 
-	t.same(variantProps, {}, 'no variant props');
-	t.same(rest, { id: 'box', role: 'group' }, 'all props forwarded');
+		t.same(variantProps, {}, 'no variant props');
+		t.same(rest, { id: 'box', role: 'group' }, 'all props forwarded');
 
-	t.end();
-});
+		t.end();
+	}
+);
 
 t.test('splitProps omits variant keys absent from the input', (t) => {
 	const button = sv('btn', {
@@ -4588,9 +4710,7 @@ const _typeExcludeClassFn = sv('flex', {
 });
 
 type ExcludeClassProps = VariantProps<typeof _typeExcludeClassFn>;
-type AssertNoClassProp = 'class' extends keyof ExcludeClassProps
-	? false
-	: true;
+type AssertNoClassProp = 'class' extends keyof ExcludeClassProps ? false : true;
 type AssertNoClassNameProp = 'className' extends keyof ExcludeClassProps
 	? false
 	: true;
@@ -5033,8 +5153,7 @@ t.test('preset throws for invalid variant value at config time', (t) => {
 				}
 			}),
 		{
-			message:
-				'Preset "large" has invalid value "xl" for variant "size"'
+			message: 'Preset "large" has invalid value "xl" for variant "size"'
 		},
 		'throws at config time for invalid preset variant value'
 	);
@@ -5167,11 +5286,19 @@ t.test('cache works with presets', (t) => {
 	t.equal(button.getCacheSize(), 1, 'cache hit for same preset');
 
 	button({ preset: 'large' });
-	t.equal(button.getCacheSize(), 2, 'cache has 2 entries for different presets');
+	t.equal(
+		button.getCacheSize(),
+		2,
+		'cache has 2 entries for different presets'
+	);
 
 	// Same resolved values should hit the same cache entry
 	button({ size: 'sm' });
-	t.equal(button.getCacheSize(), 2, 'explicit props matching preset share cache');
+	t.equal(
+		button.getCacheSize(),
+		2,
+		'explicit props matching preset share cache'
+	);
 
 	t.end();
 });
@@ -5311,7 +5438,11 @@ t.test('compound slot matches a preset by name', (t) => {
 			hero: { size: 'lg', tone: 'loud' }
 		},
 		compoundSlots: [
-			{ slots: ['header', 'body'], preset: 'hero', class: 'tracking-wide' }
+			{
+				slots: ['header', 'body'],
+				preset: 'hero',
+				class: 'tracking-wide'
+			}
 		]
 	});
 
@@ -5566,10 +5697,14 @@ t.test('compound slot with invalid matcher array value throws', (t) => {
 					}
 				},
 				compoundSlots: [
-					// @ts-expect-error invalid matcher value not assignable
-					{ slots: ['header'], size: ['sm', 'xl'], class: 'uppercase' }
+					{
+						slots: ['header'],
+						// @ts-expect-error invalid matcher value not assignable
+						size: ['sm', 'xl'],
+						class: 'uppercase'
+					}
 				]
-		}),
+			}),
 		{
 			message:
 				'Compound matcher for variant "size" has invalid value "xl"'
@@ -5634,7 +5769,7 @@ const _variantValueFn = sv('btn', {
 // optional variant - should not include undefined
 type VVSize = VariantValue<typeof _variantValueFn, 'size'>;
 type AssertVVSize = VVSize extends 'sm' | 'md' | 'lg'
-	? ('sm' | 'md' | 'lg') extends VVSize
+	? 'sm' | 'md' | 'lg' extends VVSize
 		? true
 		: false
 	: false;
@@ -5647,7 +5782,7 @@ const _assertVVSizeNoUndefined: AssertVVSizeNoUndefined = true;
 // required variant - should give the plain union
 type VVIntent = VariantValue<typeof _variantValueFn, 'intent'>;
 type AssertVVIntent = VVIntent extends 'primary' | 'danger'
-	? ('primary' | 'danger') extends VVIntent
+	? 'primary' | 'danger' extends VVIntent
 		? true
 		: false
 	: false;
@@ -5665,7 +5800,7 @@ const _assertVVDisabled: AssertVVDisabled = true;
 // numeric variant keys
 type VVLevel = VariantValue<typeof _variantValueFn, 'level'>;
 type AssertVVLevel = VVLevel extends 1 | 2
-	? (1 | 2) extends VVLevel
+	? 1 | 2 extends VVLevel
 		? true
 		: false
 	: false;
@@ -5895,7 +6030,11 @@ t.test('multiSlots: true makes every slot a function', (t) => {
 	t.type(result.header, 'function', 'header becomes a function');
 	t.type(result.body, 'function', 'body becomes a function');
 	t.equal(result.base(), 'border', 'base function returns its classes');
-	t.equal(result.header(), 'font-bold', 'header function returns its classes');
+	t.equal(
+		result.header(),
+		'font-bold',
+		'header function returns its classes'
+	);
 
 	t.end();
 });
@@ -5992,7 +6131,11 @@ t.test('multiSlots on a base-only config returns a function', (t) => {
 	const result = box();
 
 	t.type(result.base, 'function', 'base becomes a function');
-	t.equal(result.base(), 'border rounded-lg', 'base function returns classes');
+	t.equal(
+		result.base(),
+		'border rounded-lg',
+		'base function returns classes'
+	);
 	t.equal(
 		result.base({ class: 'mt-2' }),
 		'border rounded-lg mt-2',
@@ -6053,7 +6196,6 @@ t.test('multiSlots is exposed via introspection', (t) => {
 // =============================================================================
 
 t.test('createSV applies default postProcess to every config call', (t) => {
-
 	const factorySv = createSV({
 		postProcess: (className) => className.toUpperCase()
 	});
@@ -6073,7 +6215,6 @@ t.test('createSV applies default postProcess to every config call', (t) => {
 });
 
 t.test('createSV default postProcess applies to each slot', (t) => {
-
 	const factorySv = createSV({
 		postProcess: (className) => `[${className}]`
 	});
@@ -6094,7 +6235,6 @@ t.test('createSV default postProcess applies to each slot', (t) => {
 });
 
 t.test('per-call config overrides a factory default', (t) => {
-
 	const factorySv = createSV({
 		postProcess: (className) => className.toUpperCase()
 	});
@@ -6118,7 +6258,6 @@ t.test('per-call config overrides a factory default', (t) => {
 });
 
 t.test('createSV forwards no-config calls to class merging', (t) => {
-
 	const factorySv = createSV({
 		postProcess: (className) => className.toUpperCase()
 	});
@@ -6134,7 +6273,6 @@ t.test('createSV forwards no-config calls to class merging', (t) => {
 });
 
 t.test('createSV default base merges with per-call base args', (t) => {
-
 	const factorySv = createSV({ base: 'box' });
 
 	const stack = factorySv('btn', {
@@ -6155,7 +6293,6 @@ t.test('createSV default base merges with per-call base args', (t) => {
 });
 
 t.test('createSV default introspection enables it for every component', (t) => {
-
 	const factorySv = createSV({ introspection: true });
 
 	const button = factorySv('btn', {
@@ -6174,7 +6311,6 @@ t.test('createSV default introspection enables it for every component', (t) => {
 });
 
 t.test('per-call introspection: false overrides factory default', (t) => {
-
 	const factorySv = createSV({ introspection: true });
 
 	const button = factorySv('btn', {
@@ -6196,7 +6332,6 @@ t.test('per-call introspection: false overrides factory default', (t) => {
 });
 
 t.test('createSV default cacheSize bounds the cache', (t) => {
-
 	const factorySv = createSV({ cacheSize: 2, introspection: true });
 
 	const button = factorySv('btn', {
@@ -6219,7 +6354,6 @@ t.test('createSV default cacheSize bounds the cache', (t) => {
 });
 
 t.test('createSV with no defaults behaves like sv', (t) => {
-
 	const factorySv = createSV();
 
 	t.equal(factorySv('flex', 'gap-2'), 'flex gap-2', 'string merging works');
@@ -6251,8 +6385,11 @@ const _factoryButton = _factorySv('btn', {
 });
 
 // A default of introspection: true surfaces the introspection API in the type
-type AssertFactoryIntrospection =
-	typeof _factoryButton extends { variantKeys: string[] } ? true : false;
+type AssertFactoryIntrospection = typeof _factoryButton extends {
+	variantKeys: string[];
+}
+	? true
+	: false;
 const _assertFactoryIntrospection: AssertFactoryIntrospection = true;
 
 // Per-call config still drives the precise variant prop types
@@ -6302,9 +6439,8 @@ type AssertBodyIsString = MultiSlotReturn['body'] extends string ? true : false;
 const _assertBodyIsString: AssertBodyIsString = true;
 
 // The slot function returns a string
-type AssertHeaderReturn = ReturnType<MultiSlotReturn['header']> extends string
-	? true
-	: false;
+type AssertHeaderReturn =
+	ReturnType<MultiSlotReturn['header']> extends string ? true : false;
 const _assertHeaderReturn: AssertHeaderReturn = true;
 
 const _multiSlotAllFn = sv('border', {
@@ -6603,7 +6739,11 @@ t.test('multiSlots accepts a group name', (t) => {
 
 	t.equal(typeof footer, 'string', 'slot outside the group stays a string');
 	t.equal(header({ size: 'lg' }), 'h text-lg', 'group member is a function');
-	t.equal(body({ size: 'lg' }), 'b text-lg', 'every group member is a function');
+	t.equal(
+		body({ size: 'lg' }),
+		'b text-lg',
+		'every group member is a function'
+	);
 
 	t.end();
 });
@@ -6645,7 +6785,11 @@ t.test('introspection exposes groups', (t) => {
 
 	t.strictSame(card.groups, { content: ['header', 'body'] }, 'groups config');
 	t.strictSame(card.groupKeys, ['content'], 'group names');
-	t.strictSame(card.slotKeys, ['base', 'header', 'body'], 'groups are not slots');
+	t.strictSame(
+		card.slotKeys,
+		['base', 'header', 'body'],
+		'groups are not slots'
+	);
 
 	t.end();
 });
@@ -6804,12 +6948,10 @@ const _groupShorthandFn = sv({
 	}
 });
 
-type AssertGroupShorthand = VariantValue<
-	typeof _groupShorthandFn,
-	'bordered'
-> extends boolean
-	? true
-	: false;
+type AssertGroupShorthand =
+	VariantValue<typeof _groupShorthandFn, 'bordered'> extends boolean
+		? true
+		: false;
 const _assertGroupShorthand: AssertGroupShorthand = true;
 
 // The group name is accepted by the class prop

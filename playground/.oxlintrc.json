@@ -1,0 +1,13 @@
+{
+	"$schema": "../node_modules/oxlint/configuration_schema.json",
+	"jsPlugins": ["../src/eslint-plugin.ts"],
+	"rules": {
+		"slot-variants/no-conflicting-classes": "error",
+		"slot-variants/no-dynamic-classes": "error",
+		"slot-variants/no-empty-classes": "error",
+		"slot-variants/no-redundant-spaces": "error",
+		"slot-variants/no-restyle": "error",
+		"slot-variants/no-shared-tokens": "error",
+		"slot-variants/require-top-level-config": "error"
+	}
+}

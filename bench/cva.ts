@@ -16,7 +16,10 @@ const compoundButtonConfig = createCompoundButtonConfig();
 
 const svButton = sv('btn', createSimpleButtonConfig());
 
-const svButtonNoCache = sv('btn', { ...createSimpleButtonConfig(), cacheSize: 0 });
+const svButtonNoCache = sv('btn', {
+	...createSimpleButtonConfig(),
+	cacheSize: 0
+});
 
 const cvaButton = cva('btn', createSimpleButtonConfig());
 
@@ -99,7 +102,12 @@ bench.add('sv - many variants with props', () => {
 	svMany({ size: 'lg', color: 'danger', rounded: 'full', shadow: 'lg' });
 });
 bench.add('sv (no cache) - many variants with props', () => {
-	svManyNoCache({ size: 'lg', color: 'danger', rounded: 'full', shadow: 'lg' });
+	svManyNoCache({
+		size: 'lg',
+		color: 'danger',
+		rounded: 'full',
+		shadow: 'lg'
+	});
 });
 bench.add('cva - many variants with props', () => {
 	cvaMany({ size: 'lg', color: 'danger', rounded: 'full', shadow: 'lg' });

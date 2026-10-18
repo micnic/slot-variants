@@ -288,21 +288,21 @@ Class values inside the config (`base`, `variants` values, `slots` values, and `
 
 The table lists the options in the canonical key order enforced by the opt-in `sv-config-style` lint rule.
 
-| Option | Type | Description |
-| --- | --- | --- |
-| `base` | `string \| string[]` | Additional base classes |
-| `slots` | `Record<string, string \| string[]>` | Named slot definitions |
-| `groups` | `Record<string, string[]>` | Named sets of slot names |
-| `multiSlots` | `string[] \| boolean` | Slots exposed as reconfigurable functions; `true` makes every slot a function, `false` none |
-| `variants` | `Record<string, VariantConfig>` | Variant definitions |
-| `presets` | `Record<string, Partial<Props>>` | Named preset combinations |
-| `compoundSlots` | `CompoundSlot[]` | Multi-slot conditional classes |
-| `compoundVariants` | `CompoundVariant[]` | Conditional class combinations |
-| `defaultVariants` | `Record<string, Value>` | Static or function-based defaults |
-| `requiredVariants` | `string[] \| boolean` | Mandatory variant names; `true` makes every variant required, `false` none |
-| `cacheSize` | `number` | Maximum number of cached results (default: `256`); `0` or a negative value disables caching |
-| `introspection` | `boolean` | Expose introspection and cache methods (default: `false`) |
-| `postProcess` | `(className: string) => string` | Class transformation |
+| Option             | Type                                 | Description                                                                                 |
+| ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `base`             | `string \| string[]`                 | Additional base classes                                                                     |
+| `slots`            | `Record<string, string \| string[]>` | Named slot definitions                                                                      |
+| `groups`           | `Record<string, string[]>`           | Named sets of slot names                                                                    |
+| `multiSlots`       | `string[] \| boolean`                | Slots exposed as reconfigurable functions; `true` makes every slot a function, `false` none |
+| `variants`         | `Record<string, VariantConfig>`      | Variant definitions                                                                         |
+| `presets`          | `Record<string, Partial<Props>>`     | Named preset combinations                                                                   |
+| `compoundSlots`    | `CompoundSlot[]`                     | Multi-slot conditional classes                                                              |
+| `compoundVariants` | `CompoundVariant[]`                  | Conditional class combinations                                                              |
+| `defaultVariants`  | `Record<string, Value>`              | Static or function-based defaults                                                           |
+| `requiredVariants` | `string[] \| boolean`                | Mandatory variant names; `true` makes every variant required, `false` none                  |
+| `cacheSize`        | `number`                             | Maximum number of cached results (default: `256`); `0` or a negative value disables caching |
+| `introspection`    | `boolean`                            | Expose introspection and cache methods (default: `false`)                                   |
+| `postProcess`      | `(className: string) => string`      | Class transformation                                                                        |
 
 ## Errors & Validation
 
@@ -316,12 +316,12 @@ An opt-in `sv-config-style` rule additionally enforces a canonical config key or
 
 ## Exported Types
 
-| Type | Description |
-| --- | --- |
-| `ClassValue` | Valid input types for `cn()` — string, array, object, boolean, number, bigint, `null`, `undefined` |
-| `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E` |
-| `VariantValue<T, K>` | Extracts the value union for a single variant key `K`, without `undefined` |
-| `SlotClassProps<T>` | Extracts the per-slot class injection shape from an `sv()` return type |
-| `SV<D>` | The shape of an `sv()` function, with the factory's introspection default `D`; the return type of `createSV()` |
+| Type                 | Description                                                                                                    |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `ClassValue`         | Valid input types for `cn()` — string, array, object, boolean, number, bigint, `null`, `undefined`             |
+| `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E`                            |
+| `VariantValue<T, K>` | Extracts the value union for a single variant key `K`, without `undefined`                                     |
+| `SlotClassProps<T>`  | Extracts the per-slot class injection shape from an `sv()` return type                                         |
+| `SV<D>`              | The shape of an `sv()` function, with the factory's introspection default `D`; the return type of `createSV()` |
 
 Functions are imported as named values; types via `import type { ... } from 'slot-variants'`.

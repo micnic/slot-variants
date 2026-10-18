@@ -100,7 +100,10 @@ const applyAlias = (specifier: string, aliases: AliasMap): string | null => {
 	let bestPrefix = '';
 
 	for (const [prefix, target] of aliases) {
-		if (!specifier.startsWith(prefix) || prefix.length < bestPrefix.length) {
+		if (
+			!specifier.startsWith(prefix) ||
+			prefix.length < bestPrefix.length
+		) {
 			continue;
 		}
 

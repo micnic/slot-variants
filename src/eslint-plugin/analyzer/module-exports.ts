@@ -66,7 +66,10 @@ const collectFromDeclaration = (
 	}
 
 	for (const declarator of declaration.declarations) {
-		if (declarator.id.type === 'Identifier' && declarator.id.name === name) {
+		if (
+			declarator.id.type === 'Identifier' &&
+			declarator.id.name === name
+		) {
 			targets.push({ kind: 'local', name });
 		}
 	}

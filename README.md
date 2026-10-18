@@ -97,7 +97,7 @@ sv({ btn: true, disabled: false });          // 'btn'
 sv('flex', ['items-center'], { gap: true }); // 'flex items-center gap'
 ```
 
-An object argument counts as a config only when every one of its keys is a config option *and* holds a value of the shape that option expects. An object that merely happens to be keyed by a config option name still merges like `cn()` does:
+An object argument counts as a config only when every one of its keys is a config option _and_ holds a value of the shape that option expects. An object that merely happens to be keyed by a config option name still merges like `cn()` does:
 
 ```typescript
 sv({ base: true, hidden: false }); // 'base' — a class record
@@ -990,13 +990,13 @@ When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{
 
 ### Exported Types
 
-| Type | Description |
-| --- | --- |
-| `ClassValue` | Valid input types for `cn()` |
-| `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E` |
-| `VariantValue<T, K>` | Extracts the value union for a single variant key `K`, without `undefined` |
-| `SlotClassProps<T>` | Extracts the per-slot class injection shape from an `sv()` return type |
-| `SV<D>` | The shape of an `sv()` function, with the factory's introspection default `D`; the return type of `createSV()` |
+| Type                 | Description                                                                                                    |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `ClassValue`         | Valid input types for `cn()`                                                                                   |
+| `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E`                            |
+| `VariantValue<T, K>` | Extracts the value union for a single variant key `K`, without `undefined`                                     |
+| `SlotClassProps<T>`  | Extracts the per-slot class injection shape from an `sv()` return type                                         |
+| `SV<D>`              | The shape of an `sv()` function, with the factory's introspection default `D`; the return type of `createSV()` |
 
 ### Return Type
 
@@ -1009,21 +1009,21 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 The table lists the options in the canonical key order enforced by the opt-in [`sv-config-style`](#slot-variantssv-config-style) lint rule.
 
-| Option | Type | Description |
-| --- | --- | --- |
-| `base` | `string \| string[]` | Additional base classes merged with the base argument and `slots.base` |
-| `slots` | `Record<string, string \| string[]>` | Named slot definitions for multi-element components |
-| `groups` | `Record<string, string[]>` | Named sets of slot names, usable anywhere a slot name is accepted |
-| `multiSlots` | `string[] \| boolean` | Slot names exposed as reconfigurable functions instead of strings; `true` makes every slot a function, `false` none |
-| `variants` | `Record<string, Record<string \| number, string \| string[]>>` | Variant definitions mapping variant names to their possible values |
-| `presets` | `Record<string, Partial<VariantProps>>` | Named combinations of variant values selectable via `preset` prop |
-| `compoundSlots` | `Array` | Classes applied to multiple slots based on variant conditions |
-| `compoundVariants` | `Array` | Additional classes applied when multiple variant conditions match |
-| `defaultVariants` | `Object` | Default values for variants (static values or functions) |
-| `requiredVariants` | `string[] \| boolean` | Variant names that must be provided at call time; `true` makes every variant required, `false` none |
-| `cacheSize` | `number` | Maximum number of cached results (default: `256`); `0` or a negative value disables caching |
-| `introspection` | `boolean` | When `true`, exposes variant/slot/preset introspection and cache methods on the returned function (default: `false`) |
-| `postProcess` | `(className: string) => string` | Custom transformation applied to final class strings |
+| Option             | Type                                                           | Description                                                                                                          |
+| ------------------ | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `base`             | `string \| string[]`                                           | Additional base classes merged with the base argument and `slots.base`                                               |
+| `slots`            | `Record<string, string \| string[]>`                           | Named slot definitions for multi-element components                                                                  |
+| `groups`           | `Record<string, string[]>`                                     | Named sets of slot names, usable anywhere a slot name is accepted                                                    |
+| `multiSlots`       | `string[] \| boolean`                                          | Slot names exposed as reconfigurable functions instead of strings; `true` makes every slot a function, `false` none  |
+| `variants`         | `Record<string, Record<string \| number, string \| string[]>>` | Variant definitions mapping variant names to their possible values                                                   |
+| `presets`          | `Record<string, Partial<VariantProps>>`                        | Named combinations of variant values selectable via `preset` prop                                                    |
+| `compoundSlots`    | `Array`                                                        | Classes applied to multiple slots based on variant conditions                                                        |
+| `compoundVariants` | `Array`                                                        | Additional classes applied when multiple variant conditions match                                                    |
+| `defaultVariants`  | `Object`                                                       | Default values for variants (static values or functions)                                                             |
+| `requiredVariants` | `string[] \| boolean`                                          | Variant names that must be provided at call time; `true` makes every variant required, `false` none                  |
+| `cacheSize`        | `number`                                                       | Maximum number of cached results (default: `256`); `0` or a negative value disables caching                          |
+| `introspection`    | `boolean`                                                      | When `true`, exposes variant/slot/preset introspection and cache methods on the returned function (default: `false`) |
+| `postProcess`      | `(className: string) => string`                                | Custom transformation applied to final class strings                                                                 |
 
 ## Framework Usage
 
@@ -1523,6 +1523,18 @@ module.exports = {
 };
 ```
 
+### oxfmt
+
+[oxfmt](https://oxc.rs/docs/guide/usage/formatter) sorts Tailwind classes natively. List the functions under `sortTailwindcss.functions` in `.oxfmtrc.json`:
+
+```json
+{
+  "sortTailwindcss": {
+    "functions": ["cn", "sv"]
+  }
+}
+```
+
 ## Migrating from CVA / tailwind-variants
 
 ### From CVA
@@ -1566,11 +1578,11 @@ module.exports = {
 
 Key differences to be aware of:
 
-| Feature | tailwind-variants | slot-variants |
-| --- | --- | --- |
-| Slot return type | Always functions: `slot({ class: '...' })` | Strings by default; functions for slots listed in `multiSlots` |
-| `extend` (composition) | Supported | Not supported |
-| Built-in `twMerge` | Enabled by default | Use `postProcess: twMerge`, globally via `createSV` |
+| Feature                | tailwind-variants                          | slot-variants                                                  |
+| ---------------------- | ------------------------------------------ | -------------------------------------------------------------- |
+| Slot return type       | Always functions: `slot({ class: '...' })` | Strings by default; functions for slots listed in `multiSlots` |
+| `extend` (composition) | Supported                                  | Not supported                                                  |
+| Built-in `twMerge`     | Enabled by default                         | Use `postProcess: twMerge`, globally via `createSV`            |
 
 **Slot return type** is the most significant difference. In `tv()`, each slot returns a function that can accept additional props. In `sv()`, slots resolve to strings directly — use the `class` prop with a slot object for per-slot overrides, or list a slot in [`multiSlots`](#multi-slots) to expose it as a `tv`-style reconfigurable function:
 
