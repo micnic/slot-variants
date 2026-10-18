@@ -167,7 +167,7 @@ type VariantConditions<
 > = {
 	[K in StringKeyof<V>]?:
 		| VariantPropType<S, G, V[K]>
-		| readonly VariantPropType<S, G, V[K]>[];
+		| readonly [VariantPropType<S, G, V[K]>, ...VariantPropType<S, G, V[K]>[]];
 };
 
 type CompoundConditions<
@@ -706,6 +706,12 @@ const resolveCompoundMatcherExpected = (
 
 	if (!isArray(value)) {
 		throw createInvalidCompoundMatcherValueError(variant, value);
+	}
+
+	if (value.length === 0) {
+		throw new Error(
+			`Compound matcher for variant "${variant}" must list at least one value`
+		);
 	}
 
 	for (const item of value) {

@@ -337,6 +337,8 @@ compoundVariants: [
 ]
 ```
 
+A matcher array must list at least one value; an empty one could never match, so `sv()` throws when the config is evaluated.
+
 `className` is accepted as an alternative to `class`.
 
 When the config declares [presets](#presets), a compound entry can name one instead of restating the variant values it stands for:

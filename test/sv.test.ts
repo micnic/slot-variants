@@ -5475,6 +5475,49 @@ t.test('compound variant with invalid matcher array value type throws', (t) => {
 	t.end();
 });
 
+t.test('compound variant with empty matcher array throws', (t) => {
+	t.throws(
+		() =>
+			sv('btn', {
+				variants: {
+					size: { sm: 'text-sm', lg: 'text-lg' }
+				},
+				compoundVariants: [
+					// @ts-expect-error empty matcher array not assignable
+					{ size: [], class: 'uppercase' }
+				]
+			}),
+		{
+			message:
+				'Compound matcher for variant "size" must list at least one value'
+		}
+	);
+
+	t.end();
+});
+
+t.test('compound slot with empty matcher array throws', (t) => {
+	t.throws(
+		() =>
+			sv('btn', {
+				variants: {
+					size: { sm: 'text-sm', lg: 'text-lg' }
+				},
+				slots: { icon: 'icon' },
+				compoundSlots: [
+					// @ts-expect-error empty matcher array not assignable
+					{ slots: ['icon'], size: [], class: 'uppercase' }
+				]
+			}),
+		{
+			message:
+				'Compound matcher for variant "size" must list at least one value'
+		}
+	);
+
+	t.end();
+});
+
 t.test('compound slot without class or className throws', (t) => {
 	t.throws(
 		() =>
