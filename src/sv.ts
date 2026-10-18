@@ -955,7 +955,7 @@ const matchesConfigValue = (
 
 const isConfig = (value: ClassValue | RawConfig): value is RawConfig => {
 
-	if (value === null || typeof value !== 'object' || isArray(value)) {
+	if (!isPlainObject(value)) {
 		return false;
 	}
 
