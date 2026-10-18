@@ -887,13 +887,11 @@ const coerceVariantKeyValue = (value: string): string | number | boolean => {
 		return false;
 	}
 
-	if (value === '') {
-		return value;
-	}
-
 	const numericValue = Number(value);
 
-	if (Number.isNaN(numericValue)) {
+	// Only keys a numeric literal produces become numbers, so `'1e3'`, `'07'`,
+	// `' '` or `''` stay strings that still match their variant value
+	if (!Number.isFinite(numericValue) || `${numericValue}` !== value) {
 		return value;
 	}
 

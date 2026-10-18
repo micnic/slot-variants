@@ -4021,6 +4021,51 @@ t.test('getVariantValues returns numbers for numeric variant', (t) => {
 	t.end();
 });
 
+t.test('getVariantValues returns values the variant function accepts', (t) => {
+	const example = sv('x', {
+		variants: {
+			tone: {
+				1e3: 'thousand',
+				[-2]: 'negative',
+				1.5: 'fraction',
+				'1e3': 'exponent',
+				'07': 'padded',
+				'0x10': 'hex',
+				' ': 'blank',
+				Infinity: 'infinity',
+				NaN: 'nan'
+			}
+		},
+		introspection: true
+	});
+
+	const values = example.getVariantValues('tone');
+
+	t.same(
+		values,
+		[1000, -2, 1.5, '1e3', '07', '0x10', ' ', 'Infinity', 'NaN'],
+		'only canonical finite number keys become numbers'
+	);
+
+	t.same(
+		values.map((tone) => example({ tone })),
+		[
+			'x thousand',
+			'x negative',
+			'x fraction',
+			'x exponent',
+			'x padded',
+			'x hex',
+			'x blank',
+			'x infinity',
+			'x nan'
+		],
+		'every returned value round-trips through the variant function'
+	);
+
+	t.end();
+});
+
 t.test('getVariantValues works for each key in a multi-variant component', (t) => {
 	const button = sv('btn', {
 		variants: {
