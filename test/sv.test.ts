@@ -5389,6 +5389,25 @@ t.test('compound variant with invalid matcher value type throws', (t) => {
 	t.end();
 });
 
+t.test('compound variant with undefined matcher value throws', (t) => {
+	t.throws(
+		() =>
+			// @ts-expect-error undefined matcher value not assignable
+			sv('btn', {
+				variants: {
+					size: { sm: 'text-sm', lg: 'text-lg' }
+				},
+				compoundVariants: [{ size: undefined, class: 'uppercase' }]
+			}),
+		{
+			message:
+				'Compound matcher for variant "size" has invalid value "undefined"'
+		}
+	);
+
+	t.end();
+});
+
 t.test('compound variant with invalid matcher array value type throws', (t) => {
 	t.throws(
 		() =>

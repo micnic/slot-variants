@@ -167,8 +167,7 @@ type VariantConditions<
 > = {
 	[K in StringKeyof<V>]?:
 		| VariantPropType<S, G, V[K]>
-		| readonly VariantPropType<S, G, V[K]>[]
-		| undefined;
+		| readonly VariantPropType<S, G, V[K]>[];
 };
 
 type CompoundConditions<
