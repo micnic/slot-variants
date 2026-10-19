@@ -2435,6 +2435,27 @@ const NO_CONFLICTING_NS_VALID = [
 	// A single-word color keyword with an opacity modifier still resolves to
 	// `color`, not `size` — the modifier doesn't shadow the keyword match.
 	IMPORT + "sv({ base: 'text-lg text-white/50' });",
+	// A one-word theme color (`--color-primary`) is a color, not a font size —
+	// only Tailwind's named sizes (`xs`…`9xl`) read as sizes, the same way
+	// tailwind-merge tells them apart.
+	IMPORT + "sv({ base: 'text-sm text-primary' });",
+	IMPORT + "sv({ base: 'text-base text-foreground/80' });",
+	IMPORT + "sv({ base: 'text-2xl text-destructive' });",
+	// The same goes for every prefix that is both a width (or size) and a color.
+	IMPORT + "sv({ base: 'border-2 border-primary' });",
+	IMPORT + "sv({ base: 'border-t-2 border-t-primary' });",
+	IMPORT + "sv({ base: 'ring-2 ring-primary' });",
+	IMPORT + "sv({ base: 'ring-offset-2 ring-offset-background' });",
+	IMPORT + "sv({ base: 'inset-ring-2 inset-ring-primary' });",
+	IMPORT + "sv({ base: 'outline-2 outline-primary' });",
+	IMPORT + "sv({ base: 'stroke-2 stroke-primary' });",
+	IMPORT + "sv({ base: 'decoration-2 decoration-primary' });",
+	IMPORT + "sv({ base: 'shadow-md shadow-primary' });",
+	IMPORT + "sv({ base: 'text-shadow-sm text-shadow-primary' });",
+	IMPORT + "sv({ base: 'inset-shadow-xs inset-shadow-primary' });",
+	// A plain font size reads its line-height through `--tw-leading`, which a
+	// `leading-*` utility sets, so the two compose rather than conflict.
+	IMPORT + "sv({ base: 'text-sm leading-6' });",
 	// A font size and text alignment don't conflict.
 	IMPORT + "sv({ base: 'text-sm text-center' });",
 	// Border width, style, and color are distinct properties.
@@ -2986,11 +3007,29 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('leading-8, text-lg/6'), 2)
 	},
 	{
-		// Every font-size preset bundles a default line-height too, so even a
-		// bare font size (no `/leading` modifier) conflicts with an explicit
-		// `leading-*` utility.
-		code: IMPORT_CN + "cn('text-lg', 'leading-6');",
-		errors: repeat(conflictCn('leading-6, text-lg'), 2)
+		// A one-word theme color is a color, so it conflicts with another color…
+		code: IMPORT_CN + "cn('text-primary', 'text-red-500');",
+		errors: repeat(conflictCn('text-primary, text-red-500'), 2)
+	},
+	{
+		// …and with another one-word theme color.
+		code: IMPORT_CN + "cn('border-primary', 'border-accent/50');",
+		errors: repeat(conflictCn('border-accent/50, border-primary'), 2)
+	},
+	{
+		// A digit-led named size is still a size.
+		code: IMPORT_CN + "cn('text-2xl', 'text-sm');",
+		errors: repeat(conflictCn('text-2xl, text-sm'), 2)
+	},
+	{
+		// A named shadow size is still a shadow, not a color.
+		code: IMPORT_CN + "cn('shadow-md', 'shadow-none');",
+		errors: repeat(conflictCn('shadow-md, shadow-none'), 2)
+	},
+	{
+		// A named text-shadow size is still a size, not a color.
+		code: IMPORT_CN + "cn('text-shadow-md', 'text-shadow-none');",
+		errors: repeat(conflictCn('text-shadow-md, text-shadow-none'), 2)
 	},
 	{
 		// …and it still conflicts with a plain, non-modifier font size too.
