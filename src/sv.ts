@@ -671,11 +671,15 @@ const createCache = (cacheSize: number): CacheState => {
 	};
 };
 
+/**
+ * Checks for the prop keys that every variant function reads besides its
+ * variants.
+ */
+const isReservedProp = (key: string): boolean =>
+	key === 'class' || key === 'className' || key === 'preset';
+
 const isCompoundMetaKey = (compoundKey: string): boolean =>
-	compoundKey === 'class' ||
-	compoundKey === 'className' ||
-	compoundKey === 'slots' ||
-	compoundKey === 'preset';
+	compoundKey === 'slots' || isReservedProp(compoundKey);
 
 const resolveCompoundMatcherExpected = (
 	variant: string,
@@ -2313,10 +2317,7 @@ const runVariantResult = (
 };
 
 const isVariantFnProp = (key: string, variants: NormalizedVariants): boolean =>
-	key === 'class' ||
-	key === 'className' ||
-	key === 'preset' ||
-	hasOwn(variants, key);
+	isReservedProp(key) || hasOwn(variants, key);
 
 const splitVariantProps = (
 	variants: NormalizedVariants,
