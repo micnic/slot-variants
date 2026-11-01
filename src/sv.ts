@@ -2069,6 +2069,17 @@ const getBuildSource = (
 };
 
 /**
+ * Emits the code that returns the processed class names, or merges in the
+ * `class` prop when one is passed.
+ */
+const getMergeSource = (raw: string, processed: string): string =>
+	[
+		'const cp = p.class ?? p.className;',
+		`if (!cp) return ${processed};`,
+		`return merge(${raw}, cp);`
+	].join('\n');
+
+/**
  * Emits the code that returns the class names of the resolved combination,
  * read from the cache when the combination index can key it.
  */
@@ -2085,12 +2096,7 @@ const getResultSource = (
 	}
 
 	if (!config.cacheable) {
-		return [
-			build,
-			'const cp = p.class ?? p.className;',
-			`if (!cp) return ${processed};`,
-			'return merge(raw, cp);'
-		].join('\n');
+		return [build, getMergeSource('raw', processed)].join('\n');
 	}
 
 	const cacheKey = config.variantData.map(
@@ -2104,9 +2110,7 @@ const getResultSource = (
 		build,
 		`e = cacheReturn(k, { raw, processed: ${processed} });`,
 		'}',
-		'const cp = p.class ?? p.className;',
-		'if (!cp) return e.processed;',
-		'return merge(e.raw, cp);'
+		getMergeSource('e.raw', 'e.processed')
 	].join('\n');
 };
 
