@@ -1671,6 +1671,21 @@ const mergeClassPropIntoResult = (
 	return mergeSlotObjectIntoResult(baseResult, classProp, groups);
 };
 
+const mergeClassProp = (
+	config: CompiledConfig,
+	raw: CacheValue,
+	classProp: RuntimeClassValue
+): CacheValue =>
+	applyPostProcess(
+		config.postProcess,
+		mergeClassPropIntoResult(
+			config.targetKeys,
+			config.groups,
+			raw,
+			classProp
+		)
+	);
+
 const buildCacheEntry = (
 	config: CompiledConfig,
 	cacheKey: number | undefined,
@@ -1728,10 +1743,7 @@ const runVariant = (
 		defaultVariants,
 		hasFunctionDefaults,
 		cacheable,
-		cache,
-		postProcess,
-		targetKeys,
-		groups
+		cache
 	} = config;
 
 	const classProp = props.class ?? props.className;
@@ -1780,10 +1792,7 @@ const runVariant = (
 		return entry.processed;
 	}
 
-	return applyPostProcess(
-		postProcess,
-		mergeClassPropIntoResult(targetKeys, groups, entry.raw, classProp)
-	);
+	return mergeClassProp(config, entry.raw, classProp);
 };
 
 type RunFn = (props: RuntimeProps) => CacheValue;
@@ -2171,7 +2180,7 @@ const getRunSource = (
  * is interpreted on each call instead.
  */
 const createRun = (config: CompiledConfig): RunFn => {
-	const { targetKeys, groups, postProcess } = config;
+	const { postProcess } = config;
 	const tables: FragmentTable[] = [];
 	const source = getRunSource(config, tables);
 	const context: CompiledRunContext = {
@@ -2182,11 +2191,7 @@ const createRun = (config: CompiledConfig): RunFn => {
 		),
 		valueIds: config.variantData.map(({ valueIds }) => valueIds),
 		tables,
-		merge: (raw, classProp) =>
-			applyPostProcess(
-				postProcess,
-				mergeClassPropIntoResult(targetKeys, groups, raw, classProp)
-			),
+		merge: (raw, classProp) => mergeClassProp(config, raw, classProp),
 		postProcess: (value) => applyPostProcess(postProcess, value),
 		presets: config.presets,
 		resolvePreset: resolvePresetValues,
