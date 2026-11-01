@@ -2171,7 +2171,6 @@ const getRunSource = (
  * is interpreted on each call instead.
  */
 const createRun = (config: CompiledConfig): RunFn => {
-	const { postProcess } = config;
 	const tables: FragmentTable[] = [];
 	const source = getRunSource(config, tables);
 	const context: CompiledRunContext = {
@@ -2183,7 +2182,7 @@ const createRun = (config: CompiledConfig): RunFn => {
 		valueIds: config.variantData.map(({ valueIds }) => valueIds),
 		tables,
 		merge: (raw, classProp) => mergeClassProp(config, raw, classProp),
-		postProcess: (value) => applyPostProcess(postProcess, value),
+		postProcess: (value) => applyPostProcess(config.postProcess, value),
 		presets: config.presets,
 		resolvePreset: resolvePresetValues,
 		missingVariant: createMissingVariantError,
