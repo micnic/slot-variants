@@ -1,6 +1,7 @@
 import { Bench } from 'tinybench';
 import classnames from 'classnames';
 import { clsx } from 'clsx';
+import { cn as tvCn } from 'tailwind-variants';
 import { cn } from '../src/index.ts';
 import { assertSameOutput, printBenchResults } from './report.ts';
 
@@ -16,6 +17,9 @@ bench.add('classnames - strings', () => {
 bench.add('clsx - strings', () => {
 	clsx('foo', 'bar', 'baz');
 });
+bench.add('tv cn - strings', () => {
+	tvCn('foo', 'bar', 'baz');
+});
 
 // Mixed strings and falsy values
 bench.add('cn - strings with falsy', () => {
@@ -26,6 +30,9 @@ bench.add('classnames - strings with falsy', () => {
 });
 bench.add('clsx - strings with falsy', () => {
 	clsx('foo', false, 'bar', null, undefined, 'baz');
+});
+bench.add('tv cn - strings with falsy', () => {
+	tvCn('foo', false, 'bar', null, undefined, 'baz');
 });
 
 // Object records
@@ -38,6 +45,9 @@ bench.add('classnames - object', () => {
 bench.add('clsx - object', () => {
 	clsx({ foo: true, bar: false, baz: true, qux: true });
 });
+bench.add('tv cn - object', () => {
+	tvCn({ foo: true, bar: false, baz: true, qux: true });
+});
 
 // Mixed strings and objects
 bench.add('cn - mixed', () => {
@@ -49,6 +59,9 @@ bench.add('classnames - mixed', () => {
 bench.add('clsx - mixed', () => {
 	clsx('foo', { bar: true, baz: false }, 'qux');
 });
+bench.add('tv cn - mixed', () => {
+	tvCn('foo', { bar: true, baz: false }, 'qux');
+});
 
 // Nested arrays
 bench.add('cn - nested arrays', () => {
@@ -59,6 +72,9 @@ bench.add('classnames - nested arrays', () => {
 });
 bench.add('clsx - nested arrays', () => {
 	clsx('foo', ['bar', ['baz', 'qux']]);
+});
+bench.add('tv cn - nested arrays', () => {
+	tvCn('foo', ['bar', ['baz', 'qux']]);
 });
 
 // Complex mixed
@@ -81,32 +97,45 @@ bench.add('clsx - complex', () => {
 		'mx-2'
 	);
 });
+bench.add('tv cn - complex', () => {
+	tvCn(
+		'btn',
+		['btn-primary', { 'btn-lg': true }],
+		{ disabled: false },
+		'mx-2'
+	);
+});
 
 // Validate that all competitors produce identical output for each case
 assertSameOutput('strings', {
 	cn: cn('foo', 'bar', 'baz'),
 	classnames: classnames('foo', 'bar', 'baz'),
-	clsx: clsx('foo', 'bar', 'baz')
+	clsx: clsx('foo', 'bar', 'baz'),
+	'tv cn': tvCn('foo', 'bar', 'baz')
 });
 assertSameOutput('strings with falsy', {
 	cn: cn('foo', false, 'bar', null, undefined, 'baz'),
 	classnames: classnames('foo', false, 'bar', null, undefined, 'baz'),
-	clsx: clsx('foo', false, 'bar', null, undefined, 'baz')
+	clsx: clsx('foo', false, 'bar', null, undefined, 'baz'),
+	'tv cn': tvCn('foo', false, 'bar', null, undefined, 'baz')
 });
 assertSameOutput('object', {
 	cn: cn({ foo: true, bar: false, baz: true, qux: true }),
 	classnames: classnames({ foo: true, bar: false, baz: true, qux: true }),
-	clsx: clsx({ foo: true, bar: false, baz: true, qux: true })
+	clsx: clsx({ foo: true, bar: false, baz: true, qux: true }),
+	'tv cn': tvCn({ foo: true, bar: false, baz: true, qux: true })
 });
 assertSameOutput('mixed', {
 	cn: cn('foo', { bar: true, baz: false }, 'qux'),
 	classnames: classnames('foo', { bar: true, baz: false }, 'qux'),
-	clsx: clsx('foo', { bar: true, baz: false }, 'qux')
+	clsx: clsx('foo', { bar: true, baz: false }, 'qux'),
+	'tv cn': tvCn('foo', { bar: true, baz: false }, 'qux')
 });
 assertSameOutput('nested arrays', {
 	cn: cn('foo', ['bar', ['baz', 'qux']]),
 	classnames: classnames('foo', ['bar', ['baz', 'qux']]),
-	clsx: clsx('foo', ['bar', ['baz', 'qux']])
+	clsx: clsx('foo', ['bar', ['baz', 'qux']]),
+	'tv cn': tvCn('foo', ['bar', ['baz', 'qux']])
 });
 assertSameOutput('complex', {
 	cn: cn(
@@ -122,6 +151,12 @@ assertSameOutput('complex', {
 		'mx-2'
 	),
 	clsx: clsx(
+		'btn',
+		['btn-primary', { 'btn-lg': true }],
+		{ disabled: false },
+		'mx-2'
+	),
+	'tv cn': tvCn(
 		'btn',
 		['btn-primary', { 'btn-lg': true }],
 		{ disabled: false },

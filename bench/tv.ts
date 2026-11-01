@@ -7,6 +7,7 @@ import {
 	createSimpleButtonConfig,
 	createSlotsCardConfig
 } from './fixtures.ts';
+import { withoutJit } from './no-jit.ts';
 import { assertSameOutput, printBenchResults } from './report.ts';
 
 const tvNoMerge = createTV({ twMerge: false });
@@ -23,6 +24,17 @@ const svButtonNoCache = sv('btn', {
 	...createSimpleButtonConfig(),
 	cacheSize: 0
 });
+
+const svButtonNoJit = withoutJit(() =>
+	sv('btn', { ...createSimpleButtonConfig() })
+);
+
+const svButtonNoJitNoCache = withoutJit(() =>
+	sv('btn', {
+		...createSimpleButtonConfig(),
+		cacheSize: 0
+	})
+);
 
 const svButtonMerge = sv('btn', {
 	postProcess: twMerge,
@@ -51,6 +63,12 @@ bench.add('sv - simple defaults', () => {
 bench.add('sv (no cache) - simple defaults', () => {
 	svButtonNoCache();
 });
+bench.add('sv (no jit) - simple defaults', () => {
+	svButtonNoJit();
+});
+bench.add('sv (no jit, no cache) - simple defaults', () => {
+	svButtonNoJitNoCache();
+});
 bench.add('tv (no merge) - simple defaults', () => {
 	tvButtonNoMerge();
 });
@@ -69,6 +87,12 @@ bench.add('sv - simple with props', () => {
 });
 bench.add('sv (no cache) - simple with props', () => {
 	svButtonNoCache({ color: 'secondary', size: 'lg' });
+});
+bench.add('sv (no jit) - simple with props', () => {
+	svButtonNoJit({ color: 'secondary', size: 'lg' });
+});
+bench.add('sv (no jit, no cache) - simple with props', () => {
+	svButtonNoJitNoCache({ color: 'secondary', size: 'lg' });
 });
 bench.add('tv (no merge) - simple with props', () => {
 	tvButtonNoMerge({ color: 'secondary', size: 'lg' });
@@ -91,6 +115,17 @@ const svCompoundNoCache = sv('btn', {
 	...createCompoundButtonConfig(),
 	cacheSize: 0
 });
+
+const svCompoundNoJit = withoutJit(() =>
+	sv('btn', createCompoundButtonConfig())
+);
+
+const svCompoundNoJitNoCache = withoutJit(() =>
+	sv('btn', {
+		...createCompoundButtonConfig(),
+		cacheSize: 0
+	})
+);
 
 const svCompoundMerge = sv('btn', {
 	postProcess: twMerge,
@@ -121,6 +156,12 @@ bench.add('sv - compound match', () => {
 bench.add('sv (no cache) - compound match', () => {
 	svCompoundNoCache({ color: 'primary', size: 'lg' });
 });
+bench.add('sv (no jit) - compound match', () => {
+	svCompoundNoJit({ color: 'primary', size: 'lg' });
+});
+bench.add('sv (no jit, no cache) - compound match', () => {
+	svCompoundNoJitNoCache({ color: 'primary', size: 'lg' });
+});
 bench.add('tv (no merge) - compound match', () => {
 	tvCompoundNoMerge({ color: 'primary', size: 'lg' });
 });
@@ -139,6 +180,12 @@ bench.add('sv - compound no match', () => {
 });
 bench.add('sv (no cache) - compound no match', () => {
 	svCompoundNoCache({ color: 'primary', size: 'sm' });
+});
+bench.add('sv (no jit) - compound no match', () => {
+	svCompoundNoJit({ color: 'primary', size: 'sm' });
+});
+bench.add('sv (no jit, no cache) - compound no match', () => {
+	svCompoundNoJitNoCache({ color: 'primary', size: 'sm' });
 });
 bench.add('tv (no merge) - compound no match', () => {
 	tvCompoundNoMerge({ color: 'primary', size: 'sm' });
@@ -161,6 +208,17 @@ const svSlotsNoCache = sv('card', {
 	...createSlotsCardConfig(),
 	cacheSize: 0
 });
+
+const svSlotsNoJit = withoutJit(() =>
+	sv('card', { ...createSlotsCardConfig() })
+);
+
+const svSlotsNoJitNoCache = withoutJit(() =>
+	sv('card', {
+		...createSlotsCardConfig(),
+		cacheSize: 0
+	})
+);
 
 const svSlotsMerge = sv('card', {
 	postProcess: twMerge,
@@ -188,6 +246,12 @@ bench.add('sv - slots defaults', () => {
 });
 bench.add('sv (no cache) - slots defaults', () => {
 	svSlotsNoCache();
+});
+bench.add('sv (no jit) - slots defaults', () => {
+	svSlotsNoJit();
+});
+bench.add('sv (no jit, no cache) - slots defaults', () => {
+	svSlotsNoJitNoCache();
 });
 bench.add('tv (no merge) - slots defaults', () => {
 	const { base, header, body, footer } = tvSlotsNoMerge();
@@ -217,6 +281,12 @@ bench.add('sv - slots with props', () => {
 });
 bench.add('sv (no cache) - slots with props', () => {
 	svSlotsNoCache({ size: 'lg', variant: 'filled' });
+});
+bench.add('sv (no jit) - slots with props', () => {
+	svSlotsNoJit({ size: 'lg', variant: 'filled' });
+});
+bench.add('sv (no jit, no cache) - slots with props', () => {
+	svSlotsNoJitNoCache({ size: 'lg', variant: 'filled' });
 });
 bench.add('tv (no merge) - slots with props', () => {
 	const { base, header, body, footer } = tvSlotsNoMerge({
@@ -265,6 +335,8 @@ const materializeTvSlots = (slots: {
 assertSameOutput('simple defaults', {
 	sv: svButton(),
 	'sv (no cache)': svButtonNoCache(),
+	'sv (no jit)': svButtonNoJit(),
+	'sv (no jit, no cache)': svButtonNoJitNoCache(),
 	'sv + twMerge': svButtonMerge(),
 	'sv + twMerge (no cache)': svButtonMergeNoCache(),
 	tv: tvButton(),
@@ -273,6 +345,11 @@ assertSameOutput('simple defaults', {
 assertSameOutput('simple with props', {
 	sv: svButton({ color: 'secondary', size: 'lg' }),
 	'sv (no cache)': svButtonNoCache({ color: 'secondary', size: 'lg' }),
+	'sv (no jit)': svButtonNoJit({ color: 'secondary', size: 'lg' }),
+	'sv (no jit, no cache)': svButtonNoJitNoCache({
+		color: 'secondary',
+		size: 'lg'
+	}),
 	'sv + twMerge': svButtonMerge({ color: 'secondary', size: 'lg' }),
 	'sv + twMerge (no cache)': svButtonMergeNoCache({
 		color: 'secondary',
@@ -284,6 +361,11 @@ assertSameOutput('simple with props', {
 assertSameOutput('compound match', {
 	sv: svCompound({ color: 'primary', size: 'lg' }),
 	'sv (no cache)': svCompoundNoCache({ color: 'primary', size: 'lg' }),
+	'sv (no jit)': svCompoundNoJit({ color: 'primary', size: 'lg' }),
+	'sv (no jit, no cache)': svCompoundNoJitNoCache({
+		color: 'primary',
+		size: 'lg'
+	}),
 	'sv + twMerge': svCompoundMerge({ color: 'primary', size: 'lg' }),
 	'sv + twMerge (no cache)': svCompoundMergeNoCache({
 		color: 'primary',
@@ -295,6 +377,11 @@ assertSameOutput('compound match', {
 assertSameOutput('compound no match', {
 	sv: svCompound({ color: 'primary', size: 'sm' }),
 	'sv (no cache)': svCompoundNoCache({ color: 'primary', size: 'sm' }),
+	'sv (no jit)': svCompoundNoJit({ color: 'primary', size: 'sm' }),
+	'sv (no jit, no cache)': svCompoundNoJitNoCache({
+		color: 'primary',
+		size: 'sm'
+	}),
 	'sv + twMerge': svCompoundMerge({ color: 'primary', size: 'sm' }),
 	'sv + twMerge (no cache)': svCompoundMergeNoCache({
 		color: 'primary',
@@ -306,6 +393,8 @@ assertSameOutput('compound no match', {
 assertSameOutput('slots defaults', {
 	sv: svSlots(),
 	'sv (no cache)': svSlotsNoCache(),
+	'sv (no jit)': svSlotsNoJit(),
+	'sv (no jit, no cache)': svSlotsNoJitNoCache(),
 	'sv + twMerge': svSlotsMerge(),
 	'sv + twMerge (no cache)': svSlotsMergeNoCache(),
 	tv: materializeTvSlots(tvSlots()),
@@ -314,6 +403,11 @@ assertSameOutput('slots defaults', {
 assertSameOutput('slots with props', {
 	sv: svSlots({ size: 'lg', variant: 'filled' }),
 	'sv (no cache)': svSlotsNoCache({ size: 'lg', variant: 'filled' }),
+	'sv (no jit)': svSlotsNoJit({ size: 'lg', variant: 'filled' }),
+	'sv (no jit, no cache)': svSlotsNoJitNoCache({
+		size: 'lg',
+		variant: 'filled'
+	}),
 	'sv + twMerge': svSlotsMerge({ size: 'lg', variant: 'filled' }),
 	'sv + twMerge (no cache)': svSlotsMergeNoCache({
 		size: 'lg',

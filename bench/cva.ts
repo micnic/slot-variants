@@ -6,6 +6,7 @@ import {
 	createManyVariantsConfig,
 	createSimpleButtonConfig
 } from './fixtures.ts';
+import { withoutJit } from './no-jit.ts';
 import { assertSameOutput, printBenchResults } from './report.ts';
 
 const bench = new Bench({ warmupIterations: 1000 });
@@ -21,6 +22,15 @@ const svButtonNoCache = sv('btn', {
 	cacheSize: 0
 });
 
+const svButtonNoJit = withoutJit(() => sv('btn', createSimpleButtonConfig()));
+
+const svButtonNoJitNoCache = withoutJit(() =>
+	sv('btn', {
+		...createSimpleButtonConfig(),
+		cacheSize: 0
+	})
+);
+
 const cvaButton = cva('btn', createSimpleButtonConfig());
 
 bench.add('sv - simple defaults', () => {
@@ -28,6 +38,12 @@ bench.add('sv - simple defaults', () => {
 });
 bench.add('sv (no cache) - simple defaults', () => {
 	svButtonNoCache();
+});
+bench.add('sv (no jit) - simple defaults', () => {
+	svButtonNoJit();
+});
+bench.add('sv (no jit, no cache) - simple defaults', () => {
+	svButtonNoJitNoCache();
 });
 bench.add('cva - simple defaults', () => {
 	cvaButton();
@@ -38,6 +54,12 @@ bench.add('sv - simple with props', () => {
 });
 bench.add('sv (no cache) - simple with props', () => {
 	svButtonNoCache({ color: 'secondary', size: 'lg' });
+});
+bench.add('sv (no jit) - simple with props', () => {
+	svButtonNoJit({ color: 'secondary', size: 'lg' });
+});
+bench.add('sv (no jit, no cache) - simple with props', () => {
+	svButtonNoJitNoCache({ color: 'secondary', size: 'lg' });
 });
 bench.add('cva - simple with props', () => {
 	cvaButton({ color: 'secondary', size: 'lg' });
@@ -52,6 +74,17 @@ const svCompoundNoCache = sv('btn', {
 	cacheSize: 0
 });
 
+const svCompoundNoJit = withoutJit(() =>
+	sv('btn', createCompoundButtonConfig())
+);
+
+const svCompoundNoJitNoCache = withoutJit(() =>
+	sv('btn', {
+		...createCompoundButtonConfig(),
+		cacheSize: 0
+	})
+);
+
 const cvaCompound = cva('btn', {
 	...compoundButtonConfig,
 	compoundVariants: [...compoundButtonConfig.compoundVariants]
@@ -63,6 +96,12 @@ bench.add('sv - compound match', () => {
 bench.add('sv (no cache) - compound match', () => {
 	svCompoundNoCache({ color: 'primary', size: 'lg' });
 });
+bench.add('sv (no jit) - compound match', () => {
+	svCompoundNoJit({ color: 'primary', size: 'lg' });
+});
+bench.add('sv (no jit, no cache) - compound match', () => {
+	svCompoundNoJitNoCache({ color: 'primary', size: 'lg' });
+});
 bench.add('cva - compound match', () => {
 	cvaCompound({ color: 'primary', size: 'lg' });
 });
@@ -72,6 +111,12 @@ bench.add('sv - compound no match', () => {
 });
 bench.add('sv (no cache) - compound no match', () => {
 	svCompoundNoCache({ color: 'primary', size: 'sm' });
+});
+bench.add('sv (no jit) - compound no match', () => {
+	svCompoundNoJit({ color: 'primary', size: 'sm' });
+});
+bench.add('sv (no jit, no cache) - compound no match', () => {
+	svCompoundNoJitNoCache({ color: 'primary', size: 'sm' });
 });
 bench.add('cva - compound no match', () => {
 	cvaCompound({ color: 'primary', size: 'sm' });
@@ -86,6 +131,17 @@ const svManyNoCache = sv('component', {
 	cacheSize: 0
 });
 
+const svManyNoJit = withoutJit(() =>
+	sv('component', createManyVariantsConfig())
+);
+
+const svManyNoJitNoCache = withoutJit(() =>
+	sv('component', {
+		...createManyVariantsConfig(),
+		cacheSize: 0
+	})
+);
+
 const cvaMany = cva('component', createManyVariantsConfig());
 
 bench.add('sv - many variants defaults', () => {
@@ -93,6 +149,12 @@ bench.add('sv - many variants defaults', () => {
 });
 bench.add('sv (no cache) - many variants defaults', () => {
 	svManyNoCache();
+});
+bench.add('sv (no jit) - many variants defaults', () => {
+	svManyNoJit();
+});
+bench.add('sv (no jit, no cache) - many variants defaults', () => {
+	svManyNoJitNoCache();
 });
 bench.add('cva - many variants defaults', () => {
 	cvaMany();
@@ -109,6 +171,22 @@ bench.add('sv (no cache) - many variants with props', () => {
 		shadow: 'lg'
 	});
 });
+bench.add('sv (no jit) - many variants with props', () => {
+	svManyNoJit({
+		size: 'lg',
+		color: 'danger',
+		rounded: 'full',
+		shadow: 'lg'
+	});
+});
+bench.add('sv (no jit, no cache) - many variants with props', () => {
+	svManyNoJitNoCache({
+		size: 'lg',
+		color: 'danger',
+		rounded: 'full',
+		shadow: 'lg'
+	});
+});
 bench.add('cva - many variants with props', () => {
 	cvaMany({ size: 'lg', color: 'danger', rounded: 'full', shadow: 'lg' });
 });
@@ -117,31 +195,62 @@ bench.add('cva - many variants with props', () => {
 assertSameOutput('simple defaults', {
 	sv: svButton(),
 	'sv (no cache)': svButtonNoCache(),
+	'sv (no jit)': svButtonNoJit(),
+	'sv (no jit, no cache)': svButtonNoJitNoCache(),
 	cva: cvaButton()
 });
 assertSameOutput('simple with props', {
 	sv: svButton({ color: 'secondary', size: 'lg' }),
 	'sv (no cache)': svButtonNoCache({ color: 'secondary', size: 'lg' }),
+	'sv (no jit)': svButtonNoJit({ color: 'secondary', size: 'lg' }),
+	'sv (no jit, no cache)': svButtonNoJitNoCache({
+		color: 'secondary',
+		size: 'lg'
+	}),
 	cva: cvaButton({ color: 'secondary', size: 'lg' })
 });
 assertSameOutput('compound match', {
 	sv: svCompound({ color: 'primary', size: 'lg' }),
 	'sv (no cache)': svCompoundNoCache({ color: 'primary', size: 'lg' }),
+	'sv (no jit)': svCompoundNoJit({ color: 'primary', size: 'lg' }),
+	'sv (no jit, no cache)': svCompoundNoJitNoCache({
+		color: 'primary',
+		size: 'lg'
+	}),
 	cva: cvaCompound({ color: 'primary', size: 'lg' })
 });
 assertSameOutput('compound no match', {
 	sv: svCompound({ color: 'primary', size: 'sm' }),
 	'sv (no cache)': svCompoundNoCache({ color: 'primary', size: 'sm' }),
+	'sv (no jit)': svCompoundNoJit({ color: 'primary', size: 'sm' }),
+	'sv (no jit, no cache)': svCompoundNoJitNoCache({
+		color: 'primary',
+		size: 'sm'
+	}),
 	cva: cvaCompound({ color: 'primary', size: 'sm' })
 });
 assertSameOutput('many variants defaults', {
 	sv: svMany(),
 	'sv (no cache)': svManyNoCache(),
+	'sv (no jit)': svManyNoJit(),
+	'sv (no jit, no cache)': svManyNoJitNoCache(),
 	cva: cvaMany()
 });
 assertSameOutput('many variants with props', {
 	sv: svMany({ size: 'lg', color: 'danger', rounded: 'full', shadow: 'lg' }),
 	'sv (no cache)': svManyNoCache({
+		size: 'lg',
+		color: 'danger',
+		rounded: 'full',
+		shadow: 'lg'
+	}),
+	'sv (no jit)': svManyNoJit({
+		size: 'lg',
+		color: 'danger',
+		rounded: 'full',
+		shadow: 'lg'
+	}),
+	'sv (no jit, no cache)': svManyNoJitNoCache({
 		size: 'lg',
 		color: 'danger',
 		rounded: 'full',
