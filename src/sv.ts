@@ -24,9 +24,7 @@ type RuntimeVariantState = Record<
 type ResolvedVariantState = Record<string, RuntimeVariantValue | undefined>;
 type ResolvedVariantValues = (RuntimeVariantValue | undefined)[];
 
-type RuntimeVariantMatcher =
-	| RuntimeVariantValue
-	| readonly RuntimeVariantValue[];
+type RuntimeVariantMatcher = readonly RuntimeVariantValue[];
 
 type EitherClassProp<C, O extends boolean = false> = O extends true
 	? { class?: C; className?: never } | { class?: never; className?: C }
@@ -640,10 +638,6 @@ const looseEquals = (
 	second: RuntimeVariantValue | null | undefined
 ): boolean => first === second || `${first}` === `${second}`;
 
-const isVariantMatcherArray = (
-	value: RuntimeVariantMatcher
-): value is readonly RuntimeVariantValue[] => isArray(value);
-
 const isRuntimeVariantValue = (value: unknown): value is RuntimeVariantValue =>
 	typeof value === 'string' ||
 	typeof value === 'number' ||
@@ -692,7 +686,7 @@ const resolveCompoundMatcherExpected = (
 		if (!hasOwn(variantValues, `${value}`)) {
 			throw createInvalidCompoundMatcherValueError(variant, value);
 		}
-		return value;
+		return [value];
 	}
 
 	if (!isArray(value)) {
@@ -733,7 +727,7 @@ const seedPresetMatchers = (
 
 	for (const [variant, value] of entries(presetValues)) {
 		if (value !== undefined) {
-			matchers.set(variant, value);
+			matchers.set(variant, [value]);
 		}
 	}
 };
@@ -788,15 +782,7 @@ const matchesCompound = (
 	for (const { key, expected } of matchers) {
 		const propValue = props[key];
 
-		if (isVariantMatcherArray(expected)) {
-			if (!expected.some((value) => looseEquals(value, propValue))) {
-				return false;
-			}
-
-			continue;
-		}
-
-		if (!looseEquals(expected, propValue)) {
+		if (!expected.some((value) => looseEquals(value, propValue))) {
 			return false;
 		}
 	}
@@ -1960,16 +1946,6 @@ const getValidationSource = (config: CompiledConfig): string => {
 	return `if (${anyNegative.join(' || ')}) { ${checks.join(' ')} }`;
 };
 
-const toMatcherValues = (
-	expected: RuntimeVariantMatcher
-): readonly RuntimeVariantValue[] => {
-	if (isVariantMatcherArray(expected)) {
-		return expected;
-	}
-
-	return [expected];
-};
-
 /**
  * Emits the condition under which a compound entry applies.
  */
@@ -1986,7 +1962,7 @@ const getMatcherSource = (
 			return;
 		}
 
-		const ids = toMatcherValues(matcher.expected).map((value) => {
+		const ids = matcher.expected.map((value) => {
 			const condition = `i${index} === ${valueIds.get(`${value}`)}`;
 
 			// An unset variant still loosely equals the value "undefined"
