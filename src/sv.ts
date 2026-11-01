@@ -1847,15 +1847,14 @@ const getSlotFragment = (
  * Lists the `switch` cases whose strict match equals a `${value}` lookup.
  */
 const getValueCases = (valueKey: string): string => {
-	let cases = `case ${JSON.stringify(valueKey)}:`;
+	const value = coerceVariantKeyValue(valueKey);
+	const cases = `case ${JSON.stringify(valueKey)}:`;
 
-	if (valueKey === 'true' || valueKey === 'false') {
-		cases += ` case ${valueKey}:`;
-	} else if (valueKey !== '' && `${Number(valueKey)}` === valueKey) {
-		cases += ` case ${valueKey}:`;
+	if (typeof value === 'string') {
+		return cases;
 	}
 
-	return cases;
+	return `${cases} case ${value}:`;
 };
 
 const getDefaultSource = (
