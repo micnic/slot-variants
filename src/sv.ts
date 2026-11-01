@@ -1578,22 +1578,6 @@ const applyPostProcess = (
 	return result;
 };
 
-const collectSlotValues = (
-	value: Partial<Record<string, ClassValue>>,
-	slotKey: string,
-	groups: CompiledGroups
-): ClassValue[] => {
-	const result: ClassValue[] = [];
-
-	for (const [targetKey, targetValue] of entries(value)) {
-		if (targetKey === slotKey || groups.get(targetKey)?.includes(slotKey)) {
-			result.push(targetValue);
-		}
-	}
-
-	return result;
-};
-
 const mergeSlotObjectIntoResult = (
 	baseResult: Record<string, string>,
 	classProp: Partial<Record<string, ClassValue>>,
@@ -1620,7 +1604,13 @@ const mergeClassPropIntoResult = (
 
 	if (typeof baseResult === 'string') {
 		if (classPropIsSlotObject) {
-			return cn(baseResult, collectSlotValues(classProp, 'base', groups));
+			const { base } = mergeSlotObjectIntoResult(
+				{ base: baseResult },
+				classProp,
+				groups
+			);
+
+			return cn(base);
 		}
 
 		return cn(baseResult, classProp);
