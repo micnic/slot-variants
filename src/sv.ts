@@ -1621,11 +1621,11 @@ const mergeSlotObjectIntoResult = (
 };
 
 const mergeClassPropIntoResult = (
-	targetKeys: ReadonlySet<string>,
-	groups: CompiledGroups,
+	config: CompiledConfig,
 	baseResult: CacheValue,
 	classProp: RuntimeClassValue
 ): CacheValue => {
+	const { targetKeys, groups } = config;
 	const classPropIsSlotObject = isSlotObjectValue(classProp, targetKeys);
 
 	if (typeof baseResult === 'string') {
@@ -1653,12 +1653,7 @@ const mergeClassProp = (
 ): CacheValue =>
 	applyPostProcess(
 		config.postProcess,
-		mergeClassPropIntoResult(
-			config.targetKeys,
-			config.groups,
-			raw,
-			classProp
-		)
+		mergeClassPropIntoResult(config, raw, classProp)
 	);
 
 const buildCacheEntry = (
