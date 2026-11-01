@@ -1946,13 +1946,11 @@ const getValidationSource = (config: CompiledConfig): string => {
 
 	// Missing variants are reported in the order they are listed as required
 	for (const variant of requiredVariants) {
-		variantData.forEach(({ key }, index) => {
-			if (key === variant) {
-				checks.push(
-					`if (i${index} === ${missingValueId}) throw missingVariant(${JSON.stringify(key)});`
-				);
-			}
-		});
+		const index = variantData.findIndex(({ key }) => key === variant);
+
+		checks.push(
+			`if (i${index} === ${missingValueId}) throw missingVariant(${JSON.stringify(variant)});`
+		);
 	}
 
 	variantData.forEach(({ key }, index) => {
@@ -1986,24 +1984,24 @@ const getMatcherSource = (
 	const conditions: string[] = [];
 
 	variantData.forEach(({ key, valueIds, unsetId }, index) => {
-		for (const matcher of matchers) {
-			if (matcher.key !== key) {
-				continue;
+		const matcher = matchers.find((item) => item.key === key);
+
+		if (matcher === undefined) {
+			return;
+		}
+
+		const ids = toMatcherValues(matcher.expected).map((value) => {
+			const condition = `i${index} === ${valueIds.get(`${value}`)}`;
+
+			// An unset variant still loosely equals the value "undefined"
+			if (`${value}` === 'undefined') {
+				return `${condition} || i${index} === ${unsetId}`;
 			}
 
-			const ids = toMatcherValues(matcher.expected).map((value) => {
-				const condition = `i${index} === ${valueIds.get(`${value}`)}`;
+			return condition;
+		});
 
-				// An unset variant still loosely equals the value "undefined"
-				if (`${value}` === 'undefined') {
-					return `${condition} || i${index} === ${unsetId}`;
-				}
-
-				return condition;
-			});
-
-			conditions.push(`(${ids.join(' || ')})`);
-		}
+		conditions.push(`(${ids.join(' || ')})`);
 	});
 
 	if (conditions.length === 0) {
