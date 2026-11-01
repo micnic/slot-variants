@@ -1800,6 +1800,8 @@ type ProcessCacheValue = (value: CacheValue) => CacheValue;
 
 type FragmentTable = string[];
 
+type ValueSlotClasses = readonly SlotClasses[];
+
 type CompiledRunContext = {
 	cache: VariantCache;
 	cacheReturn: CacheReturn;
@@ -1829,14 +1831,12 @@ const toFragment = (className: string): string => {
 };
 
 /**
- * Collects what a config value adds to one slot, as a fragment that can be
- * concatenated with the others to rebuild that slot's `cn()` output.
+ * Collects what a config value adds to each slot, on its own.
  */
-const getSlotFragment = (
+const collectSlotClasses = (
 	slotEntries: readonly SlotEntry[],
-	slotKey: string,
 	apply: ApplySlotClasses
-): string => {
+): SlotClasses => {
 	const slotClasses: SlotClasses = {};
 
 	for (const [key] of slotEntries) {
@@ -1845,8 +1845,15 @@ const getSlotFragment = (
 
 	apply(slotClasses);
 
-	return toFragment(cn(slotClasses[slotKey]));
+	return slotClasses;
 };
+
+/**
+ * Turns what a config value adds to one slot into a fragment that can be
+ * concatenated with the others to rebuild that slot's `cn()` output.
+ */
+const getSlotFragment = (slotClasses: SlotClasses, slotKey: string): string =>
+	toFragment(cn(slotClasses[slotKey]));
 
 /**
  * Lists the `switch` cases whose strict match equals a `${value}` lookup.
@@ -2011,21 +2018,19 @@ const getMatcherSource = (
  * Emits the code that builds the class names of one slot, as `r<slot>`.
  */
 const getSlotSource = (
-	config: CompiledConfig,
 	[slotKey, slotValue]: SlotEntry,
 	slot: number,
+	variantClasses: readonly ValueSlotClasses[],
+	compoundClasses: ValueSlotClasses,
 	tables: FragmentTable[]
 ): string => {
-	const { slotEntries, variantData, targetKeys, groups, compounds } = config;
 	const lines = [
 		`let r${slot} = ${JSON.stringify(toFragment(cn(slotValue)))};`
 	];
 
-	variantData.forEach(({ values: variantValues }, index) => {
-		const table = values(variantValues).map((value) =>
-			getSlotFragment(slotEntries, slotKey, (slotClasses) => {
-				applyValueToSlotClasses(slotClasses, value, targetKeys, groups);
-			})
+	variantClasses.forEach((valueClasses, index) => {
+		const table = valueClasses.map((slotClasses) =>
+			getSlotFragment(slotClasses, slotKey)
 		);
 
 		if (table.some((fragment) => fragment !== '')) {
@@ -2036,8 +2041,8 @@ const getSlotSource = (
 		}
 	});
 
-	compounds.forEach(({ apply }, index) => {
-		const fragment = getSlotFragment(slotEntries, slotKey, apply);
+	compoundClasses.forEach((slotClasses, index) => {
+		const fragment = getSlotFragment(slotClasses, slotKey);
 
 		if (fragment !== '') {
 			lines.push(
@@ -2056,14 +2061,34 @@ const getBuildSource = (
 	config: CompiledConfig,
 	tables: FragmentTable[]
 ): string => {
-	const { slotEntries, variantData, compounds } = config;
+	const { slotEntries, variantData, compounds, targetKeys, groups } = config;
 	const lines = compounds.map(
 		({ matchers }, index) =>
 			`const c${index} = ${getMatcherSource(matchers, variantData)};`
 	);
 
+	const variantClasses = variantData.map(({ values: variantValues }) =>
+		values(variantValues).map((value) =>
+			collectSlotClasses(slotEntries, (slotClasses) => {
+				applyValueToSlotClasses(slotClasses, value, targetKeys, groups);
+			})
+		)
+	);
+
+	const compoundClasses = compounds.map(({ apply }) =>
+		collectSlotClasses(slotEntries, apply)
+	);
+
 	slotEntries.forEach((slotEntry, slot) => {
-		lines.push(getSlotSource(config, slotEntry, slot, tables));
+		lines.push(
+			getSlotSource(
+				slotEntry,
+				slot,
+				variantClasses,
+				compoundClasses,
+				tables
+			)
+		);
 	});
 
 	if (slotEntries.length === 1) {
