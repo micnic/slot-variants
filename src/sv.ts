@@ -119,10 +119,9 @@ type CompoundEntry = Record<string, unknown> & {
 	preset?: string | undefined;
 };
 
-type CompiledCompoundSlot = {
+type CompiledCompound = {
 	matchers: readonly CompoundMatcher[];
-	classValue: ConfigClassValue;
-	slots: readonly string[];
+	apply: ApplySlotClasses;
 };
 
 type MultiSlots<S extends MaybeSlots, G extends MaybeGroups<S>> =
@@ -276,11 +275,6 @@ type RuntimeProps = RuntimeVariantState & {
 	preset?: string;
 };
 
-type CompiledCompoundVariant = {
-	matchers: readonly CompoundMatcher[];
-	classValue: SlotValue<Slots, undefined, ConfigClassValue>;
-};
-
 type CompiledConfig = {
 	slots: Slots;
 	slotEntries: readonly SlotEntry[];
@@ -296,8 +290,7 @@ type CompiledConfig = {
 	requiredVariants: readonly string[];
 	multiSlots: ReadonlySet<string>;
 	presets: Record<string, ResolvedVariantState>;
-	compoundVariants: readonly CompiledCompoundVariant[];
-	compoundSlots: readonly CompiledCompoundSlot[];
+	compounds: readonly CompiledCompound[];
 	cache: VariantCache;
 	cacheable: boolean;
 	introspection: boolean;
@@ -1298,32 +1291,51 @@ const compileConfig = (
 	assertValidPresets(presets, normalizedVariants);
 
 	const compiledCompoundVariants = compoundVariants.map(
-		(compound): CompiledCompoundVariant => ({
-			classValue: requireCompoundClassValue(compound, 'variant'),
-			matchers: compileCompoundMatchers(
-				compound,
-				normalizedVariants,
-				presets
-			)
-		})
-	);
+		(compound): CompiledCompound => {
+			const classValue = requireCompoundClassValue(compound, 'variant');
 
-	const compiledCompoundSlots = compoundSlots.map(
-		(compound): CompiledCompoundSlot => {
-			assertNonEmptyCompoundSlots(compound.slots);
 			return {
-				classValue: requireCompoundClassValue(compound, 'slot'),
 				matchers: compileCompoundMatchers(
 					compound,
 					normalizedVariants,
 					presets
 				),
-				slots: expandSlotTargets(
-					compound.slots,
-					resolvedGroups,
-					slotKeys,
-					'Compound slot'
-				)
+				apply: (slotClasses) => {
+					applyValueToSlotClasses(
+						slotClasses,
+						classValue,
+						targetKeys,
+						resolvedGroups
+					);
+				}
+			};
+		}
+	);
+
+	const compiledCompoundSlots = compoundSlots.map(
+		(compound): CompiledCompound => {
+			assertNonEmptyCompoundSlots(compound.slots);
+
+			const classValue = requireCompoundClassValue(compound, 'slot');
+			const matchers = compileCompoundMatchers(
+				compound,
+				normalizedVariants,
+				presets
+			);
+			const slots = expandSlotTargets(
+				compound.slots,
+				resolvedGroups,
+				slotKeys,
+				'Compound slot'
+			);
+
+			return {
+				matchers,
+				apply: (slotClasses) => {
+					for (const slotKey of slots) {
+						slotClasses[slotKey]?.push(classValue);
+					}
+				}
 			};
 		}
 	);
@@ -1342,8 +1354,7 @@ const compileConfig = (
 		requiredVariants: resolvedRequiredVariants,
 		multiSlots: resolvedMultiSlots,
 		presets,
-		compoundVariants: compiledCompoundVariants,
-		compoundSlots: compiledCompoundSlots,
+		compounds: [...compiledCompoundVariants, ...compiledCompoundSlots],
 		cache,
 		hasFunctionDefaults: hasFunctionDefault(defaultVariants),
 		cacheable: cacheSize > 0 && hasSafeCacheKeys(variantData),
@@ -1553,29 +1564,13 @@ const applyResolvedVariantClasses = (
 };
 
 const applyCompoundClasses = (
-	compoundVariants: readonly CompiledCompoundVariant[],
-	compoundSlots: readonly CompiledCompoundSlot[],
-	targetKeys: ReadonlySet<string>,
-	groups: CompiledGroups,
+	compounds: readonly CompiledCompound[],
 	slotClasses: SlotClasses,
 	resolvedProps: ResolvedVariantState
 ) => {
-	for (const compound of compoundVariants) {
-		if (matchesCompound(resolvedProps, compound.matchers)) {
-			applyValueToSlotClasses(
-				slotClasses,
-				compound.classValue,
-				targetKeys,
-				groups
-			);
-		}
-	}
-
-	for (const compound of compoundSlots) {
-		if (matchesCompound(resolvedProps, compound.matchers)) {
-			for (const slotName of compound.slots) {
-				slotClasses[slotName]?.push(compound.classValue);
-			}
+	for (const { matchers, apply } of compounds) {
+		if (matchesCompound(resolvedProps, matchers)) {
+			apply(slotClasses);
 		}
 	}
 };
@@ -1687,8 +1682,7 @@ const buildCacheEntry = (
 		targetKeys,
 		groups,
 		variantData,
-		compoundVariants,
-		compoundSlots,
+		compounds,
 		cacheReturn,
 		postProcess
 	} = config;
@@ -1709,14 +1703,7 @@ const buildCacheEntry = (
 		resolvedProps
 	);
 
-	applyCompoundClasses(
-		compoundVariants,
-		compoundSlots,
-		targetKeys,
-		groups,
-		slotClasses,
-		resolvedProps
-	);
+	applyCompoundClasses(compounds, slotClasses, resolvedProps);
 
 	const raw = finalizeVariantResult(slotEntries, slotClasses);
 	const entry: CacheEntry = {
@@ -2018,48 +2005,16 @@ const getMatcherSource = (
 	return conditions.join(' && ');
 };
 
-type CompiledCompound = {
-	matchers: readonly CompoundMatcher[];
-	apply: ApplySlotClasses;
-};
-
-const getCompiledCompounds = (config: CompiledConfig): CompiledCompound[] => {
-	const { targetKeys, groups } = config;
-
-	return [
-		...config.compoundVariants.map(({ matchers, classValue }) => ({
-			matchers,
-			apply: (slotClasses: SlotClasses) => {
-				applyValueToSlotClasses(
-					slotClasses,
-					classValue,
-					targetKeys,
-					groups
-				);
-			}
-		})),
-		...config.compoundSlots.map(({ matchers, classValue, slots }) => ({
-			matchers,
-			apply: (slotClasses: SlotClasses) => {
-				for (const slotKey of slots) {
-					slotClasses[slotKey]?.push(classValue);
-				}
-			}
-		}))
-	];
-};
-
 /**
  * Emits the code that builds the class names of one slot, as `r<slot>`.
  */
 const getSlotSource = (
 	config: CompiledConfig,
-	compounds: readonly CompiledCompound[],
 	[slotKey, slotValue]: SlotEntry,
 	slot: number,
 	tables: FragmentTable[]
 ): string => {
-	const { slotEntries, variantData, targetKeys, groups } = config;
+	const { slotEntries, variantData, targetKeys, groups, compounds } = config;
 	const lines = [
 		`let r${slot} = ${JSON.stringify(toFragment(cn(slotValue)))};`
 	];
@@ -2099,15 +2054,14 @@ const getBuildSource = (
 	config: CompiledConfig,
 	tables: FragmentTable[]
 ): string => {
-	const { slotEntries, variantData } = config;
-	const compounds = getCompiledCompounds(config);
+	const { slotEntries, variantData, compounds } = config;
 	const lines = compounds.map(
 		({ matchers }, index) =>
 			`const c${index} = ${getMatcherSource(matchers, variantData)};`
 	);
 
 	slotEntries.forEach((slotEntry, slot) => {
-		lines.push(getSlotSource(config, compounds, slotEntry, slot, tables));
+		lines.push(getSlotSource(config, slotEntry, slot, tables));
 	});
 
 	if (slotEntries.length === 1) {
