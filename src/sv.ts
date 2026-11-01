@@ -1236,7 +1236,6 @@ const compileConfig = (
 		...otherSlots
 	};
 
-	const { cache, cacheReturn } = createCache(cacheSize);
 	const slotEntries = entries(normalizedSlots);
 	const slotKeys: ReadonlySet<string> = new Set(keys(normalizedSlots));
 	const resolvedGroups = resolveGroups(groups, slotKeys);
@@ -1336,13 +1335,12 @@ const compileConfig = (
 		multiSlots: resolvedMultiSlots,
 		presets,
 		compounds: [...compiledCompoundVariants, ...compiledCompoundSlots],
-		cache,
+		...createCache(cacheSize),
 		hasFunctionDefaults: values(defaultVariants).some(
 			(value) => typeof value === 'function'
 		),
 		cacheable: cacheSize > 0 && hasSafeCacheKeys(variantData),
 		introspection,
-		cacheReturn,
 		postProcess
 	};
 };
