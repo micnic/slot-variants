@@ -3502,6 +3502,180 @@ t.test('cache skips entries when class prop is provided', (t) => {
 });
 
 // =============================================================================
+// sv() - compiled variant functions
+// =============================================================================
+
+t.test('compound matcher "undefined" matches an unset variant', (t) => {
+	const button = sv('btn', {
+		variants: {
+			state: {
+				undefined: 'is-undefined',
+				on: 'is-on'
+			}
+		},
+		compoundVariants: [{ state: 'undefined', class: 'matched' }]
+	});
+
+	t.equal(button(), 'btn matched', 'unset variant matches');
+	t.equal(
+		button({ state: 'undefined' }),
+		'btn is-undefined matched',
+		'"undefined" value matches'
+	);
+	t.equal(button({ state: 'on' }), 'btn is-on', 'other value does not match');
+
+	t.end();
+});
+
+t.test('variant combinations beyond a safe integer still resolve', (t) => {
+	const values = {
+		a: 'a',
+		b: 'b',
+		c: 'c',
+		d: 'd',
+		e: 'e',
+		f: 'f',
+		g: 'g',
+		h: 'h',
+		i: 'i',
+		j: 'j'
+	};
+
+	const button = sv('btn', {
+		variants: {
+			v0: values,
+			v1: values,
+			v2: values,
+			v3: values,
+			v4: values,
+			v5: values,
+			v6: values,
+			v7: values,
+			v8: values,
+			v9: values,
+			v10: values,
+			v11: values,
+			v12: values,
+			v13: values,
+			v14: values,
+			v15: { ...values, k: 'k' }
+		},
+		defaultVariants: { v0: 'a' },
+		introspection: true
+	});
+
+	t.equal(button(), 'btn a', 'defaults resolve');
+	t.equal(button({ v0: 'b', v15: 'k' }), 'btn b k', 'props resolve');
+
+	t.equal(button.getCacheSize(), 0, 'results are not cached');
+
+	t.end();
+});
+
+t.test('variant values given as other types resolve like strings', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { 1: 'size-1', 2: 'size-2', 1.5: 'size-1.5' },
+			active: { true: 'active', false: 'inactive' }
+		}
+	});
+
+	t.equal(button({ size: 1 }), 'btn size-1', 'integer value');
+	t.equal(button({ size: 1.5 }), 'btn size-1.5', 'decimal value');
+	t.equal(button({ size: 2 }), 'btn size-2', 'another integer value');
+	t.equal(button({ active: true }), 'btn active', 'boolean true');
+	t.equal(button({ active: false }), 'btn inactive', 'boolean false');
+
+	t.end();
+});
+
+t.test('variant value named after an object method is invalid', (t) => {
+	const button = sv('btn', {
+		variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
+	});
+
+	t.throws(
+		// @ts-expect-error - intentionally passing an invalid value to test the runtime check
+		() => button({ size: 'toString' }),
+		{ message: 'Invalid value "toString" for variant "size"' },
+		'inherited property name is not a value'
+	);
+
+	t.end();
+});
+
+t.test('missing required variants are reported in listed order', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			color: { red: 'red', blue: 'blue' }
+		},
+		requiredVariants: ['color', 'size']
+	});
+
+	t.throws(
+		// @ts-expect-error - intentionally omitting required variants to test the runtime check
+		() => button(),
+		{ message: 'Missing required variant: "color"' },
+		'first listed required variant is reported'
+	);
+
+	t.end();
+});
+
+t.test('sv interprets the config when code generation is blocked', (t) => {
+	const NativeFunction = globalThis.Function;
+
+	globalThis.Function = new Proxy(NativeFunction, {
+		construct: () => {
+			throw new EvalError('Code generation from strings disallowed');
+		}
+	});
+
+	t.teardown(() => {
+		globalThis.Function = NativeFunction;
+	});
+
+	const button = sv('btn', {
+		variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+		defaultVariants: { size: 'sm' }
+	});
+
+	t.equal(button(), 'btn text-sm', 'defaults resolve');
+	t.equal(button({ size: 'lg' }), 'btn text-lg', 'props resolve');
+
+	t.end();
+});
+
+t.test('function defaults run once per call', (t) => {
+	let calls = 0;
+
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			tone: { soft: 'soft', loud: 'loud' }
+		},
+		defaultVariants: {
+			tone: ({ size }) => {
+				calls++;
+
+				if (size === 'lg') {
+					return 'loud';
+				}
+
+				return 'soft';
+			}
+		}
+	});
+
+	t.equal(button({ size: 'lg' }), 'btn text-lg loud', 'default uses props');
+	t.equal(button({ size: 'sm' }), 'btn text-sm soft', 'default re-evaluated');
+	t.equal(calls, 2, 'one evaluation per call');
+
+	t.end();
+});
+
+// =============================================================================
 // sv() - postProcess
 // =============================================================================
 

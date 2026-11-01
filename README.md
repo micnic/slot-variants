@@ -828,7 +828,13 @@ Each entry corresponds to one distinct combination of resolved variant values, s
 
 Setting `cacheSize` to `0` (or a negative number) disables caching entirely — every call recomputes its result. This is useful when variant combinations are effectively unbounded and you'd rather not retain any entries.
 
+A definition whose variants allow more than `Number.MAX_SAFE_INTEGER` combinations (roughly 16 variants of 10 values each) is never cached, whatever its `cacheSize`.
+
 Cache inspection and control methods (`getCacheSize`, `clearCache`, `getMaxEntries`) are exposed on the returned function only when `introspection: true` is set — see [Introspection](#introspection).
+
+### Runtime Code Generation
+
+When a config is evaluated, `sv()` compiles a variant function specialized to that config with `new Function`, which keeps each call fast. Environments that block runtime code generation — such as a Content Security Policy without `'unsafe-eval'` — get a variant function that interprets the config on each call instead. It returns the same results and uses the same cache, just more slowly.
 
 ### Introspection
 
