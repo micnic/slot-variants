@@ -1494,17 +1494,13 @@ const toVariantState = (
 ): ResolvedVariantState => {
 	const resolvedProps: ResolvedVariantState = {};
 
-	let index = 0;
-
-	for (const { key } of variantData) {
+	variantData.forEach(({ key }, index) => {
 		const value = values[index];
-
-		index++;
 
 		if (value !== undefined) {
 			resolvedProps[key] = value;
 		}
-	}
+	});
 
 	return resolvedProps;
 };
