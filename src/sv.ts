@@ -633,11 +633,6 @@ export type SlotClassProps<T extends AnyFn> =
 const { isArray, from } = Array;
 const { assign, entries, hasOwn, keys, values } = Object;
 
-const hasFunctionDefault = (
-	defaultVariants: Record<string, RuntimeDefaultVariant>
-): boolean =>
-	values(defaultVariants).some((value) => typeof value === 'function');
-
 const defaultCacheSize = 256;
 
 const looseEquals = (
@@ -1179,12 +1174,6 @@ const resolveGroups = (
 	return result;
 };
 
-const assertNonEmptyCompoundSlots = (compoundSlots: readonly string[]) => {
-	if (compoundSlots.length === 0) {
-		throw new Error('Compound slot must define at least one slot');
-	}
-};
-
 const requireCompoundClassValue = <T>(
 	compound: { class?: T; className?: T },
 	label: 'variant' | 'slot'
@@ -1314,7 +1303,9 @@ const compileConfig = (
 
 	const compiledCompoundSlots = compoundSlots.map(
 		(compound): CompiledCompound => {
-			assertNonEmptyCompoundSlots(compound.slots);
+			if (compound.slots.length === 0) {
+				throw new Error('Compound slot must define at least one slot');
+			}
 
 			const classValue = requireCompoundClassValue(compound, 'slot');
 			const matchers = compileCompoundMatchers(
@@ -1356,7 +1347,9 @@ const compileConfig = (
 		presets,
 		compounds: [...compiledCompoundVariants, ...compiledCompoundSlots],
 		cache,
-		hasFunctionDefaults: hasFunctionDefault(defaultVariants),
+		hasFunctionDefaults: values(defaultVariants).some(
+			(value) => typeof value === 'function'
+		),
 		cacheable: cacheSize > 0 && hasSafeCacheKeys(variantData),
 		introspection,
 		cacheReturn,
