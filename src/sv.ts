@@ -1447,29 +1447,15 @@ const buildCacheKey = (
 	return cacheKey;
 };
 
-const resolveVariantState = (
+const resolveVariantValues = (
 	variantData: readonly VariantData[],
 	defaultVariants: Record<string, RuntimeDefaultVariant>,
 	props: RuntimeProps,
 	presetValues: ResolvedVariantState | undefined
-): ResolvedVariantState => {
-	const resolvedProps: ResolvedVariantState = {};
-
-	for (const { key } of variantData) {
-		const value = resolveVariantValue(
-			defaultVariants,
-			key,
-			props,
-			presetValues
-		);
-
-		if (value !== undefined) {
-			resolvedProps[key] = value;
-		}
-	}
-
-	return resolvedProps;
-};
+): ResolvedVariantValues =>
+	variantData.map(({ key }) =>
+		resolveVariantValue(defaultVariants, key, props, presetValues)
+	);
 
 const toVariantState = (
 	variantData: readonly VariantData[],
@@ -1746,18 +1732,16 @@ const runVariant = (
 	}
 
 	if (entry === undefined) {
-		let resolvedProps: ResolvedVariantState;
-
-		if (resolvedValues === undefined) {
-			resolvedProps = resolveVariantState(
-				variantData,
-				defaultVariants,
-				props,
-				presetValues
-			);
-		} else {
-			resolvedProps = toVariantState(variantData, resolvedValues);
-		}
+		const resolvedProps = toVariantState(
+			variantData,
+			resolvedValues ??
+				resolveVariantValues(
+					variantData,
+					defaultVariants,
+					props,
+					presetValues
+				)
+		);
 
 		entry = buildCacheEntry(config, cacheKey, resolvedProps);
 	}
