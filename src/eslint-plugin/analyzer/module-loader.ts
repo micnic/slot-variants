@@ -97,6 +97,31 @@ const createCollector = (collected: Collected): Rule.RuleModule => ({
 // imported module can sit anywhere.
 const FILE_PATTERN = ['**/*.*'];
 
+// typescript-eslint's switches for type-aware parsing. An imported module is
+// only read for its syntax, and a type-aware parse both costs a TypeScript
+// program and fails outright for a module the project doesn't contain.
+const TYPE_AWARE_PARSER_OPTIONS = new Set([
+	'project',
+	'projectService',
+	'programs'
+]);
+
+const toSyntaxOnly = (
+	languageOptions: Linter.LanguageOptions
+): Linter.LanguageOptions => {
+	const parserOptions: Linter.ParserOptions = {};
+
+	for (const [key, value] of Object.entries({
+		...languageOptions.parserOptions
+	})) {
+		if (!TYPE_AWARE_PARSER_OPTIONS.has(key)) {
+			parserOptions[key] = value;
+		}
+	}
+
+	return { ...languageOptions, parserOptions };
+};
+
 const analyzeModule = (
 	path: string,
 	cwd: string,
@@ -119,7 +144,7 @@ const analyzeModule = (
 			[
 				{
 					files: FILE_PATTERN,
-					languageOptions,
+					languageOptions: toSyntaxOnly(languageOptions),
 					plugins: {
 						'slot-variants-internal': {
 							rules: { collect: createCollector(collected) }

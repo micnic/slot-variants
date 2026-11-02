@@ -5,6 +5,7 @@ import t from 'tap';
 import { Linter, RuleTester } from 'eslint';
 import { RuleTester as OxlintRuleTester } from 'oxlint/plugins-dev';
 import * as svelteParser from 'svelte-eslint-parser';
+import { parser as tsParser } from 'typescript-eslint';
 import * as vueParser from 'vue-eslint-parser';
 import pkg from '../package.json' with { type: 'json' };
 import plugin, { rules } from '../src/eslint-plugin.ts';
@@ -6926,6 +6927,59 @@ t.test('no-restyle reparses a module for a different parser', (t) => {
 		vueMessages,
 		[{ ruleId: 'slot-variants/no-restyle', messageId: 'conflict' }],
 		'the Vue page still reads it'
+	);
+	t.end();
+});
+
+// An imported module is only read for its syntax, so a type-aware parser
+// setup on the importer must not stop it from parsing: here the module is
+// reached through an alias the tsconfig doesn't know, which leaves it outside
+// the TypeScript project the page is linted with.
+t.test('no-restyle reads a module outside the typed project', (t) => {
+	writeFixture(
+		'typed/tsconfig.json',
+		JSON.stringify({
+			compilerOptions: { jsx: 'preserve' },
+			include: ['page.tsx']
+		})
+	);
+	writeFixture(
+		'typed/ui/button.tsx',
+		`${IMPORT}const button = sv({ base: 'p-2' });
+
+		export function Button({ className }) {
+			return <button className={button({ class: className })} />;
+		}
+		`
+	);
+
+	const code = `import { Button } from '@/ui/button.tsx';\n<Button className="p-4" />;`;
+	const page = writeFixture('typed/page.tsx', code);
+	const typedDir = join(fixtureDir, 'typed');
+	const messages = new Linter({ cwd: typedDir }).verify(
+		code,
+		{
+			files: ['**/*.tsx'],
+			plugins: { 'slot-variants': plugin },
+			rules: {
+				'slot-variants/no-restyle': [2, { alias: { '@/': typedDir } }]
+			},
+			languageOptions: {
+				parser: tsParser,
+				parserOptions: {
+					ecmaFeatures: { jsx: true },
+					project: './tsconfig.json',
+					tsconfigRootDir: typedDir
+				}
+			}
+		},
+		{ filename: page }
+	);
+
+	t.match(
+		messages,
+		[{ ruleId: 'slot-variants/no-restyle', messageId: 'conflict' }],
+		'the imported button is still read'
 	);
 	t.end();
 });
