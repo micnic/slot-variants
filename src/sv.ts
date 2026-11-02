@@ -9,6 +9,7 @@ type PartialNullable<T> = {
 };
 
 type StringKeyof<T> = Extract<keyof T, string>;
+
 type ConfigClassValue = string | string[] | undefined;
 
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -22,7 +23,6 @@ type RuntimeVariantState = Record<
 >;
 
 type ResolvedVariantState = Record<string, RuntimeVariantValue | undefined>;
-type ResolvedVariantValues = (RuntimeVariantValue | undefined)[];
 
 type RuntimeVariantMatcher = readonly RuntimeVariantValue[];
 
@@ -31,11 +31,15 @@ type EitherClassProp<C, O extends boolean = false> = O extends true
 	: { class: C; className?: never } | { class?: never; className: C };
 
 type Slots = Record<string, ConfigClassValue>;
+
 type MaybeSlots = Slots | undefined;
+
 type BooleanString<T> = T extends `${boolean}` ? boolean : T;
+
 type SlotKey<S extends MaybeSlots> = 'base' | StringKeyof<S>;
 
 type Groups<S extends MaybeSlots> = Record<string, readonly SlotKey<S>[]>;
+
 type MaybeGroups<S extends MaybeSlots> = Groups<S> | undefined;
 
 type SlotTarget<S extends MaybeSlots, G extends MaybeGroups<S>> =
@@ -70,7 +74,9 @@ type NormalizedVariantValue =
 	| Record<string, ConfigClassValue>;
 
 type NormalizedVariantValues = Record<string, NormalizedVariantValue>;
+
 type NormalizedVariants = Record<string, NormalizedVariantValues>;
+
 type VariantValueIds = ReadonlyMap<string, number>;
 
 type VariantData = {
@@ -82,6 +88,7 @@ type VariantData = {
 };
 
 type RuntimeVariantConfigValue = ConfigClassValue | NormalizedVariantValues;
+
 type CacheValue = string | Record<string, string>;
 
 type CacheEntry = {
@@ -90,6 +97,7 @@ type CacheEntry = {
 };
 
 type VariantCache = Map<number, CacheEntry>;
+
 type CacheReturn = (cacheKey: number, value: CacheEntry) => CacheEntry;
 
 type CacheState = {
@@ -103,9 +111,13 @@ type RuntimeDefaultVariant =
 	| undefined;
 
 type SlotClasses = Record<string, ConfigClassValue[]>;
+
 type SlotEntry = [string, ConfigClassValue];
+
 type ApplySlotClasses = (slotClasses: SlotClasses) => void;
+
 type RuntimeGroups = Record<string, readonly string[]>;
+
 type CompiledGroups = ReadonlyMap<string, readonly string[]>;
 
 type CompoundMatcher = {
@@ -291,7 +303,6 @@ type CompiledConfig = {
 	normalizedVariants: NormalizedVariants;
 	variantData: readonly VariantData[];
 	defaultVariants: Record<string, RuntimeDefaultVariant>;
-	hasFunctionDefaults: boolean;
 	requiredVariants: readonly string[];
 	multiSlots: ReadonlySet<string>;
 	presets: Record<string, ResolvedVariantState>;
@@ -633,15 +644,98 @@ export type SlotClassProps<T extends AnyFn> =
 				>
 			>;
 
+type RunFn = (props: RuntimeProps) => CacheValue;
+
+type MergeClassProp = (
+	raw: CacheValue,
+	classProp: RuntimeClassValue
+) => CacheValue;
+
+type ProcessCacheValue = (value: CacheValue) => CacheValue;
+
+type FragmentTable = string[];
+
+// What one variant adds to one slot: a fragment per value id, with a last
+// empty entry for the unset state.
+type VariantSlotTable = { slot: number; fragments: FragmentTable };
+
+// The value ids of one variant that a compound entry requires.
+type CompoundTest = { compound: number; ids: ReadonlySet<number> };
+
+type VariantPlan = {
+	data: VariantData;
+	undefinedId: number;
+	tables: readonly VariantSlotTable[];
+	tests: readonly CompoundTest[];
+};
+
+// What a compound entry adds to one slot when it applies.
+type CompoundSlotFragment = { slot: number; fragment: string };
+
+type SlotPlan = { key: string; base: string };
+
+/**
+ * Everything a call needs besides the props, precomputed from the config:
+ * each slot's base fragment, each variant's fragment tables and compound
+ * tests, and each compound entry's fragments. The generated code and the
+ * interpreter both run from it.
+ */
+type RunPlan = {
+	slots: readonly SlotPlan[];
+	variants: readonly VariantPlan[];
+	compounds: readonly (readonly CompoundSlotFragment[])[];
+};
+
+type CompiledRunContext = {
+	cache: VariantCache;
+	cacheReturn: CacheReturn;
+	defaults: readonly RuntimeDefaultVariant[];
+	valueIds: readonly VariantValueIds[];
+	tables: readonly FragmentTable[];
+	merge: MergeClassProp;
+	postProcess: ProcessCacheValue;
+	presets: Record<string, ResolvedVariantState>;
+	resolvePreset: typeof resolvePresetValues;
+	missingVariant: typeof createMissingVariantError;
+	invalidValue: typeof createInvalidValueError;
+};
+
+type ResolvedVariant = {
+	variant: VariantPlan;
+	value: RuntimeVariantValue | undefined;
+	id: number;
+};
+
+// A table lookup can't miss, and `join()` would skip a miss anyway.
+type SlotParts = (string | undefined)[];
+
 const { isArray, from } = Array;
 const { assign, entries, hasOwn, keys, values } = Object;
 
 const defaultCacheSize = 256;
 
-const looseEquals = (
-	first: RuntimeVariantValue,
-	second: RuntimeVariantValue | null | undefined
-): boolean => first === second || `${first}` === `${second}`;
+const configKeysRecord: Record<ConfigKey, ConfigValueCheck> = {
+	base: 'class',
+	variants: 'object',
+	slots: 'object',
+	groups: 'object',
+	compoundVariants: 'array',
+	compoundSlots: 'array',
+	defaultVariants: 'object',
+	requiredVariants: 'boolean-or-array',
+	multiSlots: 'boolean-or-array',
+	presets: 'object',
+	cacheSize: 'number',
+	postProcess: 'function',
+	introspection: 'boolean'
+};
+
+const configKeyChecks: ReadonlyMap<string, ConfigValueCheck> = new Map(
+	entries(configKeysRecord)
+);
+
+const missingValueId = -2;
+const unknownValueId = -1;
 
 const isRuntimeVariantValue = (value: unknown): value is RuntimeVariantValue =>
 	typeof value === 'string' ||
@@ -651,12 +745,12 @@ const isRuntimeVariantValue = (value: unknown): value is RuntimeVariantValue =>
 const createInvalidCompoundMatcherValueError = (
 	variant: string,
 	value: unknown
-): Error =>
+) =>
 	new Error(
 		`Compound matcher for variant "${variant}" has invalid value "${value}"`
 	);
 
-const createCache = (cacheSize: number): CacheState => {
+const createCache = (cacheSize: number) => {
 	const cache: VariantCache = new Map();
 
 	return {
@@ -673,17 +767,17 @@ const createCache = (cacheSize: number): CacheState => {
 
 			return value;
 		}
-	};
+	} satisfies CacheState;
 };
 
 /**
  * Checks for the prop keys that every variant function reads besides its
  * variants.
  */
-const isReservedProp = (key: string): boolean =>
+const isReservedProp = (key: string) =>
 	key === 'class' || key === 'className' || key === 'preset';
 
-const isCompoundMetaKey = (compoundKey: string): boolean =>
+const isCompoundMetaKey = (compoundKey: string) =>
 	compoundKey === 'slots' || isReservedProp(compoundKey);
 
 const resolveCompoundMatcherExpected = (
@@ -695,6 +789,7 @@ const resolveCompoundMatcherExpected = (
 		if (!hasOwn(variantValues, `${value}`)) {
 			throw createInvalidCompoundMatcherValueError(variant, value);
 		}
+
 		return [value];
 	}
 
@@ -745,7 +840,7 @@ const getKnownVariantValues = (
 	normalizedVariants: NormalizedVariants,
 	variant: string,
 	errorMessage: string
-): NormalizedVariantValues => {
+) => {
 	const variantValues = normalizedVariants[variant];
 
 	if (variantValues === undefined) {
@@ -784,21 +879,6 @@ const compileCompoundMatchers = (
 	return from(matchers, ([key, expected]) => ({ key, expected }));
 };
 
-const matchesCompound = (
-	props: ResolvedVariantState,
-	matchers: readonly CompoundMatcher[]
-): boolean => {
-	for (const { key, expected } of matchers) {
-		const propValue = props[key];
-
-		if (!expected.some((value) => looseEquals(value, propValue))) {
-			return false;
-		}
-	}
-
-	return true;
-};
-
 /**
  * Narrows a value to its object members, excluding `null` and arrays.
  */
@@ -807,10 +887,8 @@ const isPlainObject = <T>(
 ): value is Exclude<Extract<T, object>, readonly unknown[]> =>
 	value !== null && typeof value === 'object' && !isArray(value);
 
-const hasOnlySlotKeys = (
-	value: object,
-	targetKeys: ReadonlySet<string>
-): boolean => keys(value).every((key) => targetKeys.has(key));
+const hasOnlySlotKeys = (value: object, targetKeys: ReadonlySet<string>) =>
+	keys(value).every((key) => targetKeys.has(key));
 
 const isSlotObjectVariantValue = (
 	variantValue: NormalizedVariantValues,
@@ -820,14 +898,10 @@ const isSlotObjectVariantValue = (
 	keys(variantValue).length > 0 &&
 	hasOnlySlotKeys(variantValue, targetKeys);
 
-const isBooleanVariantRecord = (
-	variantValue: NormalizedVariantValues
-): boolean =>
+const isBooleanVariantRecord = (variantValue: NormalizedVariantValues) =>
 	keys(variantValue).every((key) => key === 'true' || key === 'false');
 
-const withoutUndefinedValues = (
-	variantValues: NormalizedVariantValues
-): NormalizedVariantValues => {
+const withoutUndefinedValues = (variantValues: NormalizedVariantValues) => {
 	const result: NormalizedVariantValues = {};
 
 	for (const [valueKey, value] of entries(variantValues)) {
@@ -840,7 +914,7 @@ const withoutUndefinedValues = (
 const normalizeVariantValue = (
 	variantValue: RuntimeVariantConfigValue,
 	targetKeys: ReadonlySet<string>
-): NormalizedVariantValues => {
+) => {
 	if (
 		!isPlainObject(variantValue) ||
 		isSlotObjectVariantValue(variantValue, targetKeys)
@@ -848,7 +922,7 @@ const normalizeVariantValue = (
 		return {
 			false: '',
 			true: variantValue ?? ''
-		};
+		} satisfies NormalizedVariantValues;
 	}
 
 	if (isBooleanVariantRecord(variantValue)) {
@@ -856,13 +930,13 @@ const normalizeVariantValue = (
 			true: '',
 			false: '',
 			...withoutUndefinedValues(variantValue)
-		};
+		} satisfies NormalizedVariantValues;
 	}
 
 	return withoutUndefinedValues(variantValue);
 };
 
-const coerceVariantKeyValue = (value: string): string | number | boolean => {
+const coerceVariantKeyValue = (value: string) => {
 	if (value === 'true') {
 		return true;
 	}
@@ -880,30 +954,7 @@ const coerceVariantKeyValue = (value: string): string | number | boolean => {
 	return numericValue;
 };
 
-const configKeysRecord: Record<ConfigKey, ConfigValueCheck> = {
-	base: 'class',
-	variants: 'object',
-	slots: 'object',
-	groups: 'object',
-	compoundVariants: 'array',
-	compoundSlots: 'array',
-	defaultVariants: 'object',
-	requiredVariants: 'boolean-or-array',
-	multiSlots: 'boolean-or-array',
-	presets: 'object',
-	cacheSize: 'number',
-	postProcess: 'function',
-	introspection: 'boolean'
-};
-
-const configKeyChecks: ReadonlyMap<string, ConfigValueCheck> = new Map(
-	entries(configKeysRecord)
-);
-
-const matchesConfigValue = (
-	check: ConfigValueCheck,
-	value: unknown
-): boolean => {
+const matchesConfigValue = (check: ConfigValueCheck, value: unknown) => {
 	if (value === undefined) {
 		return true;
 	}
@@ -946,7 +997,7 @@ const isConfig = (value: ClassValue | RawConfig): value is RawConfig => {
 const createNormalizedVariants = <S extends MaybeSlots>(
 	variants: Variants<S, undefined>,
 	targetKeys: ReadonlySet<string>
-): NormalizedVariants => {
+) => {
 	const result: NormalizedVariants = {};
 
 	for (const [variantKey, variantValue] of entries(variants)) {
@@ -961,9 +1012,7 @@ const createNormalizedVariants = <S extends MaybeSlots>(
  * single cache key: the sum of every value id times its variant's stride, with
  * each variant spanning its value count plus one for the unset state.
  */
-const createVariantData = (
-	normalizedVariants: NormalizedVariants
-): VariantData[] => {
+const createVariantData = (normalizedVariants: NormalizedVariants) => {
 	let stride = 1;
 
 	return entries(normalizedVariants).map(([variantKey, variantValues]) => {
@@ -985,7 +1034,7 @@ const createVariantData = (
 /**
  * Checks that every combination of variant values has a safe integer key.
  */
-const hasSafeCacheKeys = (variantData: readonly VariantData[]): boolean =>
+const hasSafeCacheKeys = (variantData: readonly VariantData[]) =>
 	variantData.every(
 		({ unsetId, stride }) =>
 			stride * (unsetId + 1) <= Number.MAX_SAFE_INTEGER
@@ -1341,9 +1390,6 @@ const compileConfig = (
 		presets,
 		compounds: [...compiledCompoundVariants, ...compiledCompoundSlots],
 		...createCache(cacheSize),
-		hasFunctionDefaults: values(defaultVariants).some(
-			(value) => typeof value === 'function'
-		),
 		cacheable: cacheSize > 0 && hasSafeCacheKeys(variantData),
 		introspection,
 		postProcess
@@ -1355,13 +1401,13 @@ const createMissingVariantError = (variant: string): Error =>
 
 const createInvalidValueError = (
 	variant: string,
-	value: RuntimeVariantValue
-): Error => new Error(`Invalid value "${value}" for variant "${variant}"`);
+	value: RuntimeVariantValue | undefined
+) => new Error(`Invalid value "${value}" for variant "${variant}"`);
 
 const resolvePresetValues = (
 	presets: Record<string, ResolvedVariantState>,
 	presetName: string | undefined
-): ResolvedVariantState | undefined => {
+) => {
 	if (presetName === undefined) {
 		return undefined;
 	}
@@ -1378,7 +1424,7 @@ const resolveVariantValue = (
 	variantKey: string,
 	props: RuntimeVariantState,
 	presetValues: ResolvedVariantState | undefined
-): RuntimeVariantValue | undefined => {
+) => {
 	const propValue = props[variantKey];
 
 	if (propValue === null) {
@@ -1406,164 +1452,10 @@ const resolveVariantValue = (
 	return defaultValue;
 };
 
-/**
- * Resolves every variant into the cache key of its combination, or returns
- * `undefined` when a value is unknown, as such a call throws before caching.
- */
-const buildCacheKey = (
-	variantData: readonly VariantData[],
-	defaultVariants: Record<string, RuntimeDefaultVariant>,
-	props: RuntimeProps,
-	presetValues: ResolvedVariantState | undefined,
-	values: ResolvedVariantValues | undefined
-): number | undefined => {
-	let cacheKey = 0;
-	let known = true;
-
-	for (const { key, valueIds, unsetId, stride } of variantData) {
-		const value = resolveVariantValue(
-			defaultVariants,
-			key,
-			props,
-			presetValues
-		);
-
-		values?.push(value);
-
-		let id: number | undefined = unsetId;
-
-		if (value !== undefined) {
-			id = valueIds.get(`${value}`);
-		}
-
-		if (id === undefined) {
-			known = false;
-		} else {
-			cacheKey += id * stride;
-		}
-	}
-
-	if (!known) {
-		return undefined;
-	}
-
-	return cacheKey;
-};
-
-const resolveVariantValues = (
-	variantData: readonly VariantData[],
-	defaultVariants: Record<string, RuntimeDefaultVariant>,
-	props: RuntimeProps,
-	presetValues: ResolvedVariantState | undefined
-): ResolvedVariantValues =>
-	variantData.map(({ key }) =>
-		resolveVariantValue(defaultVariants, key, props, presetValues)
-	);
-
-const toVariantState = (
-	variantData: readonly VariantData[],
-	values: ResolvedVariantValues
-): ResolvedVariantState => {
-	const resolvedProps: ResolvedVariantState = {};
-
-	variantData.forEach(({ key }, index) => {
-		const value = values[index];
-
-		if (value !== undefined) {
-			resolvedProps[key] = value;
-		}
-	});
-
-	return resolvedProps;
-};
-
-const assertRequiredVariants = (
-	requiredVariants: readonly string[],
-	resolvedProps: ResolvedVariantState
-) => {
-	for (const variant of requiredVariants) {
-		if (resolvedProps[variant] === undefined) {
-			throw createMissingVariantError(variant);
-		}
-	}
-};
-
-const getVariantClasses = (
-	variantKey: string,
-	variantProp: RuntimeVariantValue,
-	variantValues: NormalizedVariantValues
-): NormalizedVariantValue => {
-	const valueKey = `${variantProp}`;
-	const variantClasses = variantValues[valueKey];
-
-	// Inherited properties, like "toString", are not variant values
-	if (variantClasses === undefined || !hasOwn(variantValues, valueKey)) {
-		throw createInvalidValueError(variantKey, variantProp);
-	}
-
-	return variantClasses;
-};
-
-const applyResolvedVariantClasses = (
-	variantData: readonly VariantData[],
-	targetKeys: ReadonlySet<string>,
-	groups: CompiledGroups,
-	slotClasses: SlotClasses,
-	resolvedProps: ResolvedVariantState
-) => {
-	for (const { key, values } of variantData) {
-		const variantProp = resolvedProps[key];
-
-		if (variantProp === undefined) {
-			continue;
-		}
-
-		const variantClasses = getVariantClasses(key, variantProp, values);
-
-		if (variantClasses !== '') {
-			applyValueToSlotClasses(
-				slotClasses,
-				variantClasses,
-				targetKeys,
-				groups
-			);
-		}
-	}
-};
-
-const applyCompoundClasses = (
-	compounds: readonly CompiledCompound[],
-	slotClasses: SlotClasses,
-	resolvedProps: ResolvedVariantState
-) => {
-	for (const { matchers, apply } of compounds) {
-		if (matchesCompound(resolvedProps, matchers)) {
-			apply(slotClasses);
-		}
-	}
-};
-
-const finalizeVariantResult = (
-	slotEntries: readonly SlotEntry[],
-	slotClasses: SlotClasses
-): CacheValue => {
-	if (slotEntries.length === 1) {
-		return cn(slotClasses.base);
-	}
-
-	const result: Record<string, string> = {};
-
-	for (const [slotKey] of slotEntries) {
-		result[slotKey] = cn(slotClasses[slotKey]);
-	}
-
-	return result;
-};
-
 const applyPostProcess = (
 	postProcess: ((className: string) => string) | undefined,
 	value: CacheValue
-): CacheValue => {
+) => {
 	if (postProcess === undefined) {
 		return value;
 	}
@@ -1585,7 +1477,7 @@ const mergeSlotObjectIntoResult = (
 	baseResult: Record<string, string>,
 	classProp: Partial<Record<string, ClassValue>>,
 	groups: CompiledGroups
-): Record<string, string> => {
+) => {
 	const result: Record<string, string> = { ...baseResult };
 
 	for (const [targetKey, targetValue] of entries(classProp)) {
@@ -1601,7 +1493,7 @@ const mergeClassPropIntoResult = (
 	config: CompiledConfig,
 	baseResult: CacheValue,
 	classProp: RuntimeClassValue
-): CacheValue => {
+) => {
 	const { targetKeys, groups } = config;
 	const classPropIsSlotObject = isSlotObjectValue(classProp, targetKeys);
 
@@ -1633,151 +1525,16 @@ const mergeClassProp = (
 	config: CompiledConfig,
 	raw: CacheValue,
 	classProp: RuntimeClassValue
-): CacheValue =>
+) =>
 	applyPostProcess(
 		config.postProcess,
 		mergeClassPropIntoResult(config, raw, classProp)
 	);
 
-const buildCacheEntry = (
-	config: CompiledConfig,
-	cacheKey: number | undefined,
-	resolvedProps: ResolvedVariantState
-): CacheEntry => {
-	const {
-		requiredVariants,
-		slotEntries,
-		targetKeys,
-		groups,
-		variantData,
-		compounds,
-		cacheReturn,
-		postProcess
-	} = config;
-
-	assertRequiredVariants(requiredVariants, resolvedProps);
-
-	const slotClasses: SlotClasses = {};
-
-	for (const [key, value] of slotEntries) {
-		slotClasses[key] = [value];
-	}
-
-	applyResolvedVariantClasses(
-		variantData,
-		targetKeys,
-		groups,
-		slotClasses,
-		resolvedProps
-	);
-
-	applyCompoundClasses(compounds, slotClasses, resolvedProps);
-
-	const raw = finalizeVariantResult(slotEntries, slotClasses);
-	const entry: CacheEntry = {
-		raw,
-		processed: applyPostProcess(postProcess, raw)
-	};
-
-	if (cacheKey === undefined) {
-		return entry;
-	}
-
-	return cacheReturn(cacheKey, entry);
-};
-
-const runVariant = (
-	config: CompiledConfig,
-	props: RuntimeProps
-): CacheValue => {
-	const {
-		presets,
-		variantData,
-		defaultVariants,
-		hasFunctionDefaults,
-		cacheable,
-		cache
-	} = config;
-
-	const classProp = props.class ?? props.className;
-	const presetValues = resolvePresetValues(presets, props.preset);
-
-	let resolvedValues: ResolvedVariantValues | undefined;
-	let cacheKey: number | undefined;
-	let entry: CacheEntry | undefined;
-
-	if (cacheable) {
-		if (hasFunctionDefaults) {
-			resolvedValues = [];
-		}
-
-		cacheKey = buildCacheKey(
-			variantData,
-			defaultVariants,
-			props,
-			presetValues,
-			resolvedValues
-		);
-
-		if (cacheKey !== undefined) {
-			entry = cache.get(cacheKey);
-		}
-	}
-
-	if (entry === undefined) {
-		const resolvedProps = toVariantState(
-			variantData,
-			resolvedValues ??
-				resolveVariantValues(
-					variantData,
-					defaultVariants,
-					props,
-					presetValues
-				)
-		);
-
-		entry = buildCacheEntry(config, cacheKey, resolvedProps);
-	}
-
-	if (!classProp) {
-		return entry.processed;
-	}
-
-	return mergeClassProp(config, entry.raw, classProp);
-};
-
-type RunFn = (props: RuntimeProps) => CacheValue;
-type MergeClassProp = (
-	raw: CacheValue,
-	classProp: RuntimeClassValue
-) => CacheValue;
-type ProcessCacheValue = (value: CacheValue) => CacheValue;
-
-type FragmentTable = string[];
-
-type ValueSlotClasses = readonly SlotClasses[];
-
-type CompiledRunContext = {
-	cache: VariantCache;
-	cacheReturn: CacheReturn;
-	defaults: readonly RuntimeDefaultVariant[];
-	valueIds: readonly VariantValueIds[];
-	tables: readonly FragmentTable[];
-	merge: MergeClassProp;
-	postProcess: ProcessCacheValue;
-	presets: Record<string, ResolvedVariantState>;
-	resolvePreset: typeof resolvePresetValues;
-	missingVariant: typeof createMissingVariantError;
-	invalidValue: typeof createInvalidValueError;
-};
-
-const missingValueId = -2;
-const unknownValueId = -1;
-
 /**
  * Prefixes a non-empty class name with the space that joins it to the rest.
  */
-const toFragment = (className: string): string => {
+const toFragment = (className: string) => {
 	if (className === '') {
 		return '';
 	}
@@ -1791,7 +1548,7 @@ const toFragment = (className: string): string => {
 const collectSlotClasses = (
 	slotEntries: readonly SlotEntry[],
 	apply: ApplySlotClasses
-): SlotClasses => {
+) => {
 	const slotClasses: SlotClasses = {};
 
 	for (const [key] of slotEntries) {
@@ -1807,13 +1564,114 @@ const collectSlotClasses = (
  * Turns what a config value adds to one slot into a fragment that can be
  * concatenated with the others to rebuild that slot's `cn()` output.
  */
-const getSlotFragment = (slotClasses: SlotClasses, slotKey: string): string =>
+const getSlotFragment = (slotClasses: SlotClasses, slotKey: string) =>
 	toFragment(cn(slotClasses[slotKey]));
+
+/**
+ * Lists the ids of a variant's values a compound matcher accepts. An unset
+ * variant still loosely equals the value "undefined".
+ */
+const getCompoundIds = (
+	variant: VariantData,
+	expected: RuntimeVariantMatcher
+): ReadonlySet<number> => {
+	const expectedKeys = new Set(expected.map((value) => `${value}`));
+	const ids = new Set<number>();
+
+	for (const [valueKey, id] of variant.valueIds) {
+		if (expectedKeys.has(valueKey)) {
+			ids.add(id);
+		}
+	}
+
+	if (expectedKeys.has('undefined')) {
+		ids.add(variant.unsetId);
+	}
+
+	return ids;
+};
+
+const createVariantPlan = (
+	config: CompiledConfig,
+	variant: VariantData,
+	required: boolean
+): VariantPlan => {
+	const { slotEntries, targetKeys, groups, compounds } = config;
+
+	const valueClasses = values(variant.values).map((value) =>
+		collectSlotClasses(slotEntries, (slotClasses) => {
+			applyValueToSlotClasses(slotClasses, value, targetKeys, groups);
+		})
+	);
+
+	const tables: VariantSlotTable[] = [];
+
+	slotEntries.forEach(([slotKey], slot) => {
+		const fragments = valueClasses.map((slotClasses) =>
+			getSlotFragment(slotClasses, slotKey)
+		);
+
+		if (fragments.some((fragment) => fragment !== '')) {
+			fragments.push('');
+			tables.push({ slot, fragments });
+		}
+	});
+
+	const tests: CompoundTest[] = [];
+
+	compounds.forEach(({ matchers }, compound) => {
+		const matcher = matchers.find(({ key }) => key === variant.key);
+
+		if (matcher !== undefined) {
+			tests.push({
+				compound,
+				ids: getCompoundIds(variant, matcher.expected)
+			});
+		}
+	});
+
+	let undefinedId = variant.unsetId;
+
+	if (required) {
+		undefinedId = missingValueId;
+	}
+
+	return { data: variant, undefinedId, tables, tests };
+};
+
+const createRunPlan = (config: CompiledConfig): RunPlan => {
+	const { slotEntries, variantData, compounds, requiredVariants } = config;
+	const required = new Set(requiredVariants);
+
+	return {
+		slots: slotEntries.map(([key, value]) => ({
+			key,
+			base: toFragment(cn(value))
+		})),
+		variants: variantData.map((variant) =>
+			createVariantPlan(config, variant, required.has(variant.key))
+		),
+		compounds: compounds.map(({ apply }) => {
+			const slotClasses = collectSlotClasses(slotEntries, apply);
+			const fragments: CompoundSlotFragment[] = [];
+
+			slotEntries.forEach(([slotKey], slot) => {
+				const fragment = getSlotFragment(slotClasses, slotKey);
+
+				if (fragment !== '') {
+					fragments.push({ slot, fragment });
+				}
+			});
+
+			return fragments;
+		})
+	};
+};
 
 /**
  * Lists the `switch` cases whose strict match equals a `${value}` lookup.
  */
-const getValueCases = (valueKey: string): string => {
+const getValueCases = (valueKey: string) => {
 	const value = coerceVariantKeyValue(valueKey);
 	const cases = `case ${JSON.stringify(valueKey)}:`;
 
@@ -1827,7 +1685,7 @@ const getValueCases = (valueKey: string): string => {
 const getDefaultSource = (
 	defaultValue: RuntimeDefaultVariant,
 	index: number
-): string => {
+) => {
 	if (typeof defaultValue === 'string') {
 		return JSON.stringify(defaultValue);
 	}
@@ -1847,10 +1705,9 @@ const getDefaultSource = (
  */
 const getVariantSource = (
 	config: CompiledConfig,
-	variant: VariantData,
-	index: number,
-	required: boolean
-): string => {
+	{ data: variant, undefinedId }: VariantPlan,
+	index: number
+) => {
 	const key = JSON.stringify(variant.key);
 	const defaultValue = config.defaultVariants[variant.key];
 	const value = `v${index}`;
@@ -1871,12 +1728,6 @@ const getVariantSource = (
 		(valueKey, id) => `${getValueCases(valueKey)} i${index} = ${id}; break;`
 	);
 
-	let undefinedId = variant.unsetId;
-
-	if (required) {
-		undefinedId = missingValueId;
-	}
-
 	cases.push(`case undefined: i${index} = ${undefinedId}; break;`);
 
 	cases.push(
@@ -1895,7 +1746,7 @@ const getVariantSource = (
  * Emits the checks that throw for missing required variants and then for
  * unknown values, once any value id came out negative.
  */
-const getValidationSource = (config: CompiledConfig): string => {
+const getValidationSource = (config: CompiledConfig) => {
 	const { variantData, requiredVariants } = config;
 
 	if (variantData.length === 0) {
@@ -1927,31 +1778,17 @@ const getValidationSource = (config: CompiledConfig): string => {
 /**
  * Emits the condition under which a compound entry applies.
  */
-const getMatcherSource = (
-	matchers: readonly CompoundMatcher[],
-	variantData: readonly VariantData[]
-): string => {
+const getMatcherSource = (plan: RunPlan, compound: number) => {
 	const conditions: string[] = [];
 
-	variantData.forEach(({ key, valueIds, unsetId }, index) => {
-		const matcher = matchers.find((item) => item.key === key);
+	plan.variants.forEach(({ tests }, index) => {
+		for (const test of tests) {
+			if (test.compound === compound) {
+				const ids = [...test.ids].map((id) => `i${index} === ${id}`);
 
-		if (matcher === undefined) {
-			return;
-		}
-
-		const ids = matcher.expected.map((value) => {
-			const condition = `i${index} === ${valueIds.get(`${value}`)}`;
-
-			// An unset variant still loosely equals the value "undefined"
-			if (`${value}` === 'undefined') {
-				return `${condition} || i${index} === ${unsetId}`;
+				conditions.push(`(${ids.join(' || ')})`);
 			}
-
-			return condition;
-		});
-
-		conditions.push(`(${ids.join(' || ')})`);
+		}
 	});
 
 	if (conditions.length === 0) {
@@ -1965,36 +1802,29 @@ const getMatcherSource = (
  * Emits the code that builds the class names of one slot, as `r<slot>`.
  */
 const getSlotSource = (
-	[slotKey, slotValue]: SlotEntry,
+	plan: RunPlan,
+	{ base }: SlotPlan,
 	slot: number,
-	variantClasses: readonly ValueSlotClasses[],
-	compoundClasses: ValueSlotClasses,
 	tables: FragmentTable[]
-): string => {
-	const lines = [
-		`let r${slot} = ${JSON.stringify(toFragment(cn(slotValue)))};`
-	];
+) => {
+	const lines = [`let r${slot} = ${JSON.stringify(base)};`];
 
-	variantClasses.forEach((valueClasses, index) => {
-		const table = valueClasses.map((slotClasses) =>
-			getSlotFragment(slotClasses, slotKey)
-		);
-
-		if (table.some((fragment) => fragment !== '')) {
-			// The extra entry stands for the unset state
-			table.push('');
-			lines.push(`r${slot} += t${tables.length}[i${index}];`);
-			tables.push(table);
+	plan.variants.forEach((variant, index) => {
+		for (const table of variant.tables) {
+			if (table.slot === slot) {
+				lines.push(`r${slot} += t${tables.length}[i${index}];`);
+				tables.push(table.fragments);
+			}
 		}
 	});
 
-	compoundClasses.forEach((slotClasses, index) => {
-		const fragment = getSlotFragment(slotClasses, slotKey);
-
-		if (fragment !== '') {
-			lines.push(
-				`if (c${index}) r${slot} += ${JSON.stringify(fragment)};`
-			);
+	plan.compounds.forEach((fragments, index) => {
+		for (const { slot: target, fragment } of fragments) {
+			if (target === slot) {
+				lines.push(
+					`if (c${index}) r${slot} += ${JSON.stringify(fragment)};`
+				);
+			}
 		}
 	});
 
@@ -2004,45 +1834,21 @@ const getSlotSource = (
 /**
  * Emits the code that builds the `raw` class names of a combination.
  */
-const getBuildSource = (
-	config: CompiledConfig,
-	tables: FragmentTable[]
-): string => {
-	const { slotEntries, variantData, compounds, targetKeys, groups } = config;
-	const lines = compounds.map(
-		({ matchers }, index) =>
-			`const c${index} = ${getMatcherSource(matchers, variantData)};`
+const getBuildSource = (plan: RunPlan, tables: FragmentTable[]) => {
+	const lines = plan.compounds.map(
+		(_fragments, index) =>
+			`const c${index} = ${getMatcherSource(plan, index)};`
 	);
 
-	const variantClasses = variantData.map(({ values: variantValues }) =>
-		values(variantValues).map((value) =>
-			collectSlotClasses(slotEntries, (slotClasses) => {
-				applyValueToSlotClasses(slotClasses, value, targetKeys, groups);
-			})
-		)
-	);
-
-	const compoundClasses = compounds.map(({ apply }) =>
-		collectSlotClasses(slotEntries, apply)
-	);
-
-	slotEntries.forEach((slotEntry, slot) => {
-		lines.push(
-			getSlotSource(
-				slotEntry,
-				slot,
-				variantClasses,
-				compoundClasses,
-				tables
-			)
-		);
+	plan.slots.forEach((slotPlan, slot) => {
+		lines.push(getSlotSource(plan, slotPlan, slot, tables));
 	});
 
-	if (slotEntries.length === 1) {
+	if (plan.slots.length === 1) {
 		lines.push('const raw = r0.slice(1);');
 	} else {
-		const properties = slotEntries.map(
-			([slotKey], slot) => `${JSON.stringify(slotKey)}: r${slot}.slice(1)`
+		const properties = plan.slots.map(
+			({ key }, slot) => `${JSON.stringify(key)}: r${slot}.slice(1)`
 		);
 
 		lines.push(`const raw = { ${properties.join(', ')} };`);
@@ -2055,7 +1861,7 @@ const getBuildSource = (
  * Emits the code that returns the processed class names, or merges in the
  * `class` prop when one is passed.
  */
-const getMergeSource = (raw: string, processed: string): string =>
+const getMergeSource = (raw: string, processed: string) =>
 	[
 		'const cp = p.class ?? p.className;',
 		`if (!cp) return ${processed};`,
@@ -2068,9 +1874,10 @@ const getMergeSource = (raw: string, processed: string): string =>
  */
 const getResultSource = (
 	config: CompiledConfig,
+	plan: RunPlan,
 	tables: FragmentTable[]
-): string => {
-	const build = getBuildSource(config, tables);
+) => {
+	const build = getBuildSource(plan, tables);
 
 	let processed = 'raw';
 
@@ -2104,20 +1911,15 @@ const getResultSource = (
  */
 const getRunSource = (
 	config: CompiledConfig,
+	plan: RunPlan,
 	tables: FragmentTable[]
-): string => {
+) => {
 	const { variantData, defaultVariants } = config;
-	const requiredVariants = new Set(config.requiredVariants);
-	const variantSources = variantData.map((variant, index) =>
-		getVariantSource(
-			config,
-			variant,
-			index,
-			requiredVariants.has(variant.key)
-		)
+	const variantSources = plan.variants.map((variant, index) =>
+		getVariantSource(config, variant, index)
 	);
 
-	const result = getResultSource(config, tables);
+	const result = getResultSource(config, plan, tables);
 	const locals = tables.map(
 		(_table, index) => `const t${index} = t[${index}];`
 	);
@@ -2144,14 +1946,170 @@ const getRunSource = (
 };
 
 /**
+ * The interpreted counterpart of `getVariantSource`, for every variant.
+ */
+const resolveVariants = (
+	config: CompiledConfig,
+	plan: RunPlan,
+	props: RuntimeProps
+): ResolvedVariant[] => {
+	const presetValues = resolvePresetValues(config.presets, props.preset);
+
+	return plan.variants.map((variant) => {
+		const value = resolveVariantValue(
+			config.defaultVariants,
+			variant.data.key,
+			props,
+			presetValues
+		);
+
+		let id = variant.undefinedId;
+
+		if (value !== undefined) {
+			id = variant.data.valueIds.get(`${value}`) ?? unknownValueId;
+		}
+
+		return { variant, value, id };
+	});
+};
+
+/**
+ * The interpreted counterpart of `getValidationSource`.
+ */
+const assertResolvedVariants = (
+	requiredVariants: readonly string[],
+	resolved: readonly ResolvedVariant[]
+) => {
+	for (const variant of requiredVariants) {
+		const match = resolved.find(
+			({ variant: { data } }) => data.key === variant
+		);
+
+		if (match?.id === missingValueId) {
+			throw createMissingVariantError(variant);
+		}
+	}
+
+	for (const { variant, value, id } of resolved) {
+		if (id === unknownValueId) {
+			throw createInvalidValueError(variant.data.key, value);
+		}
+	}
+};
+
+/**
+ * The interpreted counterpart of `getBuildSource`.
+ */
+const buildRaw = (
+	plan: RunPlan,
+	resolved: readonly ResolvedVariant[]
+): CacheValue => {
+	const slots = plan.slots.map(({ key, base }) => {
+		const parts: SlotParts = [base];
+
+		return { key, parts };
+	});
+	const matched = plan.compounds.map(() => true);
+
+	for (const { variant, id } of resolved) {
+		for (const { slot, fragments } of variant.tables) {
+			slots[slot]?.parts.push(fragments[id]);
+		}
+
+		for (const { compound, ids } of variant.tests) {
+			if (!ids.has(id)) {
+				matched[compound] = false;
+			}
+		}
+	}
+
+	plan.compounds.forEach((fragments, compound) => {
+		if (matched[compound]) {
+			for (const { slot, fragment } of fragments) {
+				slots[slot]?.parts.push(fragment);
+			}
+		}
+	});
+
+	const raw: Record<string, string> = {};
+
+	for (const { key, parts } of slots) {
+		const classNames = parts.join('').slice(1);
+
+		if (slots.length === 1) {
+			return classNames;
+		}
+
+		raw[key] = classNames;
+	}
+
+	return raw;
+};
+
+const buildEntry = (
+	config: CompiledConfig,
+	plan: RunPlan,
+	resolved: readonly ResolvedVariant[]
+): CacheEntry => {
+	const raw = buildRaw(plan, resolved);
+
+	return { raw, processed: applyPostProcess(config.postProcess, raw) };
+};
+
+/**
+ * The interpreted counterpart of `getResultSource`'s cache lookup.
+ */
+const getEntry = (
+	config: CompiledConfig,
+	plan: RunPlan,
+	resolved: readonly ResolvedVariant[]
+): CacheEntry => {
+	if (!config.cacheable) {
+		return buildEntry(config, plan, resolved);
+	}
+
+	let cacheKey = 0;
+
+	for (const { variant, id } of resolved) {
+		cacheKey += id * variant.data.stride;
+	}
+
+	return (
+		config.cache.get(cacheKey) ??
+		config.cacheReturn(cacheKey, buildEntry(config, plan, resolved))
+	);
+};
+
+/**
+ * Runs the plan without generated code, step for step like `getRunSource`.
+ */
+const createInterpretedRun =
+	(config: CompiledConfig, plan: RunPlan) => (props: RuntimeProps) => {
+		const resolved = resolveVariants(config, plan, props);
+
+		assertResolvedVariants(config.requiredVariants, resolved);
+
+		const entry = getEntry(config, plan, resolved);
+		const classProp = props.class ?? props.className;
+
+		if (!classProp) {
+			return entry.processed;
+		}
+
+		return mergeClassProp(config, entry.raw, classProp);
+	};
+
+/**
  * Compiles the function that resolves props to class names from source
  * generated for the config, so each call runs code specialized to it. Where
- * runtime code generation is not allowed, like under a strict CSP, the config
- * is interpreted on each call instead.
+ * runtime code generation is not allowed, like under a strict CSP, the same
+ * plan is interpreted on each call instead.
  */
 const createRun = (config: CompiledConfig): RunFn => {
+	const plan = createRunPlan(config);
 	const tables: FragmentTable[] = [];
-	const source = getRunSource(config, tables);
+	const source = getRunSource(config, plan, tables);
+
 	const context: CompiledRunContext = {
 		cache: config.cache,
 		cacheReturn: config.cacheReturn,
@@ -2171,7 +2129,7 @@ const createRun = (config: CompiledConfig): RunFn => {
 	try {
 		return new Function('ctx', source).call(undefined, context);
 	} catch {
-		return (props) => runVariant(config, props);
+		return createInterpretedRun(config, plan);
 	}
 };
 
@@ -2201,7 +2159,7 @@ const buildSlotFn =
 		outerProps: RuntimeProps,
 		slotKey: string
 	) =>
-	(innerProps: RuntimeProps = {}): string => {
+	(innerProps: RuntimeProps = {}) => {
 		const outerClass = outerProps.class ?? outerProps.className;
 		const innerClass = innerProps.class ?? innerProps.className;
 
@@ -2230,7 +2188,7 @@ const applyMultiSlots = (
 	run: RunFn,
 	props: RuntimeProps,
 	result: CacheValue
-): MultiSlotResult => {
+) => {
 	const output: MultiSlotResult = {};
 
 	if (typeof result === 'string') {
@@ -2259,7 +2217,7 @@ const applyMultiSlots = (
  * is required, or it has a static default value that always fills it in. A
  * function-based default keeps the `+ 1`, since it may return `undefined`.
  */
-const countMaxEntries = (config: CompiledConfig): number => {
+const countMaxEntries = (config: CompiledConfig) => {
 	const requiredVariants = new Set(config.requiredVariants);
 	const { defaultVariants } = config;
 
@@ -2284,7 +2242,7 @@ const runVariantResult = (
 	config: CompiledConfig,
 	run: RunFn,
 	props: RuntimeProps
-): CacheValue | MultiSlotResult => {
+) => {
 	const result = run(props);
 
 	if (config.multiSlots.size === 0) {
@@ -2297,7 +2255,7 @@ const runVariantResult = (
 const splitVariantProps = (
 	variants: NormalizedVariants,
 	props: Record<string, unknown>
-): [Record<string, unknown>, Record<string, unknown>] => {
+) => {
 	const variantProps: Record<string, unknown> = {};
 	const restProps: Record<string, unknown> = {};
 
@@ -2309,11 +2267,12 @@ const splitVariantProps = (
 		}
 	}
 
-	return [variantProps, restProps];
+	return [variantProps, restProps] as const;
 };
 
 const createVariantFn = (config: CompiledConfig) => {
 	const run = createRun(config);
+
 	const variantFn = (props: RuntimeProps = {}) =>
 		runVariantResult(config, run, props);
 
