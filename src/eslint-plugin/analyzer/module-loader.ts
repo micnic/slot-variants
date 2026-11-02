@@ -140,7 +140,14 @@ const analyzeModule = (
 	return collected.analysis;
 };
 
-type CacheEntry = { mtimeMs: number; analysis: ModuleAnalysis | null };
+// A module is parsed with its importer's parser, so the parser is part of what
+// makes an entry valid: one that can't read the module (a JSX page importing a
+// `.vue` file) must not hand its failure to one that can.
+type CacheEntry = {
+	mtimeMs: number;
+	parser: Linter.LanguageOptions['parser'];
+	analysis: ModuleAnalysis | null;
+};
 
 // Bounded so a long-lived editor session can't accumulate every module it has
 // ever seen. Eviction is FIFO — a hit is a plain `get`, with no reordering.
@@ -170,8 +177,9 @@ const loadModule = (
 	}
 
 	const cached = moduleCache.get(path);
+	const { parser } = languageOptions;
 
-	if (cached && cached.mtimeMs === mtimeMs) {
+	if (cached && cached.mtimeMs === mtimeMs && cached.parser === parser) {
 		return cached.analysis;
 	}
 
@@ -186,7 +194,7 @@ const loadModule = (
 		}
 	}
 
-	moduleCache.set(path, { mtimeMs, analysis });
+	moduleCache.set(path, { mtimeMs, parser, analysis });
 
 	return analysis;
 };

@@ -6883,6 +6883,53 @@ t.test('no-restyle (vue)', (t) => {
 	t.end();
 });
 
+// An imported module is parsed with its importer's parser, so a page whose
+// parser can't read the module must not leave a cached failure behind for a
+// page whose parser can.
+t.test('no-restyle reparses a module for a different parser', (t) => {
+	writeFixture(
+		'ui/Shared.vue',
+		`<script setup>
+		${IMPORT}const shared = sv({ base: 'p-2' });
+		const props = defineProps({ class: String });
+		</script>
+		<template><b :class="shared({ class: props.class })">x</b></template>`
+	);
+
+	const linter = new Linter({ cwd: fixtureDir });
+	const restyleRule: Linter.RulesRecord = { 'slot-variants/no-restyle': 2 };
+	const jsxMessages = linter.verify(
+		`import Shared from './ui/Shared.vue';\n<Shared className="p-4" />;`,
+		{
+			files: ['**/*.jsx'],
+			plugins: { 'slot-variants': plugin },
+			rules: restyleRule,
+			languageOptions: {
+				parserOptions: { ecmaFeatures: { jsx: true } }
+			}
+		},
+		{ filename: join(fixtureDir, 'page.jsx') }
+	);
+	const vueMessages = linter.verify(
+		`<script setup>import Shared from './ui/Shared.vue';</script>\n<template><Shared class="p-4" /></template>`,
+		{
+			files: ['**/*.vue'],
+			plugins: { 'slot-variants': plugin },
+			rules: restyleRule,
+			languageOptions: { parser: vueParser }
+		},
+		{ filename: join(fixtureDir, 'page.vue') }
+	);
+
+	t.same(jsxMessages, [], 'the JSX page cannot read the Vue module');
+	t.match(
+		vueMessages,
+		[{ ruleId: 'slot-variants/no-restyle', messageId: 'conflict' }],
+		'the Vue page still reads it'
+	);
+	t.end();
+});
+
 // oxlint runs ESLint-style rules through its `jsPlugins` API, so every
 // plain-script and JSX suite above runs again under oxlint's `RuleTester`.
 // Vue and Svelte need custom parsers oxlint cannot load, and cross-file
