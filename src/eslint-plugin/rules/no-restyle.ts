@@ -40,9 +40,10 @@ import { reportLiterals, reportParts } from '../analyzer/restyle.ts';
  * ${className}` ``). Inside a `cn()` list the literals count as well —
  * `cn('p-2', className)` applies `p-2` just as a config would. The prop is
  * read off a function component's first parameter, destructured (with or
- * without a default) or as a whole props object, including an object derived
- * from it (Solid's `splitProps`, `mergeProps`); a wrapper call like
- * `forwardRef()` or `memo()` around the function is looked through. A Svelte
+ * without a default) or as a whole props object, including one destructured
+ * or renamed in the component body (`const { className } = props`) and an
+ * object derived from it (Solid's `splitProps`, `mergeProps`); a wrapper call
+ * like `forwardRef()` or `memo()` around the function is looked through. A Svelte
  * or Vue single-file component is a component too, its props coming from
  * `$props()`, `defineProps()` (bare or under `withDefaults()`) or `useAttrs()`
  * at the top level of its script.

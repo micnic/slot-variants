@@ -1,6 +1,7 @@
 import type { Rule, Scope } from 'eslint';
 import type {
 	CallExpression,
+	Identifier,
 	ImportDeclaration,
 	MemberExpression,
 	Node,
@@ -273,6 +274,17 @@ export const createForwardingScan = (
 		}
 	};
 
+	// The component whose props object a name refers to.
+	const getPropsObjectComponent = (node: Identifier): Component | null => {
+		const variable = findVariable(sourceCode.getScope(node), node.name);
+
+		if (variable === null) {
+			return null;
+		}
+
+		return propsObjects.get(variable) ?? null;
+	};
+
 	// The component whose props a call yields: the module, for a props source
 	// like `$props()`; the owner of a props object the call is handed, for a
 	// derived view like `splitProps(props, …)`.
@@ -289,17 +301,26 @@ export const createForwardingScan = (
 				continue;
 			}
 
-			const variable = findVariable(sourceCode.getScope(arg), arg.name);
+			const component = getPropsObjectComponent(arg);
 
-			if (variable === null) {
-				continue;
-			}
-
-			const component = propsObjects.get(variable);
-
-			if (component !== undefined) {
+			if (component !== null) {
 				return component;
 			}
+		}
+
+		return null;
+	};
+
+	// The component whose props a declarator's initializer holds: a props
+	// call's result, or the props object itself, destructured or renamed in
+	// the component body (`const { className } = props`).
+	const getInitComponent = (init: Node): Component | null => {
+		if (init.type === 'CallExpression') {
+			return getPropsComponent(init);
+		}
+
+		if (init.type === 'Identifier') {
+			return getPropsObjectComponent(init);
 		}
 
 		return null;
@@ -308,11 +329,11 @@ export const createForwardingScan = (
 	const visitDeclarator = (node: VariableDeclarator) => {
 		const { id, init } = node;
 
-		if (!init || init.type !== 'CallExpression') {
+		if (!init) {
 			return;
 		}
 
-		const component = getPropsComponent(init);
+		const component = getInitComponent(init);
 
 		if (component === null) {
 			return;

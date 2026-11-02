@@ -6011,6 +6011,14 @@ const RESTYLE_VALID = [
 	IMPORT +
 		RESTYLE_BUTTON +
 		'const Button = (props) => { const [local] = splitProps(...rest); return <button class={button({ class: local.class })} />; };\n<Button class="p-4" />;',
+	// Destructuring in the body needs the props object too: an unbound name
+	// and a binding that isn't one aren't it.
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button(props) { const { className } = other; return <button className={button({ class: className })} />; }\n<Button className="p-4" />;',
+	IMPORT +
+		RESTYLE_BUTTON +
+		'const other = {};\nfunction Button(props) { const { className } = other; return <button className={button({ class: className })} />; }\n<Button className="p-4" />;',
 	// A property read that isn't a plain name.
 	IMPORT_SV_CN +
 		RESTYLE_BUTTON +
@@ -6406,6 +6414,21 @@ cn(classes.item({ active: true }), 'px-4');`,
 			IMPORT +
 			RESTYLE_BUTTON +
 			'const Button = (props) => { const merged = mergeProps({ size: \'sm\' }, props); return <button class={button({ class: merged.class })} />; };\n<Button class="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// The props object destructured, or renamed, inside the component body.
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'function Button(props) { const { className } = props; return <button className={button({ class: className })} />; }\n<Button className="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'function Button(props) { const p = props; return <button className={button({ class: p.className })} />; }\n<Button className="p-4" />;',
 		errors: [restyle('p-4', 'p-2')]
 	}
 ];
