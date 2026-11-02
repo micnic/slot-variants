@@ -21,17 +21,30 @@ export const findVariable = (
 	return null;
 };
 
-// The initializer of a single same-file `const name = <value>` binding, or null
-// for anything we can't safely read through: let/var, redeclarations, imports,
-// function parameters, and destructuring patterns.
-const getConstBindingInit = (variable: Scope.Variable | null): Node | null => {
+// The one definition `name` resolves to, or null when it's unbound or
+// declared more than once.
+export const findSingleDef = (
+	scope: Scope.Scope,
+	name: string
+): Scope.Definition | null => {
+	const variable = findVariable(scope, name);
+
 	if (!variable || variable.defs.length !== 1) {
 		return null;
 	}
 
 	const [def] = variable.defs;
 
-	/* c8 ignore next 3 -- a length-1 defs array always has a first element */
+	/* c8 ignore next -- a length-1 defs array always has a first element */
+	return def ?? null;
+};
+
+// The initializer of a single same-file `const name = <value>` binding, or null
+// for anything we can't safely read through: let/var, redeclarations, imports,
+// function parameters, and destructuring patterns.
+const getConstBindingInit = (scope: Scope.Scope, name: string): Node | null => {
+	const def = findSingleDef(scope, name);
+
 	if (!def) {
 		return null;
 	}
@@ -72,7 +85,8 @@ export const resolveStaticValue = (
 		seen.add(current);
 
 		const init = getConstBindingInit(
-			findVariable(sourceCode.getScope(current), current.name)
+			sourceCode.getScope(current),
+			current.name
 		);
 
 		if (!init) {
@@ -97,7 +111,7 @@ export const resolveStaticValueFrom = (
 		return resolveStaticValue(node, sourceCode);
 	}
 
-	const init = getConstBindingInit(findVariable(scope, node.name));
+	const init = getConstBindingInit(scope, node.name);
 
 	if (init === null) {
 		return node;

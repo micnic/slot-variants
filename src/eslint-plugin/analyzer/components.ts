@@ -6,7 +6,7 @@ import type {
 	Node,
 	Program
 } from 'estree';
-import { findVariable } from './const-bindings.ts';
+import { findSingleDef } from './const-bindings.ts';
 
 export type ComponentFunction =
 	| FunctionDeclaration
@@ -69,15 +69,8 @@ export const resolveComponentFunction = (
 	name: string,
 	scope: Scope.Scope
 ): ComponentFunction | null => {
-	const variable = findVariable(scope, name);
+	const def = findSingleDef(scope, name);
 
-	if (!variable || variable.defs.length !== 1) {
-		return null;
-	}
-
-	const [def] = variable.defs;
-
-	/* c8 ignore next 3 -- a length-1 defs array always has a first element */
 	if (!def) {
 		return null;
 	}
@@ -109,15 +102,8 @@ export const resolveImportSource = (
 	name: string,
 	scope: Scope.Scope
 ): { specifier: string; exportName: string } | null => {
-	const variable = findVariable(scope, name);
+	const def = findSingleDef(scope, name);
 
-	if (!variable || variable.defs.length !== 1) {
-		return null;
-	}
-
-	const [def] = variable.defs;
-
-	/* c8 ignore next 3 -- a length-1 defs array always has a first element */
 	if (!def) {
 		return null;
 	}
