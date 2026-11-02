@@ -1,5 +1,5 @@
 import type { Rule } from 'eslint';
-import { DOCS_URL } from '../analyzer/config-keys.ts';
+import { docsUrl } from '../analyzer/config-keys.ts';
 import { findRepeatedEvaluation } from '../analyzer/repeated-evaluation.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
@@ -20,7 +20,7 @@ export const requireTopLevelConfig: Rule.RuleModule = {
 			description:
 				'Require sv() calls with a config object to be at the module top level',
 			recommended: true,
-			url: DOCS_URL
+			url: docsUrl('require-top-level-config')
 		},
 		schema: [],
 		messages: {

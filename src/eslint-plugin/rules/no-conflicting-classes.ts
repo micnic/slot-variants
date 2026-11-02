@@ -1,5 +1,5 @@
 import type { Rule } from 'eslint';
-import { DOCS_URL } from '../analyzer/config-keys.ts';
+import { docsUrl } from '../analyzer/config-keys.ts';
 import {
 	analyzeCnForRule,
 	analyzeConfigForRule
@@ -43,7 +43,7 @@ export const noConflictingClasses: Rule.RuleModule = {
 			description:
 				'Disallow duplicate class tokens and tokens targeting the same utility namespace within an sv() or cn() output',
 			recommended: true,
-			url: DOCS_URL
+			url: docsUrl('no-conflicting-classes')
 		},
 		schema: [
 			{

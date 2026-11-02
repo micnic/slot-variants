@@ -1,5 +1,5 @@
 import type { Rule } from 'eslint';
-import { DOCS_URL } from '../analyzer/config-keys.ts';
+import { docsUrl } from '../analyzer/config-keys.ts';
 import { checkCnArguments, checkSvConfig } from '../analyzer/static-values.ts';
 import { resolveStyledClasses } from '../analyzer/styled-values.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
@@ -21,7 +21,7 @@ export const noDynamicClasses: Rule.RuleModule = {
 			description:
 				'Disallow dynamic values in sv() and cn() calls — only statically inferrable class values are allowed',
 			recommended: true,
-			url: DOCS_URL
+			url: docsUrl('no-dynamic-classes')
 		},
 		schema: [],
 		messages: {

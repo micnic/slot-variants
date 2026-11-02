@@ -3,7 +3,7 @@ import {
 	resolveComponentFunction,
 	resolveImportSource
 } from '../analyzer/components.ts';
-import { DOCS_URL } from '../analyzer/config-keys.ts';
+import { docsUrl } from '../analyzer/config-keys.ts';
 import {
 	type ComponentSite,
 	createForwardingScan,
@@ -67,7 +67,7 @@ export const noRestyle: Rule.RuleModule = {
 			description:
 				'Disallow class names on a component or element that conflict with the classes its sv() or cn() config already applies',
 			recommended: true,
-			url: DOCS_URL
+			url: docsUrl('no-restyle')
 		},
 		schema: [
 			{

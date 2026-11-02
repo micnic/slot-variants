@@ -1,6 +1,9 @@
 import type { Property } from 'estree';
 
-export const DOCS_URL = 'https://github.com/micnic/slot-variants#rules';
+// GitHub anchors a `slot-variants/<rule>` README heading as
+// `slot-variants<rule>`, dropping the backticks and the slash.
+export const docsUrl = (rule: string): string =>
+	`https://github.com/micnic/slot-variants#slot-variants${rule}`;
 
 /**
  * Every recognized sv()/createSV() config key, in the project's canonical

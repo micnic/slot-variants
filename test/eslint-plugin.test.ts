@@ -1,4 +1,10 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+	mkdtempSync,
+	mkdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import t from 'tap';
@@ -485,8 +491,24 @@ t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 		create: Function
 	};
 
+	// GitHub anchors a `slot-variants/<rule>` heading as `slot-variants<rule>`,
+	// dropping the backticks and the slash.
+	const readme = readFileSync(
+		join(import.meta.dirname, '../README.md'),
+		'utf8'
+	);
+
 	for (const [name, r] of Object.entries(plugin.rules)) {
 		t.match(r, ruleShape, `${name}: has the required rule shape`);
+		t.equal(
+			r.meta?.docs?.url,
+			`https://github.com/micnic/slot-variants#slot-variants${name}`,
+			`${name}: docs url points at its own README section`
+		);
+		t.ok(
+			readme.includes(`\n#### \`slot-variants/${name}\`\n`),
+			`${name}: README has the section its docs url points at`
+		);
 	}
 	t.end();
 });

@@ -1,5 +1,5 @@
 import type { Rule } from 'eslint';
-import { DOCS_URL } from '../analyzer/config-keys.ts';
+import { docsUrl } from '../analyzer/config-keys.ts';
 import {
 	dispatchSvConfigCheckers,
 	svRedundantSpacesConfigValueCheckers,
@@ -21,7 +21,7 @@ export const noRedundantSpaces: Rule.RuleModule = {
 			description:
 				'Disallow redundant whitespace inside class strings passed to sv() and cn() calls',
 			recommended: true,
-			url: DOCS_URL
+			url: docsUrl('no-redundant-spaces')
 		},
 		fixable: 'code',
 		schema: [],

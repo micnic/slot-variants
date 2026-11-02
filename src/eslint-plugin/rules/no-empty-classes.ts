@@ -1,5 +1,5 @@
 import type { Rule } from 'eslint';
-import { DOCS_URL } from '../analyzer/config-keys.ts';
+import { docsUrl } from '../analyzer/config-keys.ts';
 import {
 	checkConfigForEmptyClasses,
 	visitForEmptyClasses
@@ -31,7 +31,7 @@ export const noEmptyClasses: Rule.RuleModule = {
 			description:
 				'Disallow empty class values (empty strings, arrays, or objects), zero-argument calls, and empty compound matcher arrays in sv() and cn()',
 			recommended: true,
-			url: DOCS_URL
+			url: docsUrl('no-empty-classes')
 		},
 		fixable: 'code',
 		schema: [],

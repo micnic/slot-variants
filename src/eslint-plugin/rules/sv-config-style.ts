@@ -9,7 +9,7 @@ import type {
 } from 'estree';
 import {
 	CONFIG_KEY_ORDER,
-	DOCS_URL,
+	docsUrl,
 	getKeyName
 } from '../analyzer/config-keys.ts';
 import { getStaticStringText } from '../analyzer/literals.ts';
@@ -507,7 +507,7 @@ export const svConfigStyle: Rule.RuleModule = {
 			description:
 				'Enforce a canonical sv() config key order and a single base-class style',
 			recommended: false,
-			url: DOCS_URL
+			url: docsUrl('sv-config-style')
 		},
 		fixable: 'code',
 		schema: [
