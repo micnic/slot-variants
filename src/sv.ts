@@ -131,7 +131,7 @@ type CompoundEntry = Record<string, unknown> & {
 
 type CompiledCompound = {
 	matchers: readonly CompoundMatcher[];
-	apply: ApplySlotClasses;
+	fragments: readonly CompoundSlotFragment[];
 };
 
 type MultiSlots<S extends MaybeSlots, G extends MaybeGroups<S>> =
@@ -1268,6 +1268,63 @@ const applyValueToSlotClasses = (
 	slotClasses.base?.push(value);
 };
 
+/**
+ * Prefixes a non-empty class name with the space that joins it to the rest.
+ */
+const toFragment = (className: string) => {
+	if (className === '') {
+		return '';
+	}
+
+	return ` ${className}`;
+};
+
+/**
+ * Collects what a config value adds to each slot, on its own.
+ */
+const collectSlotClasses = (
+	slotEntries: readonly SlotEntry[],
+	apply: ApplySlotClasses
+) => {
+	const slotClasses: SlotClasses = {};
+
+	for (const [key] of slotEntries) {
+		slotClasses[key] = [];
+	}
+
+	apply(slotClasses);
+
+	return slotClasses;
+};
+
+/**
+ * Turns what a config value adds to one slot into a fragment that can be
+ * concatenated with the others to rebuild that slot's `cn()` output.
+ */
+const getSlotFragment = (slotClasses: SlotClasses, slotKey: string) =>
+	toFragment(cn(slotClasses[slotKey]));
+
+/**
+ * Lists the fragment a compound entry adds to each slot it changes.
+ */
+const getCompoundFragments = (
+	slotEntries: readonly SlotEntry[],
+	apply: ApplySlotClasses
+) => {
+	const slotClasses = collectSlotClasses(slotEntries, apply);
+	const fragments: CompoundSlotFragment[] = [];
+
+	slotEntries.forEach(([slotKey], slot) => {
+		const fragment = getSlotFragment(slotClasses, slotKey);
+
+		if (fragment !== '') {
+			fragments.push({ slot, fragment });
+		}
+	});
+
+	return fragments;
+};
+
 const compileConfig = (
 	baseArgs: ClassValue[],
 	config: RawConfig
@@ -1337,14 +1394,14 @@ const compileConfig = (
 					normalizedVariants,
 					presets
 				),
-				apply: (slotClasses) => {
+				fragments: getCompoundFragments(slotEntries, (slotClasses) => {
 					applyValueToSlotClasses(
 						slotClasses,
 						classValue,
 						targetKeys,
 						resolvedGroups
 					);
-				}
+				})
 			};
 		}
 	);
@@ -1370,11 +1427,11 @@ const compileConfig = (
 
 			return {
 				matchers,
-				apply: (slotClasses) => {
+				fragments: getCompoundFragments(slotEntries, (slotClasses) => {
 					for (const slotKey of slots) {
 						slotClasses[slotKey]?.push(classValue);
 					}
-				}
+				})
 			};
 		}
 	);
@@ -1537,42 +1594,6 @@ const mergeClassProp = (
 	);
 
 /**
- * Prefixes a non-empty class name with the space that joins it to the rest.
- */
-const toFragment = (className: string) => {
-	if (className === '') {
-		return '';
-	}
-
-	return ` ${className}`;
-};
-
-/**
- * Collects what a config value adds to each slot, on its own.
- */
-const collectSlotClasses = (
-	slotEntries: readonly SlotEntry[],
-	apply: ApplySlotClasses
-) => {
-	const slotClasses: SlotClasses = {};
-
-	for (const [key] of slotEntries) {
-		slotClasses[key] = [];
-	}
-
-	apply(slotClasses);
-
-	return slotClasses;
-};
-
-/**
- * Turns what a config value adds to one slot into a fragment that can be
- * concatenated with the others to rebuild that slot's `cn()` output.
- */
-const getSlotFragment = (slotClasses: SlotClasses, slotKey: string) =>
-	toFragment(cn(slotClasses[slotKey]));
-
-/**
  * Lists the ids of a variant's values a compound matcher accepts. An unset
  * variant still loosely equals the value "undefined".
  */
@@ -1665,20 +1686,7 @@ const createRunPlan = (config: CompiledConfig): RunPlan => {
 			)
 		),
 		tables,
-		compounds: compounds.map(({ apply }) => {
-			const slotClasses = collectSlotClasses(slotEntries, apply);
-			const fragments: CompoundSlotFragment[] = [];
-
-			slotEntries.forEach(([slotKey], slot) => {
-				const fragment = getSlotFragment(slotClasses, slotKey);
-
-				if (fragment !== '') {
-					fragments.push({ slot, fragment });
-				}
-			});
-
-			return fragments;
-		})
+		compounds: compounds.map(({ fragments }) => fragments)
 	};
 };
 
