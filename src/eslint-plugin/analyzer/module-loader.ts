@@ -76,7 +76,6 @@ type Collected = { analysis: ModuleAnalysis | null };
 const createCollector = (collected: Collected): Rule.RuleModule => ({
 	create(context) {
 		const scan = createForwardingScan(context, {
-			onPosition() {},
 			onExit() {
 				collected.analysis = {
 					ast: context.sourceCode.ast,

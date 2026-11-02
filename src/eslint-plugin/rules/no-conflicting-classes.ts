@@ -1,14 +1,14 @@
 import type { Rule } from 'eslint';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import {
+	conflictOptionProperties,
+	readConflictOptions
+} from '../analyzer/conflict-options.ts';
+import {
 	analyzeCnForRule,
 	analyzeConfigForRule
 } from '../analyzer/conflicts.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
-import {
-	buildExclusiveGroupMap,
-	normalizePrefix
-} from '../tailwind-categories.ts';
 
 /**
  * Flags class tokens that collide within the same slot output: exact-duplicate
@@ -48,22 +48,7 @@ export const noConflictingClasses: Rule.RuleModule = {
 		schema: [
 			{
 				type: 'object',
-				properties: {
-					exclusiveGroups: {
-						oneOf: [
-							{ type: 'boolean' },
-							{
-								type: 'array',
-								items: {
-									type: 'array',
-									items: { type: 'string' },
-									minItems: 2
-								}
-							}
-						]
-					},
-					prefix: { type: 'string', minLength: 1 }
-				},
+				properties: conflictOptionProperties,
 				additionalProperties: false
 			}
 		],
@@ -79,12 +64,7 @@ export const noConflictingClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const options = {
-			exclusiveGroups: buildExclusiveGroupMap(
-				context.options[0]?.exclusiveGroups
-			),
-			prefix: normalizePrefix(context.options[0]?.prefix)
-		};
+		const options = readConflictOptions(context.options[0]);
 
 		return createTrackedCallListeners(context, (_node, call) => {
 			if (call.config) {

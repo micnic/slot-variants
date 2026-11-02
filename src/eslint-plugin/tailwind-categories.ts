@@ -69,7 +69,7 @@ const TAILWIND_EXCLUSIVE_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
 // `true` enables the built-in Tailwind groups; an array supplies custom groups
 // (replacing the built-ins); anything else (including the default `undefined`)
 // leaves single-word grouping off.
-type ExclusiveGroupsOption =
+export type ExclusiveGroupsOption =
 	| boolean
 	| ReadonlyArray<ReadonlyArray<string>>
 	| undefined;

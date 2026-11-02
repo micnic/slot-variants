@@ -69,9 +69,9 @@ export type PositionHandlers = {
 	// a class attribute in whichever framework spells it. `site` names the
 	// component element the attribute sits on, or is null for a host element
 	// and for a call.
-	onPosition: (parts: ClassParts, site: ComponentSite | null) => void;
+	onPosition?: (parts: ClassParts, site: ComponentSite | null) => void;
 	// Called after the last position.
-	onExit: () => void;
+	onExit?: () => void;
 };
 
 /**
@@ -579,10 +579,10 @@ export const createForwardingScan = (
 			}
 
 			for (const position of positions) {
-				handlers.onPosition(position.parts, position.site);
+				handlers.onPosition?.(position.parts, position.site);
 			}
 
-			handlers.onExit();
+			handlers.onExit?.();
 		}
 	};
 

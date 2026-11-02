@@ -5,6 +5,10 @@ import {
 } from '../analyzer/components.ts';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import {
+	conflictOptionProperties,
+	readConflictOptions
+} from '../analyzer/conflict-options.ts';
+import {
 	type ComponentSite,
 	createForwardingScan,
 	type ForwardedStyles
@@ -15,11 +19,6 @@ import {
 } from '../analyzer/module-loader.ts';
 import { buildAliasMap } from '../analyzer/module-paths.ts';
 import { reportLiterals, reportParts } from '../analyzer/restyle.ts';
-import {
-	buildExclusiveGroupMap,
-	type ConflictOptions,
-	normalizePrefix
-} from '../tailwind-categories.ts';
 
 /**
  * Flags literal classes written on a component or element that collide with
@@ -73,20 +72,7 @@ export const noRestyle: Rule.RuleModule = {
 			{
 				type: 'object',
 				properties: {
-					exclusiveGroups: {
-						oneOf: [
-							{ type: 'boolean' },
-							{
-								type: 'array',
-								items: {
-									type: 'array',
-									items: { type: 'string' },
-									minItems: 2
-								}
-							}
-						]
-					},
-					prefix: { type: 'string', minLength: 1 },
+					...conflictOptionProperties,
 					alias: {
 						type: 'object',
 						additionalProperties: { type: 'string' }
@@ -103,12 +89,7 @@ export const noRestyle: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const options: ConflictOptions = {
-			exclusiveGroups: buildExclusiveGroupMap(
-				context.options[0]?.exclusiveGroups
-			),
-			prefix: normalizePrefix(context.options[0]?.prefix)
-		};
+		const options = readConflictOptions(context.options[0]);
 		const moduleContext: ModuleContext = {
 			aliases: buildAliasMap(context.options[0]?.alias, context.cwd),
 			cwd: context.cwd,
@@ -163,8 +144,7 @@ export const noRestyle: Rule.RuleModule = {
 				}
 
 				reportParts(context, parts, reported, options);
-			},
-			onExit() {}
+			}
 		});
 
 		return scan.listener;
