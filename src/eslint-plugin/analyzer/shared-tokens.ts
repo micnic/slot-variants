@@ -10,22 +10,22 @@ import {
 } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
-	EMPTY_PROPERTIES,
 	getConfigSlotNames,
 	getProperties,
 	getStrictProperties
 } from './properties.ts';
-import { isUndefinedIdentifier } from './static-predicates.ts';
 import {
 	COMPOUND_NON_MATCHER_KEYS,
 	extractTokens,
 	forEachStaticItem,
 	forEachStringLiteralElement,
+	getStaticMatcherValue,
 	getStaticMatcherValues,
 	isBooleanShorthandVariant
 } from './token-extraction.ts';
 import {
 	type Entry,
+	type EntryListFixer,
 	indexEntriesBySlotAndToken,
 	reportEntryList,
 	type TokenEntriesBySlot,
@@ -381,9 +381,11 @@ const reportSharedTokenEntries = (
 	token: string,
 	plan: SharedTokensFixPlan | null
 ) => {
-	const fix = plan
-		? (fixer: Rule.RuleFixer) => applySharedTokensFixPlan(fixer, plan)
-		: undefined;
+	let fix: EntryListFixer | undefined;
+
+	if (plan) {
+		fix = (fixer) => applySharedTokensFixPlan(fixer, plan);
+	}
 
 	for (const valueMap of tokensByValue) {
 		const entryList = valueMap.get(slot)?.get(token);
@@ -435,28 +437,13 @@ const reportSharedTokensBySlot = (
 	}
 };
 
-const isStaticDefinedDefaultVariantValue = (node: Node): boolean => {
-	if (isUndefinedIdentifier(node)) {
-		return false;
-	}
-
-	if (getStaticStringText(node) !== null) {
-		return true;
-	}
-
-	return (
-		node.type === 'Literal' &&
-		(typeof node.value === 'boolean' || typeof node.value === 'number')
-	);
-};
-
 const collectDefaultVariantKeys = (
 	defaultVariants: Node | undefined
 ): Set<string> => {
 	const keys = new Set<string>();
 
 	for (const [key, value] of getProperties(defaultVariants)) {
-		if (isStaticDefinedDefaultVariantValue(value)) {
+		if (getStaticMatcherValue(value) !== null) {
 			keys.add(key);
 		}
 	}
@@ -647,7 +634,7 @@ const planSingleKeyCompoundFix = (
 	matcher: SingleMatcher,
 	variantValue: ObjectExpression,
 	siblingElements: ListItems
-): ((fixer: Rule.RuleFixer) => Rule.Fix[] | null) | null => {
+): EntryListFixer | null => {
 	const clsText = getStaticStringText(clsNode);
 
 	if (clsText === null) {
@@ -749,17 +736,18 @@ const checkCompoundEntryForSingleKey = (
 		return;
 	}
 
-	const fix =
-		kind === 'compoundVariants'
-			? planSingleKeyCompoundFix(
-					context,
-					element,
-					clsNode,
-					matcher,
-					variantValue,
-					siblingElements
-				)
-			: null;
+	let fix: EntryListFixer | null = null;
+
+	if (kind === 'compoundVariants') {
+		fix = planSingleKeyCompoundFix(
+			context,
+			element,
+			clsNode,
+			matcher,
+			variantValue,
+			siblingElements
+		);
+	}
 
 	context.report({
 		node: element,
@@ -829,10 +817,7 @@ export const analyzeSharedTokens = (
 	const config = getProperties(configNode);
 	const variants = config.get('variants');
 	const slotNames = getConfigSlotNames(config);
-	const variantsMap =
-		variants && variants.type === 'ObjectExpression'
-			? getProperties(variants)
-			: EMPTY_PROPERTIES;
+	const variantsMap = getProperties(variants);
 
 	checkCompoundsForSingleKey(
 		context,

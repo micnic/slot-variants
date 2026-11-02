@@ -18,7 +18,7 @@ import {
 	collectConfigEntries,
 	extractTokens,
 	forEachStringLiteralElement,
-	getStaticMatcherValues
+	readMatchers
 } from './token-extraction.ts';
 import {
 	baseSource,
@@ -75,27 +75,6 @@ const EMPTY_GROUPS: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
 // variant values indirectly; expanding it would need the `presets` config in
 // hand, so it's left out — an unknown matcher only ever widens what's reported.
 const NON_VARIANT_PROPS = new Set(['class', 'className', 'preset']);
-
-const readMatchers = (
-	properties: ReadonlyMap<string, Node>,
-	skip: ReadonlySet<string>
-): Map<string, ReadonlySet<string>> => {
-	const matchers = new Map<string, ReadonlySet<string>>();
-
-	for (const [key, value] of properties) {
-		if (skip.has(key)) {
-			continue;
-		}
-
-		const values = getStaticMatcherValues(value);
-
-		if (values !== null) {
-			matchers.set(key, values);
-		}
-	}
-
-	return matchers;
-};
 
 const NO_SKIP: ReadonlySet<string> = new Set();
 

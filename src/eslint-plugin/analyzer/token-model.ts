@@ -139,12 +139,14 @@ export const indexEntriesBySlotAndToken = (
 	return bySlot;
 };
 
+export type EntryListFixer = (fixer: Rule.RuleFixer) => Rule.Fix[] | null;
+
 export const reportEntryList = (
 	context: Rule.RuleContext,
 	entries: ReadonlyArray<Entry>,
 	messageId: string,
 	data: Record<string, string>,
-	fix?: (fixer: Rule.RuleFixer) => Rule.Fix[] | null
+	fix?: EntryListFixer
 ) => {
 	const { sourceCode } = context;
 

@@ -493,7 +493,7 @@ export const COMPOUND_NON_MATCHER_KEYS = new Set([
 
 // Strings, booleans, and numbers align with variant value keys (`{ true: … }`,
 // `{ 2: … }`), which getKeyName also reads as strings.
-const getStaticMatcherValue = (node: Node): string | null => {
+export const getStaticMatcherValue = (node: Node): string | null => {
 	const text = getStaticStringText(node);
 
 	if (text !== null) {
@@ -545,6 +545,27 @@ export const getStaticMatcherValues = (
 	return values;
 };
 
+export const readMatchers = (
+	properties: ReadonlyMap<string, Node>,
+	skip: ReadonlySet<string>
+): Map<string, ReadonlySet<string>> => {
+	const matchers = new Map<string, ReadonlySet<string>>();
+
+	for (const [key, value] of properties) {
+		if (skip.has(key)) {
+			continue;
+		}
+
+		const values = getStaticMatcherValues(value);
+
+		if (values !== null) {
+			matchers.set(key, values);
+		}
+	}
+
+	return matchers;
+};
+
 // Derives an exclusivity source from a compound's matcher properties, so two
 // compounds requiring disjoint variant values aren't reported as conflicts.
 // Only statically-known matchers count; a wholly dynamic matcher (or an array
@@ -552,19 +573,7 @@ export const getStaticMatcherValues = (
 // under-suppress, never wrongly suppress. With no readable matcher left,
 // falls back to the never-exclusive compound source.
 const getCompoundSource = (compound: ReadonlyMap<string, Node>): Source => {
-	const matchers = new Map<string, ReadonlySet<string>>();
-
-	for (const [key, value] of compound) {
-		if (COMPOUND_NON_MATCHER_KEYS.has(key)) {
-			continue;
-		}
-
-		const matcherValues = getStaticMatcherValues(value);
-
-		if (matcherValues !== null) {
-			matchers.set(key, matcherValues);
-		}
-	}
+	const matchers = readMatchers(compound, COMPOUND_NON_MATCHER_KEYS);
 
 	if (matchers.size === 0) {
 		return compoundSource;
