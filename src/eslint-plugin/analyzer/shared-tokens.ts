@@ -108,6 +108,8 @@ const splitStaticTokens = (text: string): string[] =>
 const getRawInnerText = (context: Rule.RuleContext, node: Node): string =>
 	getInnerText(context.sourceCode, node);
 
+type LiteralRewrite = { node: Node; nextText: string; quote: string };
+
 // Recomputes a literal node's text from a new token list, reusing
 // no-redundant-spaces' quote-preserving rewrite (`canHoistAsLiteral`). Returns
 // null when the new content can't be safely re-emitted at the node's own
@@ -119,7 +121,7 @@ const planLiteralRewrite = (
 	context: Rule.RuleContext,
 	node: Node,
 	nextTokens: readonly string[]
-): { node: Node; nextText: string; quote: string } | null => {
+): LiteralRewrite | null => {
 	const quote = getQuoteChar(context.sourceCode, node);
 	const nextText = nextTokens.join(' ');
 
@@ -129,6 +131,38 @@ const planLiteralRewrite = (
 
 	return { node, nextText, quote };
 };
+
+// Appends to a literal whichever of `tokens` it doesn't already contain,
+// keeping the literal's own tokens first. Null when the literal isn't static
+// or the result can't be re-emitted safely.
+const planAppendRewrite = (
+	context: Rule.RuleContext,
+	node: Node,
+	tokens: Iterable<string>
+): LiteralRewrite | null => {
+	if (getStaticStringText(node) === null) {
+		return null;
+	}
+
+	const existingTokens = splitStaticTokens(getRawInnerText(context, node));
+	const missingTokens = [...tokens].filter(
+		(token) => !existingTokens.includes(token)
+	);
+
+	return planLiteralRewrite(context, node, [
+		...existingTokens,
+		...missingTokens
+	]);
+};
+
+const replaceLiteral = (
+	fixer: Rule.RuleFixer,
+	rewrite: LiteralRewrite
+): Rule.Fix =>
+	fixer.replaceText(
+		rewrite.node,
+		`${rewrite.quote}${rewrite.nextText}${rewrite.quote}`
+	);
 
 // The node holding `slot`'s contribution to a single variant value. Works from
 // the raw (un-resolved) node so a hoisted `const` value isn't silently
@@ -152,14 +186,16 @@ const getRawSlotValueNode = (
 	return valueNode;
 };
 
-type LiteralRewrite = { node: Node; nextText: string; quote: string };
+// A `base` property to create, as text inserted ahead of the config's first
+// property.
+type BaseInsertion = { insertBefore: Node; text: string };
 
 // Where a slot's lifted tokens go: the `base`/`slots[slot]` literal it already
 // has, or the config object a `base` property has to be created in.
 type SharedTokensTarget = { node: Node } | { createBaseIn: ObjectExpression };
 
 type SharedTokensFixPlan = {
-	target: LiteralRewrite | { insertBefore: Node; text: string };
+	target: LiteralRewrite | BaseInsertion;
 	values: ReadonlyArray<LiteralRewrite>;
 };
 
@@ -177,7 +213,7 @@ const planBaseCreation = (
 	config: ObjectExpression,
 	sharedTokens: ReadonlySet<string>,
 	quote: string
-): { insertBefore: Node; text: string } | null => {
+): BaseInsertion | null => {
 	const [firstProperty] = config.properties;
 
 	/* c8 ignore next 3 -- a config with no properties has no variants to analyze */
@@ -276,21 +312,7 @@ const planTargetRewrite = (
 		);
 	}
 
-	if (getStaticStringText(target.node) === null) {
-		return null;
-	}
-
-	const targetTokens = splitStaticTokens(
-		getRawInnerText(context, target.node)
-	);
-	const missingShared = [...sharedTokens].filter(
-		(token) => !targetTokens.includes(token)
-	);
-
-	return planLiteralRewrite(context, target.node, [
-		...targetTokens,
-		...missingShared
-	]);
+	return planAppendRewrite(context, target.node, sharedTokens);
 };
 
 const planSharedTokensFix = (
@@ -339,24 +361,11 @@ const planSharedTokensFix = (
 	return { target: targetPlan, values };
 };
 
-const literalReplacement = (part: {
-	node: Node;
-	nextText: string;
-	quote: string;
-}): { node: Node; text: string } => ({
-	node: part.node,
-	text: `${part.quote}${part.nextText}${part.quote}`
-});
-
 const applySharedTokensFixPlan = (
 	fixer: Rule.RuleFixer,
 	plan: SharedTokensFixPlan
 ): Rule.Fix[] => {
-	const fixes = plan.values.map((part) => {
-		const { node, text } = literalReplacement(part);
-
-		return fixer.replaceText(node, text);
-	});
+	const fixes = plan.values.map((part) => replaceLiteral(fixer, part));
 
 	const { target } = plan;
 
@@ -366,9 +375,7 @@ const applySharedTokensFixPlan = (
 		return fixes;
 	}
 
-	const { node, text } = literalReplacement(target);
-
-	fixes.push(fixer.replaceText(node, text));
+	fixes.push(replaceLiteral(fixer, target));
 
 	return fixes;
 };
@@ -595,31 +602,6 @@ const getSingleCompoundMatcher = (
 	return matcher;
 };
 
-// Merges the compound's class tokens into one target variant-value literal,
-// keeping the literal's own tokens first and skipping any the class already
-// contains. Returns null the moment any piece isn't safely rewritable, same
-// as `no-shared-tokens`' own fix planning — the whole fix is abandoned rather
-// than partially applied.
-const planSingleKeyTargetRewrite = (
-	context: Rule.RuleContext,
-	targetNode: Node,
-	clsTokens: readonly string[]
-): LiteralRewrite | null => {
-	if (getStaticStringText(targetNode) === null) {
-		return null;
-	}
-
-	const targetTokens = splitStaticTokens(
-		getRawInnerText(context, targetNode)
-	);
-	const missing = clsTokens.filter((token) => !targetTokens.includes(token));
-
-	return planLiteralRewrite(context, targetNode, [
-		...targetTokens,
-		...missing
-	]);
-};
-
 // Plans merging a single-key `compoundVariants` entry's class into every
 // variant value its matcher statically resolves to, plus removing the entry
 // itself. Only attempted for `compoundVariants` — `compoundSlots`' class
@@ -668,11 +650,9 @@ const planSingleKeyCompoundFix = (
 			return null;
 		}
 
-		const rewrite = planSingleKeyTargetRewrite(
-			context,
-			targetNode,
-			clsTokens
-		);
+		// The compound's class tokens merge into each target literal; one that
+		// can't be rewritten abandons the whole fix.
+		const rewrite = planAppendRewrite(context, targetNode, clsTokens);
 
 		if (!rewrite) {
 			return null;
@@ -692,11 +672,7 @@ const planSingleKeyCompoundFix = (
 
 		return [
 			removal,
-			...rewrites.map((rewrite) => {
-				const { node, text } = literalReplacement(rewrite);
-
-				return fixer.replaceText(node, text);
-			})
+			...rewrites.map((rewrite) => replaceLiteral(fixer, rewrite))
 		];
 	};
 };
