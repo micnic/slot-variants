@@ -22,14 +22,12 @@ import {
 	type StyledContext
 } from './styled-values.ts';
 import {
-	extractTokens,
+	extractCnTokens,
 	forEachStaticItem,
-	pushTokensFromText
+	pushBaseTokensFromText
 } from './token-extraction.ts';
 import {
 	areExclusiveMatchers,
-	baseSource,
-	EMPTY_SLOT_NAMES,
 	type Entry,
 	getEntryMatchers,
 	reportEntryList,
@@ -70,11 +68,9 @@ const pushQuasiTokens = (
 	for (const quasi of node.quasis) {
 		// Template delimiters are single-char on both sides of a quasi, so
 		// start offset + 1 is its first inner character.
-		pushTokensFromText(
+		pushBaseTokensFromText(
 			quasi.value.raw,
 			sourceCode.getRange(quasi)[0] + 1,
-			'base',
-			baseSource,
 			literals
 		);
 	}
@@ -186,15 +182,7 @@ export const collectParts = (
 		return;
 	}
 
-	extractTokens(
-		resolved,
-		'base',
-		baseSource,
-		EMPTY_SLOT_NAMES,
-		parts.literals,
-		ctx.sourceCode,
-		true
-	);
+	extractCnTokens(resolved, parts.literals, ctx.sourceCode);
 };
 
 /**

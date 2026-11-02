@@ -16,12 +16,11 @@ import {
 } from './properties.ts';
 import {
 	collectConfigEntries,
-	extractTokens,
+	extractCnTokens,
 	forEachStringLiteralElement,
 	readMatchers
 } from './token-extraction.ts';
 import {
-	baseSource,
 	EMPTY_SLOT_NAMES,
 	type Entry,
 	indexEntriesBySlotAndToken,
@@ -351,15 +350,7 @@ const cnStyles = (
 	const entries: Entry[] = [];
 
 	for (const arg of call.args) {
-		extractTokens(
-			arg,
-			'base',
-			baseSource,
-			EMPTY_SLOT_NAMES,
-			entries,
-			sourceCode,
-			true
-		);
+		extractCnTokens(arg, entries, sourceCode);
 	}
 
 	const styles = buildLiteralStyles(entries);

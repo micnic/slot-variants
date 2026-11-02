@@ -19,16 +19,14 @@ import {
 import {
 	baseSource,
 	compoundSource,
+	EMPTY_SLOT_NAMES,
 	type Entry,
 	type Source,
 	variantSource,
 	withMatcher
 } from './token-model.ts';
 
-// Exported for `no-restyle`, which tokenizes raw class text that no estree
-// string literal covers: template quasis around a substitution, and the text
-// runs of a Svelte `class` attribute.
-export const pushTokensFromText = (
+const pushTokensFromText = (
 	text: string,
 	base: number,
 	slot: string,
@@ -48,6 +46,17 @@ export const pushTokensFromText = (
 			end
 		});
 	}
+};
+
+// Exported for `no-restyle`, which tokenizes raw class text that no estree
+// string literal covers: template quasis around a substitution, and the text
+// runs of a Svelte `class` attribute.
+export const pushBaseTokensFromText = (
+	text: string,
+	base: number,
+	entries: Entry[]
+) => {
+	pushTokensFromText(text, base, 'base', baseSource, entries);
 };
 
 const pushCookedTokens = (
@@ -385,6 +394,23 @@ export const extractTokens = (
 	for (const [key, value] of slotKeyedProps) {
 		extractTokens(value, key, source, slotNames, entries, sourceCode);
 	}
+};
+
+// A `cn()`-style class list: every token lands in the base slot, unconditioned.
+export const extractCnTokens = (
+	node: Node,
+	entries: Entry[],
+	sourceCode: SourceCode
+) => {
+	extractTokens(
+		node,
+		'base',
+		baseSource,
+		EMPTY_SLOT_NAMES,
+		entries,
+		sourceCode,
+		true
+	);
 };
 
 // Skips spreads/holes silently; use forEachItemReportingSpread to flag them.

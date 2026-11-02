@@ -1,7 +1,7 @@
 import type { Rule, SourceCode } from 'eslint';
 import type { Expression, Node } from 'estree';
-import { pushTokensFromText } from './token-extraction.ts';
-import { baseSource, type Entry } from './token-model.ts';
+import { pushBaseTokensFromText } from './token-extraction.ts';
+import type { Entry } from './token-model.ts';
 
 // Minimal shapes for the framework AST nodes this rule reads. They are
 // declared here rather than pulled from each framework's parser so the plugin
@@ -130,18 +130,12 @@ export const pushRawRangeTokens = (
 	const quote = raw[0];
 
 	if (quote === '"' || quote === "'") {
-		pushTokensFromText(
-			raw.slice(1, -1),
-			start + 1,
-			'base',
-			baseSource,
-			literals
-		);
+		pushBaseTokensFromText(raw.slice(1, -1), start + 1, literals);
 
 		return;
 	}
 
-	pushTokensFromText(raw, start, 'base', baseSource, literals);
+	pushBaseTokensFromText(raw, start, literals);
 };
 
 /** A JSX attribute's name, or null for a namespaced one (`xlink:href`). */

@@ -7,11 +7,9 @@ import {
 	overlapNeighbors
 } from '../tailwind-categories.ts';
 import { getConfigSlotNames, getProperties } from './properties.ts';
-import { collectConfigEntries, extractTokens } from './token-extraction.ts';
+import { collectConfigEntries, extractCnTokens } from './token-extraction.ts';
 import {
 	areExclusiveMatchers,
-	baseSource,
-	EMPTY_SLOT_NAMES,
 	type Entry,
 	getEntryMatchers,
 	indexEntriesBySlotAndToken,
@@ -332,15 +330,7 @@ export const analyzeCnForRule = (
 	const entries: Entry[] = [];
 
 	for (const arg of args) {
-		extractTokens(
-			arg,
-			'base',
-			baseSource,
-			EMPTY_SLOT_NAMES,
-			entries,
-			context.sourceCode,
-			true
-		);
+		extractCnTokens(arg, entries, context.sourceCode);
 	}
 
 	const tokenMap = indexEntriesBySlotAndToken(entries).get('base');
