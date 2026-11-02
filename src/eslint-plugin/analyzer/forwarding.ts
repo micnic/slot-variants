@@ -64,7 +64,7 @@ export type ComponentSite = {
 	scope: Scope.Scope;
 };
 
-export type PositionHandlers = {
+type PositionHandlers = {
 	// Called once per class-list position after the whole file has been
 	// walked: a variant call's override (per slot it targets), a `cn()` call,
 	// a class attribute in whichever framework spells it. `site` names the
@@ -81,7 +81,7 @@ export type PositionHandlers = {
  * reporting on top of it for the file being linted; the cross-file loader runs
  * it bare over an imported module.
  */
-export type ForwardingScan = {
+type ForwardingScan = {
 	moduleScope: () => Scope.Scope;
 	// Components of this file, by the function that declares them — or by the
 	// program itself for a single-file component.

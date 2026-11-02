@@ -9,7 +9,7 @@ import { DEFAULT_EXPORT, findExportTargets } from './module-exports.ts';
 import { type AliasMap, resolveModulePath } from './module-paths.ts';
 
 /** What one imported module contributes: its components and their configs. */
-export type ModuleAnalysis = {
+type ModuleAnalysis = {
 	ast: Program;
 	moduleScope: Scope.Scope;
 	forwarded: ReadonlyMap<Component, ForwardedStyles>;

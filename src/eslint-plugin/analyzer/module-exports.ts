@@ -9,7 +9,7 @@ import {
  * Where an export name leads: a binding in the same module, a function node
  * exported without a name of its own, or another module to look in.
  */
-export type ExportTarget =
+type ExportTarget =
 	| { kind: 'local'; name: string }
 	| { kind: 'node'; node: ComponentFunction }
 	| { kind: 'forward'; specifier: string; name: string };

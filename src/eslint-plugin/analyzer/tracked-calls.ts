@@ -20,7 +20,7 @@ import { createStyledContext, type StyledContext } from './styled-values.ts';
  * Vue template expression, whose own scope never reaches the `<script>`
  * bindings it names, uses the script's module scope.
  */
-export type ScopeOf = (node: Node) => Scope.Scope;
+type ScopeOf = (node: Node) => Scope.Scope;
 
 const getImportedName = (
 	specifier: ImportDeclaration['specifiers'][number]

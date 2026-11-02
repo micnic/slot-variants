@@ -8,12 +8,12 @@ import type { Entry } from './token-model.ts';
 // keeps its single optional peer dependency on ESLint — every field below is
 // only ever reached after its `type` has been checked.
 
-export type JsxIdentifier = { type: 'JSXIdentifier'; name: string };
+type JsxIdentifier = { type: 'JSXIdentifier'; name: string };
 
 // An attribute's container always holds an expression — `class={}` is a parse
 // error, so the `JSXEmptyExpression` a child container can hold never reaches
 // the visitor here.
-export type JsxExpressionContainer = {
+type JsxExpressionContainer = {
 	type: 'JSXExpressionContainer';
 	expression: Expression;
 };
@@ -24,7 +24,7 @@ export type JsxAttribute = {
 	value: Node | JsxExpressionContainer | null;
 };
 
-export type JsxOpeningElement = {
+type JsxOpeningElement = {
 	type: 'JSXOpeningElement';
 	name: JsxIdentifier | { type: 'JSXMemberExpression' | 'JSXNamespacedName' };
 	attributes: ReadonlyArray<JsxAttribute | { type: 'JSXSpreadAttribute' }>;
@@ -35,7 +35,7 @@ export type SvelteLiteral = {
 	range: [number, number];
 };
 
-export type SvelteMustacheTag = {
+type SvelteMustacheTag = {
 	type: 'SvelteMustacheTag';
 	expression: Expression;
 };
@@ -47,7 +47,7 @@ export type SvelteAttribute = {
 };
 
 // Every other attribute kind svelte-eslint-parser emits on a start tag.
-export type SvelteOtherAttribute = {
+type SvelteOtherAttribute = {
 	type:
 		| 'SvelteShorthandAttribute'
 		| 'SvelteSpreadAttribute'
@@ -56,7 +56,7 @@ export type SvelteOtherAttribute = {
 		| 'SvelteStyleDirective';
 };
 
-export type SvelteStartTag = {
+type SvelteStartTag = {
 	type: 'SvelteStartTag';
 	attributes: ReadonlyArray<SvelteAttribute | SvelteOtherAttribute>;
 };
@@ -73,16 +73,16 @@ export type SvelteElement = {
 	startTag: SvelteStartTag;
 };
 
-export type VIdentifier = { type: 'VIdentifier'; name: string };
+type VIdentifier = { type: 'VIdentifier'; name: string };
 
 export type VLiteral = { type: 'VLiteral'; range: [number, number] };
 
-export type VExpressionContainer = {
+type VExpressionContainer = {
 	type: 'VExpressionContainer';
 	expression: Expression | null;
 };
 
-export type VDirectiveKey = {
+type VDirectiveKey = {
 	type: 'VDirectiveKey';
 	name: { name: string };
 	argument: VIdentifier | null;

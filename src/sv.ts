@@ -223,6 +223,15 @@ type VariantPropsInternal<
 	[K in StringKeyof<V>]: VariantPropType<S, G, V[K]>;
 };
 
+type PresetVariantProps<
+	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
+	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, G, V>
+> = PartialNullable<VariantPropsInternal<S, G, V>> & {
+	preset?: StringKeyof<P> | undefined;
+};
+
 type MultiSlotFnProps<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
@@ -231,9 +240,7 @@ type MultiSlotFnProps<
 > = Prettify<
 	P extends undefined
 		? PartialNullable<VariantPropsInternal<S, G, V>>
-		: PartialNullable<VariantPropsInternal<S, G, V>> & {
-				preset?: StringKeyof<P> | undefined;
-			}
+		: PresetVariantProps<S, G, V, P>
 > &
 	EitherClassProp<ClassValue, true>;
 
@@ -340,9 +347,7 @@ type Props<
 > = Prettify<
 	P extends undefined
 		? VariantPropsWithRequired<S, G, V, R>
-		: PartialNullable<VariantPropsInternal<S, G, V>> & {
-				preset?: StringKeyof<P> | undefined;
-			}
+		: PresetVariantProps<S, G, V, P>
 > &
 	ClassProp<S, G, ClassValue>;
 
@@ -1698,25 +1703,25 @@ const runVariant = (
 	const presetValues = resolvePresetValues(presets, props.preset);
 
 	let resolvedValues: ResolvedVariantValues | undefined;
-
-	if (hasFunctionDefaults) {
-		resolvedValues = [];
-	}
-
-	let cacheKey = buildCacheKey(
-		variantData,
-		defaultVariants,
-		props,
-		presetValues,
-		resolvedValues
-	);
-
+	let cacheKey: number | undefined;
 	let entry: CacheEntry | undefined;
 
-	if (!cacheable) {
-		cacheKey = undefined;
-	} else if (cacheKey !== undefined) {
-		entry = cache.get(cacheKey);
+	if (cacheable) {
+		if (hasFunctionDefaults) {
+			resolvedValues = [];
+		}
+
+		cacheKey = buildCacheKey(
+			variantData,
+			defaultVariants,
+			props,
+			presetValues,
+			resolvedValues
+		);
+
+		if (cacheKey !== undefined) {
+			entry = cache.get(cacheKey);
+		}
 	}
 
 	if (entry === undefined) {
@@ -1866,11 +1871,13 @@ const getVariantSource = (
 		(valueKey, id) => `${getValueCases(valueKey)} i${index} = ${id}; break;`
 	);
 
+	let undefinedId = variant.unsetId;
+
 	if (required) {
-		cases.push(`case undefined: i${index} = ${missingValueId}; break;`);
-	} else {
-		cases.push(`case undefined: i${index} = ${variant.unsetId}; break;`);
+		undefinedId = missingValueId;
 	}
+
+	cases.push(`case undefined: i${index} = ${undefinedId}; break;`);
 
 	cases.push(
 		`default: i${index} = ids${index}.get(\`\${${value}}\`) ?? ${unknownValueId};`
@@ -2287,9 +2294,6 @@ const runVariantResult = (
 	return applyMultiSlots(config, run, props, result);
 };
 
-const isVariantFnProp = (key: string, variants: NormalizedVariants): boolean =>
-	isReservedProp(key) || hasOwn(variants, key);
-
 const splitVariantProps = (
 	variants: NormalizedVariants,
 	props: Record<string, unknown>
@@ -2298,7 +2302,7 @@ const splitVariantProps = (
 	const restProps: Record<string, unknown> = {};
 
 	for (const [key, value] of entries(props)) {
-		if (isVariantFnProp(key, variants)) {
+		if (isReservedProp(key) || hasOwn(variants, key)) {
 			variantProps[key] = value;
 		} else {
 			restProps[key] = value;

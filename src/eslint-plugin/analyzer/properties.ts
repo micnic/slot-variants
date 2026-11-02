@@ -1,7 +1,7 @@
 import type { Node, ObjectExpression } from 'estree';
 import { getKeyName } from './config-keys.ts';
 
-export const EMPTY_PROPERTIES: ReadonlyMap<string, Node> = new Map();
+const EMPTY_PROPERTIES: ReadonlyMap<string, Node> = new Map();
 
 const propertiesCache = new WeakMap<
 	ObjectExpression,

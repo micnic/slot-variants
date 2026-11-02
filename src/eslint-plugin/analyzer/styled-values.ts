@@ -29,7 +29,7 @@ import {
 } from './token-model.ts';
 
 /** The classes one `sv()`/`cn()` call applies internally, indexed per slot. */
-export type InternalStyles = {
+type InternalStyles = {
 	bySlot: TokenEntriesBySlot;
 	// The declared slot names plus the group names that stand for them, exactly
 	// as `collectConfigEntries` bucketed the entries above. Empty for a
@@ -66,7 +66,7 @@ export type Invocation = {
 	slot: string | null;
 };
 
-export const EMPTY_MATCHERS: VariantMatchers = new Map();
+const EMPTY_MATCHERS: VariantMatchers = new Map();
 
 const EMPTY_GROUPS: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
 
