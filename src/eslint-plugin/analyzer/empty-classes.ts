@@ -7,8 +7,10 @@ import { getStaticStringText } from './literals.ts';
 import { getProperties } from './properties.ts';
 import {
 	COMPOUND_NON_MATCHER_KEYS,
+	forEachCnBranch,
 	forEachCompoundClass,
-	forEachStaticItem
+	forEachStaticItem,
+	forEachStringRecordKey
 } from './token-extraction.ts';
 
 const isEmptyStringNode = (node: Node): boolean =>
@@ -25,46 +27,11 @@ const checkRecordKeysForEmpty = (
 	context: Rule.RuleContext,
 	node: ObjectExpression
 ) => {
-	for (const prop of node.properties) {
-		if (prop.type !== 'Property' || prop.computed) {
-			continue;
-		}
-
-		const { key } = prop;
-
-		if (key.type === 'Literal' && key.value === '') {
+	forEachStringRecordKey(node, (key, text) => {
+		if (text === '') {
 			context.report({ node: key, messageId: 'emptyString' });
 		}
-	}
-};
-
-// `allowEmptyString` is set at the top of a `slots[key]` value, where `''` is
-// a meaningful "slot with no default classes" declaration. `cnStyle` marks a
-// cn-style position, where an ObjectExpression is a clsx-style record and a
-// `&&`/ternary is a runtime branch rather than a class value itself.
-// The conditional forms of the cn() calling convention: only the branches carry
-// classes, and the same `fix` still removes the whole enclosing argument or
-// element regardless of which branch reported. True when the node was one of
-// them.
-const visitBranchesForEmptyClasses = (
-	context: Rule.RuleContext,
-	node: Node,
-	fix?: EmptyFix
-): boolean => {
-	if (node.type === 'LogicalExpression' && node.operator === '&&') {
-		visitForEmptyClasses(context, node.right, false, fix, true);
-
-		return true;
-	}
-
-	if (node.type === 'ConditionalExpression') {
-		visitForEmptyClasses(context, node.consequent, false, fix, true);
-		visitForEmptyClasses(context, node.alternate, false, fix, true);
-
-		return true;
-	}
-
-	return false;
+	});
 };
 
 const visitArrayForEmptyClasses = (
@@ -89,6 +56,10 @@ const visitArrayForEmptyClasses = (
 	});
 };
 
+// `allowEmptyString` is set at the top of a `slots[key]` value, where `''` is
+// a meaningful "slot with no default classes" declaration. `cnStyle` marks a
+// cn-style position, where an ObjectExpression is a clsx-style record and a
+// `&&`/ternary is a runtime branch rather than a class value itself.
 export const visitForEmptyClasses = (
 	context: Rule.RuleContext,
 	node: Node,
@@ -103,7 +74,15 @@ export const visitForEmptyClasses = (
 		return;
 	}
 
-	if (cnStyle && visitBranchesForEmptyClasses(context, node, fix)) {
+	// The same `fix` removes the whole enclosing argument or element,
+	// whichever branch reported.
+	const isBranch =
+		cnStyle &&
+		forEachCnBranch(node, (branch) => {
+			visitForEmptyClasses(context, branch, false, fix, true);
+		});
+
+	if (isBranch) {
 		return;
 	}
 

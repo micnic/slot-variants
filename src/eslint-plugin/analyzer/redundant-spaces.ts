@@ -8,7 +8,12 @@ import {
 } from './literals.ts';
 import { getProperties } from './properties.ts';
 import type { SvConfigValueChecker } from './static-values.ts';
-import { forEachCompoundClass, forEachStaticItem } from './token-extraction.ts';
+import {
+	forEachCnBranch,
+	forEachCompoundClass,
+	forEachStaticItem,
+	forEachStringRecordKey
+} from './token-extraction.ts';
 
 const hasRedundantSpaces = (value: string): boolean =>
 	!/^(?:\S+(?: \S+)*)?$/.test(value);
@@ -53,25 +58,6 @@ const visitObjectForRedundantSpaces = (
 	}
 };
 
-// A string-literal key is checked for redundant whitespace (identifier/numeric
-// keys can't contain whitespace; computed keys are dynamic).
-const visitRecordKeysForRedundantSpaces = (
-	context: Rule.RuleContext,
-	node: ObjectExpression
-) => {
-	for (const prop of node.properties) {
-		if (prop.type !== 'Property' || prop.computed) {
-			continue;
-		}
-
-		const { key } = prop;
-
-		if (key.type === 'Literal' && typeof key.value === 'string') {
-			reportRedundantSpaces(context, key, key.value);
-		}
-	}
-};
-
 export const visitForRedundantSpaces = (
 	context: Rule.RuleContext,
 	node: Node,
@@ -86,19 +72,13 @@ export const visitForRedundantSpaces = (
 		return;
 	}
 
-	// Only the `&&` right operand and each ternary branch are class contributions.
-	if (
+	const isBranch =
 		cnStyle &&
-		node.type === 'LogicalExpression' &&
-		node.operator === '&&'
-	) {
-		visitForRedundantSpaces(context, node.right, cnStyle);
-		return;
-	}
+		forEachCnBranch(node, (branch) => {
+			visitForRedundantSpaces(context, branch, true);
+		});
 
-	if (cnStyle && node.type === 'ConditionalExpression') {
-		visitForRedundantSpaces(context, node.consequent, cnStyle);
-		visitForRedundantSpaces(context, node.alternate, cnStyle);
+	if (isBranch) {
 		return;
 	}
 
@@ -111,7 +91,9 @@ export const visitForRedundantSpaces = (
 
 	if (node.type === 'ObjectExpression') {
 		if (cnStyle) {
-			visitRecordKeysForRedundantSpaces(context, node);
+			forEachStringRecordKey(node, (key, text) => {
+				reportRedundantSpaces(context, key, text);
+			});
 			return;
 		}
 

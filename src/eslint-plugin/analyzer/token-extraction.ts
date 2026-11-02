@@ -2,6 +2,7 @@ import type { AST, SourceCode } from 'eslint';
 import type {
 	ConditionalExpression,
 	Expression,
+	Literal,
 	Node,
 	ObjectExpression,
 	Property,
@@ -411,6 +412,48 @@ export const extractCnTokens = (
 		sourceCode,
 		true
 	);
+};
+
+type NodeVisitor = (node: Node) => void;
+type StringKeyVisitor = (key: Literal, text: string) => void;
+
+// The conditional forms of the cn() calling convention: only the `&&` right
+// operand and each ternary branch carry classes. True when `node` was one of
+// them.
+export const forEachCnBranch = (node: Node, visit: NodeVisitor): boolean => {
+	if (node.type === 'LogicalExpression' && node.operator === '&&') {
+		visit(node.right);
+
+		return true;
+	}
+
+	if (node.type === 'ConditionalExpression') {
+		visit(node.consequent);
+		visit(node.alternate);
+
+		return true;
+	}
+
+	return false;
+};
+
+// The string-literal keys of a clsx-style record, which are its class strings.
+// Identifier/numeric keys are plain single tokens; computed keys are dynamic.
+export const forEachStringRecordKey = (
+	node: ObjectExpression,
+	visit: StringKeyVisitor
+) => {
+	for (const prop of node.properties) {
+		if (prop.type !== 'Property' || prop.computed) {
+			continue;
+		}
+
+		const { key } = prop;
+
+		if (key.type === 'Literal' && typeof key.value === 'string') {
+			visit(key, key.value);
+		}
+	}
 };
 
 // Skips spreads/holes silently; use forEachItemReportingSpread to flag them.
