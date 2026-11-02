@@ -2648,6 +2648,14 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'text-brand-500 text-sm' });",
 	// An arbitrary color value classifies as a color, not a size.
 	IMPORT + "sv({ base: 'text-[#fff] text-sm' });",
+	// So does a CSS named color, in any letter case, against a font size,
+	// a border width, and a stroke width.
+	IMPORT + "sv({ base: 'text-[red] text-sm' });",
+	IMPORT + "sv({ base: 'text-[RebeccaPurple] text-[14px]' });",
+	IMPORT + "sv({ base: 'text-[currentcolor] text-sm' });",
+	IMPORT + "sv({ base: 'text-[red]/50 text-sm' });",
+	IMPORT + "sv({ base: 'border-[2px] border-[red]' });",
+	IMPORT + "sv({ base: 'stroke-[2px] stroke-[red]' });",
 	// An arbitrary length value stays a size, distinct from a color.
 	IMPORT + "sv({ base: 'text-[16px] text-red-500' });",
 	// A typed CSS-variable shorthand classifies by its hint, so a color one is
@@ -2958,6 +2966,17 @@ const NO_CONFLICTING_NS_INVALID = [
 		// property (both classify as color).
 		code: IMPORT_CN + "cn('text-[#fff]', 'text-red-500');",
 		errors: repeat(conflictCn('text-[#fff], text-red-500'), 2)
+	},
+	{
+		// A CSS named color conflicts with a palette color the same way.
+		code: IMPORT_CN + "cn('text-[red]', 'text-red-500');",
+		errors: repeat(conflictCn('text-[red], text-red-500'), 2)
+	},
+	{
+		// A word that isn't a color name — the `large` font-size keyword —
+		// stays a size.
+		code: IMPORT_CN + "cn('text-[large]', 'text-sm');",
+		errors: repeat(conflictCn('text-[large], text-sm'), 2)
 	},
 	{
 		// An arbitrary color function is recognized too.
