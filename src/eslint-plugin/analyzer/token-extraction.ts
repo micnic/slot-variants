@@ -187,7 +187,7 @@ const extractRecordTokens = (
 	}
 };
 
-type TokenExtractionContext = {
+export type TokenExtractionContext = {
 	slot: string;
 	source: Source;
 	slotNames: Set<string>;
@@ -200,7 +200,7 @@ const extractConditionalTokens = (
 	context: TokenExtractionContext
 ) => {
 	const { consequent, alternate } = node;
-	const { slot, source, slotNames, entries, sourceCode } = context;
+	const { source, sourceCode } = context;
 
 	if (
 		consequent.type !== 'ConditionalExpression' &&
@@ -216,11 +216,7 @@ const extractConditionalTokens = (
 		for (const [leaf, branch] of branches) {
 			extractTokens(
 				leaf,
-				slot,
-				withMatcher(source, key, branch),
-				slotNames,
-				entries,
-				sourceCode,
+				{ ...context, source: withMatcher(source, key, branch) },
 				true
 			);
 		}
@@ -235,11 +231,10 @@ const extractConditionalTokens = (
 	for (const [index, leaf] of leaves.entries()) {
 		extractTokens(
 			leaf,
-			slot,
-			withMatcher(source, ternaryKey, `branch${index}`),
-			slotNames,
-			entries,
-			sourceCode,
+			{
+				...context,
+				source: withMatcher(source, ternaryKey, `branch${index}`)
+			},
 			true
 		);
 	}
@@ -249,7 +244,7 @@ const extractTernaryTemplateTokens = (
 	node: TemplateLiteral,
 	context: TokenExtractionContext
 ) => {
-	const { slot, source, slotNames, entries, sourceCode } = context;
+	const { slot, source, entries, sourceCode } = context;
 
 	for (const quasi of node.quasis) {
 		const raw = quasi.value.raw;
@@ -279,15 +274,7 @@ const extractTernaryTemplateTokens = (
 	}
 
 	for (const expression of node.expressions) {
-		extractTokens(
-			expression,
-			slot,
-			source,
-			slotNames,
-			entries,
-			sourceCode,
-			true
-		);
+		extractTokens(expression, context, true);
 	}
 };
 
@@ -302,7 +289,7 @@ const extractCnStyleTokens = (
 	node: Node,
 	context: TokenExtractionContext
 ): boolean => {
-	const { slot, source, slotNames, entries, sourceCode } = context;
+	const { slot, source, entries, sourceCode } = context;
 
 	// Only the right operand is a class contribution; the left is recorded as a
 	// truthy-branch matcher so a complementary `!cond && …` elsewhere resolves
@@ -312,11 +299,7 @@ const extractCnStyleTokens = (
 
 		extractTokens(
 			node.right,
-			slot,
-			withMatcher(source, key, branch),
-			slotNames,
-			entries,
-			sourceCode,
+			{ ...context, source: withMatcher(source, key, branch) },
 			true
 		);
 
@@ -352,15 +335,12 @@ const extractCnStyleTokens = (
 
 export const extractTokens = (
 	node: Node,
-	slot: string,
-	source: Source,
-	slotNames: Set<string>,
-	entries: Entry[],
-	sourceCode: SourceCode,
+	context: TokenExtractionContext,
 	cnStyle = false
 ) => {
+	const { slot, source, slotNames, entries, sourceCode } = context;
+
 	node = resolveStaticValue(node, sourceCode);
-	const context = { slot, source, slotNames, entries, sourceCode };
 
 	if (isStaticStringNode(node)) {
 		pushStringLiteralTokens(node, slot, source, entries, sourceCode);
@@ -373,15 +353,7 @@ export const extractTokens = (
 
 	if (node.type === 'ArrayExpression') {
 		forEachStaticItem(node.elements, (element) => {
-			extractTokens(
-				element,
-				slot,
-				source,
-				slotNames,
-				entries,
-				sourceCode,
-				cnStyle
-			);
+			extractTokens(element, context, cnStyle);
 		});
 		return;
 	}
@@ -393,7 +365,7 @@ export const extractTokens = (
 	}
 
 	for (const [key, value] of slotKeyedProps) {
-		extractTokens(value, key, source, slotNames, entries, sourceCode);
+		extractTokens(value, { ...context, slot: key });
 	}
 };
 
@@ -405,11 +377,13 @@ export const extractCnTokens = (
 ) => {
 	extractTokens(
 		node,
-		'base',
-		baseSource,
-		EMPTY_SLOT_NAMES,
-		entries,
-		sourceCode,
+		{
+			slot: 'base',
+			source: baseSource,
+			slotNames: EMPTY_SLOT_NAMES,
+			entries,
+			sourceCode
+		},
 		true
 	);
 };
@@ -530,7 +504,12 @@ export const forEachCompoundClass = (
 	});
 };
 
-type ExtractFn = (node: Node, slot: string, source: Source) => void;
+type ExtractFn = (
+	node: Node,
+	slot: string,
+	source: Source,
+	cnStyle?: boolean
+) => void;
 
 const extractVariantTokens = (
 	variantsMap: ReadonlyMap<string, Node>,
@@ -680,8 +659,12 @@ export const collectConfigEntries = (
 	sourceCode: SourceCode
 ): Entry[] => {
 	const entries: Entry[] = [];
-	const extract: ExtractFn = (node, slot, source) => {
-		extractTokens(node, slot, source, slotNames, entries, sourceCode);
+	const extract: ExtractFn = (node, slot, source, cnStyle) => {
+		extractTokens(
+			node,
+			{ slot, source, slotNames, entries, sourceCode },
+			cnStyle
+		);
 	};
 
 	for (const [slotKey, slotValue] of getProperties(config.get('slots'))) {
@@ -690,15 +673,7 @@ export const collectConfigEntries = (
 
 	// Leading args use the cn() calling convention (slots don't apply to them).
 	for (const arg of baseArgs) {
-		extractTokens(
-			arg,
-			'base',
-			baseSource,
-			slotNames,
-			entries,
-			sourceCode,
-			true
-		);
+		extract(arg, 'base', baseSource, true);
 	}
 
 	const base = config.get('base');

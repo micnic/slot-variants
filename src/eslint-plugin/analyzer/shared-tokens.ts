@@ -498,14 +498,13 @@ const collectVariantTokensByValue = (
 	for (const [valueKey, valueNode] of variantEntries) {
 		const entries: Entry[] = [];
 
-		extractTokens(
-			valueNode,
-			'base',
-			variantSource(variantKey, valueKey),
+		extractTokens(valueNode, {
+			slot: 'base',
+			source: variantSource(variantKey, valueKey),
 			slotNames,
 			entries,
 			sourceCode
-		);
+		});
 
 		tokensByValue.push(indexEntriesBySlotAndToken(entries));
 	}
