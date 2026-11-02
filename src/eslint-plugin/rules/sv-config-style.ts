@@ -197,12 +197,18 @@ const getSlotsObject = (
 	return null;
 };
 
-// The three places base classes can live. `slotsBase` carries the resolved
-// `slots` object so a fix can insert/remove directly on it.
+// The three places base classes can live. `node` is what a mismatch is
+// reported on and `value` holds the classes; a property source also carries the
+// object it sits in (the config, or the resolved `slots` object) so a fix can
+// remove it from there.
 type BaseSource =
-	| { style: 'separateArg'; arg: Expression | SpreadElement }
-	| { style: 'field'; prop: Property }
-	| { style: 'slotsBase'; prop: Property; slotsObj: ObjectExpression };
+	| { style: 'separateArg'; node: Expression | SpreadElement; value: Node }
+	| {
+			style: 'field' | 'slotsBase';
+			node: Property;
+			value: Node;
+			container: ObjectExpression;
+	  };
 
 const detectBaseSources = (
 	configNode: ObjectExpression,
@@ -212,13 +218,18 @@ const detectBaseSources = (
 	const [arg] = args;
 
 	if (arg) {
-		sources.push({ style: 'separateArg', arg });
+		sources.push({ style: 'separateArg', node: arg, value: arg });
 	}
 
 	const baseProp = findProperty(configNode, 'base');
 
 	if (baseProp) {
-		sources.push({ style: 'field', prop: baseProp });
+		sources.push({
+			style: 'field',
+			node: baseProp,
+			value: baseProp.value,
+			container: configNode
+		});
 	}
 
 	const slotsObj = getSlotsObject(configNode);
@@ -227,27 +238,16 @@ const detectBaseSources = (
 		const slotsBaseProp = findProperty(slotsObj, 'base');
 
 		if (slotsBaseProp) {
-			sources.push({ style: 'slotsBase', prop: slotsBaseProp, slotsObj });
+			sources.push({
+				style: 'slotsBase',
+				node: slotsBaseProp,
+				value: slotsBaseProp.value,
+				container: slotsObj
+			});
 		}
 	}
 
 	return sources;
-};
-
-const getBaseSourceNode = (source: BaseSource): Node => {
-	if (source.style === 'separateArg') {
-		return source.arg;
-	}
-
-	return source.prop;
-};
-
-const getBaseSourceValue = (source: BaseSource): Node => {
-	if (source.style === 'separateArg') {
-		return source.arg;
-	}
-
-	return source.prop.value;
 };
 
 const isStaticallyMovableValue = (node: Node): boolean => {
@@ -334,7 +334,7 @@ const buildBaseStyleFix = (
 	source: BaseSource,
 	target: BaseStyle
 ): ((fixer: Rule.RuleFixer) => Rule.Fix[]) => {
-	const valueText = sourceCode.getText(getBaseSourceValue(source));
+	const valueText = sourceCode.getText(source.value);
 	const propertyText = `base: ${valueText}`;
 
 	return (fixer) => {
@@ -342,19 +342,15 @@ const buildBaseStyleFix = (
 
 		if (source.style === 'separateArg') {
 			fixes.push(
-				removeLeadingArgFix(fixer, sourceCode, source.arg, configNode)
-			);
-		} else if (source.style === 'field') {
-			fixes.push(
-				removePropertyFix(fixer, sourceCode, configNode, source.prop)
+				removeLeadingArgFix(fixer, sourceCode, source.node, configNode)
 			);
 		} else {
 			fixes.push(
 				removePropertyFix(
 					fixer,
 					sourceCode,
-					source.slotsObj,
-					source.prop
+					source.container,
+					source.node
 				)
 			);
 		}
@@ -400,7 +396,7 @@ const canFixBaseStyle = (
 	source: BaseSource,
 	target: BaseStyle
 ): boolean => {
-	if (!isStaticallyMovableValue(getBaseSourceValue(source))) {
+	if (!isStaticallyMovableValue(source.value)) {
 		return false;
 	}
 
@@ -466,7 +462,7 @@ const checkBaseStyle = (
 
 	for (const source of mismatched) {
 		context.report({
-			node: getBaseSourceNode(source),
+			node: source.node,
 			messageId: 'wrongBaseStyle',
 			data: {
 				style: BASE_STYLE_LABELS[baseStyle],
