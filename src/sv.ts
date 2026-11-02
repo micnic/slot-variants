@@ -656,8 +656,12 @@ type ProcessCacheValue = (value: CacheValue) => CacheValue;
 type FragmentTable = string[];
 
 // What one variant adds to one slot: a fragment per value id, with a last
-// empty entry for the unset state.
-type VariantSlotTable = { slot: number; fragments: FragmentTable };
+// empty entry for the unset state, and its index in the plan's tables.
+type VariantSlotTable = {
+	slot: number;
+	table: number;
+	fragments: FragmentTable;
+};
 
 // The value ids of one variant that a compound entry requires.
 type CompoundTest = { compound: number; ids: ReadonlySet<number> };
@@ -683,6 +687,7 @@ type SlotPlan = { key: string; base: string };
 type RunPlan = {
 	slots: readonly SlotPlan[];
 	variants: readonly VariantPlan[];
+	tables: readonly FragmentTable[];
 	compounds: readonly (readonly CompoundSlotFragment[])[];
 };
 
@@ -1594,7 +1599,8 @@ const getCompoundIds = (
 const createVariantPlan = (
 	config: CompiledConfig,
 	variant: VariantData,
-	required: boolean
+	required: boolean,
+	planTables: FragmentTable[]
 ): VariantPlan => {
 	const { slotEntries, targetKeys, groups, compounds } = config;
 
@@ -1613,7 +1619,8 @@ const createVariantPlan = (
 
 		if (fragments.some((fragment) => fragment !== '')) {
 			fragments.push('');
-			tables.push({ slot, fragments });
+			tables.push({ slot, table: planTables.length, fragments });
+			planTables.push(fragments);
 		}
 	});
 
@@ -1642,6 +1649,7 @@ const createVariantPlan = (
 const createRunPlan = (config: CompiledConfig): RunPlan => {
 	const { slotEntries, variantData, compounds, requiredVariants } = config;
 	const required = new Set(requiredVariants);
+	const tables: FragmentTable[] = [];
 
 	return {
 		slots: slotEntries.map(([key, value]) => ({
@@ -1649,8 +1657,14 @@ const createRunPlan = (config: CompiledConfig): RunPlan => {
 			base: toFragment(cn(value))
 		})),
 		variants: variantData.map((variant) =>
-			createVariantPlan(config, variant, required.has(variant.key))
+			createVariantPlan(
+				config,
+				variant,
+				required.has(variant.key),
+				tables
+			)
 		),
+		tables,
 		compounds: compounds.map(({ apply }) => {
 			const slotClasses = collectSlotClasses(slotEntries, apply);
 			const fragments: CompoundSlotFragment[] = [];
@@ -1801,19 +1815,13 @@ const getMatcherSource = (plan: RunPlan, compound: number) => {
 /**
  * Emits the code that builds the class names of one slot, as `r<slot>`.
  */
-const getSlotSource = (
-	plan: RunPlan,
-	{ base }: SlotPlan,
-	slot: number,
-	tables: FragmentTable[]
-) => {
+const getSlotSource = (plan: RunPlan, { base }: SlotPlan, slot: number) => {
 	const lines = [`let r${slot} = ${JSON.stringify(base)};`];
 
 	plan.variants.forEach((variant, index) => {
-		for (const table of variant.tables) {
-			if (table.slot === slot) {
-				lines.push(`r${slot} += t${tables.length}[i${index}];`);
-				tables.push(table.fragments);
+		for (const { slot: target, table } of variant.tables) {
+			if (target === slot) {
+				lines.push(`r${slot} += t${table}[i${index}];`);
 			}
 		}
 	});
@@ -1834,14 +1842,14 @@ const getSlotSource = (
 /**
  * Emits the code that builds the `raw` class names of a combination.
  */
-const getBuildSource = (plan: RunPlan, tables: FragmentTable[]) => {
+const getBuildSource = (plan: RunPlan) => {
 	const lines = plan.compounds.map(
 		(_fragments, index) =>
 			`const c${index} = ${getMatcherSource(plan, index)};`
 	);
 
 	plan.slots.forEach((slotPlan, slot) => {
-		lines.push(getSlotSource(plan, slotPlan, slot, tables));
+		lines.push(getSlotSource(plan, slotPlan, slot));
 	});
 
 	if (plan.slots.length === 1) {
@@ -1872,12 +1880,8 @@ const getMergeSource = (raw: string, processed: string) =>
  * Emits the code that returns the class names of the resolved combination,
  * read from the cache when the combination index can key it.
  */
-const getResultSource = (
-	config: CompiledConfig,
-	plan: RunPlan,
-	tables: FragmentTable[]
-) => {
-	const build = getBuildSource(plan, tables);
+const getResultSource = (config: CompiledConfig, plan: RunPlan) => {
+	const build = getBuildSource(plan);
 
 	let processed = 'raw';
 
@@ -1909,18 +1913,13 @@ const getResultSource = (
  * are unrolled, the cache is keyed by a combination index, and each slot is
  * built by concatenating precomputed class name fragments.
  */
-const getRunSource = (
-	config: CompiledConfig,
-	plan: RunPlan,
-	tables: FragmentTable[]
-) => {
+const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 	const { variantData, defaultVariants } = config;
 	const variantSources = plan.variants.map((variant, index) =>
 		getVariantSource(config, variant, index)
 	);
 
-	const result = getResultSource(config, plan, tables);
-	const locals = tables.map(
+	const locals = plan.tables.map(
 		(_table, index) => `const t${index} = t[${index}];`
 	);
 
@@ -1940,7 +1939,7 @@ const getRunSource = (
 		'const pv = resolvePreset(presets, p.preset);',
 		...variantSources,
 		getValidationSource(config),
-		result,
+		getResultSource(config, plan),
 		'};'
 	].join('\n');
 };
@@ -2107,8 +2106,7 @@ const createInterpretedRun =
  */
 const createRun = (config: CompiledConfig): RunFn => {
 	const plan = createRunPlan(config);
-	const tables: FragmentTable[] = [];
-	const source = getRunSource(config, plan, tables);
+	const source = getRunSource(config, plan);
 
 	const context: CompiledRunContext = {
 		cache: config.cache,
@@ -2117,7 +2115,7 @@ const createRun = (config: CompiledConfig): RunFn => {
 			({ key }) => config.defaultVariants[key]
 		),
 		valueIds: config.variantData.map(({ valueIds }) => valueIds),
-		tables,
+		tables: plan.tables,
 		merge: (raw, classProp) => mergeClassProp(config, raw, classProp),
 		postProcess: (value) => applyPostProcess(config.postProcess, value),
 		presets: config.presets,
