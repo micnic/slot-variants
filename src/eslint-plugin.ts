@@ -1,4 +1,3 @@
-import type { Linter } from 'eslint';
 import pkg from '../package.json' with { type: 'json' };
 import { rules } from './eslint-plugin/rules/index.ts';
 
@@ -6,6 +5,18 @@ export { rules } from './eslint-plugin/rules/index.ts';
 
 /** Plugin metadata surfaced by ESLint and oxlint. */
 const meta = { name: 'slot-variants', version: pkg.version };
+
+type RecommendedConfig = {
+	name: string;
+	plugins: Record<string, SlotVariantsPlugin>;
+	rules: Record<string, 'error'>;
+};
+
+type SlotVariantsPlugin = {
+	meta: typeof meta;
+	rules: typeof rules;
+	configs: { recommended: RecommendedConfig };
+};
 
 // Derive the preset from rule metadata so adding a recommended rule remains a
 // single edit in its rule definition.
@@ -17,17 +28,21 @@ for (const [name, rule] of Object.entries(rules)) {
 	}
 }
 
-const plugin = {
-	meta,
-	rules,
-	configs: {} as Record<string, Linter.Config>
-};
-
 /** Flat-config preset enabling every recommended rule at `error`. */
-plugin.configs.recommended = {
+const recommended: RecommendedConfig = {
 	name: 'slot-variants/recommended',
-	plugins: { 'slot-variants': plugin },
+	plugins: {},
 	rules: recommendedRules
 };
+
+const plugin: SlotVariantsPlugin = {
+	meta,
+	rules,
+	configs: { recommended }
+};
+
+// The preset registers the plugin it belongs to, so the reference can only be
+// filled in once both objects exist.
+recommended.plugins['slot-variants'] = plugin;
 
 export default plugin;

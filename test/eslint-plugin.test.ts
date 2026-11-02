@@ -492,10 +492,7 @@ t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 });
 
 t.test('configs.recommended preset', (t) => {
-	const recommended = plugin.configs.recommended as {
-		plugins: Record<string, unknown>;
-		rules: Record<string, string>;
-	};
+	const { recommended } = plugin.configs;
 
 	t.ok(recommended, 'recommended preset is exposed');
 	t.equal(
