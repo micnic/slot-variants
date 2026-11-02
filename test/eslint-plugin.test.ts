@@ -510,6 +510,31 @@ t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 			`${name}: README has the section its docs url points at`
 		);
 	}
+
+	// `eslint --fix-type` picks fixes by rule type, so each type is pinned:
+	// `problem` for output that is wrong or wasteful, `suggestion` for a
+	// better way to write the same output, `layout` for whitespace alone.
+	const ruleTypes: Record<string, string> = {
+		'no-conflicting-classes': 'problem',
+		'no-dynamic-classes': 'problem',
+		'no-empty-classes': 'problem',
+		'no-redundant-spaces': 'layout',
+		'no-restyle': 'problem',
+		'no-shared-tokens': 'suggestion',
+		'require-top-level-config': 'problem',
+		'sv-config-style': 'suggestion'
+	};
+
+	t.same(
+		Object.fromEntries(
+			Object.entries(plugin.rules).map(([name, r]) => [
+				name,
+				r.meta?.type
+			])
+		),
+		ruleTypes,
+		'every rule has its intended type'
+	);
 	t.end();
 });
 

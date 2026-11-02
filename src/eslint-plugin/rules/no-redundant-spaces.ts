@@ -16,7 +16,7 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  */
 export const noRedundantSpaces: Rule.RuleModule = {
 	meta: {
-		type: 'problem',
+		type: 'layout',
 		docs: {
 			description:
 				'Disallow redundant whitespace inside class strings passed to sv() and cn() calls',

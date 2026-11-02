@@ -34,7 +34,7 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  */
 export const noSharedTokens: Rule.RuleModule = {
 	meta: {
-		type: 'problem',
+		type: 'suggestion',
 		docs: {
 			description:
 				'Disallow class tokens that appear in every value of an exhaustively-covered variant — lift them out of the variant',
