@@ -313,29 +313,26 @@ const reportAgainstStyled = (
 	}
 };
 
-/**
- * Reports each literal that duplicates or collides with a class one of the
- * styled parts applies. A literal is reported once even when several parts
- * would flag it.
- */
-export const reportLiterals = (
-	context: Rule.RuleContext,
+type LiteralReporter = (
 	styled: ReadonlyArray<StyledClasses>,
-	literals: ReadonlyArray<Entry>,
-	reported: Set<string>,
-	options: ConflictOptions
-) => {
-	for (const part of styled) {
-		reportAgainstStyled(context, part, literals, reported, options);
-	}
-};
+	literals: ReadonlyArray<Entry>
+) => void;
 
-/** Reports a position's literals against the styled parts beside them. */
-export const reportParts = (
+/**
+ * Creates the reporter for one lint run: it reports each literal that
+ * duplicates or collides with a class one of the styled parts applies, and
+ * remembers what it reported, so a literal is reported once even when several
+ * parts or positions would flag it.
+ */
+export const createLiteralReporter = (
 	context: Rule.RuleContext,
-	parts: ClassParts,
-	reported: Set<string>,
 	options: ConflictOptions
-) => {
-	reportLiterals(context, parts.styled, parts.literals, reported, options);
+): LiteralReporter => {
+	const reported = new Set<string>();
+
+	return (styled, literals) => {
+		for (const part of styled) {
+			reportAgainstStyled(context, part, literals, reported, options);
+		}
+	};
 };

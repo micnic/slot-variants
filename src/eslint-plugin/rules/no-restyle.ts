@@ -18,7 +18,7 @@ import {
 	resolveImportedComponent
 } from '../analyzer/module-loader.ts';
 import { buildAliasMap } from '../analyzer/module-paths.ts';
-import { reportLiterals, reportParts } from '../analyzer/restyle.ts';
+import { createLiteralReporter } from '../analyzer/restyle.ts';
 
 /**
  * Flags literal classes written on a component or element that collide with
@@ -99,7 +99,7 @@ export const noRestyle: Rule.RuleModule = {
 		// Shared by every position, so a class list reached from two of them —
 		// a `cn()` call is its own site and a part of the attribute holding it —
 		// reports each literal once.
-		const reported = new Set<string>();
+		const reportLiterals = createLiteralReporter(context, options);
 
 		// A component declared in this file, or one reached through an import —
 		// the import is followed to the module that declares it, through any
@@ -134,17 +134,11 @@ export const noRestyle: Rule.RuleModule = {
 					const styles = resolveSiteComponent(site);
 
 					if (styles !== null && styles.prop === site.prop) {
-						reportLiterals(
-							context,
-							styles.targets,
-							parts.literals,
-							reported,
-							options
-						);
+						reportLiterals(styles.targets, parts.literals);
 					}
 				}
 
-				reportParts(context, parts, reported, options);
+				reportLiterals(parts.styled, parts.literals);
 			}
 		});
 
