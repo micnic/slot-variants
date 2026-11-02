@@ -10,10 +10,10 @@ import { getConfigSlotNames, getProperties } from './properties.ts';
 import { collectConfigEntries, extractCnTokens } from './token-extraction.ts';
 import {
 	areExclusiveMatchers,
+	arePairwiseExclusive,
 	type Entry,
-	getEntryMatchers,
+	getEntriesMatchers,
 	indexEntriesBySlotAndToken,
-	isMutuallyExclusiveVariants,
 	reportDuplicateTokens,
 	reportEntryList,
 	type VariantMatchers
@@ -34,24 +34,12 @@ type ConflictGroup = {
 	matchers: VariantMatchers[] | null;
 };
 
-// Null the moment one entry has no readable matcher — mirrors the guard
-// isMutuallyExclusiveVariants applies per-entry before ever comparing pairs.
-const getGroupMatchers = (
-	entries: ReadonlyArray<Entry>
-): VariantMatchers[] | null => {
-	const matchers: VariantMatchers[] = [];
+// Derives `matchers` and `exclusive` from the group's entries in one walk.
+const updateGroupExclusivity = (group: ConflictGroup) => {
+	const matchers = getEntriesMatchers(group.entries);
 
-	for (const entry of entries) {
-		const entryMatchers = getEntryMatchers(entry);
-
-		if (entryMatchers === null) {
-			return null;
-		}
-
-		matchers.push(entryMatchers);
-	}
-
-	return matchers;
+	group.matchers = matchers;
+	group.exclusive = matchers !== null && arePairwiseExclusive(matchers);
 };
 
 const groupEntriesByConflictKey = (
@@ -81,14 +69,13 @@ const groupEntriesByConflictKey = (
 	}
 
 	for (const group of groups.values()) {
-		group.exclusive = isMutuallyExclusiveVariants(group.entries);
-		group.matchers = getGroupMatchers(group.entries);
+		updateGroupExclusivity(group);
 	}
 
 	return groups;
 };
 
-// The real-edge counterpart to isMutuallyExclusiveVariants: true when every
+// The real-edge counterpart to arePairwiseExclusive: true when every
 // matcher of `a` is exclusive with every matcher of `b`. Used to check two
 // distinct covers-adjacent nodes (`p` vs `px`) against each other directly,
 // instead of flattening a whole connected component into one all-pairs check
@@ -218,7 +205,7 @@ const buildOverlapConflictGroup = (
 		variantPrefix,
 		overlap,
 		exclusive: isOverlapComponentExclusive(component, byNode),
-		matchers: getGroupMatchers(entries)
+		matchers: getEntriesMatchers(entries)
 	};
 };
 
@@ -253,8 +240,7 @@ const mergeOverlappingGroups = (
 			}
 
 			existing.entries.push(...group.entries);
-			existing.exclusive = isMutuallyExclusiveVariants(existing.entries);
-			existing.matchers = getGroupMatchers(existing.entries);
+			updateGroupExclusivity(existing);
 		} else {
 			byNode.set(group.overlap, {
 				tokens: new Set(group.tokens),

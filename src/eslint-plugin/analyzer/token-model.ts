@@ -92,21 +92,30 @@ export const areExclusiveMatchers = (
 	return false;
 };
 
-// True when every pair of entries disagrees on at least one shared matcher
-// key, so they can't co-occur.
-export const isMutuallyExclusiveVariants = (list: Entry[]): boolean => {
+// Every entry's matchers, or null the moment one entry has no readable matcher
+// (base/compound), since such an entry can co-occur with anything.
+export const getEntriesMatchers = (
+	entries: ReadonlyArray<Entry>
+): VariantMatchers[] | null => {
 	const matchers: VariantMatchers[] = [];
 
-	for (const entry of list) {
+	for (const entry of entries) {
 		const entryMatchers = getEntryMatchers(entry);
 
 		if (entryMatchers === null) {
-			return false;
+			return null;
 		}
 
 		matchers.push(entryMatchers);
 	}
 
+	return matchers;
+};
+
+// True when every pair of matchers disagrees on at least one shared key.
+export const arePairwiseExclusive = (
+	matchers: ReadonlyArray<VariantMatchers>
+): boolean => {
 	for (const [index, current] of matchers.entries()) {
 		for (const other of matchers.slice(index + 1)) {
 			if (!areExclusiveMatchers(current, other)) {
@@ -116,6 +125,14 @@ export const isMutuallyExclusiveVariants = (list: Entry[]): boolean => {
 	}
 
 	return true;
+};
+
+// True when every pair of entries disagrees on at least one shared matcher
+// key, so they can't co-occur.
+const isMutuallyExclusiveVariants = (list: Entry[]): boolean => {
+	const matchers = getEntriesMatchers(list);
+
+	return matchers !== null && arePairwiseExclusive(matchers);
 };
 
 export const EMPTY_SLOT_NAMES = new Set<string>();
