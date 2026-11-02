@@ -12,6 +12,7 @@ import {
 	docsUrl,
 	getKeyName
 } from '../analyzer/config-keys.ts';
+import { removeFromList } from '../analyzer/list-fix.ts';
 import { getStaticStringText } from '../analyzer/literals.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
@@ -277,38 +278,14 @@ const removePropertyFix = (
 	obj: ObjectExpression,
 	prop: Property
 ): Rule.Fix => {
-	const { properties } = obj;
-	const index = properties.indexOf(prop);
+	const fix = removeFromList(fixer, sourceCode, prop, obj.properties);
 
-	if (properties.length === 1) {
+	// The only property: no comma to take along, so remove just the property.
+	if (fix === null) {
 		return fixer.remove(prop);
 	}
 
-	if (index === properties.length - 1) {
-		const previous = properties[index - 1];
-
-		/* c8 ignore next 3 -- a non-first, non-only property always has a predecessor */
-		if (!previous) {
-			return fixer.remove(prop);
-		}
-
-		const [, previousEnd] = sourceCode.getRange(previous);
-		const [, propEnd] = sourceCode.getRange(prop);
-
-		return fixer.removeRange([previousEnd, propEnd]);
-	}
-
-	const next = properties[index + 1];
-
-	/* c8 ignore next 3 -- index < length - 1 always has a successor */
-	if (!next) {
-		return fixer.remove(prop);
-	}
-
-	const [propStart] = sourceCode.getRange(prop);
-	const [nextStart] = sourceCode.getRange(next);
-
-	return fixer.removeRange([propStart, nextStart]);
+	return fix;
 };
 
 const insertAsFirstPropertyFix = (
