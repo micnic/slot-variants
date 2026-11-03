@@ -173,20 +173,28 @@ const withDefaults = (
 	return props;
 };
 
+// The props object a call site passes, read through `const` bindings. Empty for
+// a missing or spread argument, whose props can't be read statically.
+const getCallProps = (
+	arg: Expression | SpreadElement | undefined,
+	ctx: StyledContext
+): ReadonlyMap<string, Node> => {
+	if (!arg || arg.type === 'SpreadElement') {
+		return getProperties(undefined);
+	}
+
+	return getProperties(ctx.resolve(arg));
+};
+
 const buildCallMatchers = (
 	arg: Expression | SpreadElement | undefined,
 	styles: InternalStyles,
 	ctx: StyledContext
-): VariantMatchers => {
-	if (!arg || arg.type === 'SpreadElement') {
-		return withDefaults(new Map(), styles.defaults);
-	}
-
-	return withDefaults(
-		readMatchers(getProperties(ctx.resolve(arg)), NON_VARIANT_PROPS),
+): VariantMatchers =>
+	withDefaults(
+		readMatchers(getCallProps(arg, ctx), NON_VARIANT_PROPS),
 		styles.defaults
 	);
-};
 
 // The `sv(config)` call a compiled variant function came from, reached through
 // the `const` binding the call site names.
@@ -384,23 +392,15 @@ export const resolveStyledClasses = (
 		return null;
 	}
 
-	if (invocation.slot !== null) {
-		return {
-			styles: invocation.styles,
-			slot: invocation.slot,
-			matchers: invocation.matchers
-		};
-	}
-
-	// A slotted variant function returns a per-slot object, which carries no
-	// classes of its own until a slot is read off it.
-	if (invocation.styles.slotNames.size > 0) {
+	// Called without a slot, a slotted variant function returns a per-slot
+	// object, which carries no classes of its own until a slot is read off it.
+	if (invocation.slot === null && invocation.styles.slotNames.size > 0) {
 		return null;
 	}
 
 	return {
 		styles: invocation.styles,
-		slot: 'base',
+		slot: invocation.slot ?? 'base',
 		matchers: invocation.matchers
 	};
 };
@@ -440,11 +440,7 @@ export const getOverrideValue = (
 	arg: Expression | SpreadElement | undefined,
 	ctx: StyledContext
 ): Node | null => {
-	if (!arg || arg.type === 'SpreadElement') {
-		return null;
-	}
-
-	const properties = getProperties(ctx.resolve(arg));
+	const properties = getCallProps(arg, ctx);
 
 	// `class` wins over `className` when both are passed, exactly as `sv()`
 	// resolves them at runtime.
