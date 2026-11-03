@@ -2,7 +2,7 @@ import type { Rule } from 'eslint';
 import type { ArrayExpression, Node, ObjectExpression } from 'estree';
 import { getKeyName } from './config-keys.ts';
 import { resolveStaticValue } from './const-bindings.ts';
-import { type EmptyFix, makeListFix, removeFromList } from './list-fix.ts';
+import { type EmptyFix, makeListFix } from './list-fix.ts';
 import { getStaticStringText } from './literals.ts';
 import { getProperties } from './properties.ts';
 import {
@@ -12,6 +12,14 @@ import {
 	forEachStaticItem,
 	forEachStringRecordKey
 } from './token-extraction.ts';
+
+type EmptyConfigChecker = (
+	context: Rule.RuleContext,
+	value: Node,
+	remove: EmptyFix
+) => void;
+
+type ValueVisitor = (value: Node) => void;
 
 const isEmptyStringNode = (node: Node): boolean =>
 	getStaticStringText(node) === '';
@@ -103,10 +111,13 @@ export const visitForEmptyClasses = (
 	}
 };
 
-const visitVariantRecordForEmpty = (
+// A record is a container: reported when empty, otherwise each of its values
+// is visited.
+const visitRecordForEmpty = (
 	context: Rule.RuleContext,
 	node: ObjectExpression,
-	remove?: EmptyFix
+	remove: EmptyFix | undefined,
+	visitValue: ValueVisitor
 ) => {
 	if (node.properties.length === 0) {
 		context.report({ node, messageId: 'emptyObject', fix: remove });
@@ -114,7 +125,7 @@ const visitVariantRecordForEmpty = (
 	}
 
 	for (const value of getProperties(node).values()) {
-		visitVariantValueForEmpty(context, value);
+		visitValue(value);
 	}
 };
 
@@ -129,7 +140,9 @@ const visitVariantValueForEmpty = (
 	variantValue: Node
 ) => {
 	if (variantValue.type === 'ObjectExpression') {
-		visitVariantRecordForEmpty(context, variantValue);
+		visitRecordForEmpty(context, variantValue, undefined, (value) => {
+			visitVariantValueForEmpty(context, value);
+		});
 		return;
 	}
 
@@ -145,7 +158,9 @@ const checkVariantsForEmpty = (
 		return;
 	}
 
-	visitVariantRecordForEmpty(context, value, remove);
+	visitRecordForEmpty(context, value, remove, (variantValue) => {
+		visitVariantValueForEmpty(context, variantValue);
+	});
 };
 
 const isEmptyArrayLiteral = (node: Node): boolean =>
@@ -227,21 +242,10 @@ const checkSlotsForEmpty = (
 		return;
 	}
 
-	if (value.properties.length === 0) {
-		context.report({ node: value, messageId: 'emptyObject', fix: remove });
-		return;
-	}
-
-	for (const slotValue of getProperties(value).values()) {
+	visitRecordForEmpty(context, value, remove, (slotValue) => {
 		visitForEmptyClasses(context, slotValue, true);
-	}
+	});
 };
-
-type EmptyConfigChecker = (
-	context: Rule.RuleContext,
-	value: Node,
-	remove: EmptyFix
-) => void;
 
 // `[]` and `{}` are the empty forms of a config container. `requiredVariants`
 // and `multiSlots` also accept a boolean, which is never empty.
@@ -312,13 +316,10 @@ export const checkConfigForEmptyClasses = (
 		const checker = svEmptyConfigValueCheckers[key];
 
 		if (checker) {
-			checker(context, prop.value, (fixer) =>
-				removeFromList(
-					fixer,
-					context.sourceCode,
-					prop,
-					config.properties
-				)
+			checker(
+				context,
+				prop.value,
+				makeListFix(context, prop, config.properties)
 			);
 		}
 	}
