@@ -111,6 +111,21 @@ const PROPS_SOURCES = new Set([
 	'useAttrs'
 ]);
 
+// What `bindings` holds for the variable `name` refers to from `scope`.
+const lookupBinding = <T>(
+	bindings: ReadonlyMap<Scope.Variable, T>,
+	scope: Scope.Scope,
+	name: string
+): T | null => {
+	const variable = findVariable(scope, name);
+
+	if (variable === null) {
+		return null;
+	}
+
+	return bindings.get(variable) ?? null;
+};
+
 const getJsxAttributeValue = (node: JsxAttribute): Node | null => {
 	const { value } = node;
 
@@ -275,15 +290,8 @@ export const createForwardingScan = (
 	};
 
 	// The component whose props object a name refers to.
-	const getPropsObjectComponent = (node: Identifier): Component | null => {
-		const variable = findVariable(sourceCode.getScope(node), node.name);
-
-		if (variable === null) {
-			return null;
-		}
-
-		return propsObjects.get(variable) ?? null;
-	};
+	const getPropsObjectComponent = (node: Identifier): Component | null =>
+		lookupBinding(propsObjects, sourceCode.getScope(node), node.name);
 
 	// The component whose props a call yields: the module, for a props source
 	// like `$props()`; the owner of a props object the call is handed, for a
@@ -366,18 +374,13 @@ export const createForwardingScan = (
 			return null;
 		}
 
-		const variable = findVariable(
+		const component = lookupBinding(
+			propsObjects,
 			positionCtx.scopeOf(node.object),
 			node.object.name
 		);
 
-		if (variable === null) {
-			return null;
-		}
-
-		const component = propsObjects.get(variable);
-
-		if (component === undefined) {
+		if (component === null) {
 			return null;
 		}
 
@@ -393,13 +396,11 @@ export const createForwardingScan = (
 			return readMemberProp(node, positionCtx);
 		}
 
-		const variable = findVariable(positionCtx.scopeOf(node), node.name);
-
-		if (variable === null) {
-			return null;
-		}
-
-		return propBindings.get(variable) ?? null;
+		return lookupBinding(
+			propBindings,
+			positionCtx.scopeOf(node),
+			node.name
+		);
 	};
 
 	// What a forwarded prop is merged with at this position. Inside a `cn()`
