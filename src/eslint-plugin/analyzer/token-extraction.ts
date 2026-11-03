@@ -82,21 +82,20 @@ const pushCookedTokens = (
 	}
 };
 
-const pushStringLiteralTokens = (
-	node: Node,
+// The tokens of a string literal or template quasi spanning `range`. Raw text
+// maps onto source offsets one-to-one; an escape breaks that, so the cooked
+// tokens are pinned to the whole range instead.
+const pushLiteralTokens = (
+	raw: string,
+	cooked: string | null | undefined,
+	range: AST.Range,
 	slot: string,
 	source: Source,
-	entries: Entry[],
-	sourceCode: SourceCode
+	entries: Entry[]
 ) => {
-	const raw = getInnerText(sourceCode, node);
-	const range = sourceCode.getRange(node);
-
 	if (hasEscape(raw)) {
-		/* c8 ignore next -- callers only pass a static string/template literal */
-		const cooked = getStaticStringText(node) ?? raw;
-
-		pushCookedTokens(cooked, range, slot, source, entries);
+		/* c8 ignore next -- cooked is always readable for a static literal or untagged quasi */
+		pushCookedTokens(cooked ?? raw, range, slot, source, entries);
 
 		return;
 	}
@@ -104,6 +103,23 @@ const pushStringLiteralTokens = (
 	// String/template delimiters are single-char, so start offset + 1 is the
 	// first inner character.
 	pushTokensFromText(raw, range[0] + 1, slot, source, entries);
+};
+
+const pushStringLiteralTokens = (
+	node: Node,
+	slot: string,
+	source: Source,
+	entries: Entry[],
+	sourceCode: SourceCode
+) => {
+	pushLiteralTokens(
+		getInnerText(sourceCode, node),
+		getStaticStringText(node),
+		sourceCode.getRange(node),
+		slot,
+		source,
+		entries
+	);
 };
 
 // Flattens a (possibly chained) ternary into its leaf branches — exactly one
@@ -251,26 +267,10 @@ const extractTernaryTemplateTokens = (
 	const { slot, source, entries, sourceCode } = context;
 
 	for (const quasi of node.quasis) {
-		const raw = quasi.value.raw;
-
-		if (hasEscape(raw)) {
-			/* c8 ignore next -- cooked is always defined on untagged templates */
-			const cooked = quasi.value.cooked ?? raw;
-
-			pushCookedTokens(
-				cooked,
-				sourceCode.getRange(quasi),
-				slot,
-				source,
-				entries
-			);
-
-			continue;
-		}
-
-		pushTokensFromText(
-			raw,
-			sourceCode.getRange(quasi)[0] + 1,
+		pushLiteralTokens(
+			quasi.value.raw,
+			quasi.value.cooked,
+			sourceCode.getRange(quasi),
 			slot,
 			source,
 			entries
