@@ -11,6 +11,7 @@ import type { CallMatch } from './call-matching.ts';
 import { resolveStaticValueFrom } from './const-bindings.ts';
 import {
 	collectSlotKeyedProperties,
+	getClassValue,
 	getConfigSlotNames,
 	getProperties
 } from './properties.ts';
@@ -442,9 +443,7 @@ export const getOverrideValue = (
 ): Node | null => {
 	const properties = getCallProps(arg, ctx);
 
-	// `class` wins over `className` when both are passed, exactly as `sv()`
-	// resolves them at runtime.
-	return properties.get('class') ?? properties.get('className') ?? null;
+	return getClassValue(properties) ?? null;
 };
 
 /**

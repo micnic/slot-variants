@@ -4552,6 +4552,13 @@ const NO_SHARED_TOKENS_VALID = [
 				{ variant: 'link', size: 'sm', className: 'e' }
 			]
 		});`,
+	// A single-key compound entry without a class has nothing to merge into
+	// the matched variant value, so the single-key check doesn't apply.
+	IMPORT +
+		`sv({
+			variants: { variant: { primary: 'a', link: 'b' } },
+			compoundVariants: [{ variant: 'link' }]
+		});`,
 	// A dynamic `variants` object means the matcher's variant can't be
 	// resolved, so there's nowhere known to merge the class into.
 	IMPORT +

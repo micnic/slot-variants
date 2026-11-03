@@ -1,6 +1,5 @@
 import type { Rule, SourceCode } from 'eslint';
 import type { Node, ObjectExpression } from 'estree';
-import { getKeyName } from './config-keys.ts';
 import { type ListItems, makeListFix } from './list-fix.ts';
 import {
 	canHoistAsLiteral,
@@ -10,6 +9,7 @@ import {
 } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
+	getClassValue,
 	getConfigSlotNames,
 	getProperties,
 	getStrictProperties
@@ -556,46 +556,40 @@ const analyzeVariantSharedTokens = (
 	);
 };
 
-type SingleMatcher = { key: string; value: Node };
+type SingleMatcher = { key: string; value: Node; cls: Node };
 
-// The one variant-key matcher on a compound entry, or null when the entry
-// doesn't have exactly one: no matcher at all, two or more, or a shape that
-// can't be counted reliably (a spread or computed key might hide another
-// matcher, so the whole entry is skipped rather than risk under-reporting a
-// hidden key as if it weren't there).
+// The one variant-key matcher on a compound entry, plus the class it applies,
+// or null when the entry has no class or doesn't have exactly one matcher: none
+// at all, two or more, or a shape that can't be counted reliably (a spread or
+// computed key might hide another matcher, so the whole entry is skipped rather
+// than risk under-reporting a hidden key as if it weren't there).
 const getSingleCompoundMatcher = (
 	element: ObjectExpression
 ): SingleMatcher | null => {
-	const matchers: SingleMatcher[] = [];
-	let hasClass = false;
+	const properties = getStrictProperties(element);
 
-	for (const prop of element.properties) {
-		if (prop.type !== 'Property' || prop.computed) {
-			return null;
-		}
+	if (!properties) {
+		return null;
+	}
 
-		const key = getKeyName(prop);
+	const cls = getClassValue(properties);
 
-		/* c8 ignore next 3 -- getKeyName only returns null for a computed key, already excluded above */
-		if (key === null) {
-			return null;
-		}
+	if (!cls) {
+		return null;
+	}
 
+	let matcher: SingleMatcher | null = null;
+
+	for (const [key, value] of properties) {
 		if (COMPOUND_NON_MATCHER_KEYS.has(key)) {
-			if (key === 'class' || key === 'className') {
-				hasClass = true;
-			}
-
 			continue;
 		}
 
-		matchers.push({ key, value: prop.value });
-	}
+		if (matcher) {
+			return null;
+		}
 
-	const [matcher] = matchers;
-
-	if (!hasClass || !matcher || matchers.length > 1) {
-		return null;
+		matcher = { key, value, cls };
 	}
 
 	return matcher;
@@ -611,12 +605,11 @@ const getSingleCompoundMatcher = (
 const planSingleKeyCompoundFix = (
 	context: Rule.RuleContext,
 	element: ObjectExpression,
-	clsNode: Node,
 	matcher: SingleMatcher,
 	variantValue: ObjectExpression,
 	siblingElements: ListItems
 ): EntryListFixer | null => {
-	const clsText = getStaticStringText(clsNode);
+	const clsText = getStaticStringText(matcher.cls);
 
 	if (clsText === null) {
 		return null;
@@ -703,21 +696,12 @@ const checkCompoundEntryForSingleKey = (
 		return;
 	}
 
-	const properties = getProperties(element);
-	const clsNode = properties.get('class') ?? properties.get('className');
-
-	/* c8 ignore next 3 -- getSingleCompoundMatcher already confirmed a class/className property exists */
-	if (!clsNode) {
-		return;
-	}
-
 	let fix: EntryListFixer | null = null;
 
 	if (kind === 'compoundVariants') {
 		fix = planSingleKeyCompoundFix(
 			context,
 			element,
-			clsNode,
 			matcher,
 			variantValue,
 			siblingElements

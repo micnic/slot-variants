@@ -12,7 +12,11 @@ import type {
 import { getKeyName } from './config-keys.ts';
 import { resolveStaticValue } from './const-bindings.ts';
 import { getInnerText, getStaticStringText, hasEscape } from './literals.ts';
-import { collectSlotKeyedProperties, getProperties } from './properties.ts';
+import {
+	collectSlotKeyedProperties,
+	getClassValue,
+	getProperties
+} from './properties.ts';
 import {
 	isStaticStringNode,
 	isStaticTernaryTemplate
@@ -478,7 +482,7 @@ const matchCompoundClass = (
 	}
 
 	const compound = getProperties(element);
-	const cls = compound.get('class') ?? compound.get('className');
+	const cls = getClassValue(compound);
 
 	if (!cls) {
 		return null;
