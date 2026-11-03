@@ -266,9 +266,10 @@ const createVariantPlan = (
 	const { slotEntries, targetKeys, groups, compounds } = config;
 
 	const valueClasses = values(variant.values).map((value) =>
-		collectSlotClasses(slotEntries, (slotClasses) => {
-			applyValueToSlotClasses(slotClasses, value, targetKeys, groups);
-		})
+		collectSlotClasses(
+			slotEntries,
+			applyValueToSlotClasses(value, targetKeys, groups)
+		)
 	);
 
 	const tables: VariantSlotTable[] = [];

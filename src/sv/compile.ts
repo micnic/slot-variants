@@ -587,19 +587,24 @@ const pushSlotObjectValue = (
 	}
 };
 
-export const applyValueToSlotClasses = (
-	slotClasses: SlotClasses,
-	value: NormalizedVariantValue,
-	targetKeys: ReadonlySet<string>,
-	groups: CompiledGroups
-) => {
-	if (isSlotObjectValue(value, targetKeys)) {
-		pushSlotObjectValue(slotClasses, value, groups);
-		return;
-	}
+/**
+ * Applies a config value to the slots it targets: per slot for a slot object,
+ * or to `base` otherwise.
+ */
+export const applyValueToSlotClasses =
+	(
+		value: NormalizedVariantValue,
+		targetKeys: ReadonlySet<string>,
+		groups: CompiledGroups
+	): ApplySlotClasses =>
+	(slotClasses) => {
+		if (isSlotObjectValue(value, targetKeys)) {
+			pushSlotObjectValue(slotClasses, value, groups);
+			return;
+		}
 
-	slotClasses.base?.push(value);
-};
+		slotClasses.base?.push(value);
+	};
 
 /**
  * Prefixes a non-empty class name with the space that joins it to the rest.
@@ -717,57 +722,50 @@ export const compileConfig = (
 	assertKnownDefaultVariants(defaultVariants, normalizedVariants);
 	assertValidPresets(presets, normalizedVariants);
 
-	const compiledCompoundVariants = compoundVariants.map(
-		(compound): CompiledCompound => {
-			const classValue = requireCompoundClassValue(compound, 'variant');
+	const compileCompound = (
+		compound: CompoundEntry,
+		apply: ApplySlotClasses
+	): CompiledCompound => ({
+		matchers: compileCompoundMatchers(
+			compound,
+			normalizedVariants,
+			presets
+		),
+		fragments: getCompoundFragments(slotEntries, apply)
+	});
 
-			return {
-				matchers: compileCompoundMatchers(
-					compound,
-					normalizedVariants,
-					presets
-				),
-				fragments: getCompoundFragments(slotEntries, (slotClasses) => {
-					applyValueToSlotClasses(
-						slotClasses,
-						classValue,
-						targetKeys,
-						resolvedGroups
-					);
-				})
-			};
-		}
+	const compiledCompoundVariants = compoundVariants.map((compound) =>
+		compileCompound(
+			compound,
+			applyValueToSlotClasses(
+				requireCompoundClassValue(compound, 'variant'),
+				targetKeys,
+				resolvedGroups
+			)
+		)
 	);
 
-	const compiledCompoundSlots = compoundSlots.map(
-		(compound): CompiledCompound => {
-			if (compound.slots.length === 0) {
-				throw new Error('Compound slot must define at least one slot');
-			}
+	const compiledCompoundSlots = compoundSlots.map((compound) => {
+		if (compound.slots.length === 0) {
+			throw new Error('Compound slot must define at least one slot');
+		}
 
-			const classValue = requireCompoundClassValue(compound, 'slot');
-			const matchers = compileCompoundMatchers(
-				compound,
-				normalizedVariants,
-				presets
-			);
-			const slots = expandSlotTargets(
+		const classValue = requireCompoundClassValue(compound, 'slot');
+
+		// Expanded inside `apply` so a bad matcher still reports before a bad slot.
+		return compileCompound(compound, (slotClasses) => {
+			const targetSlots = expandSlotTargets(
 				compound.slots,
 				resolvedGroups,
 				slotKeys,
 				'Compound slot'
 			);
 
-			return {
-				matchers,
-				fragments: getCompoundFragments(slotEntries, (slotClasses) => {
-					for (const slotKey of slots) {
-						slotClasses[slotKey]?.push(classValue);
-					}
-				})
-			};
-		}
-	);
+			for (const slotKey of targetSlots) {
+				slotClasses[slotKey]?.push(classValue);
+			}
+		});
+	});
 
 	return {
 		slots,
