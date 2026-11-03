@@ -45,32 +45,6 @@ export const matchCnCall = (node: CallExpression): CallMatch => ({
 	args: node.arguments
 });
 
-// The local names each tracked export is reachable under, plus the locals bound
-// to a whole-module namespace import.
-export type TrackedNames = {
-	svNames: Set<string>;
-	cnNames: Set<string>;
-	createSvNames: Set<string>;
-	namespaceNames: Set<string>;
-};
-
-export const matchSvCnCall = (
-	node: CallExpression,
-	calleeName: string,
-	{ svNames, cnNames }: TrackedNames,
-	sourceCode: SourceCode
-): CallMatch | null => {
-	if (svNames.has(calleeName)) {
-		return matchSvCall(node, sourceCode);
-	}
-
-	if (cnNames.has(calleeName)) {
-		return matchCnCall(node);
-	}
-
-	return null;
-};
-
 const hasOnlyConfigKeys = (properties: ReadonlyMap<string, Node>): boolean => {
 	for (const key of properties.keys()) {
 		if (!CONFIG_KEYS.has(key)) {

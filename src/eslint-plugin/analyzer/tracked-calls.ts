@@ -5,13 +5,7 @@ import type {
 	ImportDeclaration,
 	Node
 } from 'estree';
-import {
-	type CallMatch,
-	matchCnCall,
-	matchSvCall,
-	matchSvCnCall,
-	type TrackedNames
-} from './call-matching.ts';
+import { type CallMatch, matchCnCall, matchSvCall } from './call-matching.ts';
 import { findVariable, resolveStaticValueFrom } from './const-bindings.ts';
 import { createStyledContext, type StyledContext } from './styled-values.ts';
 
@@ -21,6 +15,22 @@ import { createStyledContext, type StyledContext } from './styled-values.ts';
  * bindings it names, uses the script's module scope.
  */
 type ScopeOf = (node: Node) => Scope.Scope;
+
+// The tracked export each named-import local stands for, plus the locals bound
+// to a whole-module namespace import.
+type TrackedNames = {
+	exportByLocal: Map<string, string>;
+	namespaceNames: Set<string>;
+};
+
+// Everything the classifier needs from the rule that owns it.
+type MatchContext = {
+	sourceCode: SourceCode;
+	names: TrackedNames;
+	scopeOf: ScopeOf;
+};
+
+const TRACKED_EXPORTS = new Set(['sv', 'cn', 'createSV']);
 
 const getImportedName = (
 	specifier: ImportDeclaration['specifiers'][number]
@@ -40,28 +50,21 @@ const getImportedName = (
 
 const trackNamedImport = (
 	specifier: ImportDeclaration['specifiers'][number],
-	trackedNamesByImport: Record<string, Set<string>>
+	exportByLocal: Map<string, string>
 ) => {
 	const importedName = getImportedName(specifier);
 
-	if (importedName === null) {
+	if (importedName === null || !TRACKED_EXPORTS.has(importedName)) {
 		return;
 	}
 
-	trackedNamesByImport[importedName]?.add(specifier.local.name);
+	exportByLocal.set(specifier.local.name, importedName);
 };
 
 const createImportsTracker = () => {
 	const names: TrackedNames = {
-		cnNames: new Set<string>(),
-		svNames: new Set<string>(),
-		createSvNames: new Set<string>(),
+		exportByLocal: new Map<string, string>(),
 		namespaceNames: new Set<string>()
-	};
-	const trackedNamesByImport: Record<string, Set<string>> = {
-		cn: names.cnNames,
-		sv: names.svNames,
-		createSV: names.createSvNames
 	};
 
 	const importsTracker = (node: ImportDeclaration) => {
@@ -77,18 +80,11 @@ const createImportsTracker = () => {
 				continue;
 			}
 
-			trackNamedImport(specifier, trackedNamesByImport);
+			trackNamedImport(specifier, names.exportByLocal);
 		}
 	};
 
 	return { names, importsTracker };
-};
-
-// Everything the classifier needs from the rule that owns it.
-type MatchContext = {
-	sourceCode: SourceCode;
-	names: TrackedNames;
-	scopeOf: ScopeOf;
 };
 
 // A tracked-name identifier could still be a local binding that shadows the
@@ -112,26 +108,6 @@ const identifierResolvesToImport = (
 // scope the context assigns it.
 const resolve = ({ sourceCode, scopeOf }: MatchContext, node: Node): Node =>
 	resolveStaticValueFrom(node, sourceCode, scopeOf(node));
-
-// Reads the callee through same-file `const` aliases so aliased sv/cn bindings
-// stay tracked. Null when the callee isn't an identifier, or is an alias of a
-// non-identifier value.
-const resolveCalleeIdentifier = (
-	match: MatchContext,
-	node: CallExpression
-): Identifier | null => {
-	if (node.callee.type !== 'Identifier') {
-		return null;
-	}
-
-	const resolved = resolve(match, node.callee);
-
-	if (resolved.type !== 'Identifier') {
-		return null;
-	}
-
-	return resolved;
-};
 
 // The export a namespace member call names — `SV.sv(…)` for
 // `import * as SV from 'slot-variants'`. Null when the callee isn't a member of
@@ -163,50 +139,47 @@ const resolveNamespaceExportName = (
 	return property.name;
 };
 
-// A namespace member call names its export outright, so there are no aliases to
-// resolve — `SV.sv(…)` is an `sv()` call by construction.
-const matchNamespaceCall = (
+// The export an alias-resolved callee identifier names, when it's a tracked
+// named import rather than a local binding shadowing one.
+const resolveIdentifierExportName = (
 	match: MatchContext,
-	node: CallExpression,
-	exportName: string
-): CallMatch | null => {
-	if (exportName === 'sv') {
-		return matchSvCall(node, match.sourceCode);
+	identifier: Identifier
+): string | null => {
+	const exportName = match.names.exportByLocal.get(identifier.name);
+
+	if (
+		exportName === undefined ||
+		!identifierResolvesToImport(match, identifier)
+	) {
+		return null;
 	}
 
-	if (exportName === 'cn') {
-		return matchCnCall(node);
-	}
-
-	if (exportName === 'createSV') {
-		return matchFactoryCall(match, node);
-	}
-
-	return null;
+	return exportName;
 };
 
-// A `createSV(...)` factory call whose callee resolves to a tracked createSV
-// import, named directly or reached through a namespace binding. The `const`
-// binding it initializes is a pre-configured `sv()`, so its call sites are
-// analyzed exactly like `sv()` calls.
-const isCreateSvFactoryCall = (
+// The export a call names, either as a namespace member (`SV.sv(…)`) or through
+// a named import read via same-file `const` aliases (`const cx = cn; cx(…)`).
+const resolveExportName = (
 	match: MatchContext,
 	node: CallExpression
-): boolean => {
-	if (resolveNamespaceExportName(match, node) === 'createSV') {
-		return true;
+): string | null => {
+	const namespaceExport = resolveNamespaceExportName(match, node);
+
+	if (namespaceExport !== null) {
+		return namespaceExport;
 	}
 
-	const factoryCallee = resolveCalleeIdentifier(match, node);
-
-	if (!factoryCallee) {
-		return false;
+	if (node.callee.type !== 'Identifier') {
+		return null;
 	}
 
-	return (
-		match.names.createSvNames.has(factoryCallee.name) &&
-		identifierResolvesToImport(match, factoryCallee)
-	);
+	const resolved = resolve(match, node.callee);
+
+	if (resolved.type !== 'Identifier') {
+		return null;
+	}
+
+	return resolveIdentifierExportName(match, resolved);
 };
 
 // The `createSV(defaults)` call itself: its sole argument is unambiguously the
@@ -232,11 +205,32 @@ const matchFactoryCall = (
 	return { config: null, args: [], isFactoryConfig: true };
 };
 
+// Matches a call by the export its callee names: `sv` and `cn` use their own
+// conventions, and `createSV` names the factory call that validates defaults.
+const matchExportCall = (
+	match: MatchContext,
+	node: CallExpression,
+	exportName: string
+): CallMatch | null => {
+	if (exportName === 'sv') {
+		return matchSvCall(node, match.sourceCode);
+	}
+
+	if (exportName === 'cn') {
+		return matchCnCall(node);
+	}
+
+	if (exportName === 'createSV') {
+		return matchFactoryCall(match, node);
+	}
+
+	return null;
+};
+
 // Classifies a call as sv/cn-style, reading the callee through same-file
-// `const` aliases. A namespace member call (`SV.sv(…)`) names its export
-// directly; a callee resolving to a `createSV(...)`-initialized binding is
-// treated like `sv`; a direct `createSV` import names a factory call; a direct
-// sv/cn import uses the sv/cn convention. Null for anything untracked.
+// `const` aliases. A namespace member call (`SV.sv(…)`) or direct import names
+// its export outright; a callee resolving to a `createSV(...)`-initialized
+// binding is treated like `sv`. Null for anything untracked.
 const matchTrackedCall = (
 	match: MatchContext,
 	node: CallExpression
@@ -244,7 +238,7 @@ const matchTrackedCall = (
 	const namespaceExport = resolveNamespaceExportName(match, node);
 
 	if (namespaceExport !== null) {
-		return matchNamespaceCall(match, node, namespaceExport);
+		return matchExportCall(match, node, namespaceExport);
 	}
 
 	if (node.callee.type !== 'Identifier') {
@@ -253,37 +247,23 @@ const matchTrackedCall = (
 
 	const resolved = resolve(match, node.callee);
 
-	// A `const button = createSV(...)(…)` binding behaves like `sv`.
-	if (resolved.type === 'CallExpression') {
-		if (isCreateSvFactoryCall(match, resolved)) {
-			return matchSvCall(node, match.sourceCode);
+	if (resolved.type === 'Identifier') {
+		const exportName = resolveIdentifierExportName(match, resolved);
+
+		if (exportName === null) {
+			return null;
 		}
 
-		return null;
+		return matchExportCall(match, node, exportName);
 	}
 
-	if (resolved.type !== 'Identifier') {
-		return null;
-	}
-
-	// The `createSV(defaults)` factory call itself — validate its defaults.
-	if (match.names.createSvNames.has(resolved.name)) {
-		if (identifierResolvesToImport(match, resolved)) {
-			return matchFactoryCall(match, node);
-		}
-
-		return null;
-	}
-
-	const call = matchSvCnCall(
-		node,
-		resolved.name,
-		match.names,
-		match.sourceCode
-	);
-
-	if (call && identifierResolvesToImport(match, resolved)) {
-		return call;
+	// A `const button = createSV(...)` binding is a pre-configured `sv()`, so its
+	// call sites are analyzed exactly like `sv()` calls.
+	if (
+		resolved.type === 'CallExpression' &&
+		resolveExportName(match, resolved) === 'createSV'
+	) {
+		return matchSvCall(node, match.sourceCode);
 	}
 
 	return null;
@@ -298,10 +278,7 @@ export const createTrackedCallResolver = (context: Rule.RuleContext) => {
 	const { names, importsTracker } = createImportsTracker();
 
 	const hasTrackedImports = (): boolean =>
-		names.svNames.size > 0 ||
-		names.cnNames.size > 0 ||
-		names.createSvNames.size > 0 ||
-		names.namespaceNames.size > 0;
+		names.exportByLocal.size > 0 || names.namespaceNames.size > 0;
 
 	// A classifier whose identifiers are looked up from the given scopes.
 	const matchCallFrom =
