@@ -1,6 +1,8 @@
 import type { Node, ObjectExpression } from 'estree';
 import { getKeyName } from './config-keys.ts';
 
+type KeyPredicate = (key: string) => boolean;
+
 const EMPTY_PROPERTIES: ReadonlyMap<string, Node> = new Map();
 
 const propertiesCache = new WeakMap<
@@ -95,47 +97,40 @@ export const getStrictProperties = (
 	return map;
 };
 
-const isSlotKeyedPropertyKey = (
-	key: string | null,
-	slotNames: Set<string>
-): key is string => key !== null && (key === 'base' || slotNames.has(key));
-
-const buildSlotKeyedMap = (
-	obj: ObjectExpression,
-	slotNames: Set<string>
+// The strict properties of a non-empty object whose every key passes
+// `isAllowed`. Null for anything else, including an object with a spread,
+// computed or disallowed key.
+export const getStrictPropertiesWithKeys = (
+	node: Node | undefined,
+	isAllowed: KeyPredicate
 ): ReadonlyMap<string, Node> | null => {
-	const result = new Map<string, Node>();
+	const properties = getStrictProperties(node);
 
-	for (const prop of obj.properties) {
-		if (prop.type !== 'Property') {
-			return null;
-		}
-
-		const key = getKeyName(prop);
-
-		if (!isSlotKeyedPropertyKey(key, slotNames)) {
-			return null;
-		}
-
-		result.set(key, prop.value);
+	if (!properties || properties.size === 0) {
+		return null;
 	}
 
-	return result;
+	for (const key of properties.keys()) {
+		if (!isAllowed(key)) {
+			return null;
+		}
+	}
+
+	return properties;
 };
 
 export const collectSlotKeyedProperties = (
 	node: Node,
 	slotNames: Set<string>
 ): ReadonlyMap<string, Node> | null => {
-	if (
-		node.type !== 'ObjectExpression' ||
-		node.properties.length === 0 ||
-		slotNames.size === 0
-	) {
+	if (slotNames.size === 0) {
 		return null;
 	}
 
-	return buildSlotKeyedMap(node, slotNames);
+	return getStrictPropertiesWithKeys(
+		node,
+		(key) => key === 'base' || slotNames.has(key)
+	);
 };
 
 // Every name a per-slot object may be keyed by: the declared slots plus the

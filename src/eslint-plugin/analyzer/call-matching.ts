@@ -8,7 +8,7 @@ import type {
 } from 'estree';
 import { CONFIG_KEYS } from './config-keys.ts';
 import { resolveStaticValue } from './const-bindings.ts';
-import { getStrictProperties } from './properties.ts';
+import { getStrictPropertiesWithKeys } from './properties.ts';
 
 export type CallMatch = {
 	config: ObjectExpression | null;
@@ -45,22 +45,5 @@ export const matchCnCall = (node: CallExpression): CallMatch => ({
 	args: node.arguments
 });
 
-const hasOnlyConfigKeys = (properties: ReadonlyMap<string, Node>): boolean => {
-	for (const key of properties.keys()) {
-		if (!CONFIG_KEYS.has(key)) {
-			return false;
-		}
-	}
-
-	return true;
-};
-
-const isConfigLike = (node: Node | undefined): node is ObjectExpression => {
-	const properties = getStrictProperties(node);
-
-	if (!properties || properties.size === 0) {
-		return false;
-	}
-
-	return hasOnlyConfigKeys(properties);
-};
+const isConfigLike = (node: Node | undefined): node is ObjectExpression =>
+	getStrictPropertiesWithKeys(node, (key) => CONFIG_KEYS.has(key)) !== null;
