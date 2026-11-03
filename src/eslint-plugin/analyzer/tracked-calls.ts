@@ -192,14 +192,12 @@ const matchFactoryCall = (
 ): CallMatch => {
 	const [defaults] = node.arguments;
 
-	if (!defaults) {
-		return { config: null, args: [], isFactoryConfig: true };
-	}
+	if (defaults) {
+		const resolved = resolve(match, defaults);
 
-	const resolved = resolve(match, defaults);
-
-	if (resolved.type === 'ObjectExpression') {
-		return { config: resolved, args: [], isFactoryConfig: true };
+		if (resolved.type === 'ObjectExpression') {
+			return { config: resolved, args: [], isFactoryConfig: true };
+		}
 	}
 
 	return { config: null, args: [], isFactoryConfig: true };

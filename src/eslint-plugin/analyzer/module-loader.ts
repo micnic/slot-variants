@@ -21,11 +21,56 @@ type ModuleAnalysis = {
 
 type LinterConstructor = new (options: { cwd: string }) => Linter;
 
+// A plain object rather than a `let`, so the assignment made inside the nested
+// lint run is visible to the caller's control flow.
+type Collected = { analysis: ModuleAnalysis | null };
+
+// A module is parsed with its importer's parser, so the parser is part of what
+// makes an entry valid: one that can't read the module (a JSX page importing a
+// `.vue` file) must not hand its failure to one that can.
+type CacheEntry = {
+	mtimeMs: number;
+	parser: Linter.LanguageOptions['parser'];
+	analysis: ModuleAnalysis | null;
+};
+
+/** Everything cross-file resolution needs from the rule's context. */
+export type ModuleContext = {
+	aliases: AliasMap;
+	cwd: string;
+	languageOptions: Linter.LanguageOptions;
+};
+
 // `eslint` is an optional peer dependency, so it is resolved on first use from
 // the project being linted rather than imported at load time — under a host
 // that doesn't ship it (oxlint), cross-file resolution simply stays off
 // instead of breaking the whole plugin.
 let linterConstructor: LinterConstructor | null | undefined;
+
+// `**/*.*` matches any file with an extension, which every resolved module
+// path has — a bare `**/*` is treated as a universal pattern and matches
+// nothing on its own. The nested run is rooted at the module's own directory,
+// since a flat config never matches a path outside its base directory and an
+// imported module can sit anywhere.
+const FILE_PATTERN = ['**/*.*'];
+
+// typescript-eslint's switches for type-aware parsing. An imported module is
+// only read for its syntax, and a type-aware parse both costs a TypeScript
+// program and fails outright for a module the project doesn't contain.
+const TYPE_AWARE_PARSER_OPTIONS = new Set([
+	'project',
+	'projectService',
+	'programs'
+]);
+
+// Bounded so a long-lived editor session can't accumulate every module it has
+// ever seen. Eviction is FIFO — a hit is a plain `get`, with no reordering.
+const MAX_CACHED_MODULES = 200;
+
+const moduleCache = new Map<string, CacheEntry>();
+
+// Enough to walk a barrel or two without following a pathological chain.
+const MAX_MODULE_HOPS = 10;
 
 const loadLinterFrom = (base: string): LinterConstructor | null => {
 	try {
@@ -73,10 +118,6 @@ const getLinterConstructor = (
 	return linterConstructor;
 };
 
-// A plain object rather than a `let`, so the assignment made inside the nested
-// lint run is visible to the caller's control flow.
-type Collected = { analysis: ModuleAnalysis | null };
-
 const createCollector = (collected: Collected): Rule.RuleModule => ({
 	create(context) {
 		const scan = createForwardingScan(context, {
@@ -92,22 +133,6 @@ const createCollector = (collected: Collected): Rule.RuleModule => ({
 		return scan.listener;
 	}
 });
-
-// `**/*.*` matches any file with an extension, which every resolved module
-// path has — a bare `**/*` is treated as a universal pattern and matches
-// nothing on its own. The nested run is rooted at the module's own directory,
-// since a flat config never matches a path outside its base directory and an
-// imported module can sit anywhere.
-const FILE_PATTERN = ['**/*.*'];
-
-// typescript-eslint's switches for type-aware parsing. An imported module is
-// only read for its syntax, and a type-aware parse both costs a TypeScript
-// program and fails outright for a module the project doesn't contain.
-const TYPE_AWARE_PARSER_OPTIONS = new Set([
-	'project',
-	'projectService',
-	'programs'
-]);
 
 const toSyntaxOnly = (
 	languageOptions: Linter.LanguageOptions
@@ -168,21 +193,6 @@ const analyzeModule = (
 	return collected.analysis;
 };
 
-// A module is parsed with its importer's parser, so the parser is part of what
-// makes an entry valid: one that can't read the module (a JSX page importing a
-// `.vue` file) must not hand its failure to one that can.
-type CacheEntry = {
-	mtimeMs: number;
-	parser: Linter.LanguageOptions['parser'];
-	analysis: ModuleAnalysis | null;
-};
-
-// Bounded so a long-lived editor session can't accumulate every module it has
-// ever seen. Eviction is FIFO — a hit is a plain `get`, with no reordering.
-const MAX_CACHED_MODULES = 200;
-
-const moduleCache = new Map<string, CacheEntry>();
-
 const getModifiedTime = (path: string): number | null => {
 	try {
 		return statSync(path).mtimeMs;
@@ -226,16 +236,6 @@ const loadModule = (
 
 	return analysis;
 };
-
-/** Everything cross-file resolution needs from the rule's context. */
-export type ModuleContext = {
-	aliases: AliasMap;
-	cwd: string;
-	languageOptions: Linter.LanguageOptions;
-};
-
-// Enough to walk a barrel or two without following a pathological chain.
-const MAX_MODULE_HOPS = 10;
 
 /**
  * The component an import names, followed through re-exports and barrel files.

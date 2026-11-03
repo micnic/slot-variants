@@ -3,8 +3,8 @@ import {
 	applyValueToSlotClasses,
 	coerceVariantKeyValue,
 	collectSlotClasses,
-	forEachTargetSlot,
 	getSlotFragment,
+	getTargetSlots,
 	isSlotObjectValue,
 	toFragment
 } from './compile.ts';
@@ -183,9 +183,9 @@ const mergeSlotObjectIntoResult = (
 	const result: Record<string, string> = { ...baseResult };
 
 	for (const [targetKey, targetValue] of entries(classProp)) {
-		forEachTargetSlot(groups, targetKey, (slotKey) => {
+		for (const slotKey of getTargetSlots(groups, targetKey)) {
 			result[slotKey] = cn(result[slotKey], targetValue);
-		});
+		}
 	}
 
 	return result;

@@ -50,7 +50,7 @@ export const noEmptyClasses: Rule.RuleModule = {
 		return createTrackedCallListeners(context, (node, call) => {
 			if (node.arguments.length === 0) {
 				// `createSV()` with no defaults is a valid factory call.
-				if (call.isFactoryConfig !== true) {
+				if (!call.isFactoryConfig) {
 					context.report({ node, messageId: 'emptyCall' });
 				}
 

@@ -36,6 +36,12 @@ type CacheState = {
 
 type ApplySlotClasses = (slotClasses: SlotClasses) => void;
 
+type VariantLayout = {
+	variantData: readonly VariantData[];
+	// How many distinct cache keys the variants span, unset states included.
+	combinationCount: number;
+};
+
 type CompoundEntry = Record<string, unknown> & {
 	preset?: string | undefined;
 };
@@ -118,13 +124,20 @@ export const isReservedProp = (key: string) =>
 const isCompoundMetaKey = (compoundKey: string) =>
 	compoundKey === 'slots' || isReservedProp(compoundKey);
 
+// A variant value is known by its string form, the same way runtime props are
+// looked up.
+const hasVariantValue = (
+	variantValues: NormalizedVariantValues,
+	value: RuntimeVariantValue
+) => hasOwn(variantValues, `${value}`);
+
 const resolveCompoundMatcherExpected = (
 	variant: string,
 	value: unknown,
 	variantValues: NormalizedVariantValues
 ): RuntimeVariantMatcher => {
 	if (isRuntimeVariantValue(value)) {
-		if (!hasOwn(variantValues, `${value}`)) {
+		if (!hasVariantValue(variantValues, value)) {
 			throw createInvalidCompoundMatcherValueError(variant, value);
 		}
 
@@ -142,7 +155,10 @@ const resolveCompoundMatcherExpected = (
 	}
 
 	for (const item of value) {
-		if (!isRuntimeVariantValue(item) || !hasOwn(variantValues, `${item}`)) {
+		if (
+			!isRuntimeVariantValue(item) ||
+			!hasVariantValue(variantValues, item)
+		) {
 			throw createInvalidCompoundMatcherValueError(variant, item);
 		}
 	}
@@ -350,33 +366,33 @@ const createNormalizedVariants = <S extends MaybeSlots>(
  * single cache key: the sum of every value id times its variant's stride, with
  * each variant spanning its value count plus one for the unset state.
  */
-const createVariantData = (normalizedVariants: NormalizedVariants) => {
+const createVariantData = (
+	normalizedVariants: NormalizedVariants
+): VariantLayout => {
 	let stride = 1;
 
-	return entries(normalizedVariants).map(([variantKey, variantValues]) => {
-		const valueKeys = keys(variantValues);
-		const variant: VariantData = {
-			key: variantKey,
-			valueIds: new Map(valueKeys.map((valueKey, id) => [valueKey, id])),
-			unsetId: valueKeys.length,
-			stride,
-			values: variantValues
-		};
+	const variantData = entries(normalizedVariants).map(
+		([variantKey, variantValues]) => {
+			const valueKeys = keys(variantValues);
+			const variant: VariantData = {
+				key: variantKey,
+				valueIds: new Map(
+					valueKeys.map((valueKey, id) => [valueKey, id])
+				),
+				unsetId: valueKeys.length,
+				stride,
+				values: variantValues
+			};
 
-		stride *= valueKeys.length + 1;
+			stride *= valueKeys.length + 1;
 
-		return variant;
-	});
-};
-
-/**
- * Checks that every combination of variant values has a safe integer key.
- */
-const hasSafeCacheKeys = (variantData: readonly VariantData[]) =>
-	variantData.every(
-		({ unsetId, stride }) =>
-			stride * (unsetId + 1) <= Number.MAX_SAFE_INTEGER
+			return variant;
+		}
 	);
+
+	// Strides only grow, so the final one is the largest key plus one.
+	return { variantData, combinationCount: stride };
+};
 
 const resolveRequiredVariants = (
 	requiredVariants: readonly string[] | boolean,
@@ -394,24 +410,19 @@ const resolveRequiredVariants = (
 };
 
 /**
- * Applies a target key to the slot it names, or to every slot of its group.
+ * The slots a target key names: the slot itself, or every slot of its group.
  */
-export const forEachTargetSlot = (
+export const getTargetSlots = (
 	groups: CompiledGroups,
-	targetKey: string,
-	apply: (slotKey: string) => void
-) => {
+	targetKey: string
+): readonly string[] => {
 	const groupSlots = groups.get(targetKey);
 
 	if (groupSlots === undefined) {
-		apply(targetKey);
-
-		return;
+		return [targetKey];
 	}
 
-	for (const slotKey of groupSlots) {
-		apply(slotKey);
-	}
+	return groupSlots;
 };
 
 const expandSlotTargets = (
@@ -427,9 +438,9 @@ const expandSlotTargets = (
 			throw new Error(`${label} references unknown slot "${target}"`);
 		}
 
-		forEachTargetSlot(groups, target, (slotKey) => {
+		for (const slotKey of getTargetSlots(groups, target)) {
 			result.add(slotKey);
-		});
+		}
 	}
 
 	return [...result];
@@ -487,7 +498,7 @@ const assertKnownDefaultVariants = (
 		if (
 			value !== undefined &&
 			typeof value !== 'function' &&
-			!hasOwn(variantValues, `${value}`)
+			!hasVariantValue(variantValues, value)
 		) {
 			throw new Error(
 				`Default variant "${variant}" has invalid value "${value}"`
@@ -514,7 +525,7 @@ const assertValidPresets = (
 				`Preset "${presetName}" references unknown variant "${variant}"`
 			);
 
-			if (value !== undefined && !hasOwn(variantValues, `${value}`)) {
+			if (value !== undefined && !hasVariantValue(variantValues, value)) {
 				throw new Error(
 					`Preset "${presetName}" has invalid value "${value}" for variant "${variant}"`
 				);
@@ -581,9 +592,9 @@ const pushSlotObjectValue = (
 	groups: CompiledGroups
 ) => {
 	for (const [targetKey, targetValue] of entries(value)) {
-		forEachTargetSlot(groups, targetKey, (slotKey) => {
+		for (const slotKey of getTargetSlots(groups, targetKey)) {
 			slotClasses[slotKey]?.push(targetValue);
-		});
+		}
 	}
 };
 
@@ -700,7 +711,8 @@ export const compileConfig = (
 	]);
 
 	const normalizedVariants = createNormalizedVariants(variants, targetKeys);
-	const variantData = createVariantData(normalizedVariants);
+	const { variantData, combinationCount } =
+		createVariantData(normalizedVariants);
 
 	const resolvedMultiSlots = resolveMultiSlots(
 		multiSlots,
@@ -783,7 +795,8 @@ export const compileConfig = (
 		presets,
 		compounds: [...compiledCompoundVariants, ...compiledCompoundSlots],
 		...createCache(cacheSize),
-		cacheable: cacheSize > 0 && hasSafeCacheKeys(variantData),
+		// Every combination needs a safe integer key to be cached.
+		cacheable: cacheSize > 0 && combinationCount <= Number.MAX_SAFE_INTEGER,
 		introspection,
 		postProcess
 	};

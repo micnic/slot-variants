@@ -32,7 +32,7 @@ export const requireTopLevelConfig: Rule.RuleModule = {
 		return createTrackedCallListeners(context, (node, call) => {
 			// A `createSV()` factory call compiles no variant function, so it's
 			// exempt — only the returned function's config calls must be top level.
-			if (!call.config || call.isFactoryConfig === true) {
+			if (!call.config || call.isFactoryConfig) {
 				return;
 			}
 

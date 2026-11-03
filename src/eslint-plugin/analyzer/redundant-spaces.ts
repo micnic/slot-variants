@@ -118,7 +118,7 @@ const checkCompoundsForRedundantSpaces = (
 	});
 };
 
-export const svRedundantSpacesConfigValueCheckers: Record<
+const svRedundantSpacesConfigValueCheckers: Record<
 	string,
 	SvConfigValueChecker
 > = {
@@ -129,12 +129,11 @@ export const svRedundantSpacesConfigValueCheckers: Record<
 	compoundSlots: checkCompoundsForRedundantSpaces
 };
 
-export const dispatchSvConfigCheckers = (
+export const checkConfigForRedundantSpaces = (
 	context: Rule.RuleContext,
-	configNode: ObjectExpression,
-	checkers: Record<string, SvConfigValueChecker>
+	configNode: ObjectExpression
 ) => {
 	for (const [key, value] of getProperties(configNode)) {
-		checkers[key]?.(context, value);
+		svRedundantSpacesConfigValueCheckers[key]?.(context, value);
 	}
 };

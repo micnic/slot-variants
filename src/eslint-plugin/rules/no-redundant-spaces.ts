@@ -1,8 +1,7 @@
 import type { Rule } from 'eslint';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import {
-	dispatchSvConfigCheckers,
-	svRedundantSpacesConfigValueCheckers,
+	checkConfigForRedundantSpaces,
 	visitForRedundantSpaces
 } from '../analyzer/redundant-spaces.ts';
 import { forEachStaticItem } from '../analyzer/token-extraction.ts';
@@ -36,11 +35,7 @@ export const noRedundantSpaces: Rule.RuleModule = {
 			});
 
 			if (call.config) {
-				dispatchSvConfigCheckers(
-					context,
-					call.config,
-					svRedundantSpacesConfigValueCheckers
-				);
+				checkConfigForRedundantSpaces(context, call.config);
 			}
 		});
 	}

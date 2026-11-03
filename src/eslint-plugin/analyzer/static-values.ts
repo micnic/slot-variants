@@ -20,10 +20,6 @@ import {
 	isUndefinedIdentifier
 } from './static-predicates.ts';
 
-const reportDynamic = (context: Rule.RuleContext, node: Node) => {
-	context.report({ node, messageId: 'dynamic' });
-};
-
 type StaticClassValueOptions = {
 	allowNestedArrays?: boolean;
 	allowUndefined?: boolean;
@@ -34,6 +30,15 @@ type StaticClassValueOptions = {
 	// resolves to another `sv()`/`cn()` call's output is statically known after
 	// all — it just isn't spelled as a literal — so it is not dynamic.
 	isStyled?: (node: Node) => boolean;
+};
+
+export type SvConfigValueChecker = (
+	context: Rule.RuleContext,
+	node: Node
+) => void;
+
+const reportDynamic = (context: Rule.RuleContext, node: Node) => {
+	context.report({ node, messageId: 'dynamic' });
 };
 
 // The cn-style affordances that propagate into nested positions. `allowNestedArrays`
@@ -317,11 +322,6 @@ const checkCompoundEntries = (
 		});
 	});
 };
-
-export type SvConfigValueChecker = (
-	context: Rule.RuleContext,
-	node: Node
-) => void;
 
 const getCompoundEntryValueChecker = (
 	key: string | null,

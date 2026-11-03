@@ -97,16 +97,12 @@ const intersectSharedTokensBySlot = (
 
 // The tokens of a static class string, in source order — the shared inputs
 // to both a fix plan's target rewrite (append) and value rewrites (remove).
+// Callers pass a literal's raw inner text (`getInnerText`), never its cooked
+// value: token identity throughout this file is the raw source substring (see
+// `pushStringLiteralTokens`), so diffing against the cooked value would
+// silently miscompare whenever a token contains an escape sequence.
 const splitStaticTokens = (text: string): string[] =>
 	text.trim().split(/\s+/).filter(Boolean);
-
-// Token identity throughout this file is always the raw source substring (see
-// `pushStringLiteralTokens`), so a fix's token math must match on that same raw
-// text; diffing against the cooked value would silently miscompare whenever a
-// token contains an escape sequence. Callers must have already confirmed
-// `node` is a plain string/template literal.
-const getRawInnerText = (context: Rule.RuleContext, node: Node): string =>
-	getInnerText(context.sourceCode, node);
 
 type LiteralRewrite = { node: Node; nextText: string; quote: string };
 
@@ -144,7 +140,7 @@ const planAppendRewrite = (
 		return null;
 	}
 
-	const existingTokens = splitStaticTokens(getRawInnerText(context, node));
+	const existingTokens = splitStaticTokens(getInnerText(context.sourceCode, node));
 	const missingTokens = [...tokens].filter(
 		(token) => !existingTokens.includes(token)
 	);
@@ -266,7 +262,7 @@ const planValueRewrites = (
 		}
 
 		const remainingTokens = splitStaticTokens(
-			getRawInnerText(context, slotNode)
+			getInnerText(context.sourceCode, slotNode)
 		).filter((token) => !sharedTokens.has(token));
 
 		// Lifting every token out would leave an empty class string behind, which

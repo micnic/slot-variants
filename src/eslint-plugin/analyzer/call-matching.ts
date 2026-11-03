@@ -15,7 +15,7 @@ export type CallMatch = {
 	args: ReadonlyArray<Expression | SpreadElement>;
 	// True only for a `createSV(defaults)` factory call — it compiles no variant
 	// function, so it's exempt from require-top-level-config and the empty-call check.
-	isFactoryConfig?: boolean;
+	isFactoryConfig: boolean;
 };
 
 // Resolves the last arg through hoisted `const` bindings so `const config = {...};
@@ -28,21 +28,22 @@ export const matchSvCall = (
 	const last = args[args.length - 1];
 
 	if (!last) {
-		return { config: null, args };
+		return { config: null, args, isFactoryConfig: false };
 	}
 
 	const resolved = resolveStaticValue(last, sourceCode);
 
 	if (!isConfigLike(resolved)) {
-		return { config: null, args };
+		return { config: null, args, isFactoryConfig: false };
 	}
 
-	return { config: resolved, args: args.slice(0, -1) };
+	return { config: resolved, args: args.slice(0, -1), isFactoryConfig: false };
 };
 
 export const matchCnCall = (node: CallExpression): CallMatch => ({
 	config: null,
-	args: node.arguments
+	args: node.arguments,
+	isFactoryConfig: false
 });
 
 const isConfigLike = (node: Node | undefined): node is ObjectExpression =>

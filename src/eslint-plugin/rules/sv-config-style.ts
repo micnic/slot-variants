@@ -16,12 +16,35 @@ import { removeFromList } from '../analyzer/list-fix.ts';
 import { getStaticStringText } from '../analyzer/literals.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
-const ORDER_INDEX = new Map(CONFIG_KEY_ORDER.map((key, index) => [key, index]));
-
 type KeyEntry = {
 	prop: Property;
 	key: string;
 	index: number;
+};
+
+type BaseStyle = 'field' | 'separateArg' | 'slotsBase';
+
+// The three places base classes can live. `node` is what a mismatch is
+// reported on and `value` holds the classes; a property source also carries the
+// object it sits in (the config, or the resolved `slots` object) so a fix can
+// remove it from there.
+type BaseSource =
+	| { style: 'separateArg'; node: Expression | SpreadElement; value: Node }
+	| {
+			style: 'field' | 'slotsBase';
+			node: Property;
+			value: Node;
+			container: ObjectExpression;
+	  };
+
+const ORDER_INDEX = new Map(CONFIG_KEY_ORDER.map((key, index) => [key, index]));
+
+const DEFAULT_SEPARATOR = ',\n\t';
+
+const BASE_STYLE_LABELS: Record<BaseStyle, string> = {
+	field: 'a "base" field in the config',
+	separateArg: 'a separate leading argument',
+	slotsBase: 'a "base" entry in "slots"'
 };
 
 // Reads each property's canonical-order index. A spread, a computed key, or a
@@ -71,8 +94,6 @@ const hasCommentsInside = (
 	context: Rule.RuleContext,
 	node: ObjectExpression
 ): boolean => context.sourceCode.getCommentsInside(node).length > 0;
-
-const DEFAULT_SEPARATOR = ',\n\t';
 
 // The separator (comma + whitespace) between the first two properties in
 // their original source order, reused between every reordered property so
@@ -154,14 +175,6 @@ const checkKeyOrder = (
 	}
 };
 
-type BaseStyle = 'field' | 'separateArg' | 'slotsBase';
-
-const BASE_STYLE_LABELS: Record<BaseStyle, string> = {
-	field: 'a "base" field in the config',
-	separateArg: 'a separate leading argument',
-	slotsBase: 'a "base" entry in "slots"'
-};
-
 const normalizeBaseStyle = (option: BaseStyle | undefined): BaseStyle => {
 	if (option === undefined) {
 		return 'field';
@@ -191,19 +204,6 @@ const getSlotsObject = (
 
 	return null;
 };
-
-// The three places base classes can live. `node` is what a mismatch is
-// reported on and `value` holds the classes; a property source also carries the
-// object it sits in (the config, or the resolved `slots` object) so a fix can
-// remove it from there.
-type BaseSource =
-	| { style: 'separateArg'; node: Expression | SpreadElement; value: Node }
-	| {
-			style: 'field' | 'slotsBase';
-			node: Property;
-			value: Node;
-			container: ObjectExpression;
-	  };
 
 const detectBaseSources = (
 	configNode: ObjectExpression,
@@ -512,7 +512,7 @@ export const svConfigStyle: Rule.RuleModule = {
 				call.config,
 				call.args,
 				baseStyle,
-				call.isFactoryConfig === true
+				call.isFactoryConfig
 			);
 		});
 	}

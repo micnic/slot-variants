@@ -31,6 +31,36 @@ import {
 	withMatcher
 } from './token-model.ts';
 
+type TokenExtractionContext = {
+	slot: string;
+	source: Source;
+	slotNames: Set<string>;
+	entries: Entry[];
+	sourceCode: SourceCode;
+};
+
+type NodeVisitor = (node: Node) => void;
+
+type StringKeyVisitor = (key: Literal, text: string) => void;
+
+type ExtractFn = (
+	node: Node,
+	slot: string,
+	source: Source,
+	cnStyle?: boolean
+) => void;
+
+// `preset` names the variant values a compound matches instead of being a
+// matcher key itself. Expanding it would need the `presets` config in hand, so
+// it is skipped: a compound left with no other matcher falls back to the
+// never-exclusive compound source, which can only under-suppress a report.
+export const COMPOUND_NON_MATCHER_KEYS = new Set([
+	'class',
+	'className',
+	'slots',
+	'preset'
+]);
+
 const pushTokensFromText = (
 	text: string,
 	base: number,
@@ -205,14 +235,6 @@ const extractRecordTokens = (
 
 		pushRecordKeyTokens(prop, slot, source, entries, sourceCode);
 	}
-};
-
-export type TokenExtractionContext = {
-	slot: string;
-	source: Source;
-	slotNames: Set<string>;
-	entries: Entry[];
-	sourceCode: SourceCode;
 };
 
 const extractConditionalTokens = (
@@ -392,9 +414,6 @@ export const extractCnTokens = (
 	);
 };
 
-type NodeVisitor = (node: Node) => void;
-type StringKeyVisitor = (key: Literal, text: string) => void;
-
 // The conditional forms of the cn() calling convention: only the `&&` right
 // operand and each ternary branch carry classes. True when `node` was one of
 // them.
@@ -508,13 +527,6 @@ export const forEachCompoundClass = (
 	});
 };
 
-type ExtractFn = (
-	node: Node,
-	slot: string,
-	source: Source,
-	cnStyle?: boolean
-) => void;
-
 const extractVariantTokens = (
 	variantsMap: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
@@ -531,17 +543,6 @@ const extractVariantTokens = (
 		}
 	}
 };
-
-// `preset` names the variant values a compound matches instead of being a
-// matcher key itself. Expanding it would need the `presets` config in hand, so
-// it is skipped: a compound left with no other matcher falls back to the
-// never-exclusive compound source, which can only under-suppress a report.
-export const COMPOUND_NON_MATCHER_KEYS = new Set([
-	'class',
-	'className',
-	'slots',
-	'preset'
-]);
 
 // Strings, booleans, and numbers align with variant value keys (`{ true: … }`,
 // `{ 2: … }`), which getKeyName also reads as strings.

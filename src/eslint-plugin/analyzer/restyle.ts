@@ -50,6 +50,11 @@ export type ClassParts = {
 	merged: boolean;
 };
 
+type LiteralReporter = (
+	styled: ReadonlyArray<StyledClasses>,
+	literals: ReadonlyArray<Entry>
+) => void;
+
 export const emptyParts = (): ClassParts => ({
 	styled: [],
 	literals: [],
@@ -87,9 +92,7 @@ export const isClassListCall = (
 ): boolean => {
 	const call = ctx.matchCall(node);
 
-	return (
-		call !== null && call.isFactoryConfig !== true && call.config === null
-	);
+	return call !== null && !call.isFactoryConfig && call.config === null;
 };
 
 /** Walks a class-list call's arguments as siblings of one another. */
@@ -312,11 +315,6 @@ const reportAgainstStyled = (
 		}
 	}
 };
-
-type LiteralReporter = (
-	styled: ReadonlyArray<StyledClasses>,
-	literals: ReadonlyArray<Entry>
-) => void;
 
 /**
  * Creates the reporter for one lint run: it reports each literal that

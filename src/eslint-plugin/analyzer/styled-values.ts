@@ -218,7 +218,7 @@ const resolveVariantFnStyles = (
 	// A config-less `sv()`/`cn()` call returns a class string, not a function,
 	// and a `createSV(defaults)` call returns a factory rather than a compiled
 	// variant function — neither is callable as one.
-	if (!match || match.isFactoryConfig === true || match.config === null) {
+	if (!match || match.isFactoryConfig || match.config === null) {
 		return null;
 	}
 
@@ -375,7 +375,7 @@ export const resolveStyledClasses = (
 
 	const direct = ctx.matchCall(resolved);
 
-	if (direct && direct.isFactoryConfig !== true) {
+	if (direct && !direct.isFactoryConfig) {
 		if (direct.config !== null) {
 			return null;
 		}

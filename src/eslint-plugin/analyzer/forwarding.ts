@@ -101,6 +101,9 @@ type PendingPosition = {
 	run: (emit: (parts: ClassParts) => void) => void;
 };
 
+// A pending position once its walk has run: the class parts it produced.
+type CollectedPosition = Omit<PendingPosition, 'run'> & { parts: ClassParts };
+
 // Calls whose result is a single-file component's props, read at the top level
 // of its script: Svelte's `$props()` rune, and Vue's `defineProps()` (bare or
 // under `withDefaults()`) and `useAttrs()`.
@@ -583,11 +586,7 @@ export const createForwardingScan = (
 			}
 		},
 		'Program:exit'() {
-			const positions: Array<{
-				parts: ClassParts;
-				ctx: StyledContext;
-				site: ComponentSite | null;
-			}> = [];
+			const positions: CollectedPosition[] = [];
 
 			for (const item of pending) {
 				item.run((parts) => {
