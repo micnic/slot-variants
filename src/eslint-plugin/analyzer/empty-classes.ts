@@ -165,7 +165,7 @@ const checkCompoundMatchersForEmpty = (
 		}
 
 		for (const prop of element.properties) {
-			if (prop.type !== 'Property' || prop.computed) {
+			if (prop.type !== 'Property') {
 				continue;
 			}
 

@@ -35,14 +35,13 @@ const collectOrderedEntries = (
 	let fixable = true;
 
 	for (const prop of properties) {
-		if (prop.type !== 'Property' || prop.computed) {
+		if (prop.type !== 'Property') {
 			fixable = false;
 			continue;
 		}
 
 		const key = getKeyName(prop);
 
-		/* c8 ignore next 4 -- property is guaranteed non-computed at this point, so getKeyName won't return null */
 		if (key === null) {
 			fixable = false;
 			continue;
@@ -173,11 +172,7 @@ const normalizeBaseStyle = (option: BaseStyle | undefined): BaseStyle => {
 
 const findProperty = (obj: ObjectExpression, key: string): Property | null => {
 	for (const prop of obj.properties) {
-		if (
-			prop.type === 'Property' &&
-			!prop.computed &&
-			getKeyName(prop) === key
-		) {
+		if (prop.type === 'Property' && getKeyName(prop) === key) {
 			return prop;
 		}
 	}
