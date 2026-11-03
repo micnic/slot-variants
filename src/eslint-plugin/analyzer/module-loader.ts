@@ -3,9 +3,13 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import type { Linter, Rule, Scope } from 'eslint';
 import type { Program } from 'estree';
-import { type Component, resolveComponentFunction } from './components.ts';
+import {
+	type Component,
+	DEFAULT_EXPORT,
+	resolveComponentFunction
+} from './components.ts';
 import { createForwardingScan, type ForwardedStyles } from './forwarding.ts';
-import { DEFAULT_EXPORT, findExportTargets } from './module-exports.ts';
+import { type ExportTarget, findExportTargets } from './module-exports.ts';
 import { type AliasMap, resolveModulePath } from './module-paths.ts';
 
 /** What one imported module contributes: its components and their configs. */
@@ -302,7 +306,7 @@ export const resolveImportedComponent = (
 };
 
 const followExportTarget = (
-	target: ReturnType<typeof findExportTargets>[number],
+	target: ExportTarget,
 	analysis: ModuleAnalysis,
 	path: string,
 	moduleContext: ModuleContext,

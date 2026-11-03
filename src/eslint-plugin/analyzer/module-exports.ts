@@ -1,6 +1,8 @@
 import type { ExportNamedDeclaration, Node, Program } from 'estree';
 import {
 	type ComponentFunction,
+	DEFAULT_EXPORT,
+	getExportName,
 	isComponentFunction,
 	unwrapComponentFunction
 } from './components.ts';
@@ -9,27 +11,10 @@ import {
  * Where an export name leads: a binding in the same module, a function node
  * exported without a name of its own, or another module to look in.
  */
-type ExportTarget =
+export type ExportTarget =
 	| { kind: 'local'; name: string }
 	| { kind: 'node'; node: ComponentFunction }
 	| { kind: 'forward'; specifier: string; name: string };
-
-export const DEFAULT_EXPORT = 'default';
-
-// An export name is an identifier, or a string literal for the `export { x as
-// "a-b" }` form.
-const getExportName = (node: Node): string | null => {
-	if (node.type === 'Identifier') {
-		return node.name;
-	}
-
-	/* c8 ignore next 3 -- an export name is parsed as an identifier or string */
-	if (node.type !== 'Literal') {
-		return null;
-	}
-
-	return String(node.value);
-};
 
 const getSourceValue = (node: Program['body'][number]): string | null => {
 	if (!('source' in node) || !node.source) {
@@ -88,11 +73,6 @@ const collectFromSpecifiers = (
 		}
 
 		const local = getExportName(specifier.local);
-
-		/* c8 ignore next 3 -- a local export name is always readable */
-		if (local === null) {
-			continue;
-		}
 
 		if (source === null) {
 			targets.push({ kind: 'local', name: local });

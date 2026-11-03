@@ -3,6 +3,8 @@ import type {
 	ArrowFunctionExpression,
 	FunctionDeclaration,
 	FunctionExpression,
+	Identifier,
+	Literal,
 	Node,
 	Program
 } from 'estree';
@@ -19,6 +21,21 @@ export type ComponentFunction =
  * top level of its script.
  */
 export type Component = ComponentFunction | Program;
+
+/** The module a component identifier is imported from, and under which name. */
+type ImportSource = { specifier: string; exportName: string };
+
+export const DEFAULT_EXPORT = 'default';
+
+// An export name is an identifier, or a string literal for the `export { x as
+// "a-b" }` form.
+export const getExportName = (node: Identifier | Literal): string => {
+	if (node.type === 'Identifier') {
+		return node.name;
+	}
+
+	return String(node.value);
+};
 
 // Takes the structural minimum so framework node unions narrow through it too.
 export const isComponentFunction = (node: {
@@ -101,14 +118,10 @@ export const resolveComponentFunction = (
 export const resolveImportSource = (
 	name: string,
 	scope: Scope.Scope
-): { specifier: string; exportName: string } | null => {
+): ImportSource | null => {
 	const def = findSingleDef(scope, name);
 
-	if (!def) {
-		return null;
-	}
-
-	if (def.type !== 'ImportBinding') {
+	if (!def || def.type !== 'ImportBinding') {
 		return null;
 	}
 
@@ -119,21 +132,13 @@ export const resolveImportSource = (
 		return null;
 	}
 
-	// `DEFAULT_EXPORT` lives in module-exports, which reads this file for its
-	// own function check — the literal is repeated here to keep that one-way.
 	if (def.node.type === 'ImportDefaultSpecifier') {
-		return { specifier: value, exportName: 'default' };
+		return { specifier: value, exportName: DEFAULT_EXPORT };
 	}
 
 	if (def.node.type !== 'ImportSpecifier') {
 		return null;
 	}
 
-	const { imported } = def.node;
-
-	if (imported.type === 'Identifier') {
-		return { specifier: value, exportName: imported.name };
-	}
-
-	return { specifier: value, exportName: String(imported.value) };
+	return { specifier: value, exportName: getExportName(def.node.imported) };
 };
