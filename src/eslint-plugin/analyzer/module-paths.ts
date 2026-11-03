@@ -46,9 +46,13 @@ const getExtension = (path: string): string => {
 	return path.slice(dot);
 };
 
-const withExtensions = (base: string): string | null => {
-	for (const extension of EXTENSIONS) {
-		const candidate = `${base}${extension}`;
+// The first existing file among `stem` plus each extension, in order.
+const findFile = (
+	stem: string,
+	extensions: ReadonlyArray<string>
+): string | null => {
+	for (const extension of extensions) {
+		const candidate = `${stem}${extension}`;
 
 		if (isFile(candidate)) {
 			return candidate;
@@ -57,9 +61,6 @@ const withExtensions = (base: string): string | null => {
 
 	return null;
 };
-
-const asDirectoryIndex = (base: string): string | null =>
-	withExtensions(`${base}/index`);
 
 // The file a resolved path points at: itself, the same path under a source
 // extension, an extensionless path plus one, or a directory's index file.
@@ -72,20 +73,10 @@ const resolveFile = (base: string): string | null => {
 	const rewrites = REWRITABLE.get(extension);
 
 	if (rewrites) {
-		const stem = base.slice(0, -extension.length);
-
-		for (const rewrite of rewrites) {
-			const candidate = `${stem}${rewrite}`;
-
-			if (isFile(candidate)) {
-				return candidate;
-			}
-		}
-
-		return null;
+		return findFile(base.slice(0, -extension.length), rewrites);
 	}
 
-	return withExtensions(base) ?? asDirectoryIndex(base);
+	return findFile(base, EXTENSIONS) ?? findFile(`${base}/index`, EXTENSIONS);
 };
 
 const isRelative = (specifier: string): boolean =>
