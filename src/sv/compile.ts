@@ -16,7 +16,6 @@ import {
 	type ResolvedVariantState,
 	type RuntimeDefaultVariant,
 	type RuntimeGroups,
-	type RuntimeVariantMatcher,
 	type RuntimeVariantValue,
 	type SlotClasses,
 	type SlotEntry,
@@ -56,7 +55,7 @@ type ConfigValueCheck =
 	| 'number'
 	| 'object';
 
-const { isArray, from } = Array;
+const { isArray } = Array;
 const { entries, hasOwn, keys } = Object;
 
 const defaultCacheSize = 256;
@@ -135,13 +134,13 @@ const resolveCompoundMatcherExpected = (
 	variant: string,
 	value: unknown,
 	variantValues: NormalizedVariantValues
-): RuntimeVariantMatcher => {
+): CompoundMatcher => {
 	if (isRuntimeVariantValue(value)) {
 		if (!hasVariantValue(variantValues, value)) {
 			throw createInvalidCompoundMatcherValueError(variant, value);
 		}
 
-		return [value];
+		return new Set([`${value}`]);
 	}
 
 	if (!isArray(value)) {
@@ -154,6 +153,8 @@ const resolveCompoundMatcherExpected = (
 		);
 	}
 
+	const expected = new Set<string>();
+
 	for (const item of value) {
 		if (
 			!isRuntimeVariantValue(item) ||
@@ -161,13 +162,15 @@ const resolveCompoundMatcherExpected = (
 		) {
 			throw createInvalidCompoundMatcherValueError(variant, item);
 		}
+
+		expected.add(`${item}`);
 	}
 
-	return value;
+	return expected;
 };
 
 const seedPresetMatchers = (
-	matchers: Map<string, RuntimeVariantMatcher>,
+	matchers: Map<string, CompoundMatcher>,
 	presets: Record<string, ResolvedVariantState>,
 	preset: string | undefined
 ) => {
@@ -185,7 +188,7 @@ const seedPresetMatchers = (
 
 	for (const [variant, value] of entries(presetValues)) {
 		if (value !== undefined) {
-			matchers.set(variant, [value]);
+			matchers.set(variant, new Set([`${value}`]));
 		}
 	}
 };
@@ -208,8 +211,8 @@ const compileCompoundMatchers = (
 	compound: CompoundEntry,
 	normalizedVariants: NormalizedVariants,
 	presets: Record<string, ResolvedVariantState>
-): readonly CompoundMatcher[] => {
-	const matchers = new Map<string, RuntimeVariantMatcher>();
+): ReadonlyMap<string, CompoundMatcher> => {
+	const matchers = new Map<string, CompoundMatcher>();
 
 	seedPresetMatchers(matchers, presets, compound.preset);
 
@@ -230,7 +233,7 @@ const compileCompoundMatchers = (
 		);
 	}
 
-	return from(matchers, ([key, expected]) => ({ key, expected }));
+	return matchers;
 };
 
 /**

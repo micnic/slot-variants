@@ -140,7 +140,9 @@ const planAppendRewrite = (
 		return null;
 	}
 
-	const existingTokens = splitStaticTokens(getInnerText(context.sourceCode, node));
+	const existingTokens = splitStaticTokens(
+		getInnerText(context.sourceCode, node)
+	);
 	const missingTokens = [...tokens].filter(
 		(token) => !existingTokens.includes(token)
 	);

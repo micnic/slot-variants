@@ -37,7 +37,11 @@ export const matchSvCall = (
 		return { config: null, args, isFactoryConfig: false };
 	}
 
-	return { config: resolved, args: args.slice(0, -1), isFactoryConfig: false };
+	return {
+		config: resolved,
+		args: args.slice(0, -1),
+		isFactoryConfig: false
+	};
 };
 
 export const matchCnCall = (node: CallExpression): CallMatch => ({

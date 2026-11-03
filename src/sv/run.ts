@@ -14,13 +14,13 @@ import {
 	type CacheValue,
 	type CompiledConfig,
 	type CompiledGroups,
+	type CompoundMatcher,
 	type CompoundSlotFragment,
 	type ResolvedVariantState,
 	type RunFn,
 	type RuntimeClassValue,
 	type RuntimeDefaultVariant,
 	type RuntimeProps,
-	type RuntimeVariantMatcher,
 	type RuntimeVariantState,
 	type RuntimeVariantValue,
 	type VariantCache,
@@ -239,18 +239,17 @@ const mergeClassProp = (
  */
 const getCompoundIds = (
 	variant: VariantData,
-	expected: RuntimeVariantMatcher
+	expected: CompoundMatcher
 ): ReadonlySet<number> => {
-	const expectedKeys = new Set(expected.map((value) => `${value}`));
 	const ids = new Set<number>();
 
 	for (const [valueKey, id] of variant.valueIds) {
-		if (expectedKeys.has(valueKey)) {
+		if (expected.has(valueKey)) {
 			ids.add(id);
 		}
 	}
 
-	if (expectedKeys.has('undefined')) {
+	if (expected.has('undefined')) {
 		ids.add(variant.unsetId);
 	}
 
@@ -289,13 +288,10 @@ const createVariantPlan = (
 	const tests: CompoundTest[] = [];
 
 	compounds.forEach(({ matchers }, compound) => {
-		const matcher = matchers.find(({ key }) => key === variant.key);
+		const matcher = matchers.get(variant.key);
 
 		if (matcher !== undefined) {
-			tests.push({
-				compound,
-				ids: getCompoundIds(variant, matcher.expected)
-			});
+			tests.push({ compound, ids: getCompoundIds(variant, matcher) });
 		}
 	});
 

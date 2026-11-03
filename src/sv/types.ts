@@ -27,7 +27,8 @@ export type ResolvedVariantState = Record<
 	RuntimeVariantValue | undefined
 >;
 
-export type RuntimeVariantMatcher = readonly RuntimeVariantValue[];
+/** The stringified variant values a compound matcher accepts. */
+export type CompoundMatcher = ReadonlySet<string>;
 
 type EitherClassProp<C, O extends boolean = false> = O extends true
 	? { class?: C; className?: never } | { class?: never; className?: C }
@@ -114,13 +115,8 @@ export type RuntimeGroups = Record<string, readonly string[]>;
 
 export type CompiledGroups = ReadonlyMap<string, readonly string[]>;
 
-export type CompoundMatcher = {
-	key: string;
-	expected: RuntimeVariantMatcher;
-};
-
 export type CompiledCompound = {
-	matchers: readonly CompoundMatcher[];
+	matchers: ReadonlyMap<string, CompoundMatcher>;
 	fragments: readonly CompoundSlotFragment[];
 };
 
