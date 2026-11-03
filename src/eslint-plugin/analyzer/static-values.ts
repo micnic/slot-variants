@@ -220,30 +220,21 @@ const checkClassValueRecord = (context: Rule.RuleContext, node: Node) => {
 	});
 };
 
-const checkSlotKeyedClassValueRecord = (
-	context: Rule.RuleContext,
-	node: ObjectExpression
-) => {
-	for (const value of getProperties(node).values()) {
-		checkConfigClassValueIsStatic(context, value);
-	}
-};
-
-const isSlotKeyedClassValueRecord = (
-	node: ObjectExpression,
-	slotNames: Set<string>
-): boolean => collectSlotKeyedProperties(node, slotNames) !== null;
-
+// A slot-keyed record holds one class value per slot; anything else is a plain
+// class value.
 const checkVariantBranchValue = (
 	context: Rule.RuleContext,
 	node: Node,
 	slotNames: Set<string>
 ) => {
-	if (node.type === 'ObjectExpression') {
-		if (isSlotKeyedClassValueRecord(node, slotNames)) {
-			checkSlotKeyedClassValueRecord(context, node);
-			return;
+	const slotKeyed = collectSlotKeyedProperties(node, slotNames);
+
+	if (slotKeyed) {
+		for (const value of slotKeyed.values()) {
+			checkConfigClassValueIsStatic(context, value);
 		}
+
+		return;
 	}
 
 	checkConfigClassValueIsStatic(context, node);
@@ -264,17 +255,15 @@ const checkVariantDefinition = (
 	node: Node,
 	slotNames: Set<string>
 ) => {
-	if (node.type === 'ObjectExpression') {
-		if (isSlotKeyedClassValueRecord(node, slotNames)) {
-			checkSlotKeyedClassValueRecord(context, node);
-			return;
-		}
-
+	if (
+		node.type === 'ObjectExpression' &&
+		collectSlotKeyedProperties(node, slotNames) === null
+	) {
 		checkValueKeyedVariant(context, node, slotNames);
 		return;
 	}
 
-	checkConfigClassValueIsStatic(context, node);
+	checkVariantBranchValue(context, node, slotNames);
 };
 
 const checkVariants = (
@@ -352,12 +341,8 @@ const getCompoundEntryValueChecker = (
 		};
 	}
 
-	if (key === 'slots') {
-		if (hasSlotsKey) {
-			return checkCompoundSlotsArray;
-		}
-
-		return null;
+	if (key === 'slots' && hasSlotsKey) {
+		return checkCompoundSlotsArray;
 	}
 
 	return null;
