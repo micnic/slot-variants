@@ -732,6 +732,12 @@ const NO_DYNAMIC_CLASSES_VALID = [
 			slots: { body: 'p-4' },
 			compoundSlots: [{ slots: [, 'body'], class: 'font-bold' }]
 		});`,
+	// compoundSlots with a no-substitution template literal slot name.
+	IMPORT +
+		`sv({
+			slots: { body: 'p-4' },
+			compoundSlots: [{ slots: [\`body\`], class: 'font-bold' }]
+		});`,
 	// Non-class config keys with dynamic values are not validated.
 	IMPORT +
 		`sv({

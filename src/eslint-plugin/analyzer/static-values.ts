@@ -299,7 +299,7 @@ const checkCompoundSlotsArray = (context: Rule.RuleContext, value: Node) => {
 	}
 
 	forEachItemReportingSpread(context, value.elements, (element) => {
-		if (element.type !== 'Literal' || typeof element.value !== 'string') {
+		if (!isStaticStringNode(element)) {
 			reportDynamic(context, element);
 		}
 	});
