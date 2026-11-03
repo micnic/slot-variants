@@ -34,6 +34,20 @@ type ConflictGroup = {
 	matchers: VariantMatchers[] | null;
 };
 
+// What reporting reads from a group, merged overlap components included.
+type ReportedGroup = Pick<ConflictGroup, 'tokens' | 'entries' | 'exclusive'>;
+
+type GroupMembers = Pick<ConflictGroup, 'tokens' | 'entries'>;
+
+// Adds `source`'s tokens and entries to `target`.
+const absorbGroup = (target: GroupMembers, source: GroupMembers) => {
+	for (const token of source.tokens) {
+		target.tokens.add(token);
+	}
+
+	target.entries.push(...source.entries);
+};
+
 // Derives `matchers` and `exclusive` from the group's entries in one walk.
 const updateGroupExclusivity = (group: ConflictGroup) => {
 	const matchers = getEntriesMatchers(group.entries);
@@ -175,11 +189,12 @@ const isOverlapComponentExclusive = (
 const buildOverlapConflictGroup = (
 	component: ReadonlyArray<string>,
 	byNode: ReadonlyMap<string, ConflictGroup>
-): ConflictGroup => {
-	const tokens = new Set<string>();
-	const entries: Entry[] = [];
-	let variantPrefix = '';
-	let overlap: string | null = null;
+): ReportedGroup => {
+	const merged: ReportedGroup = {
+		tokens: new Set<string>(),
+		entries: [],
+		exclusive: isOverlapComponentExclusive(component, byNode)
+	};
 
 	for (const node of component) {
 		const group = byNode.get(node);
@@ -189,24 +204,10 @@ const buildOverlapConflictGroup = (
 			continue;
 		}
 
-		variantPrefix = group.variantPrefix;
-		overlap = group.overlap;
-
-		for (const token of group.tokens) {
-			tokens.add(token);
-		}
-
-		entries.push(...group.entries);
+		absorbGroup(merged, group);
 	}
 
-	return {
-		tokens,
-		entries,
-		variantPrefix,
-		overlap,
-		exclusive: isOverlapComponentExclusive(component, byNode),
-		matchers: getEntriesMatchers(entries)
-	};
+	return merged;
 };
 
 // Merges conflict groups related through a shorthand/longhand overlap. Groups
@@ -216,8 +217,8 @@ const buildOverlapConflictGroup = (
 // single group. Longhand siblings without their shorthand stay separate.
 const mergeOverlappingGroups = (
 	groups: Map<string, ConflictGroup>
-): ConflictGroup[] => {
-	const result: ConflictGroup[] = [];
+): ReportedGroup[] => {
+	const result: ReportedGroup[] = [];
 	// variant prefix -> overlap node -> that node's own (pristine) group.
 	const overlap = new Map<string, Map<string, ConflictGroup>>();
 
@@ -234,22 +235,13 @@ const mergeOverlappingGroups = (
 		);
 		const existing = byNode.get(group.overlap);
 
+		// `groups` is discarded after this merge, so the first group seen for a
+		// node is stored as-is and later ones are absorbed into it.
 		if (existing) {
-			for (const token of group.tokens) {
-				existing.tokens.add(token);
-			}
-
-			existing.entries.push(...group.entries);
+			absorbGroup(existing, group);
 			updateGroupExclusivity(existing);
 		} else {
-			byNode.set(group.overlap, {
-				tokens: new Set(group.tokens),
-				entries: [...group.entries],
-				variantPrefix: group.variantPrefix,
-				overlap: group.overlap,
-				exclusive: group.exclusive,
-				matchers: group.matchers
-			});
+			byNode.set(group.overlap, group);
 		}
 	}
 
