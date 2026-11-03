@@ -634,7 +634,7 @@ export const toFragment = (className: string) => {
 /**
  * Collects what a config value adds to each slot, on its own.
  */
-export const collectSlotClasses = (
+const collectSlotClasses = (
 	slotEntries: readonly SlotEntry[],
 	apply: ApplySlotClasses
 ) => {
@@ -650,11 +650,22 @@ export const collectSlotClasses = (
 };
 
 /**
- * Turns what a config value adds to one slot into a fragment that can be
- * concatenated with the others to rebuild that slot's `cn()` output.
+ * Lists, per slot, the fragment each config value adds to it on its own. Each
+ * fragment can be concatenated with the others to rebuild that slot's `cn()`
+ * output.
  */
-export const getSlotFragment = (slotClasses: SlotClasses, slotKey: string) =>
-	toFragment(cn(slotClasses[slotKey]));
+export const getSlotFragmentTables = (
+	slotEntries: readonly SlotEntry[],
+	applies: readonly ApplySlotClasses[]
+): string[][] => {
+	const valueClasses = applies.map((apply) =>
+		collectSlotClasses(slotEntries, apply)
+	);
+
+	return slotEntries.map(([key]) =>
+		valueClasses.map((slotClasses) => toFragment(cn(slotClasses[key])))
+	);
+};
 
 /**
  * Lists the fragment a compound entry adds to each slot it changes.
@@ -663,11 +674,11 @@ const getCompoundFragments = (
 	slotEntries: readonly SlotEntry[],
 	apply: ApplySlotClasses
 ) => {
-	const slotClasses = collectSlotClasses(slotEntries, apply);
 	const fragments: CompoundSlotFragment[] = [];
 
-	slotEntries.forEach(([slotKey], slot) => {
-		const fragment = getSlotFragment(slotClasses, slotKey);
+	// A compound is a single value, so each slot's table holds one fragment.
+	getSlotFragmentTables(slotEntries, [apply]).forEach((table, slot) => {
+		const fragment = table.join('');
 
 		if (fragment !== '') {
 			fragments.push({ slot, fragment });

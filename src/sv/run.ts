@@ -2,8 +2,7 @@ import { cn, type ClassValue } from '../cn.ts';
 import {
 	applyValueToSlotClasses,
 	coerceVariantKeyValue,
-	collectSlotClasses,
-	getSlotFragment,
+	getSlotFragmentTables,
 	getTargetSlots,
 	isSlotObjectValue,
 	toFragment
@@ -264,20 +263,16 @@ const createVariantPlan = (
 ): VariantPlan => {
 	const { slotEntries, targetKeys, groups, compounds } = config;
 
-	const valueClasses = values(variant.values).map((value) =>
-		collectSlotClasses(
-			slotEntries,
+	const slotTables = getSlotFragmentTables(
+		slotEntries,
+		values(variant.values).map((value) =>
 			applyValueToSlotClasses(value, targetKeys, groups)
 		)
 	);
 
 	const tables: VariantSlotTable[] = [];
 
-	slotEntries.forEach(([slotKey], slot) => {
-		const fragments = valueClasses.map((slotClasses) =>
-			getSlotFragment(slotClasses, slotKey)
-		);
-
+	slotTables.forEach((fragments, slot) => {
 		if (fragments.some((fragment) => fragment !== '')) {
 			fragments.push('');
 			tables.push({ slot, table: planTables.length, fragments });
