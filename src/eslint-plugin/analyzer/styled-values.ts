@@ -128,17 +128,9 @@ const getStyles = (
 	args: ReadonlyArray<Expression | SpreadElement>,
 	sourceCode: SourceCode
 ): InternalStyles => {
-	const cached = stylesCache.get(node);
-
-	if (cached) {
-		return cached;
-	}
-
-	const styles = buildStyles(configNode, args, sourceCode);
-
-	stylesCache.set(node, styles);
-
-	return styles;
+	return getOrCreate(stylesCache, node, () =>
+		buildStyles(configNode, args, sourceCode)
+	);
 };
 
 /** Everything the resolver needs from the rule that owns it. */
@@ -341,23 +333,15 @@ const cnStyles = (
 	sourceCode: SourceCode,
 	node: CallExpression
 ): InternalStyles => {
-	const cached = stylesCache.get(node);
+	return getOrCreate(stylesCache, node, () => {
+		const entries: Entry[] = [];
 
-	if (cached) {
-		return cached;
-	}
+		for (const arg of call.args) {
+			extractCnTokens(arg, entries, sourceCode);
+		}
 
-	const entries: Entry[] = [];
-
-	for (const arg of call.args) {
-		extractCnTokens(arg, entries, sourceCode);
-	}
-
-	const styles = buildLiteralStyles(entries);
-
-	stylesCache.set(node, styles);
-
-	return styles;
+		return buildLiteralStyles(entries);
+	});
 };
 
 /**

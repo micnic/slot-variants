@@ -1,4 +1,5 @@
 import type { Node, ObjectExpression } from 'estree';
+import { getOrCreate } from '../map-utils.ts';
 import { getKeyName } from './config-keys.ts';
 
 type KeyPredicate = (key: string) => boolean;
@@ -42,17 +43,7 @@ export const getProperties = (
 		return EMPTY_PROPERTIES;
 	}
 
-	const cached = propertiesCache.get(obj);
-
-	if (cached) {
-		return cached;
-	}
-
-	const map = buildPropertiesMap(obj);
-
-	propertiesCache.set(obj, map);
-
-	return map;
+	return getOrCreate(propertiesCache, obj, () => buildPropertiesMap(obj));
 };
 
 const buildStrictPropertiesMap = (
@@ -84,17 +75,9 @@ export const getStrictProperties = (
 		return null;
 	}
 
-	const cached = strictPropertiesCache.get(obj);
-
-	if (cached !== undefined) {
-		return cached;
-	}
-
-	const map = buildStrictPropertiesMap(obj);
-
-	strictPropertiesCache.set(obj, map);
-
-	return map;
+	return getOrCreate(strictPropertiesCache, obj, () =>
+		buildStrictPropertiesMap(obj)
+	);
 };
 
 // The strict properties of a non-empty object whose every key passes

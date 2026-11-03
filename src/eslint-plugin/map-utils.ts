@@ -1,5 +1,15 @@
-export const getOrCreate = <K, V>(map: Map<K, V>, key: K, make: () => V): V => {
-	const existing = map.get(key);
+// Anything keyed like a Map, so a WeakMap cache can use getOrCreate too.
+type KeyedStore<K, V> = {
+	get(key: K): V | undefined;
+	set(key: K, value: V): void;
+};
+
+export const getOrCreate = <K, V>(
+	store: KeyedStore<K, V>,
+	key: K,
+	make: () => V
+): V => {
+	const existing = store.get(key);
 
 	if (existing !== undefined) {
 		return existing;
@@ -7,7 +17,7 @@ export const getOrCreate = <K, V>(map: Map<K, V>, key: K, make: () => V): V => {
 
 	const created = make();
 
-	map.set(key, created);
+	store.set(key, created);
 
 	return created;
 };
