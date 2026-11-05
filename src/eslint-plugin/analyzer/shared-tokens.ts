@@ -460,7 +460,8 @@ const isLiteralTrue = (node: Node): boolean =>
 	node.type === 'Literal' && node.value === true;
 
 const collectExhaustiveVariantKeys = (
-	config: ReadonlyMap<string, Node>
+	config: ReadonlyMap<string, Node>,
+	variantsMap: ReadonlyMap<string, Node>
 ): Set<string> => {
 	const exhaustive = collectDefaultVariantKeys(config.get('defaultVariants'));
 	const requiredVariants = config.get('requiredVariants');
@@ -471,7 +472,7 @@ const collectExhaustiveVariantKeys = (
 
 	// `requiredVariants: true` makes every variant required — hence exhaustive.
 	if (isLiteralTrue(requiredVariants)) {
-		for (const key of getProperties(config.get('variants')).keys()) {
+		for (const key of variantsMap.keys()) {
 			exhaustive.add(key);
 		}
 
@@ -746,12 +747,12 @@ const checkCompoundsForSingleKey = (
 
 const analyzeExhaustiveVariants = (
 	context: Rule.RuleContext,
-	variants: ObjectExpression,
+	variantsMap: ReadonlyMap<string, Node>,
 	exhaustive: Set<string>,
 	slotNames: Set<string>,
 	getTarget: (slot: string) => SharedTokensTarget | null
 ) => {
-	for (const [variantKey, variantValue] of getProperties(variants)) {
+	for (const [variantKey, variantValue] of variantsMap) {
 		if (!exhaustive.has(variantKey)) {
 			continue;
 		}
@@ -771,9 +772,8 @@ export const analyzeSharedTokens = (
 	configNode: ObjectExpression
 ) => {
 	const config = getProperties(configNode);
-	const variants = config.get('variants');
 	const slotNames = getConfigSlotNames(config);
-	const variantsMap = getProperties(variants);
+	const variantsMap = getProperties(config.get('variants'));
 
 	checkCompoundsForSingleKey(
 		context,
@@ -790,7 +790,7 @@ export const analyzeSharedTokens = (
 		slotNames
 	);
 
-	if (!variants || variants.type !== 'ObjectExpression') {
+	if (variantsMap.size === 0) {
 		return;
 	}
 
@@ -821,8 +821,8 @@ export const analyzeSharedTokens = (
 
 	analyzeExhaustiveVariants(
 		context,
-		variants,
-		collectExhaustiveVariantKeys(config),
+		variantsMap,
+		collectExhaustiveVariantKeys(config, variantsMap),
 		slotNames,
 		getTarget
 	);
