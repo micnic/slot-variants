@@ -436,7 +436,7 @@ const expandSlotTargets = (
 	groups: CompiledGroups,
 	slotKeys: ReadonlySet<string>,
 	label: 'Compound slot' | 'Multi slot'
-): readonly string[] => {
+): ReadonlySet<string> => {
 	const result = new Set<string>();
 
 	for (const target of targets) {
@@ -449,7 +449,7 @@ const expandSlotTargets = (
 		}
 	}
 
-	return [...result];
+	return result;
 };
 
 const resolveMultiSlots = (
@@ -465,9 +465,7 @@ const resolveMultiSlots = (
 		return new Set();
 	}
 
-	return new Set(
-		expandSlotTargets(multiSlots, groups, slotKeys, 'Multi slot')
-	);
+	return expandSlotTargets(multiSlots, groups, slotKeys, 'Multi slot');
 };
 
 const assertValidRequiredVariantConfig = (

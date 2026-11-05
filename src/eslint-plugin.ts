@@ -1,7 +1,7 @@
 import pkg from '../package.json' with { type: 'json' };
 import { rules } from './eslint-plugin/rules/index.ts';
 
-export { rules } from './eslint-plugin/rules/index.ts';
+export { rules };
 
 /** Plugin metadata surfaced by ESLint and oxlint. */
 const meta = { name: 'slot-variants', version: pkg.version };
