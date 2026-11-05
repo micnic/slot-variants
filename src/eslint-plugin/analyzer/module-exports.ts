@@ -21,12 +21,9 @@ const getSourceValue = (node: Program['body'][number]): string | null => {
 		return null;
 	}
 
-	/* c8 ignore next 3 -- a module source is always a string literal */
-	if (typeof node.source.value !== 'string') {
-		return null;
-	}
-
-	return node.source.value;
+	// A module source is always a string literal; ESTree only types it as a
+	// general `Literal`.
+	return String(node.source.value);
 };
 
 const collectFromDeclaration = (

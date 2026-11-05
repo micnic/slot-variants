@@ -94,12 +94,9 @@ const getDefComponentFunction = (
 // The module and export name an import binding reads, or null for a namespace
 // import, whose members are read through a dotted JSX name that is skipped.
 const getImportSource = (def: ImportDefinition): ImportSource | null => {
-	const { value } = def.parent.source;
-
-	/* c8 ignore next 3 -- a module source is always a string literal */
-	if (typeof value !== 'string') {
-		return null;
-	}
+	// A module source is always a string literal; ESTree only types it as a
+	// general `Literal`.
+	const value = String(def.parent.source.value);
 
 	if (def.node.type === 'ImportDefaultSpecifier') {
 		return { specifier: value, exportName: DEFAULT_EXPORT };

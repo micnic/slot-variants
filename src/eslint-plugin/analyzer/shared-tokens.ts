@@ -33,12 +33,16 @@ import {
 	variantSource
 } from './token-model.ts';
 
+// Slot -> token -> the token's entries in each variant value, in value order:
+// the tokens every value shares, with what each value contributes.
+type SharedEntries = Map<string, Map<string, Entry[][]>>;
+
 // A variant is "exhaustive" when it has a defaultVariants entry, is listed in
 // requiredVariants, or every variant is required (`requiredVariants: true`).
 // Without coverage the prop can be undefined at runtime, so a shared token
 // isn't guaranteed to render.
 const intersectSharedTokensStep = (
-	sharedTokens: Map<string, Set<string>>,
+	sharedTokens: SharedEntries,
 	valueMap: TokenEntriesBySlot
 ) => {
 	for (const [slot, tokens] of sharedTokens) {
@@ -49,8 +53,12 @@ const intersectSharedTokensStep = (
 			continue;
 		}
 
-		for (const token of tokens) {
-			if (!tokenMap.has(token)) {
+		for (const [token, entryLists] of tokens) {
+			const entryList = tokenMap.get(token);
+
+			if (entryList) {
+				entryLists.push(entryList);
+			} else {
 				tokens.delete(token);
 			}
 		}
@@ -61,13 +69,17 @@ const intersectSharedTokensStep = (
 	}
 };
 
-const seedSharedTokens = (
-	valueMap: TokenEntriesBySlot
-): Map<string, Set<string>> => {
-	const sharedTokens = new Map<string, Set<string>>();
+const seedSharedTokens = (valueMap: TokenEntriesBySlot): SharedEntries => {
+	const sharedTokens: SharedEntries = new Map();
 
 	for (const [slot, tokenMap] of valueMap) {
-		sharedTokens.set(slot, new Set(tokenMap.keys()));
+		const tokens = new Map<string, Entry[][]>();
+
+		for (const [token, entryList] of tokenMap) {
+			tokens.set(token, [entryList]);
+		}
+
+		sharedTokens.set(slot, tokens);
 	}
 
 	return sharedTokens;
@@ -75,12 +87,12 @@ const seedSharedTokens = (
 
 const intersectSharedTokensBySlot = (
 	tokensByValue: TokenEntriesBySlot[]
-): Map<string, Set<string>> => {
+): SharedEntries => {
 	const firstValueMap = tokensByValue[0];
 
-	/* c8 ignore next 3 -- callers ensure tokensByValue has 2+ entries */
+	/* c8 ignore next 3 -- callers ensure tokensByValue has 1+ entries */
 	if (!firstValueMap) {
-		return new Map<string, Set<string>>();
+		return new Map();
 	}
 
 	const sharedTokens = seedSharedTokens(firstValueMap);
@@ -188,12 +200,6 @@ type SharedTokensFixPlan = {
 	values: ReadonlyArray<LiteralRewrite>;
 };
 
-// Plans a fix that lifts every shared token of one (variant, slot) pair out
-// of each variant value and into the slot's `base`/`slots[slot]` target in one
-// atomic rewrite — or returns null when any piece isn't safely inferrable, in
-// which case the finding is still reported, just without a fix. Eligibility
-// requires the target and every variant value's contribution to this slot to
-// be a plain, directly-authored string or template literal.
 // The text of a `base` property to create, laid out like the config's existing
 // first property so the insertion keeps the surrounding formatting: the same
 // whitespace that separates `{` from that property is repeated after the comma.
@@ -307,6 +313,12 @@ const planTargetRewrite = (
 	return planAppendRewrite(context, target.node, sharedTokens);
 };
 
+// Plans a fix that lifts every shared token of one (variant, slot) pair out
+// of each variant value and into the slot's `base`/`slots[slot]` target in one
+// atomic rewrite — or returns null when any piece isn't safely inferrable, in
+// which case the finding is still reported, just without a fix. Eligibility
+// requires the target and every variant value's contribution to this slot to
+// be a plain, directly-authored string or template literal.
 const planSharedTokensFix = (
 	context: Rule.RuleContext,
 	slot: string,
@@ -369,7 +381,7 @@ const applySharedTokensFixPlan = (
 
 const reportSharedTokenEntries = (
 	context: Rule.RuleContext,
-	tokensByValue: TokenEntriesBySlot[],
+	entryLists: ReadonlyArray<ReadonlyArray<Entry>>,
 	variantKey: string,
 	slot: string,
 	token: string,
@@ -381,14 +393,7 @@ const reportSharedTokenEntries = (
 		fix = (fixer) => applySharedTokensFixPlan(fixer, plan);
 	}
 
-	for (const valueMap of tokensByValue) {
-		const entryList = valueMap.get(slot)?.get(token);
-
-		/* c8 ignore next 3 -- each shared token is in every value map */
-		if (!entryList) {
-			continue;
-		}
-
+	for (const entryList of entryLists) {
 		reportEntryList(
 			context,
 			entryList,
@@ -401,8 +406,7 @@ const reportSharedTokenEntries = (
 
 const reportSharedTokensBySlot = (
 	context: Rule.RuleContext,
-	sharedTokens: Map<string, Set<string>>,
-	tokensByValue: TokenEntriesBySlot[],
+	sharedTokens: SharedEntries,
 	variantKey: string,
 	valueEntries: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
@@ -418,17 +422,17 @@ const reportSharedTokensBySlot = (
 			plan = planSharedTokensFix(
 				context,
 				slot,
-				tokens,
+				new Set(tokens.keys()),
 				valueEntries,
 				slotNames,
 				target
 			);
 		}
 
-		for (const token of tokens) {
+		for (const [token, entryLists] of tokens) {
 			reportSharedTokenEntries(
 				context,
-				tokensByValue,
+				entryLists,
 				variantKey,
 				slot,
 				token,
@@ -542,7 +546,6 @@ const analyzeVariantSharedTokens = (
 	reportSharedTokensBySlot(
 		context,
 		sharedTokens,
-		tokensByValue,
 		variantKey,
 		valueEntries,
 		slotNames,

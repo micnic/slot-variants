@@ -178,6 +178,9 @@ type PrefixSpec = {
 	fallback: string;
 };
 
+// The pieces of a split, never empty: text with no separator is one segment.
+type Segments = [string, ...string[]];
+
 const categoryMap = (
 	groups: ReadonlyArray<readonly [string, ReadonlyArray<string>]>
 ): ReadonlyMap<string, string> => {
@@ -1207,8 +1210,7 @@ const hintedCategory = (spec: PrefixSpec, hint: string): string | undefined => {
 // `lg/6`) before a keyword lookup, so the modifier doesn't shadow the exact
 // keyword match (`text-white/50` should still resolve `white` to `color`).
 const withoutModifier = (segment: string): string =>
-	/* c8 ignore next -- splitOutsideBrackets returns 1+ segments */
-	splitOutsideBrackets(segment, '/')[0] ?? segment;
+	splitOutsideBrackets(segment, '/')[0];
 
 // A bracketed bare number (`font-[550]`), which names no CSS unit and so can
 // only be a unitless property — a weight, on the prefixes that have one.
@@ -1870,8 +1872,10 @@ export const normalizePrefix = (option: string | undefined): string => {
 // `[calc(100%-2rem)]` isn't split on its inner dash, `[url(data:image/png)]`
 // isn't split on its inner colon, and a Tailwind v4 CSS-variable shorthand
 // like `w-(--my-var)` isn't split on the dash inside the variable name.
-const splitOutsideBrackets = (text: string, separator: string): string[] => {
-	const segments: string[] = [];
+const splitOutsideBrackets = (text: string, separator: string): Segments => {
+	// Starts as the whole text; each top-level separator cuts the last segment
+	// in two.
+	const segments: Segments = [text];
 	let depth = 0;
 	let start = 0;
 
@@ -1883,12 +1887,11 @@ const splitOutsideBrackets = (text: string, separator: string): string[] => {
 		} else if (char === ']' || char === ')') {
 			depth -= 1;
 		} else if (char === separator && depth === 0) {
-			segments.push(text.slice(start, index));
+			segments[segments.length - 1] = text.slice(start, index);
 			start = index + 1;
+			segments.push(text.slice(start));
 		}
 	}
-
-	segments.push(text.slice(start));
 
 	return segments;
 };
@@ -1900,15 +1903,15 @@ const splitOutsideBrackets = (text: string, separator: string): string[] => {
 const splitVariantPrefix = (
 	token: string
 ): { variantPrefix: string; utility: string } => {
-	const segments = splitOutsideBrackets(token, ':');
-	const utility = segments.pop();
+	const [first, ...rest] = splitOutsideBrackets(token, ':');
+	const utility = rest.pop();
 
-	/* c8 ignore next 3 -- splitOutsideBrackets returns 1+ segments */
+	// A single segment is the utility alone, with no variants.
 	if (utility === undefined) {
-		return { variantPrefix: '', utility: token };
+		return { variantPrefix: '', utility: first };
 	}
 
-	return { variantPrefix: segments.sort().join(':'), utility };
+	return { variantPrefix: [first, ...rest].sort().join(':'), utility };
 };
 
 const CONTAINER_TYPE_PREFIX = '@container';
@@ -2091,13 +2094,7 @@ export const getConflictKey = (
 		};
 	}
 
-	const value = splitOutsideBrackets(bare, '-');
-	const firstSegment = value.shift();
-
-	/* c8 ignore next 3 -- splitOutsideBrackets returns 1+ segments */
-	if (firstSegment === undefined) {
-		return null;
-	}
+	const [firstSegment, ...value] = splitOutsideBrackets(bare, '-');
 
 	if (value.length === 0) {
 		return getBareUtilityKey(firstSegment, variantPrefix);

@@ -1,6 +1,5 @@
 import type { Bench } from 'tinybench';
 import { withoutJit } from './no-jit.ts';
-import { assertSameOutput } from './report.ts';
 
 type Run<T> = () => T;
 
@@ -41,6 +40,31 @@ export const runEach = <F, T>(
 	Object.fromEntries(
 		Object.entries(builds).map(([name, fn]) => [name, bind(fn)])
 	);
+
+// Asserts that every competitor in a group produced identical output for a
+// given case, so the benchmark compares equivalent work. Throws on mismatch.
+const assertSameOutput = <T>(
+	label: string,
+	outputs: Record<string, T>
+): void => {
+	let expectedName = '';
+	let expected: string | undefined;
+
+	for (const [name, value] of Object.entries(outputs)) {
+		const serialized = JSON.stringify(value);
+
+		if (expected === undefined) {
+			expectedName = name;
+			expected = serialized;
+		} else if (serialized !== expected) {
+			throw new Error(
+				`Output mismatch in "${label}":\n` +
+					`  ${expectedName} => ${expected}\n` +
+					`  ${name} => ${serialized}`
+			);
+		}
+	}
+};
 
 // Adds a `<competitor> - <label>` task per competitor, after checking that they
 // all produce the same output, so the benchmark compares equivalent work.
