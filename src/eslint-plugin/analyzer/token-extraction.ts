@@ -17,10 +17,7 @@ import {
 	getClassValue,
 	getProperties
 } from './properties.ts';
-import {
-	isStaticStringNode,
-	isStaticTernaryTemplate
-} from './static-predicates.ts';
+import { isStaticTernaryTemplate } from './static-predicates.ts';
 import {
 	baseSource,
 	compoundSource,
@@ -170,8 +167,10 @@ export const pushBaseQuasiTokens = (
 	pushQuasiTokens(node, 'base', baseSource, entries, sourceCode);
 };
 
+// `text` is the literal's static (cooked) value, already read by the caller.
 const pushStringLiteralTokens = (
 	node: Node,
+	text: string,
 	slot: string,
 	source: Source,
 	entries: Entry[],
@@ -179,7 +178,7 @@ const pushStringLiteralTokens = (
 ) => {
 	pushLiteralTokens(
 		getInnerText(sourceCode, node),
-		getStaticStringText(node),
+		text,
 		sourceCode.getRange(node),
 		slot,
 		source,
@@ -239,7 +238,14 @@ const pushRecordKeyTokens = (
 	const { key } = prop;
 
 	if (key.type === 'Literal' && typeof key.value === 'string') {
-		pushStringLiteralTokens(key, slot, source, entries, sourceCode);
+		pushStringLiteralTokens(
+			key,
+			key.value,
+			slot,
+			source,
+			entries,
+			sourceCode
+		);
 		return;
 	}
 
@@ -397,8 +403,10 @@ export const extractTokens = (
 
 	node = resolveStaticValue(node, sourceCode);
 
-	if (isStaticStringNode(node)) {
-		pushStringLiteralTokens(node, slot, source, entries, sourceCode);
+	const text = getStaticStringText(node);
+
+	if (text !== null) {
+		pushStringLiteralTokens(node, text, slot, source, entries, sourceCode);
 		return;
 	}
 
