@@ -176,22 +176,12 @@ const checkCompoundMatchersForEmpty = (
 	compoundEntries: ArrayExpression
 ) => {
 	forEachStaticItem(compoundEntries.elements, (element) => {
-		if (element.type !== 'ObjectExpression') {
-			return;
-		}
-
-		for (const prop of element.properties) {
-			if (prop.type !== 'Property') {
+		for (const [key, raw] of getProperties(element)) {
+			if (COMPOUND_NON_MATCHER_KEYS.has(key)) {
 				continue;
 			}
 
-			const key = getKeyName(prop);
-
-			if (key === null || COMPOUND_NON_MATCHER_KEYS.has(key)) {
-				continue;
-			}
-
-			const value = resolveStaticValue(prop.value, context.sourceCode);
+			const value = resolveStaticValue(raw, context.sourceCode);
 
 			if (isEmptyArrayLiteral(value)) {
 				context.report({
