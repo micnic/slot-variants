@@ -130,21 +130,30 @@ const hasVariantValue = (
 	value: RuntimeVariantValue
 ) => hasOwn(variantValues, `${value}`);
 
+// A compound matcher value's lookup key, once it is known to name one of the
+// variant's values.
+const toExpectedValue = (
+	variant: string,
+	value: unknown,
+	variantValues: NormalizedVariantValues
+) => {
+	if (
+		!isRuntimeVariantValue(value) ||
+		!hasVariantValue(variantValues, value)
+	) {
+		throw createInvalidCompoundMatcherValueError(variant, value);
+	}
+
+	return `${value}`;
+};
+
 const resolveCompoundMatcherExpected = (
 	variant: string,
 	value: unknown,
 	variantValues: NormalizedVariantValues
 ): CompoundMatcher => {
-	if (isRuntimeVariantValue(value)) {
-		if (!hasVariantValue(variantValues, value)) {
-			throw createInvalidCompoundMatcherValueError(variant, value);
-		}
-
-		return new Set([`${value}`]);
-	}
-
 	if (!isArray(value)) {
-		throw createInvalidCompoundMatcherValueError(variant, value);
+		return new Set([toExpectedValue(variant, value, variantValues)]);
 	}
 
 	if (value.length === 0) {
@@ -156,14 +165,7 @@ const resolveCompoundMatcherExpected = (
 	const expected = new Set<string>();
 
 	for (const item of value) {
-		if (
-			!isRuntimeVariantValue(item) ||
-			!hasVariantValue(variantValues, item)
-		) {
-			throw createInvalidCompoundMatcherValueError(variant, item);
-		}
-
-		expected.add(`${item}`);
+		expected.add(toExpectedValue(variant, item, variantValues));
 	}
 
 	return expected;
@@ -675,10 +677,10 @@ const getCompoundFragments = (
 	apply: ApplySlotClasses
 ) => {
 	const fragments: CompoundSlotFragment[] = [];
+	const slotClasses = collectSlotClasses(slotEntries, apply);
 
-	// A compound is a single value, so each slot's table holds one fragment.
-	getSlotFragmentTables(slotEntries, [apply]).forEach((table, slot) => {
-		const fragment = table.join('');
+	slotEntries.forEach(([key], slot) => {
+		const fragment = toFragment(cn(slotClasses[key]));
 
 		if (fragment !== '') {
 			fragments.push({ slot, fragment });

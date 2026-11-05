@@ -3,8 +3,8 @@ import type { Node, ObjectExpression } from 'estree';
 import { type ListItems, makeListFix } from './list-fix.ts';
 import {
 	canHoistAsLiteral,
-	getInnerText,
 	getQuoteChar,
+	getRawLiteralTokens,
 	getStaticStringText,
 	splitClassTokens
 } from './literals.ts';
@@ -104,7 +104,7 @@ type LiteralRewrite = { node: Node; nextText: string; quote: string };
 // delimiter — in which case the whole fix is abandoned (see
 // `planSharedTokensFix`), never partially applied. Callers are expected to
 // have already confirmed `node` is a plain, directly-authored string/template
-// literal (via `getStaticStringText`) before calling this.
+// literal (via `getRawLiteralTokens`) before calling this.
 const planLiteralRewrite = (
 	context: Rule.RuleContext,
 	node: Node,
@@ -128,13 +128,12 @@ const planAppendRewrite = (
 	node: Node,
 	tokens: Iterable<string>
 ): LiteralRewrite | null => {
-	if (getStaticStringText(node) === null) {
+	const existingTokens = getRawLiteralTokens(context.sourceCode, node);
+
+	if (existingTokens === null) {
 		return null;
 	}
 
-	const existingTokens = splitClassTokens(
-		getInnerText(context.sourceCode, node)
-	);
 	const missingTokens = [...tokens].filter(
 		(token) => !existingTokens.includes(token)
 	);
@@ -251,13 +250,15 @@ const planValueRewrites = (
 			return null;
 		}
 
-		if (getStaticStringText(slotNode) === null) {
+		const slotTokens = getRawLiteralTokens(context.sourceCode, slotNode);
+
+		if (slotTokens === null) {
 			return null;
 		}
 
-		const remainingTokens = splitClassTokens(
-			getInnerText(context.sourceCode, slotNode)
-		).filter((token) => !sharedTokens.has(token));
+		const remainingTokens = slotTokens.filter(
+			(token) => !sharedTokens.has(token)
+		);
 
 		// Lifting every token out would leave an empty class string
 		// behind, which no-empty-classes then reports — so there's no

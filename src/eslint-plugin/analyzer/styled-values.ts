@@ -8,7 +8,7 @@ import type {
 	SpreadElement
 } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
-import type { CallMatch } from './call-matching.ts';
+import { type CallMatch, isClassListMatch } from './call-matching.ts';
 import { resolveStaticValueFrom } from './const-bindings.ts';
 import {
 	collectSlotKeyedProperties,
@@ -20,6 +20,7 @@ import {
 	collectCnEntries,
 	collectConfigEntries,
 	forEachStringLiteralElement,
+	NON_MATCHER_KEYS,
 	readMatchers
 } from './token-extraction.ts';
 import {
@@ -71,11 +72,6 @@ export type Invocation = {
 const EMPTY_MATCHERS: VariantMatchers = new Map();
 
 const EMPTY_GROUPS: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
-
-// Call-site keys that name something other than a variant. `preset` selects
-// variant values indirectly; expanding it would need the `presets` config in
-// hand, so it's left out — an unknown matcher only ever widens what's reported.
-const NON_VARIANT_PROPS = new Set(['class', 'className', 'preset']);
 
 const NO_SKIP: ReadonlySet<string> = new Set();
 
@@ -179,7 +175,7 @@ const buildCallMatchers = (
 	ctx: StyledContext
 ): VariantMatchers =>
 	withDefaults(
-		readMatchers(getCallProps(arg, ctx), NON_VARIANT_PROPS),
+		readMatchers(getCallProps(arg, ctx), NON_MATCHER_KEYS),
 		styles.defaults
 	);
 
@@ -357,11 +353,9 @@ export const resolveStyledClasses = (
 
 	const direct = ctx.matchCall(resolved);
 
-	if (direct && !direct.isFactoryConfig) {
-		if (direct.config !== null) {
-			return null;
-		}
-
+	// A configured `sv()` call falls through: its callee is no variant
+	// function, so `resolveInvocation` yields null for it.
+	if (direct !== null && isClassListMatch(direct)) {
 		return {
 			styles: cnStyles(direct, ctx.sourceCode, resolved),
 			slot: 'base',

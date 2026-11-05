@@ -6625,6 +6625,12 @@ writeFixture(
 writeFixture('ui/bare.tsx', 'export default ({ id }) => <i id={id} />;\n');
 writeFixture('ui/object.tsx', "export default { name: 'x' };\n");
 
+// An exported name bound more than once, which resolves to no single binding.
+writeFixture(
+	'ui/redeclared.ts',
+	'var Twice = () => null;\nvar Twice = () => null;\nexport { Twice };\n'
+);
+
 // Two modules re-exporting each other — the walk must stop rather than loop.
 writeFixture('ui/loop-a.ts', "export { Looped } from './loop-b.ts';\n");
 writeFixture('ui/loop-b.ts', "export { Looped } from './loop-a.ts';\n");
@@ -6828,6 +6834,10 @@ const CROSS_FILE_VALID = [
 	},
 	{
 		code: `import Obj from './ui/object.tsx';\n<Obj className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		code: `import { Twice } from './ui/redeclared.ts';\n<Twice className="p-4" />;`,
 		filename: join(fixtureDir, 'page.tsx')
 	},
 	{

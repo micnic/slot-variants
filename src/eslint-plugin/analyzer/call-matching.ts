@@ -19,6 +19,13 @@ export type CallMatch = {
 	isFactoryConfig: boolean;
 };
 
+/**
+ * A config-less, non-factory `sv()`/`cn()` call: a class list in its own
+ * right rather than a variant function or a factory.
+ */
+export const isClassListMatch = (call: CallMatch): boolean =>
+	!call.isFactoryConfig && call.config === null;
+
 // Resolves the last arg through hoisted `const` bindings so
 // `const config = {...}; sv(config)` is analyzed as a config
 // call rather than a cn-style argument list.

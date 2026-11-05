@@ -1,13 +1,8 @@
-import type { Rule, SourceCode } from 'eslint';
-import type {
-	CallExpression,
-	Identifier,
-	ImportDeclaration,
-	Node
-} from 'estree';
+import type { Rule } from 'eslint';
+import type { CallExpression, Identifier, ImportDeclaration } from 'estree';
 import { type CallMatch, matchSvCall } from './call-matching.ts';
 import { getExportName } from './config-keys.ts';
-import { findVariable, resolveStaticValueFrom } from './const-bindings.ts';
+import { findVariable } from './const-bindings.ts';
 import { createStyledContext, type StyledContext } from './styled-values.ts';
 
 // The tracked export each named-import local stands for, plus the locals bound
@@ -19,9 +14,8 @@ type TrackedNames = {
 
 // Everything the classifier needs from the rule that owns it.
 type MatchContext = {
-	sourceCode: SourceCode;
 	names: TrackedNames;
-	scopeOf: StyledContext['scopeOf'];
+	ctx: StyledContext;
 };
 
 const TRACKED_EXPORTS = new Set(['sv', 'cn', 'createSV']);
@@ -73,10 +67,10 @@ const createImportsTracker = () => {
 // import (e.g. a function parameter named `cn`), so confirm it resolves to
 // an import binding.
 const identifierResolvesToImport = (
-	{ scopeOf }: MatchContext,
+	{ ctx }: MatchContext,
 	identifier: Identifier
 ): boolean => {
-	const variable = findVariable(scopeOf(identifier), identifier.name);
+	const variable = findVariable(ctx.scopeOf(identifier), identifier.name);
 
 	/* c8 ignore next 3 -- a tracked name always resolves to a binding */
 	if (!variable) {
@@ -85,11 +79,6 @@ const identifierResolvesToImport = (
 
 	return variable.defs.some((def) => def.type === 'ImportBinding');
 };
-
-// Reads a node through same-file `const` aliases (`const cx = cn`) from the
-// scope the context assigns it.
-const resolve = ({ sourceCode, scopeOf }: MatchContext, node: Node): Node =>
-	resolveStaticValueFrom(node, sourceCode, scopeOf(node));
 
 // The export a namespace member call names — `SV.sv(…)` for
 // `import * as SV from 'slot-variants'`. Null when the callee isn't a member of
@@ -157,7 +146,7 @@ const resolveExportName = (
 		return null;
 	}
 
-	const resolved = resolve(match, node.callee);
+	const resolved = match.ctx.resolve(node.callee);
 
 	if (resolved.type === 'Identifier') {
 		return resolveIdentifierExportName(match, resolved);
@@ -184,7 +173,7 @@ const matchFactoryCall = (
 	const [defaults] = node.arguments;
 
 	if (defaults) {
-		const resolved = resolve(match, defaults);
+		const resolved = match.ctx.resolve(defaults);
 
 		if (resolved.type === 'ObjectExpression') {
 			return { config: resolved, args: [], isFactoryConfig: true };
@@ -202,7 +191,7 @@ const matchExportCall = (
 	exportName: string
 ): CallMatch | null => {
 	if (exportName === 'sv') {
-		return matchSvCall(node, match.sourceCode);
+		return matchSvCall(node, match.ctx.sourceCode);
 	}
 
 	if (exportName === 'cn') {
@@ -244,19 +233,21 @@ export const createTrackedCallResolver = (context: Rule.RuleContext) => {
 
 	// A context whose identifiers are looked up from the given scopes.
 	const contextFrom = (scopeOf: StyledContext['scopeOf']): StyledContext => {
-		const { sourceCode } = context;
-
-		return createStyledContext(
-			sourceCode,
+		const ctx = createStyledContext(
+			context.sourceCode,
 			(node) => {
 				if (!hasTrackedImports()) {
 					return null;
 				}
 
-				return matchTrackedCall({ sourceCode, names, scopeOf }, node);
+				return matchTrackedCall(match, node);
 			},
 			scopeOf
 		);
+		// Read lazily by the classifier above, so it is set before any call.
+		const match: MatchContext = { names, ctx };
+
+		return ctx;
 	};
 
 	return { importsTracker, contextFrom };

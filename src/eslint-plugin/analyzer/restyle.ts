@@ -10,6 +10,7 @@ import {
 	type ConflictOptions,
 	getConflictKey
 } from '../tailwind-categories.ts';
+import { isClassListMatch } from './call-matching.ts';
 import { hasIsolatedQuasis } from './static-predicates.ts';
 import {
 	forEachOverrideTarget,
@@ -72,7 +73,7 @@ export const isClassListCall = (
 ): boolean => {
 	const call = ctx.matchCall(node);
 
-	return call !== null && !call.isFactoryConfig && call.config === null;
+	return call !== null && isClassListMatch(call);
 };
 
 /** Walks a class-list call's arguments as siblings of one another. */
@@ -209,8 +210,8 @@ const canRender = (list: ReadonlyArray<Entry>, matchers: VariantMatchers) =>
 
 // The slot's own bucket plus every group bucket naming it, flattened to the
 // tokens that can actually reach the slot's output.
-const collectInternalTokens = (styled: StyledClasses): string[] => {
-	const tokens: string[] = [];
+const collectInternalTokens = (styled: StyledClasses): Set<string> => {
+	const tokens = new Set<string>();
 
 	for (const bucket of getSlotBuckets(styled.styles, styled.slot)) {
 		const tokenMap = styled.styles.bySlot.get(bucket);
@@ -220,8 +221,8 @@ const collectInternalTokens = (styled: StyledClasses): string[] => {
 		}
 
 		for (const [token, list] of tokenMap) {
-			if (canRender(list, styled.matchers) && !tokens.includes(token)) {
-				tokens.push(token);
+			if (canRender(list, styled.matchers)) {
+				tokens.add(token);
 			}
 		}
 	}
@@ -232,11 +233,11 @@ const collectInternalTokens = (styled: StyledClasses): string[] => {
 const reportEntry = (
 	context: Rule.RuleContext,
 	entry: Entry,
-	internal: ReadonlyArray<string>,
+	internal: ReadonlySet<string>,
 	slot: string,
 	options: ConflictOptions
 ): boolean => {
-	if (internal.includes(entry.token)) {
+	if (internal.has(entry.token)) {
 		reportEntryList(context, [entry], 'duplicate', {
 			token: entry.token,
 			slot

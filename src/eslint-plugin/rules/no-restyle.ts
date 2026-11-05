@@ -1,8 +1,5 @@
 import type { Rule } from 'eslint';
-import {
-	resolveComponentFunction,
-	resolveImportSource
-} from '../analyzer/components.ts';
+import { resolveComponentBinding } from '../analyzer/components.ts';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import {
 	conflictOptionProperties,
@@ -106,21 +103,19 @@ export const noRestyle: Rule.RuleModule = {
 		const resolveSiteComponent = (
 			site: ComponentSite
 		): ForwardedStyles | null => {
-			const fn = resolveComponentFunction(site.component, site.scope);
+			const binding = resolveComponentBinding(site.component, site.scope);
 
-			if (fn !== null) {
-				return scan.forwarded.get(fn) ?? null;
-			}
-
-			const source = resolveImportSource(site.component, site.scope);
-
-			if (source === null) {
+			if (binding === null) {
 				return null;
 			}
 
+			if (binding.kind === 'local') {
+				return scan.forwarded.get(binding.fn) ?? null;
+			}
+
 			return resolveImportedComponent(
-				source.specifier,
-				source.exportName,
+				binding.source.specifier,
+				binding.source.exportName,
 				context.physicalFilename,
 				moduleContext,
 				new Set()

@@ -24,6 +24,14 @@ export type Component = ComponentFunction | Program;
 /** The module a component identifier is imported from, and under which name. */
 type ImportSource = { specifier: string; exportName: string };
 
+type ImportDefinition = Extract<Scope.Definition, { type: 'ImportBinding' }>;
+
+/** What a component name is bound to: a same-file function, or an import. */
+type ComponentBinding =
+	| { kind: 'local'; fn: ComponentFunction }
+	| { kind: 'import'; source: ImportSource }
+	| null;
+
 export const DEFAULT_EXPORT = 'default';
 
 // Takes the structural minimum so framework node unions narrow through it too.
@@ -65,22 +73,11 @@ export const unwrapComponentFunction = (
 	return null;
 };
 
-/**
- * The same-file function a component name resolves to — a function
- * declaration, or a `const` bound to a function expression, possibly through a
- * wrapper call. Null for anything reached through an import, a `let`/`var`, or
- * a redeclared binding.
- */
-export const resolveComponentFunction = (
-	name: string,
-	scope: Scope.Scope
+// The function a same-file declaration or `const` binding holds, possibly
+// through a wrapper call.
+const getDefComponentFunction = (
+	def: Scope.Definition
 ): ComponentFunction | null => {
-	const def = findSingleDef(scope, name);
-
-	if (!def) {
-		return null;
-	}
-
 	if (def.type === 'FunctionName') {
 		return def.node;
 	}
@@ -94,21 +91,9 @@ export const resolveComponentFunction = (
 	return unwrapComponentFunction(init);
 };
 
-/**
- * The module and export name a component identifier is imported from, or null
- * when it isn't an import (or is a namespace import, whose members are read
- * through a dotted JSX name this rule already skips).
- */
-export const resolveImportSource = (
-	name: string,
-	scope: Scope.Scope
-): ImportSource | null => {
-	const def = findSingleDef(scope, name);
-
-	if (!def || def.type !== 'ImportBinding') {
-		return null;
-	}
-
+// The module and export name an import binding reads, or null for a namespace
+// import, whose members are read through a dotted JSX name that is skipped.
+const getImportSource = (def: ImportDefinition): ImportSource | null => {
 	const { value } = def.parent.source;
 
 	/* c8 ignore next 3 -- a module source is always a string literal */
@@ -125,4 +110,57 @@ export const resolveImportSource = (
 	}
 
 	return { specifier: value, exportName: getExportName(def.node.imported) };
+};
+
+/**
+ * The same-file function a component name resolves to — a function
+ * declaration, or a `const` bound to a function expression, possibly through a
+ * wrapper call. Null for anything reached through an import, a `let`/`var`, or
+ * a redeclared binding.
+ */
+export const resolveComponentFunction = (
+	name: string,
+	scope: Scope.Scope
+): ComponentFunction | null => {
+	const def = findSingleDef(scope, name);
+
+	if (!def) {
+		return null;
+	}
+
+	return getDefComponentFunction(def);
+};
+
+/**
+ * What a component name is bound to: a same-file function (as
+ * `resolveComponentFunction` finds it) or the module and export name it is
+ * imported from. Null for anything else.
+ */
+export const resolveComponentBinding = (
+	name: string,
+	scope: Scope.Scope
+): ComponentBinding => {
+	const def = findSingleDef(scope, name);
+
+	if (!def) {
+		return null;
+	}
+
+	if (def.type === 'ImportBinding') {
+		const source = getImportSource(def);
+
+		if (source === null) {
+			return null;
+		}
+
+		return { kind: 'import', source };
+	}
+
+	const fn = getDefComponentFunction(def);
+
+	if (fn === null) {
+		return null;
+	}
+
+	return { kind: 'local', fn };
 };

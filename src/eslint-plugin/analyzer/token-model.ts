@@ -112,10 +112,15 @@ export const getEntriesMatchers = (
 	return matchers;
 };
 
-// True when every pair of matchers disagrees on at least one shared key.
+// True when every pair of matchers disagrees on at least one shared key. Null
+// (some entry has no readable matchers) is never exclusive.
 export const arePairwiseExclusive = (
-	matchers: ReadonlyArray<VariantMatchers>
+	matchers: ReadonlyArray<VariantMatchers> | null
 ): boolean => {
+	if (matchers === null) {
+		return false;
+	}
+
 	for (const [index, current] of matchers.entries()) {
 		for (const other of matchers.slice(index + 1)) {
 			if (!areExclusiveMatchers(current, other)) {
@@ -129,11 +134,8 @@ export const arePairwiseExclusive = (
 
 // True when every pair of entries disagrees on at least one shared matcher
 // key, so they can't co-occur.
-const isMutuallyExclusiveVariants = (list: Entry[]): boolean => {
-	const matchers = getEntriesMatchers(list);
-
-	return matchers !== null && arePairwiseExclusive(matchers);
-};
+const isMutuallyExclusiveVariants = (list: Entry[]): boolean =>
+	arePairwiseExclusive(getEntriesMatchers(list));
 
 export const EMPTY_SLOT_NAMES = new Set<string>();
 

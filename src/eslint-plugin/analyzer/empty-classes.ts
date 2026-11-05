@@ -221,11 +221,10 @@ const checkCompoundsForEmpty = (
 	checkCompoundMatchersForEmpty(context, value);
 
 	forEachCompoundClass(value, (cls) => {
-		// An empty record still falls through to the emptyObject report.
-		if (cls.type === 'ObjectExpression' && cls.properties.length > 0) {
-			for (const slotClass of getProperties(cls).values()) {
+		if (cls.type === 'ObjectExpression') {
+			visitRecordForEmpty(context, cls, undefined, (slotClass) => {
 				visitForEmptyClasses(context, slotClass, false);
-			}
+			});
 
 			return;
 		}

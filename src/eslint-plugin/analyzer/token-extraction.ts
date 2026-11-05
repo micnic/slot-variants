@@ -50,15 +50,20 @@ type ExtractFn = (
 	cnStyle?: boolean
 ) => void;
 
-// `preset` names the variant values a compound matches instead of being a
-// matcher key itself. Expanding it would need the `presets` config in hand, so
-// it is skipped: a compound left with no other matcher falls back to the
-// never-exclusive compound source, which can only under-suppress a report.
-export const COMPOUND_NON_MATCHER_KEYS = new Set([
+// Keys of a call site's props or a compound entry that name something other
+// than a variant. `preset` selects variant values indirectly; expanding it
+// would need the `presets` config in hand, so it is skipped: a compound or call
+// left with no other matcher only ever widens what's reported.
+export const NON_MATCHER_KEYS: ReadonlySet<string> = new Set([
 	'class',
 	'className',
-	'slots',
 	'preset'
+]);
+
+// A compound entry's `slots` names the slots it targets, not a variant.
+export const COMPOUND_NON_MATCHER_KEYS: ReadonlySet<string> = new Set([
+	...NON_MATCHER_KEYS,
+	'slots'
 ]);
 
 const pushTokensFromText = (

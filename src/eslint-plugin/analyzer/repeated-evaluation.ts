@@ -1,11 +1,6 @@
 import type { Rule } from 'eslint';
 import type { CallExpression } from 'estree';
-
-const FUNCTION_TYPES: ReadonlySet<string> = new Set([
-	'FunctionDeclaration',
-	'FunctionExpression',
-	'ArrowFunctionExpression'
-]);
+import { isComponentFunction } from './components.ts';
 
 // Why a call would be evaluated more than once, or null when it runs exactly
 // once at module evaluation. The two reasons double as
@@ -26,7 +21,7 @@ export const findRepeatedEvaluation = (
 	let reason: RepeatedEvaluation = null;
 
 	for (const ancestor of context.sourceCode.getAncestors(node)) {
-		if (FUNCTION_TYPES.has(ancestor.type)) {
+		if (isComponentFunction(ancestor)) {
 			reason = 'nested';
 		} else if (
 			ancestor.type === 'PropertyDefinition' &&

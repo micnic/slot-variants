@@ -56,7 +56,7 @@ const updateGroupExclusivity = (group: ConflictGroup) => {
 	const matchers = getEntriesMatchers(group.entries);
 
 	group.matchers = matchers;
-	group.exclusive = matchers !== null && arePairwiseExclusive(matchers);
+	group.exclusive = arePairwiseExclusive(matchers);
 };
 
 const groupEntriesByConflictKey = (

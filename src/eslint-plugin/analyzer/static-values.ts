@@ -201,6 +201,15 @@ const checkClassValueRecord = (context: Rule.RuleContext, node: Node) => {
 	});
 };
 
+const checkSlotKeyedValues = (
+	context: Rule.RuleContext,
+	slotKeyed: ReadonlyMap<string, Node>
+) => {
+	for (const value of slotKeyed.values()) {
+		checkConfigClassValueIsStatic(context, value);
+	}
+};
+
 // A slot-keyed record holds one class value per slot; anything else is a plain
 // class value.
 const checkVariantBranchValue = (
@@ -211,10 +220,7 @@ const checkVariantBranchValue = (
 	const slotKeyed = collectSlotKeyedProperties(node, slotNames);
 
 	if (slotKeyed) {
-		for (const value of slotKeyed.values()) {
-			checkConfigClassValueIsStatic(context, value);
-		}
-
+		checkSlotKeyedValues(context, slotKeyed);
 		return;
 	}
 
@@ -236,15 +242,21 @@ const checkVariantDefinition = (
 	node: Node,
 	slotNames: Set<string>
 ) => {
-	if (
-		node.type === 'ObjectExpression' &&
-		collectSlotKeyedProperties(node, slotNames) === null
-	) {
+	// A boolean shorthand variant is a single branch value; any other record is
+	// keyed by variant value.
+	const slotKeyed = collectSlotKeyedProperties(node, slotNames);
+
+	if (slotKeyed) {
+		checkSlotKeyedValues(context, slotKeyed);
+		return;
+	}
+
+	if (node.type === 'ObjectExpression') {
 		checkValueKeyedVariant(context, node, slotNames);
 		return;
 	}
 
-	checkVariantBranchValue(context, node, slotNames);
+	checkConfigClassValueIsStatic(context, node);
 };
 
 const checkVariants = (
