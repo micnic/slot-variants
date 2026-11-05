@@ -19,13 +19,13 @@ import {
 	isStaticTernaryTemplate,
 	isUndefinedIdentifier
 } from './static-predicates.ts';
+import { forEachCnBranch } from './token-extraction.ts';
 
 type StaticClassValueOptions = {
-	allowNestedArrays?: boolean;
+	// The cn() calling convention: `&&`/ternary conditionals, nested arrays and
+	// clsx-style class records. Config class values allow none of these.
+	cnStyle: boolean;
 	allowUndefined?: boolean;
-	allowLogicalString?: boolean;
-	allowConditionalString?: boolean;
-	allowClassRecord?: boolean;
 	// Reads a value as slot-variants-produced classes. A `cn()` argument that
 	// resolves to another `sv()`/`cn()` call's output is statically known after
 	// all — it just isn't spelled as a literal — so it is not dynamic.
@@ -41,16 +41,12 @@ const reportDynamic = (context: Rule.RuleContext, node: Node) => {
 	context.report({ node, messageId: 'dynamic' });
 };
 
-// The cn-style affordances that propagate into nested positions. `allowNestedArrays`
-// and `allowUndefined` are top-level-only concerns and deliberately dropped.
+// The options that propagate into nested positions. `allowUndefined` is a
+// top-level-only concern and deliberately dropped.
 const branchOptions = (
 	options: StaticClassValueOptions
 ): StaticClassValueOptions => {
-	const branch: StaticClassValueOptions = {
-		allowLogicalString: options.allowLogicalString === true,
-		allowConditionalString: options.allowConditionalString === true,
-		allowClassRecord: options.allowClassRecord === true
-	};
+	const branch: StaticClassValueOptions = { cnStyle: options.cnStyle };
 
 	if (options.isStyled) {
 		branch.isStyled = options.isStyled;
@@ -87,33 +83,15 @@ const checkConditionalClassValue = (
 	node: Node,
 	options: StaticClassValueOptions
 ): boolean => {
-	// Only the `&&` right operand is a class contribution.
-	if (
-		options.allowLogicalString &&
-		node.type === 'LogicalExpression' &&
-		node.operator === '&&'
-	) {
-		checkClassValueIsStatic(context, node.right, branchOptions(options));
-
-		return true;
-	}
-
-	if (options.allowConditionalString !== true) {
+	if (!options.cnStyle) {
 		return false;
 	}
 
-	if (node.type === 'ConditionalExpression') {
-		checkClassValueIsStatic(
-			context,
-			node.consequent,
-			branchOptions(options)
-		);
-		checkClassValueIsStatic(
-			context,
-			node.alternate,
-			branchOptions(options)
-		);
+	const isBranch = forEachCnBranch(node, (branch) => {
+		checkClassValueIsStatic(context, branch, branchOptions(options));
+	});
 
+	if (isBranch) {
 		return true;
 	}
 
@@ -126,10 +104,7 @@ const checkArrayClassValue = (
 	options: StaticClassValueOptions
 ) => {
 	forEachItemReportingSpread(context, node.elements, (element) => {
-		if (
-			options.allowNestedArrays === false &&
-			element.type === 'ArrayExpression'
-		) {
+		if (!options.cnStyle && element.type === 'ArrayExpression') {
 			reportDynamic(context, element);
 			return;
 		}
@@ -141,7 +116,7 @@ const checkArrayClassValue = (
 const checkClassValueIsStatic = (
 	context: Rule.RuleContext,
 	node: Node,
-	options: StaticClassValueOptions = {}
+	options: StaticClassValueOptions
 ) => {
 	node = resolveStaticValue(node, context.sourceCode);
 
@@ -162,7 +137,7 @@ const checkClassValueIsStatic = (
 		return;
 	}
 
-	if (options.allowClassRecord && node.type === 'ObjectExpression') {
+	if (options.cnStyle && node.type === 'ObjectExpression') {
 		checkClassRecordKeys(context, node);
 		return;
 	}
@@ -179,7 +154,7 @@ const checkConfigClassValueIsStatic = (
 	node: Node
 ) => {
 	checkClassValueIsStatic(context, node, {
-		allowNestedArrays: false,
+		cnStyle: false,
 		allowUndefined: true
 	});
 };
@@ -414,11 +389,6 @@ export const checkCnArguments = (
 	isStyled: (node: Node) => boolean
 ) => {
 	forEachItemReportingSpread(context, args, (arg) => {
-		checkClassValueIsStatic(context, arg, {
-			allowLogicalString: true,
-			allowConditionalString: true,
-			allowClassRecord: true,
-			isStyled
-		});
+		checkClassValueIsStatic(context, arg, { cnStyle: true, isStyled });
 	});
 };
