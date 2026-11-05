@@ -124,7 +124,7 @@ const pushLiteralTokens = (
 	entries: Entry[]
 ) => {
 	if (hasEscape(raw)) {
-		/* c8 ignore next -- cooked is always readable for a static literal or untagged quasi */
+		/* c8 ignore next -- static literals and untagged quasis are cooked */
 		pushCookedTokens(cooked ?? raw, range, slot, source, entries);
 
 		return;
@@ -209,7 +209,7 @@ const pushRecordKeyTokens = (
 
 	const token = getKeyName(prop);
 
-	/* c8 ignore next 3 -- a non-computed key is parser-emitted as Identifier or Literal */
+	/* c8 ignore next 3 -- a non-computed key is an Identifier or Literal */
 	if (token === null) {
 		return;
 	}

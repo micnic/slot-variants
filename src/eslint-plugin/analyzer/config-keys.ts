@@ -43,6 +43,6 @@ export const getKeyName = (prop: Property): string | null => {
 	if (key.type === 'Literal') {
 		return String(key.value);
 	}
-	/* c8 ignore next 2 -- non-computed object keys are parser-emitted as Identifier or Literal */
+	/* c8 ignore next 2 -- non-computed keys are an Identifier or Literal */
 	return null;
 };

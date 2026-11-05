@@ -2875,7 +2875,7 @@ t.test('required variant throws when not defined in variants', (t) => {
 						lg: 'text-lg'
 					}
 				},
-				// @ts-expect-error - intentionally passing an undefined required variant for the runtime check
+				// @ts-expect-error - undefined required variant, runtime check
 				requiredVariants: ['color']
 			}),
 		{ message: 'Required variant "color" is not defined in variants' },
@@ -2990,7 +2990,7 @@ t.test('default variant throws when not defined in variants', (t) => {
 					}
 				},
 				defaultVariants: {
-					// @ts-expect-error - intentionally passing an undefined default variant for the runtime check
+					// @ts-expect-error - unknown default variant, runtime check
 					color: 'primary'
 				}
 			}),
@@ -3012,7 +3012,7 @@ t.test('default variant throws for invalid value at config time', (t) => {
 					}
 				},
 				defaultVariants: {
-					// @ts-expect-error - intentionally passing an invalid default variant value for the runtime check
+					// @ts-expect-error - invalid default value, runtime check
 					size: 'xl'
 				}
 			}),
@@ -3595,7 +3595,7 @@ t.test('variant value named after an object method is invalid', (t) => {
 	});
 
 	t.throws(
-		// @ts-expect-error - intentionally passing an invalid value to test the runtime check
+		// @ts-expect-error - passing an invalid value to test the runtime check
 		() => button({ size: 'toString' }),
 		{ message: 'Invalid value "toString" for variant "size"' },
 		'inherited property name is not a value'
@@ -3614,7 +3614,7 @@ t.test('missing required variants are reported in listed order', (t) => {
 	});
 
 	t.throws(
-		// @ts-expect-error - intentionally omitting required variants to test the runtime check
+		// @ts-expect-error - omitting required variants for the runtime check
 		() => button(),
 		{ message: 'Missing required variant: "color"' },
 		'first listed required variant is reported'
@@ -4184,7 +4184,7 @@ t.test(
 		});
 
 		t.same(
-			// @ts-expect-error - intentionally passing an invalid key to test the runtime fallback
+			// @ts-expect-error - invalid key to test the runtime fallback
 			button.getVariantValues('unknown'),
 			[],
 			'returns empty array for key not in variants'
@@ -5300,7 +5300,7 @@ t.test('preset throws when it references an unknown variant', (t) => {
 					}
 				},
 				presets: {
-					// @ts-expect-error - intentionally passing an undefined preset variant for the runtime check
+					// @ts-expect-error - unknown preset variant, runtime check
 					large: { sze: 'lg' }
 				}
 			}),
@@ -5322,7 +5322,7 @@ t.test('preset throws for invalid variant value at config time', (t) => {
 					}
 				},
 				presets: {
-					// @ts-expect-error - intentionally passing an invalid preset variant value for the runtime check
+					// @ts-expect-error - invalid preset value, runtime check
 					large: { size: 'xl' }
 				}
 			}),
@@ -5346,7 +5346,7 @@ t.test('preset throws when it shares a name with a variant', (t) => {
 					}
 				},
 				presets: {
-					// @ts-expect-error - a preset name may not match a variant name
+					// @ts-expect-error - a preset name can't be a variant name
 					size: { size: 'lg' }
 				}
 			}),
@@ -5557,8 +5557,9 @@ t.test('compound variant preset matcher skips undefined values', (t) => {
 			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
 		},
 		presets: {
-			// @ts-expect-error an explicit undefined preset value is only reachable
-			// from untyped input, the runtime skips it rather than matching on it
+			// An explicit undefined preset value is only reachable from untyped
+			// input, the runtime skips it rather than matching on it
+			// @ts-expect-error explicit undefined preset value
 			cta: { size: 'lg', intent: undefined }
 		},
 		// @ts-expect-error references the preset holding the undefined value
@@ -6180,7 +6181,7 @@ t.test('multiSlots slot function throws for an unknown preset', (t) => {
 	const result = card({});
 
 	t.throws(
-		// @ts-expect-error unknown preset names are rejected at compile time too
+		// @ts-expect-error unknown preset names fail at compile time too
 		() => result.header({ preset: 'nope' }),
 		new Error('Invalid preset "nope"'),
 		'throws for an unknown preset'

@@ -1,17 +1,17 @@
 import type { SourceCode } from 'eslint';
 import type { Node } from 'estree';
 
-// Token identity follows the value the browser sees, so a class string with an
-// escape has to be split on its cooked value: `'w-1 w-2'` is two classes
-// even though its source holds no whitespace to split on, and `'w-1'` is
-// the same class as `w-1`. Escapes are the only thing that can make the two
-// disagree, so a source without a backslash tokenizes exactly as written (the
-// caller's fast path) and keeps per-token report offsets. With one, mapping each
-// token back through the escapes would be needed to place it, so the whole
-// literal is highlighted instead — the trade-off `reportRedundantSpaces` already
-// makes. A fix is unaffected: `canHoistAsLiteral` refuses any rewrite whose text
-// would contain a backslash, so an escape-bearing literal is reported unfixed
-// either way.
+// Token identity follows the value the browser sees, so a class string
+// with an escape has to be split on its cooked value: `'w-1 w-2'` is two
+// classes even though its source holds no whitespace to split on, and
+// `'w-1'` is the same class as `w-1`. Escapes are the only thing that
+// can make the two disagree, so a source without a backslash tokenizes
+// exactly as written (the caller's fast path) and keeps per-token report
+// offsets. With one, mapping each token back through the escapes would be
+// needed to place it, so the whole literal is highlighted instead — the
+// trade-off `reportRedundantSpaces` already makes. A fix is unaffected:
+// `canHoistAsLiteral` refuses any rewrite whose text would contain a backslash,
+// so an escape-bearing literal is reported unfixed either way.
 export const hasEscape = (rawText: string): boolean => rawText.includes('\\');
 
 // The literal's inner text exactly as written — not its cooked value. Shared
@@ -32,13 +32,13 @@ export const splitClassTokens = (text: string): string[] =>
 export const getQuoteChar = (sourceCode: SourceCode, node: Node): string => {
 	const raw = sourceCode.getText(node);
 
-	/* c8 ignore next -- a string-literal/template node always has at least one delimiter char */
+	/* c8 ignore next -- a string literal or template always has a delimiter */
 	return raw[0] ?? '';
 };
 
 // Class tokens shouldn't contain the surrounding quote, backslashes, or `${` —
 // re-emitting at the same delimiter is safe without escaping.
-/* c8 ignore next 7 -- realistic class tokens don't contain backslashes, quotes, or `${` */
+/* c8 ignore next 7 -- real class tokens have no backslash, quote, or `${` */
 export const canHoistAsLiteral = (
 	canonical: string,
 	quote: string

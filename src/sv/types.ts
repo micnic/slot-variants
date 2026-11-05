@@ -359,31 +359,31 @@ export type Config<
 	R extends RequiredVariants<V>,
 	I extends boolean = false
 > = {
-	/** Classes always applied, alongside any matched variant/compound classes. */
+	/** Classes always applied, alongside matched variant/compound classes. */
 	base?: ConfigClassValue;
-	/** Named variants, each mapping its possible values to the classes they apply. */
+	/** Named variants, each mapping its values to the classes they apply. */
 	variants?: V | undefined;
-	/** Named slots, each with its own base classes, turning the return value into a per-slot class map. */
+	/** Named slots with their own classes; the result becomes a slot map. */
 	slots?: S | undefined;
-	/** Named sets of slots, usable anywhere a slot name is, to target several slots at once. Group names must not match a slot name. */
+	/** Named slot sets usable as slot names; must not reuse a slot name. */
 	groups?: G | undefined;
-	/** Extra classes applied only when a specific combination of variant values matches. A `preset` name stands for the variant values it holds. */
+	/** Classes for a variant combination, also matched by `preset`. */
 	compoundVariants?: CompoundVariants<S, G, V, P> | undefined;
-	/** Extra per-slot classes applied only when a specific combination of variant values matches. A `preset` name stands for the variant values it holds. */
+	/** Per-slot classes for a variant combination, also matched by `preset`. */
 	compoundSlots?: CompoundSlots<S, G, V, P> | undefined;
-	/** Variant values used when the caller doesn't pass a value for that variant. */
+	/** Variant values used when the caller doesn't pass one. */
 	defaultVariants?: DefaultVariants<S, G, V, R> | undefined;
-	/** Variant keys the caller must always provide, dropping their `?` from the props type. */
+	/** Variants the caller must always pass, so their props lose the `?`. */
 	requiredVariants?: R | undefined;
-	/** Slot keys whose class function accepts variant props per call, for slots repeated across multiple elements. */
+	/** Slots whose class function takes variant props, for repeated slots. */
 	multiSlots?: M | undefined;
-	/** Named bundles of variant values selectable by passing a single `preset` prop. Preset names must not match a variant name. */
+	/** Named bundles of variant values, picked with the `preset` prop. */
 	presets?: (P & PresetNameCollision<V, P>) | undefined;
-	/** Number of distinct prop combinations whose computed classes are cached. Defaults to 256. */
+	/** How many prop combinations' classes are cached. Defaults to 256. */
 	cacheSize?: number | undefined;
-	/** Exposes variant metadata and cache controls as properties on the returned function. */
+	/** Exposes variant metadata and cache controls on the returned function. */
 	introspection?: I | undefined;
-	/** Transforms the final class string (or each slot's class string) before it's returned. */
+	/** Transforms the final class string (or each slot's) before returning. */
 	postProcess?: ((className: string) => string) | undefined;
 };
 
@@ -430,7 +430,7 @@ type IntrospectionValues<
 	groups: G extends undefined ? Record<string, never> : G;
 	/** Names of all declared groups. */
 	groupKeys: G extends undefined ? [] : StringKeyof<G>[];
-	/** The effective default variant values, after `defaultVariants` and `requiredVariants` are merged. */
+	/** The `defaultVariants` config passed in, as-is. */
 	defaultVariants: DefaultVariants<S, G, V, R>;
 	/** Names of the variants the caller must always provide. */
 	requiredVariants: R extends true ? StringKeyof<V>[] : R;
@@ -440,17 +440,13 @@ type IntrospectionValues<
 	presets: P extends undefined ? Record<string, never> : P;
 	/** Names of all declared presets. */
 	presetKeys: P extends undefined ? [] : StringKeyof<P>[];
-	/**
-	 * Splits a props object into the props this variant function consumes
-	 * (its variants plus `class`, `className` and `preset`) and everything
-	 * else, which is safe to forward to an element.
-	 */
+	/** Splits props into this function's own and the rest, to forward on. */
 	splitProps: SplitProps<V>;
 	/** Lists every valid value for a given variant. */
 	getVariantValues: V extends undefined
 		? (key: never) => never[]
 		: <K extends StringKeyof<V>>(key: K) => VariantPropType<S, G, V[K]>[];
-	/** The configured cache size (`cacheSize`, or the default of 256). */
+	/** Number of variant combinations: the most cache entries it can hold. */
 	getMaxEntries: () => number;
 	/** Empties the cache of computed class results. */
 	clearCache: () => void;
@@ -472,9 +468,7 @@ export type VariantFn<
 			? [props?: Prettify<Props<S, G, V, P, R>> | undefined]
 			: [props: Prettify<Props<S, G, V, P, R>>]
 	): ReturnValue<S, G, V, P, M>;
-} & (I extends true
-	? Prettify<IntrospectionValues<S, G, V, P, M, R>>
-	: unknown);
+} & (I extends true ? IntrospectionValues<S, G, V, P, M, R> : unknown);
 
 export type NonConfigClassArg<T> =
 	T extends Record<string, unknown>

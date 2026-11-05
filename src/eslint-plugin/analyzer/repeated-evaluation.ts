@@ -8,8 +8,8 @@ const FUNCTION_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 // Why a call would be evaluated more than once, or null when it runs exactly
-// once at module evaluation. The two reasons double as require-top-level-config's
-// messageIds, so the report needs no mapping.
+// once at module evaluation. The two reasons double as
+// require-top-level-config's messageIds, so the report needs no mapping.
 type RepeatedEvaluation = 'nested' | 'field' | null;
 
 // An `sv()` config call compiles the variant function (and seeds its cache)

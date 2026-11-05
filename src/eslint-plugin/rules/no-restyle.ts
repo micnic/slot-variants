@@ -34,19 +34,18 @@ import { createLiteralReporter } from '../analyzer/restyle.ts';
  * `class` / `className` attribute of a component that forwards that prop into
  * such a position (`<Button className="p-4" />`).
  *
- * A component forwards its prop when the prop reaches a variant call's
- * override (`button({ class: className })`) or sits beside a slot-variants
- * result in one class list (`cn(button(), className)`, `` `${button()}
- * ${className}` ``). Inside a `cn()` list the literals count as well —
- * `cn('p-2', className)` applies `p-2` just as a config would. The prop is
- * read off a function component's first parameter, destructured (with or
- * without a default) or as a whole props object, including one destructured
- * or renamed in the component body (`const { className } = props`) and an
- * object derived from it (Solid's `splitProps`, `mergeProps`); a wrapper call
- * like `forwardRef()` or `memo()` around the function is looked through. A Svelte
- * or Vue single-file component is a component too, its props coming from
- * `$props()`, `defineProps()` (bare or under `withDefaults()`) or `useAttrs()`
- * at the top level of its script.
+ * A component forwards its prop when the prop reaches a variant call's override
+ * (`button({ class: className })`) or sits beside a slot-variants result in one
+ * class list (`cn(button(), className)`, `` `${button()} ${className}` ``).
+ * Inside a `cn()` list the literals count as well — `cn('p-2', className)`
+ * applies `p-2` just as a config would. The prop is read off a function
+ * component's first parameter, destructured (with or without a default) or as a
+ * whole props object, including one destructured or renamed in the component
+ * body (`const { className } = props`) and an object derived from it (Solid's
+ * `splitProps`, `mergeProps`); a wrapper call like `forwardRef()` or `memo()`
+ * around the function is looked through. A Svelte or Vue single-file component
+ * is a component too, its props coming from `$props()`, `defineProps()` (bare
+ * or under `withDefaults()`) or `useAttrs()` at the top level of its script.
  *
  * A component imported from another module is followed to the file that
  * declares it, through any re-export or barrel file in between. Relative
@@ -96,9 +95,9 @@ export const noRestyle: Rule.RuleModule = {
 			cwd: context.cwd,
 			languageOptions: context.languageOptions
 		};
-		// Shared by every position, so a class list reached from two of them —
-		// a `cn()` call is its own site and a part of the attribute holding it —
-		// reports each literal once.
+		// Shared by every position, so a class list reached from two of
+		// them — a `cn()` call is its own site and a part of the attribute
+		// holding it — reports each literal once.
 		const reportLiterals = createLiteralReporter(context, options);
 
 		// A component declared in this file, or one reached through an import —

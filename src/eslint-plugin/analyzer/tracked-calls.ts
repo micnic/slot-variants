@@ -73,8 +73,8 @@ const createImportsTracker = () => {
 		}
 
 		for (const specifier of node.specifiers) {
-			// `import * as SV` reaches every export through one local binding, so
-			// the export being called is only known at the call site.
+			// `import * as SV` reaches every export through one local binding,
+			// so the export being called is only known at the call site.
 			if (specifier.type === 'ImportNamespaceSpecifier') {
 				names.namespaceNames.add(specifier.local.name);
 				continue;
@@ -96,7 +96,7 @@ const identifierResolvesToImport = (
 ): boolean => {
 	const variable = findVariable(scopeOf(identifier), identifier.name);
 
-	/* c8 ignore next 3 -- a tracked-name identifier always resolves to a binding */
+	/* c8 ignore next 3 -- a tracked name always resolves to a binding */
 	if (!variable) {
 		return false;
 	}
@@ -255,8 +255,8 @@ const matchTrackedCall = (
 		return matchExportCall(match, node, exportName);
 	}
 
-	// A `const button = createSV(...)` binding is a pre-configured `sv()`, so its
-	// call sites are analyzed exactly like `sv()` calls.
+	// A `const button = createSV(...)` binding is a pre-configured `sv()`, so
+	// its call sites are analyzed exactly like `sv()` calls.
 	if (
 		resolved.type === 'CallExpression' &&
 		resolveExportName(match, resolved) === 'createSV'

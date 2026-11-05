@@ -30,11 +30,11 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  * group throws synchronously from `create()` — there's no coherent way to
  * pick which group's conflict key the token should use.
  *
- * A `prefix` option matches a Tailwind v3 `prefix` config, which prepends itself
- * to every utility (`tw-w-4`, and `-tw-mt-2` for a negative value): it's
+ * A `prefix` option matches a Tailwind v3 `prefix` config, which prepends
+ * itself to every utility (`tw-w-4`, and `-tw-mt-2` for a negative value): it's
  * stripped before the namespace is read, and any token without it is treated as
- * one of the project's own class names and left out of the analysis. Tailwind v4
- * prefixes are a variant (`tw:w-4`) and need no option.
+ * one of the project's own class names and left out of the analysis. Tailwind
+ * v4 prefixes are a variant (`tw:w-4`) and need no option.
  */
 export const noConflictingClasses: Rule.RuleModule = {
 	meta: {

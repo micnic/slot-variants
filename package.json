@@ -55,7 +55,7 @@
 		"prepublishOnly": "npm run check",
 		"test": "tap --show-full-coverage test/**/*.test.ts",
 		"test:package": "node scripts/test-package.mjs",
-		"typecheck": "tsc --project tsconfig.test.json"
+		"typecheck": "node node_modules/typescript/bin/tsc --project tsconfig.test.json"
 	},
 	"devDependencies": {
 		"@types/estree": "1.0.10",
@@ -78,6 +78,7 @@
 		"tsup": "9.0.0",
 		"typescript": "6.0.3",
 		"typescript-eslint": "8.72.1",
+		"typescript7": "npm:typescript@7.0.2",
 		"vue-eslint-parser": "10.4.1"
 	},
 	"peerDependencies": {

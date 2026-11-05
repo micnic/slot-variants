@@ -29,8 +29,9 @@ const shouldReportEmptyString = (
 	allowEmptyString: boolean
 ): boolean => !allowEmptyString && isEmptyStringNode(node);
 
-// In cn-style position an ObjectExpression is a clsx-style record whose keys are
-// the class strings, so an empty string-literal key is an empty class value.
+// In cn-style position an ObjectExpression is a clsx-style
+// record whose keys are the class strings, so an empty
+// string-literal key is an empty class value.
 const checkRecordKeysForEmpty = (
 	context: Rule.RuleContext,
 	node: ObjectExpression

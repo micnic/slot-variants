@@ -35,8 +35,8 @@ const DISPLAY_KEYWORDS: ReadonlyArray<string> = [
 
 // The subset of `DISPLAY_KEYWORDS` with no `-` of their own, so a conflict key
 // of their own is all they can get (see `SINGLE_WORD_OVERLAP_NODES`). The
-// hyphenated members (`table-cell`, `inline-block`, …) keep the key their dashed
-// family gives them — several are grouped by the `table`/`inline`
+// hyphenated members (`table-cell`, `inline-block`, …) keep the key their
+// dashed family gives them — several are grouped by the `table`/`inline`
 // `PREFIX_SPECS` entries, which an own-key node would shadow — and take part in
 // the overlap graph through `DISPLAY_OVERLAP_NODES` instead.
 const SINGLE_WORD_DISPLAY_KEYWORDS: ReadonlyArray<string> =
@@ -150,19 +150,21 @@ type PrefixSpec = {
 	// A keyword that introduces a sub-property classified from the remaining
 	// segments (`ring-offset-2` width vs `ring-offset-red-500` color).
 	nested?: ReadonlyMap<string, PrefixSpec>;
-	// Set on a nested spec whose keyword names no sub-property of its own, so its
-	// categories are the parent's rather than being prefixed by the keyword:
-	// `mask-no-clip` is the boolean-off form of `mask-clip-*`, the same property,
-	// so it has to reach the same category — not a `no-clip` one.
+	// Set on a nested spec whose keyword names no sub-property of
+	// its own, so its categories are the parent's rather than being
+	// prefixed by the keyword: `mask-no-clip` is the boolean-off
+	// form of `mask-clip-*`, the same property, so it has to reach
+	// the same category — not a `no-clip` one.
 	flattensIntoParent?: boolean;
 	short?: string;
 	long?: string;
 	// The category of an untyped CSS-variable shorthand (`decoration-(--x)`),
 	// for the prefixes where it isn't the widest value type `long` names.
 	variable?: string;
-	// A trailing `reverse` segment is a composing flag, not a value — it sets a
-	// CSS variable (`space-x-reverse`, `divide-x-reverse`) rather than replacing
-	// the base utility, so it gets its own category and doesn't conflict with it.
+	// A trailing `reverse` segment is a composing flag, not a value —
+	// it sets a CSS variable (`space-x-reverse`, `divide-x-reverse`)
+	// rather than replacing the base utility, so it gets its
+	// own category and doesn't conflict with it.
 	reverseComposes?: boolean;
 	// The prefix has arbitrary image values (`bg-[url(...)]`,
 	// `bg-[linear-gradient(...)]`) that classify as an image rather than
@@ -501,10 +503,10 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		keywords: categoryMap([
 			['color', COLOR_KEYWORDS],
 			// The bare keyword forms (`bg-cover`, `bg-center`) and the explicit
-			// `bg-size-*`/`bg-position-*` namespaces Tailwind 4.1 added are the same
-			// two properties, so each namespace segment joins its keyword's
-			// category — `bg-size-[3px_4px]` collides with `bg-cover`, and neither
-			// is mistaken for the color fallback.
+			// `bg-size-*`/`bg-position-*` namespaces Tailwind 4.1 added are the
+			// same two properties, so each namespace segment joins its
+			// keyword's category — `bg-size-[3px_4px]` collides with
+			// `bg-cover`, and neither is mistaken for the color fallback.
 			['size', ['auto', 'cover', 'contain', 'size']],
 			[
 				'position',
@@ -588,8 +590,8 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		keywords: categoryMap([
 			['style', ['solid', 'double', 'dotted', 'dashed', 'wavy']],
 			// Tailwind v3's box-decoration-break spelling (v4 renamed these to
-			// `box-decoration-*`) — an unrelated property that would otherwise fall
-			// into the thickness bucket and collide with `decoration-2`.
+			// `box-decoration-*`) — an unrelated property that would otherwise
+			// fall into the thickness bucket and collide with `decoration-2`.
 			['break', ['clone', 'slice']],
 			['color', COLOR_KEYWORDS],
 			['thickness', ['from', 'auto']]
@@ -603,9 +605,10 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		fallback: 'color'
 	},
 	stroke: {
-		// `stroke-none` sets the `stroke` color property to `none`, unlike
-		// `border-none`/`outline-none`/etc, which are a `style` keyword — so it
-		// joins `COLOR_KEYWORDS` here rather than falling to the `width` bucket.
+		// `stroke-none` sets the `stroke` color property to `none`,
+		// unlike `border-none`/`outline-none`/etc, which are a
+		// `style` keyword — so it joins `COLOR_KEYWORDS` here
+		// rather than falling to the `width` bucket.
 		keywords: categoryMap([['color', [...COLOR_KEYWORDS, 'none']]]),
 		short: 'width',
 		long: 'color',
@@ -626,8 +629,8 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 		keywords: categoryMap([
 			['composite', ['add', 'subtract', 'intersect', 'exclude']],
 			['mode', ['alpha', 'luminance', 'match']],
-			// `mask-position-*`/`mask-size-*` join their keyword forms, the same way
-			// the `bg` spec above pairs them.
+			// `mask-position-*`/`mask-size-*` join their keyword forms, the
+			// same way the `bg` spec above pairs them.
 			[
 				'position',
 				['center', 'top', 'bottom', 'left', 'right', 'position']
@@ -667,8 +670,9 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	from: gradientStopSpec,
 	via: gradientStopSpec,
 	to: gradientStopSpec,
-	// `table-auto`/`table-fixed` are `table-layout`; every other `table-*`
-	// (`table-cell`, `table-row`, `table-header-group`, …) is a `display` value.
+	// `table-auto`/`table-fixed` are `table-layout`;
+	// every other `table-*` (`table-cell`, `table-row`,
+	// `table-header-group`, …) is a `display` value.
 	table: {
 		keywords: categoryMap([['layout', ['auto', 'fixed']]]),
 		fallback: 'display'
@@ -697,11 +701,12 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 			['direction', ['row', 'col']],
 			['wrap', ['wrap', 'nowrap']]
 		]),
-		// Tailwind v3's `flex-grow-*`/`flex-shrink-*`/`flex-basis-*` spellings are
-		// three independent properties — and each is the very same property as the
-		// standalone `grow`/`shrink`/`basis` utility, which the overlap nodes below
-		// reunite them with. Without them all three would share the `flex` sizing
-		// category, so `flex-grow-0 flex-shrink-0` would read as a conflict.
+		// Tailwind v3's `flex-grow-*`/`flex-shrink-*`/`flex-basis-*`
+		// spellings are three independent properties — and each is the very
+		// same property as the standalone `grow`/`shrink`/`basis` utility,
+		// which the overlap nodes below reunite them with. Without them all
+		// three would share the `flex` sizing category, so
+		// `flex-grow-0 flex-shrink-0` would read as a conflict.
 		nested: new Map([
 			['grow', unifiedSpec],
 			['shrink', unifiedSpec],
@@ -726,8 +731,8 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 				]
 			]
 		]),
-		// `font-stretch-*` (`font-stretch-condensed`, `font-stretch-50%`, …) and
-		// `font-features-*` (font-feature-settings) are each their own font
+		// `font-stretch-*` (`font-stretch-condensed`, `font-stretch-50%`, …)
+		// and `font-features-*` (font-feature-settings) are each their own font
 		// sub-property, distinct from weight and family and from each other.
 		nested: new Map([
 			['stretch', unifiedSpec],
@@ -742,16 +747,17 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 			['fit', ['contain', 'cover', 'fill', 'none', 'scale']],
 			['position', ['bottom', 'center', 'left', 'right', 'top']]
 		]),
-		// `object-fit` is keyword-only, so every other value — arbitrary or a
-		// multi-word keyword pair like `object-left-top` — is an object-position.
+		// `object-fit` is keyword-only, so every other value — arbitrary or
+		// a multi-word keyword pair like `object-left-top` — is an
+		// object-position.
 		fallback: 'position'
 	},
 	list: {
 		keywords: categoryMap([
 			['position', ['inside', 'outside']],
 			['image', ['image']],
-			// `list-item` is a `display` value, not a list-style-type like every
-			// other bare `list-*` keyword.
+			// `list-item` is a `display` value, not a list-style-type like
+			// every other bare `list-*` keyword.
 			['display', ['item']]
 		]),
 		fallback: 'type'
@@ -858,8 +864,8 @@ const PREFIX_SPECS: Record<string, PrefixSpec> = {
 	},
 	break: {
 		keywords: categoryMap([
-			// `break-normal`/`-words`/`-all`/`-keep` are all `word-break` values,
-			// so they share one category.
+			// `break-normal`/`-words`/`-all`/`-keep` are all `word-break`
+			// values, so they share one category.
 			['word', ['normal', 'words', 'all', 'keep']],
 			['before', ['before']],
 			['after', ['after']],
@@ -1201,7 +1207,7 @@ const hintedCategory = (spec: PrefixSpec, hint: string): string | undefined => {
 // `lg/6`) before a keyword lookup, so the modifier doesn't shadow the exact
 // keyword match (`text-white/50` should still resolve `white` to `color`).
 const withoutModifier = (segment: string): string =>
-	/* c8 ignore next -- splitOutsideBrackets always returns at least one segment */
+	/* c8 ignore next -- splitOutsideBrackets returns 1+ segments */
 	splitOutsideBrackets(segment, '/')[0] ?? segment;
 
 // A bracketed bare number (`font-[550]`), which names no CSS unit and so can
@@ -1310,8 +1316,8 @@ const categorizeWithSpec = (
 	const [head = ''] = value;
 
 	// A nested keyword introduces its own sub-property, classified from the
-	// remaining segments (`ring-offset-2` → `offset-width`, `ring-offset-red-500`
-	// → `offset-color`).
+	// remaining segments (`ring-offset-2` → `offset-width`,
+	// `ring-offset-red-500` → `offset-color`).
 	const nested = spec.nested?.get(head);
 
 	if (nested) {
@@ -1324,8 +1330,8 @@ const categorizeWithSpec = (
 
 	const category = baseCategory(spec, value, head);
 
-	// A composing `reverse` flag (`space-x-reverse`) sits alongside the width, so
-	// it gets a distinct — but still axis-aware — category from `space-x-2`.
+	// A composing `reverse` flag (`space-x-reverse`) sits alongside the width,
+	// so it gets a distinct — but still axis-aware — category from `space-x-2`.
 	if (spec.reverseComposes && value[value.length - 1] === 'reverse') {
 		return `${category}-reverse`;
 	}
@@ -1455,8 +1461,8 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 	['border-color-y', ['border-color-t', 'border-color-b']],
 	['touch', ['touch-x', 'touch-y', 'touch-pz']],
 	// Only a modifier-bearing font size reaches `leading` — a plain one reads
-	// its line-height through `--tw-leading`, which `leading-*` sets, so the two
-	// compose (`text-sm leading-6`), while a `/leading` modifier sets the
+	// its line-height through `--tw-leading`, which `leading-*` sets, so the
+	// two compose (`text-sm leading-6`), while a `/leading` modifier sets the
 	// line-height directly (see `getConflictKey`).
 	['text-size', ['text-size-leading']],
 	['text-size-leading', ['leading']],
@@ -1524,7 +1530,7 @@ const EMPTY_NODE_LIST: ReadonlyArray<string> = [];
 export const overlapNeighbors = (node: string): ReadonlyArray<string> => {
 	const neighbors = OVERLAP_NEIGHBORS.get(node);
 
-	/* c8 ignore next 3 -- every node getOverlapNode emits appears in the covers table */
+	/* c8 ignore next 3 -- every getOverlapNode node is in the covers table */
 	if (neighbors === undefined) {
 		return EMPTY_NODE_LIST;
 	}
@@ -1820,10 +1826,10 @@ const SINGLE_WORD_OVERLAP_NODES: Record<string, string> = {
 };
 
 // A node for every display keyword, so `line-clamp-*` reaches the hyphenated
-// ones (`inline-flex`, `table-cell`, `flow-root`, `list-item`) as well as the
-// single words above. Only the node comes from here — a hyphenated keyword keeps
-// whatever conflict key its dashed family gives it, so `table-cell` stays
-// grouped with `table-row`.
+// ones (`inline-flex`, `table-cell`, `flow-root`, `list-item`) as well
+// as the single words above. Only the node comes from here — a hyphenated
+// keyword keeps whatever conflict key its dashed family gives it, so
+// `table-cell` stays grouped with `table-row`.
 const DISPLAY_OVERLAP_NODES: Record<string, string> = Object.fromEntries(
 	DISPLAY_KEYWORDS.map((word) => [word, `display-${word}`])
 );
@@ -1897,7 +1903,7 @@ const splitVariantPrefix = (
 	const segments = splitOutsideBrackets(token, ':');
 	const utility = segments.pop();
 
-	/* c8 ignore next 3 -- splitOutsideBrackets always returns at least one segment */
+	/* c8 ignore next 3 -- splitOutsideBrackets returns 1+ segments */
 	if (utility === undefined) {
 		return { variantPrefix: '', utility: token };
 	}
@@ -2017,7 +2023,7 @@ const getFontSizeLeadingKey = (
 		return null;
 	}
 
-	/* c8 ignore next -- value is non-empty here (the length === 0 case returns earlier) */
+	/* c8 ignore next -- value is non-empty (the length === 0 case returned) */
 	const lastValueSegment = value[value.length - 1] ?? '';
 
 	if (splitOutsideBrackets(lastValueSegment, '/').length < 2) {
@@ -2088,7 +2094,7 @@ export const getConflictKey = (
 	const value = splitOutsideBrackets(bare, '-');
 	const firstSegment = value.shift();
 
-	/* c8 ignore next 3 -- splitOutsideBrackets always returns at least one segment */
+	/* c8 ignore next 3 -- splitOutsideBrackets returns 1+ segments */
 	if (firstSegment === undefined) {
 		return null;
 	}

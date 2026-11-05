@@ -86,10 +86,11 @@ const collectOrderedEntries = (
 	return { entries, fixable };
 };
 
-// Any comment inside the config object (attached to a property, or floating
-// between them) disables the reorder fixer for that call — safely reattaching
-// comments to their moved property isn't attempted, matching the "under-suppress,
-// never wrongly rewrite" bail-out pattern used elsewhere in this plugin.
+// Any comment inside the config object (attached to a property,
+// or floating between them) disables the reorder fixer for that
+// call — safely reattaching comments to their moved property isn't
+// attempted, matching the "under-suppress, never wrongly rewrite"
+// bail-out pattern used elsewhere in this plugin.
 const hasCommentsInside = (
 	context: Rule.RuleContext,
 	node: ObjectExpression
@@ -135,7 +136,7 @@ const buildReorderFix = (
 		const first = entries[0];
 		const last = entries[entries.length - 1];
 
-		/* c8 ignore next 3 -- callers only build this fix for a non-empty entries array */
+		/* c8 ignore next 3 -- callers only call this with non-empty entries */
 		if (!first || !last) {
 			return null;
 		}
@@ -294,7 +295,7 @@ const insertAsFirstPropertyFix = (
 	if (!first) {
 		const openBrace = sourceCode.getFirstToken(obj);
 
-		/* c8 ignore next 3 -- an ObjectExpression always has an opening brace token */
+		/* c8 ignore next 3 -- an ObjectExpression always has a `{` token */
 		if (!openBrace) {
 			return fixer.insertTextAfter(obj, text);
 		}
@@ -369,7 +370,7 @@ const buildBaseStyleFix = (
 
 		const slotsObj = getSlotsObject(configNode);
 
-		/* c8 ignore next 3 -- target 'slotsBase' is only reached when slots already exists (checkBaseStyle returns early otherwise) */
+		/* c8 ignore next 3 -- target 'slotsBase' is only reached with slots */
 		if (!slotsObj) {
 			return [];
 		}

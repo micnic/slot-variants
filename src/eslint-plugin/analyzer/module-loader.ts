@@ -157,7 +157,7 @@ const analyzeModule = (
 ): ModuleAnalysis | null => {
 	const LinterClass = getLinterConstructor(path, cwd);
 
-	/* c8 ignore next 3 -- eslint is present whenever this plugin runs under it */
+	/* c8 ignore next 3 -- eslint is present whenever this plugin runs */
 	if (LinterClass === null) {
 		return null;
 	}

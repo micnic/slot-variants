@@ -133,8 +133,9 @@ export const getConfigSlotNames = (
 	return slotNames;
 };
 
-// The class value a props or compound object carries. `class` wins over
-// `className` when both are present, exactly as `sv()` resolves them at runtime.
+// The class value a props or compound object carries.
+// `class` wins over `className` when both are present,
+// exactly as `sv()` resolves them at runtime.
 export const getClassValue = (
 	properties: ReadonlyMap<string, Node>
 ): Node | undefined => properties.get('class') ?? properties.get('className');

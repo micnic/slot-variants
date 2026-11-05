@@ -157,7 +157,7 @@ const isOverlapComponentExclusive = (
 	for (const node of component) {
 		const group = byNode.get(node);
 
-		/* c8 ignore next 3 -- component only ever holds nodes present in byNode */
+		/* c8 ignore next 3 -- component only holds nodes present in byNode */
 		if (group === undefined) {
 			continue;
 		}
@@ -199,7 +199,7 @@ const buildOverlapConflictGroup = (
 	for (const node of component) {
 		const group = byNode.get(node);
 
-		/* c8 ignore next 3 -- component only ever holds nodes present in byNode */
+		/* c8 ignore next 3 -- component only holds nodes present in byNode */
 		if (group === undefined) {
 			continue;
 		}

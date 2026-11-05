@@ -38,10 +38,10 @@ const startOfOwnLine = (text: string, start: number): number | null => {
 };
 
 // Removes `node` along with one adjacent comma so the surrounding call/array
-// literal stays syntactically valid, and with the separating whitespace on that
-// same side so no double space or dangling indent is left behind. Returns null
-// when removal would empty the list — that's reported separately, so we leave it
-// for the developer.
+// literal stays syntactically valid, and with the separating whitespace
+// on that same side so no double space or dangling indent is left behind.
+// Returns null when removal would empty the list — that's reported
+// separately, so we leave it for the developer.
 export const removeFromList = (
 	fixer: Rule.RuleFixer,
 	sourceCode: SourceCode,
@@ -67,8 +67,8 @@ export const removeFromList = (
 	if (after && after.value === ',') {
 		const ownLine = startOfOwnLine(source, start);
 
-		// An own-line element takes the line break and indentation that introduce
-		// it, so the elements after it keep theirs.
+		// An own-line element takes the line break and indentation that
+		// introduce it, so the elements after it keep theirs.
 		if (ownLine !== null) {
 			return fixer.removeRange([ownLine, after.range[1]]);
 		}
@@ -81,7 +81,7 @@ export const removeFromList = (
 
 	const before = sourceCode.getTokenBefore(node);
 
-	/* c8 ignore next 3 -- a non-trailing list element always has a comma after; trailing always has one before */
+	/* c8 ignore next 3 -- a trailing element always has a comma before it */
 	if (!before || before.value !== ',') {
 		return null;
 	}

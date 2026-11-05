@@ -46,7 +46,7 @@ type InternalStyles = {
 	slotGroups: ReadonlyMap<string, ReadonlyArray<string>>;
 };
 
-/** A class-valued expression produced by slot-variants, and the slot it feeds. */
+/** A class expression produced by slot-variants, and the slot it feeds. */
 export type StyledClasses = {
 	styles: InternalStyles;
 	slot: string;

@@ -363,7 +363,8 @@ const NO_REDUNDANT_SPACES_INVALID = [
 		errors: 1
 	},
 	{
-		// Redundant whitespace in a record key nested inside a cn array argument.
+		// Redundant whitespace in a record key
+		// nested inside a cn array argument.
 		code: IMPORT_CN + "cn(['flex', { 'a  b': x }]);",
 		output: IMPORT_CN + "cn(['flex', { 'a b': x }]);",
 		errors: 1
@@ -382,7 +383,8 @@ const NO_REDUNDANT_SPACES_INVALID = [
 		errors: 1
 	},
 	{
-		// Redundant whitespace in both ternary branches — one report per branch.
+		// Redundant whitespace in both ternary
+		// branches — one report per branch.
 		code: IMPORT_CN + "cn(isActive ? 'flex  a' : 'block  b');",
 		output: IMPORT_CN + "cn(isActive ? 'flex a' : 'block b');",
 		errors: 2
@@ -1295,7 +1297,8 @@ const NO_DYNAMIC_CLASSES_INVALID = [
 		errors: 1
 	},
 	{
-		// A redeclared `var` has multiple definitions — not a safe single value.
+		// A redeclared `var` has multiple
+		// definitions — not a safe single value.
 		code: IMPORT_CN + "var base = 'a';\nvar base = 'b';\ncn(base);",
 		errors: 1
 	},
@@ -1310,7 +1313,8 @@ const NO_DYNAMIC_CLASSES_INVALID = [
 		errors: 1
 	},
 	{
-		// A `const` whose initializer is dynamic is reported at the initializer.
+		// A `const` whose initializer is dynamic
+		// is reported at the initializer.
 		code: IMPORT_CN + 'const base = make();\ncn(base);',
 		errors: 1
 	},
@@ -1375,7 +1379,8 @@ const NO_DYNAMIC_CLASSES_INVALID = [
 		errors: 1
 	},
 	{
-		// The defaults of a createSV() factory call are validated like a config.
+		// The defaults of a createSV() factory
+		// call are validated like a config.
 		code: IMPORT_CREATE_SV + 'createSV({ base: dynamic });',
 		errors: 1
 	},
@@ -1607,8 +1612,8 @@ const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
-		// A config container that holds no class values of its own is inert when
-		// empty, so the property is reported and removed.
+		// A config container that holds no class values of its own is
+		// inert when empty, so the property is reported and removed.
 		code: IMPORT + "sv({ base: 'flex', defaultVariants: {} });",
 		output: IMPORT + "sv({ base: 'flex' });",
 		errors: [{ messageId: 'emptyConfig', data: { key: 'defaultVariants' } }]
@@ -1667,14 +1672,15 @@ const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
-		// Empty string inside an array argument. The removal takes the separator
-		// after it, so no double space is left behind.
+		// Empty string inside an array argument. The removal takes
+		// the separator after it, so no double space is left behind.
 		code: IMPORT + "sv(['', 'flex']);",
 		output: IMPORT + "sv(['flex']);",
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
-		// A middle element, where the stray space would sit between the survivors.
+		// A middle element, where the stray
+		// space would sit between the survivors.
 		code: IMPORT + "sv(['flex', '', 'gap-2']);",
 		output: IMPORT + "sv(['flex', 'gap-2']);",
 		errors: [{ messageId: 'emptyString' }]
@@ -2475,7 +2481,8 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ variants: { size: { sm: 'w-100', lg: 'w-200' } } });",
 	// Without the import the rule stays quiet.
 	"sv({ base: 'w-100 w-200' });",
-	// cn() with a dynamic arg — no static entries, exercises the empty-tokenMap branch.
+	// cn() with a dynamic arg — no static entries,
+	// exercises the empty-tokenMap branch.
 	IMPORT_CN + 'cn(dynamic);',
 	// Different namespace prefixes don't conflict.
 	IMPORT + "sv({ base: 'w-100 h-200' });",
@@ -2492,7 +2499,8 @@ const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'text-sm text-primary' });",
 	IMPORT + "sv({ base: 'text-base text-foreground/80' });",
 	IMPORT + "sv({ base: 'text-2xl text-destructive' });",
-	// The same goes for every prefix that is both a width (or size) and a color.
+	// The same goes for every prefix that is
+	// both a width (or size) and a color.
 	IMPORT + "sv({ base: 'border-2 border-primary' });",
 	IMPORT + "sv({ base: 'border-t-2 border-t-primary' });",
 	IMPORT + "sv({ base: 'ring-2 ring-primary' });",
@@ -2751,7 +2759,8 @@ const NO_CONFLICTING_NS_VALID = [
 	// conflict with it.
 	IMPORT + "sv({ base: 'space-x-2 space-x-reverse' });",
 	IMPORT + "sv({ base: 'divide-x-2 divide-x-reverse' });",
-	// A gradient color stop and its position are distinct, composing properties.
+	// A gradient color stop and its position
+	// are distinct, composing properties.
 	IMPORT + "sv({ base: 'from-10% from-red-500' });",
 	// background-blend-mode is distinct from background-color.
 	IMPORT + "sv({ base: 'bg-blend-multiply bg-red-500' });",
@@ -2913,8 +2922,8 @@ const NO_CONFLICTING_NS_VALID = [
 		options: [{ prefix: 'tw-' }]
 	},
 	{
-		// With a prefix configured, an unprefixed token is one of the project's own
-		// class names, not a utility.
+		// With a prefix configured, an unprefixed token is one
+		// of the project's own class names, not a utility.
 		code: IMPORT + "sv({ base: 'card-body card-header' });",
 		options: [{ prefix: 'tw-' }]
 	}
@@ -2952,8 +2961,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: 2
 	},
 	{
-		// Two text-color utilities share a first segment and dash count, so they
-		// conflict — including when one uses a custom-palette color name.
+		// Two text-color utilities share a first segment and dash count, so
+		// they conflict — including when one uses a custom-palette color name.
 		code: IMPORT_CN + "cn('text-red-500', 'text-blue-500');",
 		errors: repeat(conflictCn('text-blue-500, text-red-500'), 2)
 	},
@@ -2963,7 +2972,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('text-brand-500, text-red-500'), 2)
 	},
 	{
-		// A single-word color keyword and a shaded color both classify as color.
+		// A single-word color keyword and a
+		// shaded color both classify as color.
 		code: IMPORT + "sv({ base: 'bg-white bg-red-500' });",
 		errors: repeat(conflict('bg-red-500, bg-white'), 2)
 	},
@@ -2996,8 +3006,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('text-(color:--brand), text-red-500'), 2)
 	},
 	{
-		// An untyped shorthand is a color too, on a prefix whose widest value type
-		// is one.
+		// An untyped shorthand is a color too, on
+		// a prefix whose widest value type is one.
 		code: IMPORT_CN + "cn('text-(--brand)', 'text-red-500');",
 		errors: repeat(conflictCn('text-(--brand), text-red-500'), 2)
 	},
@@ -3008,7 +3018,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('bg-(--brand), bg-red-500'), 2)
 	},
 	{
-		// `decoration-(--x)` is a thickness, so it collides with an explicit one.
+		// `decoration-(--x)` is a thickness,
+		// so it collides with an explicit one.
 		code: IMPORT_CN + "cn('decoration-(--thin)', 'decoration-2');",
 		errors: repeat(conflictCn('decoration-(--thin), decoration-2'), 2)
 	},
@@ -3038,20 +3049,20 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('font-[550], font-bold'), 2)
 	},
 	{
-		// A prefix with no weight of its own is unaffected — a bracketed number is
-		// still the width its segment count makes it.
+		// A prefix with no weight of its own is unaffected — a bracketed
+		// number is still the width its segment count makes it.
 		code: IMPORT_CN + "cn('border-[2]', 'border-4');",
 		errors: repeat(conflictCn('border-4, border-[2]'), 2)
 	},
 	{
-		// A hint the prefix has no property for is ignored — `gap` has no color,
-		// so the value stays the axis-less gap it looks like.
+		// A hint the prefix has no property for is ignored — `gap` has
+		// no color, so the value stays the axis-less gap it looks like.
 		code: IMPORT_CN + "cn('gap-(color:--x)', 'gap-4');",
 		errors: repeat(conflictCn('gap-(color:--x), gap-4'), 2)
 	},
 	{
-		// An unrecognized hint is ignored the same way, leaving the segment-count
-		// heuristic to classify the value.
+		// An unrecognized hint is ignored the same way, leaving
+		// the segment-count heuristic to classify the value.
 		code: IMPORT_CN + "cn('line-clamp-(integer:--x)', 'line-clamp-3');",
 		errors: repeat(conflictCn('line-clamp-(integer:--x), line-clamp-3'), 2)
 	},
@@ -3077,7 +3088,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('leading-8, text-lg/6'), 2)
 	},
 	{
-		// A one-word theme color is a color, so it conflicts with another color…
+		// A one-word theme color is a color,
+		// so it conflicts with another color…
 		code: IMPORT_CN + "cn('text-primary', 'text-red-500');",
 		errors: repeat(conflictCn('text-primary, text-red-500'), 2)
 	},
@@ -3168,7 +3180,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('mask-clip-border, mask-clip-padding'), 2)
 	},
 	{
-		// `mask-no-clip` turns the same property off, so it collides with a value.
+		// `mask-no-clip` turns the same property
+		// off, so it collides with a value.
 		code: IMPORT_CN + "cn('mask-no-clip', 'mask-clip-border');",
 		errors: repeat(conflictCn('mask-clip-border, mask-no-clip'), 2)
 	},
@@ -3283,7 +3296,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('auto-cols-max, auto-cols-min'), 2)
 	},
 	{
-		// Same-axis border-spacing values conflict; different axes (above) don't.
+		// Same-axis border-spacing values
+		// conflict; different axes (above) don't.
 		code: IMPORT_CN + "cn('border-spacing-x-2', 'border-spacing-x-4');",
 		errors: repeat(conflictCn('border-spacing-x-2, border-spacing-x-4'), 2)
 	},
@@ -3298,14 +3312,14 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('table-cell, table-header-group'), 2)
 	},
 	{
-		// A single-property utility collides across value shapes (one segment vs
-		// hyphenated).
+		// A single-property utility collides across
+		// value shapes (one segment vs hyphenated).
 		code: IMPORT_CN + "cn('ease-in', 'ease-in-out');",
 		errors: repeat(conflictCn('ease-in, ease-in-out'), 2)
 	},
 	{
-		// text-overflow utilities conflict by default via the classifier, with no
-		// exclusiveGroups opt-in needed.
+		// text-overflow utilities conflict by default via the
+		// classifier, with no exclusiveGroups opt-in needed.
 		code: IMPORT_CN + "cn('text-ellipsis', 'text-clip');",
 		errors: repeat(conflictCn('text-clip, text-ellipsis'), 2)
 	},
@@ -3356,8 +3370,9 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('shadow, shadow-md'), 2)
 	},
 	{
-		// Bare utilities of unclassified families collide with their sized
-		// siblings too (`blur`/`blur-sm`, `grow`/`grow-0`, `shrink`/`shrink-0`).
+		// Bare utilities of unclassified families collide
+		// with their sized siblings too (`blur`/`blur-sm`,
+		// `grow`/`grow-0`, `shrink`/`shrink-0`).
 		code: IMPORT_CN + "cn('blur', 'blur-sm');",
 		errors: repeat(conflictCn('blur, blur-sm'), 2)
 	},
@@ -3388,8 +3403,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('resize, resize-x'), 2)
 	},
 	{
-		// Bare filter toggles collide with their `-0` reset sibling (same filter
-		// sub-property).
+		// Bare filter toggles collide with their `-0`
+		// reset sibling (same filter sub-property).
 		code: IMPORT_CN + "cn('grayscale', 'grayscale-0');",
 		errors: repeat(conflictCn('grayscale, grayscale-0'), 2)
 	},
@@ -3417,8 +3432,9 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('h-full, size-4'), 2)
 	},
 	{
-		// With both axes present, `size-*` merges the width and height groups into
-		// one conflict — but `w-*`/`h-*` only reach each other through `size`.
+		// With both axes present, `size-*` merges the width
+		// and height groups into one conflict — but
+		// `w-*`/`h-*` only reach each other through `size`.
 		code: IMPORT_CN + "cn('w-4', 'h-4', 'size-8');",
 		errors: repeat(conflictCn('h-4, size-8, w-4'), 3)
 	},
@@ -3566,8 +3582,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('mask-center, mask-position-[top]'), 2)
 	},
 	{
-		// An arbitrary object value is an object-position, so it collides with the
-		// keyword form.
+		// An arbitrary object value is an object-position,
+		// so it collides with the keyword form.
 		code: IMPORT_CN + "cn('object-[center_top]', 'object-center');",
 		errors: repeat(conflictCn('object-[center_top], object-center'), 2)
 	},
@@ -3887,8 +3903,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('flex, hidden, line-clamp-3'), 3)
 	},
 	{
-		// The bridge reaches the hyphenated display keywords too, whichever dash
-		// family they take their conflict key from.
+		// The bridge reaches the hyphenated display keywords too,
+		// whichever dash family they take their conflict key from.
 		code: IMPORT_CN + "cn('line-clamp-3', 'inline-flex');",
 		errors: repeat(conflictCn('inline-flex, line-clamp-3'), 2)
 	},
@@ -3897,8 +3913,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('line-clamp-3, table-cell'), 2)
 	},
 	{
-		// `flow-root` has no dash family of its own, `list-item` shares one with
-		// the list-style-type utilities.
+		// `flow-root` has no dash family of its own, `list-item`
+		// shares one with the list-style-type utilities.
 		code: IMPORT_CN + "cn('line-clamp-3', 'flow-root');",
 		errors: repeat(conflictCn('flow-root, line-clamp-3'), 2)
 	},
@@ -3907,8 +3923,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('line-clamp-3, list-item'), 2)
 	},
 	{
-		// Enabling `exclusiveGroups` gives a display keyword a group conflict key,
-		// but must not cost it the always-on `line-clamp` bridge above.
+		// Enabling `exclusiveGroups` gives a display keyword a group conflict
+		// key, but must not cost it the always-on `line-clamp` bridge above.
 		code: IMPORT_CN + "cn('line-clamp-3', 'flex');",
 		options: [{ exclusiveGroups: true }],
 		errors: repeat(conflictCn('flex, line-clamp-3'), 2)
@@ -3919,8 +3935,8 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('inline-flex, line-clamp-3'), 2)
 	},
 	{
-		// Same for a grouped `truncate`: a custom group replaces its conflict key
-		// while the overflow/white-space overlaps keep working.
+		// Same for a grouped `truncate`: a custom group replaces its
+		// conflict key while the overflow/white-space overlaps keep working.
 		code: IMPORT_CN + "cn('truncate', 'overflow-auto');",
 		options: [{ exclusiveGroups: [['truncate', 'text-ellipsis']] }],
 		errors: repeat(conflictCn('overflow-auto, truncate'), 2)
@@ -4245,15 +4261,16 @@ const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('w-1, w-2'), 2)
 	},
 	{
-		// An escape inside the token itself is decoded for identity too, so the
-		// class matches its plainly-written twin and is named as the browser sees
-		// it.
+		// An escape inside the token itself is decoded for
+		// identity too, so the class matches its plainly-written
+		// twin and is named as the browser sees it.
 		code: IMPORT_CN + "cn('w-\\u0031', 'w-2');",
 		errors: repeat(conflictCn('w-1, w-2'), 2)
 	},
 	{
-		// A line continuation cooks away entirely, joining the two halves into one
-		// class — so this is the same class twice, not a stray backslash token.
+		// A line continuation cooks away entirely, joining
+		// the two halves into one class — so this is the
+		// same class twice, not a stray backslash token.
 		code: IMPORT_CN + "cn('fl\\\nex', 'flex');",
 		errors: repeat(dupCn('flex'), 2)
 	},
@@ -4608,25 +4625,25 @@ const NO_SHARED_TOKENS_VALID = [
 
 const NO_SHARED_TOKENS_INVALID = [
 	{
-		// A dynamic `base` can't be read, so there's nothing to append the lifted
-		// token to — reported without a fix.
+		// A dynamic `base` can't be read, so there's nothing to
+		// append the lifted token to — reported without a fix.
 		code:
 			IMPORT +
 			"sv({ base: dyn, variants: { size: { sm: 'flex p-1', lg: 'flex p-2' } }, defaultVariants: { size: 'sm' } });",
 		errors: repeat(shared('flex', 'size'), 2)
 	},
 	{
-		// A `base` whose own text carries a backslash can't be re-emitted with the
-		// lifted token appended, so the whole fix bails.
+		// A `base` whose own text carries a backslash can't be re-emitted
+		// with the lifted token appended, so the whole fix bails.
 		code:
 			IMPORT +
 			"sv({ base: 'a\\\\b', variants: { size: { sm: 'flex p-1', lg: 'flex p-2' } }, defaultVariants: { size: 'sm' } });",
 		errors: repeat(shared('flex', 'size'), 2)
 	},
 	{
-		// A single-value exhaustive variant always applies that one value, so
-		// every token in it is constant and belongs in `base`. No fix: lifting all
-		// of them would leave an empty class string behind.
+		// A single-value exhaustive variant always applies that one value,
+		// so every token in it is constant and belongs in `base`. No fix:
+		// lifting all of them would leave an empty class string behind.
 		code:
 			IMPORT +
 			`sv({
@@ -4660,9 +4677,9 @@ const NO_SHARED_TOKENS_INVALID = [
 		]
 	},
 	{
-		// Two values where one is entirely shared: the rewrite would empty it, so
-		// the finding is reported without a fix rather than leaving `sm: ''`
-		// behind for no-empty-classes to flag.
+		// Two values where one is entirely shared: the rewrite would
+		// empty it, so the finding is reported without a fix rather
+		// than leaving `sm: ''` behind for no-empty-classes to flag.
 		code:
 			IMPORT +
 			`sv({
@@ -4673,9 +4690,9 @@ const NO_SHARED_TOKENS_INVALID = [
 		errors: repeat(shared('rounded', 'size'), 2)
 	},
 	{
-		// A shared token is found across values even when one of them writes its
-		// separator as an escape. No fix: the surviving token would carry a
-		// backslash into the rewrite.
+		// A shared token is found across values even when one of
+		// them writes its separator as an escape. No fix: the
+		// surviving token would carry a backslash into the rewrite.
 		code:
 			IMPORT +
 			"sv({ base: 'block', variants: { size: { sm: 'flex\\u0020p-1', lg: 'flex p-2' } }, defaultVariants: { size: 'sm' } });",
@@ -4693,9 +4710,9 @@ const NO_SHARED_TOKENS_INVALID = [
 	},
 	{
 		// Token shared across all values of an exhaustive variant
-		// (via defaultVariants) — flag every occurrence. With no `base` property
-		// to lift into, the fix creates one, laid out like the config's existing
-		// first property.
+		// (via defaultVariants) — flag every occurrence. With no
+		// `base` property to lift into, the fix creates one, laid
+		// out like the config's existing first property.
 		code:
 			IMPORT +
 			`sv({
@@ -4963,9 +4980,9 @@ const NO_SHARED_TOKENS_INVALID = [
 	},
 	{
 		// The shared token itself contains a literal backslash — appending it
-		// to the target's existing text can't be safely re-emitted, so the
-		// fix bails before ever touching the variant values. The message names
-		// the class as the browser sees it (`a\b`), not as the source escapes it.
+		// to the target's existing text can't be safely re-emitted, so the fix
+		// bails before ever touching the variant values. The message names the
+		// class as the browser sees it (`a\b`), not as the source escapes it.
 		code:
 			IMPORT +
 			`sv({
@@ -5283,7 +5300,8 @@ const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
 		errors: [{ messageId: 'nested' }]
 	},
 	{
-		// A createSV()-derived binding's config call is still bound by the rule.
+		// A createSV()-derived binding's config
+		// call is still bound by the rule.
 		code:
 			IMPORT_CREATE_SV +
 			'const customSV = createSV({ cacheSize: 512 });\n' +
@@ -5296,8 +5314,8 @@ const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
 		errors: [{ messageId: 'nested' }]
 	},
 	{
-		// An instance field initializer re-runs for every `new`, so it rebuilds the
-		// compiled config just as a function body would.
+		// An instance field initializer re-runs for every `new`, so it
+		// rebuilds the compiled config just as a function body would.
 		code: IMPORT + "class A { button = sv({ base: 'flex' }); }",
 		errors: [{ messageId: 'field' }]
 	},
@@ -5312,8 +5330,8 @@ const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
 		errors: [{ messageId: 'field' }]
 	},
 	{
-		// An arrow in the initializer is the innermost reason — the call re-runs
-		// per invocation, not per instance.
+		// An arrow in the initializer is the innermost reason
+		// — the call re-runs per invocation, not per instance.
 		code: IMPORT + "class A { button = () => sv({ base: 'flex' }); }",
 		errors: [{ messageId: 'nested' }]
 	},
@@ -5405,16 +5423,17 @@ const SV_CONFIG_STYLE_ORDER_INVALID = [
 			"sv({ base: 'flex', variants: { size: { sm: 'text-sm' } }, defaultVariants: { size: 'sm' } });"
 	},
 	{
-		// An unknown/computed key present anywhere in the object disables the fixer
-		// for the whole call, but known-key order is still checked and reported.
-		// Note: this uses createSV(), not sv() — a computed key in an sv() config
-		// argument makes the shared call-matcher (`matchSvCall` → `isConfigLike` →
-		// `getStrictProperties`) refuse to recognize the object as a config at all
-		// (it requires every key to be statically readable), so `call.config` would
-		// be null and this rule would never see it. `createSV(defaults)` matches
-		// its argument more permissively (`matchFactoryCall` only checks that it's
-		// an `ObjectExpression`), so a computed key there still reaches this rule —
-		// that's the real place this bail-out matters.
+		// An unknown/computed key present anywhere in the object disables
+		// the fixer for the whole call, but known-key order is still checked
+		// and reported. Note: this uses createSV(), not sv() — a computed
+		// key in an sv() config argument makes the shared call-matcher
+		// (`matchSvCall` → `isConfigLike` → `getStrictProperties`) refuse to
+		// recognize the object as a config at all (it requires every key to
+		// be statically readable), so `call.config` would be null and this
+		// rule would never see it. `createSV(defaults)` matches its argument
+		// more permissively (`matchFactoryCall` only checks that it's an
+		// `ObjectExpression`), so a computed key there still reaches this
+		// rule — that's the real place this bail-out matters.
 		code:
 			IMPORT_CREATE_SV +
 			"const key = 'variants';\ncreateSV({ variants: { size: { sm: 'text-sm' } }, [key]: 1, base: 'flex' });",
@@ -5441,9 +5460,9 @@ const SV_CONFIG_STYLE_ORDER_INVALID = [
 			"createSV({ base: 'flex', variants: { size: { sm: 'text-sm' } } });"
 	},
 	{
-		// An unknown (but non-computed) key also disables the fixer for the whole
-		// call while known-key order is still reported. Uses createSV() for the
-		// same reason as the computed-key case above.
+		// An unknown (but non-computed) key also disables the fixer for
+		// the whole call while known-key order is still reported. Uses
+		// createSV() for the same reason as the computed-key case above.
 		code:
 			IMPORT_CREATE_SV +
 			"createSV({ variants: { size: { sm: 'text-sm' } }, foo: 1, base: 'flex' });",
@@ -5455,9 +5474,9 @@ const SV_CONFIG_STYLE_ORDER_INVALID = [
 		]
 	},
 	{
-		// A spread element inside the config disables the fixer too — the spread's
-		// own keys aren't statically known, so moving properties across it could
-		// change which value wins.
+		// A spread element inside the config disables the fixer too
+		// — the spread's own keys aren't statically known, so moving
+		// properties across it could change which value wins.
 		code:
 			IMPORT_CREATE_SV +
 			"const extra = getExtra();\ncreateSV({ variants: { size: { sm: 'text-sm' } }, ...extra, base: 'flex' });",
@@ -5469,8 +5488,8 @@ const SV_CONFIG_STYLE_ORDER_INVALID = [
 		]
 	},
 	{
-		// A comment anywhere inside the config disables the fixer: reattaching it
-		// to its moved property isn't attempted.
+		// A comment anywhere inside the config disables the fixer:
+		// reattaching it to its moved property isn't attempted.
 		code:
 			IMPORT +
 			"sv({\n\tvariants: { size: { sm: 'text-sm' } },\n\t// keep base last\n\tbase: 'flex'\n});",
@@ -5732,8 +5751,8 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 		]
 	},
 	{
-		// slotsBase present, target configured as separateArg: reports and fixes,
-		// moving base out of `slots` and into a leading argument.
+		// slotsBase present, target configured as separateArg: reports and
+		// fixes, moving base out of `slots` and into a leading argument.
 		code: IMPORT + "sv({ slots: { base: 'flex' }, variants: {} });",
 		options: [{ baseStyle: 'separateArg' }],
 		errors: [
@@ -5748,8 +5767,9 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 		output: IMPORT + "sv('flex', { slots: {  }, variants: {} });"
 	},
 	{
-		// separateArg present, target configured as slotsBase with slots already
-		// declared: reports and fixes, moving the leading argument into `slots`.
+		// separateArg present, target configured as
+		// slotsBase with slots already declared: reports and
+		// fixes, moving the leading argument into `slots`.
 		code: IMPORT + "sv('flex', { slots: { icon: 'w-4' }, variants: {} });",
 		options: [{ baseStyle: 'slotsBase' }],
 		errors: [
@@ -5780,9 +5800,10 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 		]
 	},
 	{
-		// The config is a hoisted `const` resolved from elsewhere in the file, so
-		// the call's own argument list doesn't hold the object literal. Inserting
-		// a leading argument would edit the wrong place: reported, never fixed.
+		// The config is a hoisted `const` resolved from elsewhere
+		// in the file, so the call's own argument list doesn't
+		// hold the object literal. Inserting a leading argument
+		// would edit the wrong place: reported, never fixed.
 		code:
 			IMPORT +
 			"const config = { base: 'flex', variants: {} };\nsv(config);",
@@ -5798,9 +5819,9 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 		]
 	},
 	{
-		// Same hoisting hazard from the other direction: the leading argument is
-		// real, but removing it spans the range up to the config *literal*, which
-		// lives in the declaration above. Reported, never fixed.
+		// Same hoisting hazard from the other direction: the leading argument
+		// is real, but removing it spans the range up to the config *literal*,
+		// which lives in the declaration above. Reported, never fixed.
 		code: IMPORT + "const config = { variants: {} };\nsv('flex', config);",
 		errors: [
 			{
@@ -5813,10 +5834,10 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 		]
 	},
 	{
-		// A key-order violation and a base-style violation in the same call: both
-		// are reported. Their fix ranges touch, so ESLint applies only the
-		// base-style one in this pass (RuleTester checks a single pass) and the
-		// reorder on the next pass — neither corrupts the other.
+		// A key-order violation and a base-style violation in the same call:
+		// both are reported. Their fix ranges touch, so ESLint applies only
+		// the base-style one in this pass (RuleTester checks a single pass)
+		// and the reorder on the next pass — neither corrupts the other.
 		code: IMPORT + "sv('flex', { variants: {}, slots: { icon: 'w-4' } });",
 		errors: [
 			{

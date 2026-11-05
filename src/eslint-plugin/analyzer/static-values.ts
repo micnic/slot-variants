@@ -55,7 +55,8 @@ const branchOptions = (
 	return branch;
 };
 
-// Like forEachStaticItem, but spreads are reported as dynamic rather than skipped.
+// Like forEachStaticItem, but spreads
+// are reported as dynamic rather than skipped.
 const forEachItemReportingSpread = (
 	context: Rule.RuleContext,
 	items: ReadonlyArray<Expression | SpreadElement | null>,
@@ -304,9 +305,9 @@ const getCompoundEntryValueChecker = (
 	slotNames: Set<string>
 ): SvConfigValueChecker | null => {
 	if (key === 'class' || key === 'className') {
-		// A compoundSlots entry already targets specific slots, so its class value
-		// is plain; a compoundVariants class follows a variant branch's shape and
-		// may be a slot-keyed record.
+		// A compoundSlots entry already targets specific slots, so its class
+		// value is plain; a compoundVariants class follows a variant branch's
+		// shape and may be a slot-keyed record.
 		if (hasSlotsKey) {
 			return checkConfigClassValueIsStatic;
 		}

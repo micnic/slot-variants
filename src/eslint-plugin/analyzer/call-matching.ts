@@ -13,13 +13,15 @@ import { getStrictPropertiesWithKeys } from './properties.ts';
 export type CallMatch = {
 	config: ObjectExpression | null;
 	args: ReadonlyArray<Expression | SpreadElement>;
-	// True only for a `createSV(defaults)` factory call — it compiles no variant
-	// function, so it's exempt from require-top-level-config and the empty-call check.
+	// True only for a `createSV(defaults)` factory call —
+	// it compiles no variant function, so it's exempt from
+	// require-top-level-config and the empty-call check.
 	isFactoryConfig: boolean;
 };
 
-// Resolves the last arg through hoisted `const` bindings so `const config = {...};
-// sv(config)` is analyzed as a config call rather than a cn-style argument list.
+// Resolves the last arg through hoisted `const` bindings so
+// `const config = {...}; sv(config)` is analyzed as a config
+// call rather than a cn-style argument list.
 export const matchSvCall = (
 	node: CallExpression,
 	sourceCode: SourceCode

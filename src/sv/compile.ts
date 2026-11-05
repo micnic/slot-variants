@@ -45,7 +45,7 @@ type CompoundEntry = Record<string, unknown> & {
 	preset?: string | undefined;
 };
 
-/** The value shape each config key expects, used to tell a config from a class record. */
+/** Each config key's value shape, to tell a config from a class record. */
 type ConfigValueCheck =
 	| 'array'
 	| 'boolean'
@@ -778,7 +778,8 @@ export const compileConfig = (
 
 		const classValue = requireCompoundClassValue(compound, 'slot');
 
-		// Expanded inside `apply` so a bad matcher still reports before a bad slot.
+		// Expanded inside `apply` so a bad matcher still reports before a bad
+		// slot.
 		return compileCompound(compound, (slotClasses) => {
 			const targetSlots = expandSlotTargets(
 				compound.slots,

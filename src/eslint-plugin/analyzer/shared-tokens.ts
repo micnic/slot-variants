@@ -78,7 +78,7 @@ const intersectSharedTokensBySlot = (
 ): Map<string, Set<string>> => {
 	const firstValueMap = tokensByValue[0];
 
-	/* c8 ignore next 3 -- callers guarantee tokensByValue has at least two entries */
+	/* c8 ignore next 3 -- callers ensure tokensByValue has 2+ entries */
 	if (!firstValueMap) {
 		return new Map<string, Set<string>>();
 	}
@@ -165,7 +165,7 @@ const getRawSlotValueNode = (
 	const slotKeyed = collectSlotKeyedProperties(valueNode, slotNames);
 
 	if (slotKeyed) {
-		/* c8 ignore next -- `slot` only ever reaches here as a key `intersectSharedTokensBySlot` found present in every value's slot-keyed record, so `.get` always hits */
+		/* c8 ignore next -- `slot` is in every value's record; `.get` hits */
 		return slotKeyed.get(slot) ?? null;
 	}
 
@@ -206,14 +206,14 @@ const planBaseCreation = (
 ): BaseInsertion | null => {
 	const [firstProperty] = config.properties;
 
-	/* c8 ignore next 3 -- a config with no properties has no variants to analyze */
+	/* c8 ignore next 3 -- a config with no properties has no variants */
 	if (!firstProperty) {
 		return null;
 	}
 
 	const nextText = [...sharedTokens].join(' ');
 
-	/* c8 ignore next 3 -- same reason canHoistAsLiteral itself is ignored: a token that fails it carries a backslash, which makes the value rewrite above bail first */
+	/* c8 ignore next 3 -- backslash tokens already bail in the rewrite above */
 	if (!canHoistAsLiteral(nextText, quote)) {
 		return null;
 	}
@@ -259,10 +259,11 @@ const planValueRewrites = (
 			getInnerText(context.sourceCode, slotNode)
 		).filter((token) => !sharedTokens.has(token));
 
-		// Lifting every token out would leave an empty class string behind, which
-		// no-empty-classes then reports — so there's no rewrite here that leaves
-		// the config clean. Whether the value should keep an empty string or go
-		// away entirely is the author's call, so the finding is reported unfixed.
+		// Lifting every token out would leave an empty class string
+		// behind, which no-empty-classes then reports — so there's no
+		// rewrite here that leaves the config clean. Whether the value
+		// should keep an empty string or go away entirely is the author's
+		// call, so the finding is reported unfixed.
 		if (remainingTokens.length === 0) {
 			return null;
 		}
@@ -327,7 +328,7 @@ const planSharedTokensFix = (
 
 	const [firstValue] = values;
 
-	/* c8 ignore next 3 -- a shared token needs at least one value to be shared by */
+	/* c8 ignore next 3 -- a shared token always has a value sharing it */
 	if (!firstValue) {
 		return null;
 	}
@@ -382,7 +383,7 @@ const reportSharedTokenEntries = (
 	for (const valueMap of tokensByValue) {
 		const entryList = valueMap.get(slot)?.get(token);
 
-		/* c8 ignore next 3 -- `sharedTokens` only retains tokens present in every value map */
+		/* c8 ignore next 3 -- each shared token is in every value map */
 		if (!entryList) {
 			continue;
 		}
