@@ -93,11 +93,11 @@ const resolveExclusiveGroups = (
 // so it's rejected outright rather than silently resolved (last group wins).
 const createOverlappingExclusiveGroupError = (
 	token: string,
-	firstGroupIndex: number,
-	secondGroupIndex: number
+	firstGroupId: string,
+	secondGroupId: string
 ): Error =>
 	new Error(
-		`slot-variants/no-conflicting-classes: "exclusiveGroups" lists "${token}" in more than one group (groups ${firstGroupIndex} and ${secondGroupIndex}) — remove it from all but one.`
+		`slot-variants/no-conflicting-classes: "exclusiveGroups" lists "${token}" in more than one group (groups ${firstGroupId} and ${secondGroupId}) — remove it from all but one.`
 	);
 
 // A lookup from each grouped utility to a stable per-group id, so tokens in the
@@ -107,28 +107,23 @@ export const buildExclusiveGroupMap = (
 	option: ExclusiveGroupsOption
 ): ReadonlyMap<string, string> => {
 	const map = new Map<string, string>();
-	const groupIndexByToken = new Map<string, number>();
-	let index = 0;
 
-	for (const group of resolveExclusiveGroups(option)) {
+	for (const [index, group] of resolveExclusiveGroups(option).entries()) {
 		const groupId = String(index);
 
 		for (const token of group) {
-			const firstGroupIndex = groupIndexByToken.get(token);
+			const firstGroupId = map.get(token);
 
-			if (firstGroupIndex !== undefined) {
+			if (firstGroupId !== undefined) {
 				throw createOverlappingExclusiveGroupError(
 					token,
-					firstGroupIndex,
-					index
+					firstGroupId,
+					groupId
 				);
 			}
 
-			groupIndexByToken.set(token, index);
 			map.set(token, groupId);
 		}
-
-		index += 1;
 	}
 
 	return map;
@@ -1540,6 +1535,15 @@ export const overlapNeighbors = (node: string): ReadonlyArray<string> => {
 	return neighbors;
 };
 
+// The margin and padding nodes, shared by the plain spacing utilities and the
+// scroll-margin/scroll-padding categories of the `scroll` prefix.
+const SPACING_OVERLAP_NODES: ReadonlyArray<string> = [
+	'm',
+	...SIDES.map((side) => `m${side}`),
+	'p',
+	...SIDES.map((side) => `p${side}`)
+];
+
 // Segments that are an overlap node by themselves: every value of these
 // prefixes sets the same property regardless of value shape (`w-4`, `w-[…]`,
 // `mt-2`, `top-1/2`), so the value category is irrelevant to the node.
@@ -1557,33 +1561,29 @@ const SEGMENT_OVERLAP_NODES: ReadonlySet<string> = new Set([
 	'shrink',
 	'basis',
 	'whitespace',
-	'm',
-	...SIDES.map((side) => `m${side}`),
-	'p',
-	...SIDES.map((side) => `p${side}`)
+	'leading',
+	...SPACING_OVERLAP_NODES
 ]);
 
 // Prefixes classified by axisSpec whose bare form sets all axes: the category
 // picks between the whole-property node and a per-axis node.
 // `scale`/`skew` are deliberately excluded: unlike `gap`/`overflow`/
-// `overscroll`/`translate`, tailwind-merge does not treat the bare form as
-// conflicting with its `-x`/`-y` siblings (they compose as independent
-// per-axis overrides), and `inset` has its own dedicated handler above.
+// `overscroll`, tailwind-merge does not treat the bare form as conflicting
+// with its `-x`/`-y` siblings (they compose as independent per-axis
+// overrides). `translate` and `inset` are axis families too, but their
+// dedicated handlers below cover their extra nodes and fall back to the same
+// per-axis naming.
 const AXIS_OVERLAP_PREFIXES: ReadonlySet<string> = new Set([
 	'gap',
 	'overflow',
-	'overscroll',
-	'translate'
+	'overscroll'
 ]);
 
 // The scroll-margin/scroll-padding categories of the `scroll` prefix spec —
 // the only `scroll-*` utilities with a shorthand overlap.
-const SCROLL_SPACING_CATEGORIES: ReadonlySet<string> = new Set([
-	'm',
-	...SIDES.map((side) => `m${side}`),
-	'p',
-	...SIDES.map((side) => `p${side}`)
-]);
+const SCROLL_SPACING_CATEGORIES: ReadonlySet<string> = new Set(
+	SPACING_OVERLAP_NODES
+);
 
 const getAxisOverlapNode = (
 	segment: string,
@@ -1717,8 +1717,6 @@ const getLineOverlapNode = (category: string): string | null => {
 	return null;
 };
 
-const getLeadingOverlapNode = (): string => 'leading';
-
 // `touch-none`/`touch-auto`/`touch-manipulation` overlap the `pan`/`pinch`
 // sub-utilities; the other pan directions (`left`/`right`/`up`/`down`)
 // compose instead of conflicting, so they're left unconnected.
@@ -1768,7 +1766,6 @@ const SEGMENT_OVERLAP_HANDLERS: ReadonlyMap<
 	['flex', getFlexOverlapNode],
 	['text', getTextOverlapNode],
 	['line', getLineOverlapNode],
-	['leading', getLeadingOverlapNode],
 	['touch', getTouchOverlapNode],
 	['inset', getInsetOverlapNode]
 ]);
@@ -1839,7 +1836,7 @@ const DISPLAY_OVERLAP_NODES: Record<string, string> = Object.fromEntries(
 // The conflict key plus the pieces an overlap merge needs: the variant prefix
 // and the overlap node the token belongs to (null for tokens outside every
 // overlap family, including exclusive-group keys).
-export type ConflictKeyInfo = {
+type ConflictKeyInfo = {
 	key: string;
 	variantPrefix: string;
 	overlap: string | null;
