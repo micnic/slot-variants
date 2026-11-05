@@ -5,7 +5,8 @@ import type {
 	ImportDeclaration,
 	Node
 } from 'estree';
-import { type CallMatch, matchCnCall, matchSvCall } from './call-matching.ts';
+import { type CallMatch, matchSvCall } from './call-matching.ts';
+import { getExportName } from './config-keys.ts';
 import { findVariable, resolveStaticValueFrom } from './const-bindings.ts';
 import { createStyledContext, type StyledContext } from './styled-values.ts';
 
@@ -25,29 +26,17 @@ type MatchContext = {
 
 const TRACKED_EXPORTS = new Set(['sv', 'cn', 'createSV']);
 
-const getImportedName = (
-	specifier: ImportDeclaration['specifiers'][number]
-): string | null => {
-	if (specifier.type !== 'ImportSpecifier') {
-		return null;
-	}
-
-	const { imported } = specifier;
-
-	if (imported.type === 'Identifier') {
-		return imported.name;
-	}
-
-	return String(imported.value);
-};
-
 const trackNamedImport = (
 	specifier: ImportDeclaration['specifiers'][number],
 	exportByLocal: Map<string, string>
 ) => {
-	const importedName = getImportedName(specifier);
+	if (specifier.type !== 'ImportSpecifier') {
+		return;
+	}
 
-	if (importedName === null || !TRACKED_EXPORTS.has(importedName)) {
+	const importedName = getExportName(specifier.imported);
+
+	if (!TRACKED_EXPORTS.has(importedName)) {
 		return;
 	}
 
@@ -217,7 +206,7 @@ const matchExportCall = (
 	}
 
 	if (exportName === 'cn') {
-		return matchCnCall(node);
+		return { config: null, args: node.arguments, isFactoryConfig: false };
 	}
 
 	if (exportName === 'createSV') {

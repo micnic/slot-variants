@@ -42,9 +42,12 @@ export const findSingleDef = (
 // The initializer of a single same-file `const name = <value>` binding, or null
 // for anything we can't safely read through: let/var, redeclarations, imports,
 // function parameters, and destructuring patterns.
-const getConstBindingInit = (scope: Scope.Scope, name: string): Node | null => {
-	const def = findSingleDef(scope, name);
+const getConstBindingInit = (scope: Scope.Scope, name: string): Node | null =>
+	getConstDefInit(findSingleDef(scope, name));
 
+// The initializer of a `const name = <value>` definition, or null for any other
+// kind of definition, including a destructuring pattern.
+export const getConstDefInit = (def: Scope.Definition | null): Node | null => {
 	if (!def) {
 		return null;
 	}

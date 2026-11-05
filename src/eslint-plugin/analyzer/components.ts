@@ -3,12 +3,11 @@ import type {
 	ArrowFunctionExpression,
 	FunctionDeclaration,
 	FunctionExpression,
-	Identifier,
-	Literal,
 	Node,
 	Program
 } from 'estree';
-import { findSingleDef } from './const-bindings.ts';
+import { getExportName } from './config-keys.ts';
+import { findSingleDef, getConstDefInit } from './const-bindings.ts';
 
 export type ComponentFunction =
 	| FunctionDeclaration
@@ -26,16 +25,6 @@ export type Component = ComponentFunction | Program;
 type ImportSource = { specifier: string; exportName: string };
 
 export const DEFAULT_EXPORT = 'default';
-
-// An export name is an identifier, or a string literal for the `export { x as
-// "a-b" }` form.
-export const getExportName = (node: Identifier | Literal): string => {
-	if (node.type === 'Identifier') {
-		return node.name;
-	}
-
-	return String(node.value);
-};
 
 // Takes the structural minimum so framework node unions narrow through it too.
 export const isComponentFunction = (node: {
@@ -96,13 +85,8 @@ export const resolveComponentFunction = (
 		return def.node;
 	}
 
-	if (def.type !== 'Variable' || def.parent.kind !== 'const') {
-		return null;
-	}
+	const init = getConstDefInit(def);
 
-	const { init } = def.node;
-
-	/* c8 ignore next 3 -- a const declarator always has an initializer */
 	if (!init) {
 		return null;
 	}

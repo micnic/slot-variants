@@ -5903,6 +5903,11 @@ const RESTYLE_VALID = [
 	// A spread props object, and a spread inside it — neither is readable.
 	IMPORT + RESTYLE_BUTTON + 'button(...rest);',
 	IMPORT + RESTYLE_BUTTON + 'button({ ...rest });',
+	// A destructured binding is a property of the wrapper's result, not the
+	// wrapped function.
+	IMPORT +
+		RESTYLE_BUTTON +
+		'const { Button } = memo(function Button({ className }) { return <button className={button({ class: className })} />; });\n<Button className="p-4" />;',
 	// An override that collides with nothing the call can render: `mt-8` only
 	// ships with `size: 'lg'`, which defaultVariants rules out here.
 	IMPORT + RESTYLE_BUTTON + "button({ class: 'mt-4' });",
