@@ -5671,6 +5671,59 @@ t.test('compound matcher rejects a preset name without presets', (t) => {
 	t.end();
 });
 
+t.test('config validation ignores inherited object keys', (t) => {
+	const variants = { size: { sm: 'text-sm', lg: 'text-lg' } };
+
+	t.throws(
+		() =>
+			sv('btn', {
+				variants,
+				presets: { cta: { size: 'lg' } },
+				// @ts-expect-error inherited key is not a preset name
+				compoundVariants: [{ preset: 'toString', class: 'uppercase' }]
+			}),
+		{ message: 'Compound matcher references unknown preset "toString"' },
+		'an inherited preset name is unknown'
+	);
+
+	t.throws(
+		() =>
+			sv('btn', {
+				variants,
+				// @ts-expect-error inherited key is not a variant
+				defaultVariants: { constructor: undefined }
+			}),
+		{ message: 'Default variant "constructor" is not defined in variants' },
+		'an inherited default variant name is unknown'
+	);
+
+	t.throws(
+		() =>
+			sv('btn', {
+				variants,
+				// @ts-expect-error inherited key is not a variant
+				compoundVariants: [{ constructor: 'sm', class: 'uppercase' }]
+			}),
+		{
+			message: 'Compound matcher references unknown variant "constructor"'
+		},
+		'an inherited compound matcher key is unknown'
+	);
+
+	t.throws(
+		() =>
+			sv('btn', {
+				variants,
+				// @ts-expect-error inherited key is not a variant
+				presets: { cta: { constructor: 'sm' } }
+			}),
+		{ message: 'Preset "cta" references unknown variant "constructor"' },
+		'an inherited preset variant name is unknown'
+	);
+
+	t.end();
+});
+
 t.test('compound variant without class or className throws', (t) => {
 	t.throws(
 		() =>

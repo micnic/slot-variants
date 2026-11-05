@@ -171,6 +171,23 @@ const resolveCompoundMatcherExpected = (
 	return expected;
 };
 
+// A record's own value for `key`, or the given error when `key` is missing or
+// only inherited (`toString`, `constructor`) — config records are plain objects,
+// so a lookup alone would accept `Object.prototype` members.
+const getOwnOrThrow = <T>(
+	record: Record<string, T>,
+	key: string,
+	errorMessage: string
+): T => {
+	const value = record[key];
+
+	if (value === undefined || !hasOwn(record, key)) {
+		throw new Error(errorMessage);
+	}
+
+	return value;
+};
+
 const seedPresetMatchers = (
 	matchers: Map<string, CompoundMatcher>,
 	presets: Record<string, ResolvedVariantState>,
@@ -180,33 +197,17 @@ const seedPresetMatchers = (
 		return;
 	}
 
-	const presetValues = presets[preset];
-
-	if (presetValues === undefined) {
-		throw new Error(
-			`Compound matcher references unknown preset "${preset}"`
-		);
-	}
+	const presetValues = getOwnOrThrow(
+		presets,
+		preset,
+		`Compound matcher references unknown preset "${preset}"`
+	);
 
 	for (const [variant, value] of entries(presetValues)) {
 		if (value !== undefined) {
 			matchers.set(variant, new Set([`${value}`]));
 		}
 	}
-};
-
-const getKnownVariantValues = (
-	normalizedVariants: NormalizedVariants,
-	variant: string,
-	errorMessage: string
-) => {
-	const variantValues = normalizedVariants[variant];
-
-	if (variantValues === undefined) {
-		throw new Error(errorMessage);
-	}
-
-	return variantValues;
 };
 
 const compileCompoundMatchers = (
@@ -223,7 +224,7 @@ const compileCompoundMatchers = (
 			continue;
 		}
 
-		const variantValues = getKnownVariantValues(
+		const variantValues = getOwnOrThrow(
 			normalizedVariants,
 			compoundKey,
 			`Compound matcher references unknown variant "${compoundKey}"`
@@ -494,7 +495,7 @@ const assertKnownDefaultVariants = (
 	normalizedVariants: NormalizedVariants
 ) => {
 	for (const [variant, value] of entries(defaultVariants)) {
-		const variantValues = getKnownVariantValues(
+		const variantValues = getOwnOrThrow(
 			normalizedVariants,
 			variant,
 			`Default variant "${variant}" is not defined in variants`
@@ -524,7 +525,7 @@ const assertValidPresets = (
 		}
 
 		for (const [variant, value] of entries(presetValues)) {
-			const variantValues = getKnownVariantValues(
+			const variantValues = getOwnOrThrow(
 				normalizedVariants,
 				variant,
 				`Preset "${presetName}" references unknown variant "${variant}"`
