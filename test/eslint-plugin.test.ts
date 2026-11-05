@@ -5882,6 +5882,15 @@ const RESTYLE_CARD = `const card = sv('border p-2', {
 	defaultVariants: { size: 'sm' }
 });\n`;
 
+// A multi-slot result produced with a value other than the default.
+const RESTYLE_SIZED_CARD = `const card = sv({
+	slots: { header: 'font-bold' },
+	multiSlots: ['header'],
+	variants: { size: { sm: { header: 'text-sm' }, lg: { header: 'text-lg' } } },
+	defaultVariants: { size: 'lg' }
+});
+const r = card({ size: 'sm' });\n`;
+
 // Groups that nothing ever targets, so their bucket stays empty.
 const RESTYLE_PANEL = `const panel = sv({
 	slots: { head: 'px-4', foot: 'py-2' },
@@ -6215,6 +6224,24 @@ const RESTYLE_INVALID = [
 const classes = list();
 classes.item({ class: 'px-4' });`,
 		errors: [restyle('px-4', 'px-2', 'item')]
+	},
+	// A slot call inherits the variant values the result was produced with;
+	// `defaultVariants` only fill what neither call passes.
+	{
+		code: IMPORT + RESTYLE_SIZED_CARD + "r.header({ class: 'text-sm' });",
+		errors: [dup('text-sm', 'header')]
+	},
+	{
+		code: IMPORT + RESTYLE_SIZED_CARD + "r.header({ class: 'text-lg' });",
+		errors: [restyle('text-lg', 'text-sm', 'header')]
+	},
+	// The slot call's own props still win over the result's.
+	{
+		code:
+			IMPORT +
+			RESTYLE_SIZED_CARD +
+			"r.header({ size: 'lg', class: 'text-sm' });",
+		errors: [restyle('text-sm', 'text-lg', 'header')]
 	},
 	// A slot function's own result is class-valued, under its slot.
 	{

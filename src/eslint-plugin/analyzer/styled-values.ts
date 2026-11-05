@@ -231,11 +231,17 @@ export const resolveInvocation = (
 			return null;
 		}
 
+		// The result's matchers already carry `defaultVariants`, so only the
+		// props this slot call passes refine them — applying the defaults again
+		// would override the values the result was produced with.
 		return {
 			styles: slotFn.styles,
 			matchers: mergeMatchers(
 				slotFn.matchers,
-				buildCallMatchers(node.arguments[0], slotFn.styles, ctx)
+				readMatchers(
+					getCallProps(node.arguments[0], ctx),
+					NON_MATCHER_KEYS
+				)
 			),
 			slot: slotFn.slot
 		};
