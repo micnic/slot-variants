@@ -193,24 +193,17 @@ const analyzeModule = (
 	return collected.analysis;
 };
 
-const getModifiedTime = (path: string): number | null => {
-	try {
-		return statSync(path).mtimeMs;
-		/* c8 ignore next 3 -- the path came from a successful stat already */
-	} catch {
-		return null;
-	}
-};
-
 const loadModule = (
 	path: string,
 	cwd: string,
 	languageOptions: Linter.LanguageOptions
 ): ModuleAnalysis | null => {
-	const mtimeMs = getModifiedTime(path);
+	let mtimeMs: number;
 
-	/* c8 ignore next 3 -- the path came from a successful stat already */
-	if (mtimeMs === null) {
+	try {
+		mtimeMs = statSync(path).mtimeMs;
+		/* c8 ignore next 3 -- the path came from a successful stat already */
+	} catch {
 		return null;
 	}
 
