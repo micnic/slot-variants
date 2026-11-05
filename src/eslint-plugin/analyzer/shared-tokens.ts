@@ -311,13 +311,8 @@ const planSharedTokensFix = (
 	sharedTokens: ReadonlySet<string>,
 	valueEntries: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
-	target: SharedTokensTarget | null
+	target: SharedTokensTarget
 ): SharedTokensFixPlan | null => {
-	/* c8 ignore next 3 -- null only for the impossible missing-slot case above */
-	if (!target) {
-		return null;
-	}
-
 	const values = planValueRewrites(
 		context,
 		slot,
@@ -412,14 +407,21 @@ const reportSharedTokensBySlot = (
 	getTarget: (slot: string) => SharedTokensTarget | null
 ) => {
 	for (const [slot, tokens] of sharedTokens) {
-		const plan = planSharedTokensFix(
-			context,
-			slot,
-			tokens,
-			valueEntries,
-			slotNames,
-			getTarget(slot)
-		);
+		const target = getTarget(slot);
+
+		// A slot with no target to lift into is reported without a fix.
+		let plan: SharedTokensFixPlan | null = null;
+
+		if (target) {
+			plan = planSharedTokensFix(
+				context,
+				slot,
+				tokens,
+				valueEntries,
+				slotNames,
+				target
+			);
+		}
 
 		for (const token of tokens) {
 			reportSharedTokenEntries(
