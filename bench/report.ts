@@ -1,13 +1,10 @@
 import type { Bench } from 'tinybench';
 
-type BenchTaskResult = {
-	latency: {
-		mean: number;
-		rme: number;
-	};
-	throughput: {
-		mean: number;
-	};
+type ResultRow = {
+	Task: string;
+	'ops/sec': string;
+	'Mean (ns)': number;
+	Margin: string;
 };
 
 // Asserts that every competitor in a group produced identical output for a
@@ -17,16 +14,14 @@ export function assertSameOutput<T>(
 	outputs: Record<string, T>
 ): void {
 	let expectedName = '';
-	let expected = '';
-	let first = true;
+	let expected: string | undefined;
 
 	for (const [name, value] of Object.entries(outputs)) {
 		const serialized = JSON.stringify(value);
 
-		if (first) {
+		if (expected === undefined) {
 			expectedName = name;
 			expected = serialized;
-			first = false;
 		} else if (serialized !== expected) {
 			throw new Error(
 				`Output mismatch in "${label}":\n` +
@@ -40,17 +35,23 @@ export function assertSameOutput<T>(
 export function printBenchResults(bench: Bench): void {
 	console.log('\n');
 	console.table(
-		bench.tasks
-			.filter((task) => task.result)
-			.map((task) => {
-				const { latency, throughput } = task.result as BenchTaskResult;
+		bench.tasks.flatMap((task): ResultRow[] => {
+			const { result } = task;
 
-				return {
+			if (result.state !== 'completed') {
+				return [];
+			}
+
+			const { latency, throughput } = result;
+
+			return [
+				{
 					Task: task.name,
 					'ops/sec': Math.round(throughput.mean).toLocaleString(),
 					'Mean (ns)': Math.round(latency.mean * 1_000_000),
 					Margin: `\xb1${latency.rme.toFixed(2)}%`
-				};
-			})
+				}
+			];
+		})
 	);
 }

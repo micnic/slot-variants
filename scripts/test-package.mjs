@@ -21,7 +21,7 @@ const run = (command, args, cwd = root) =>
 
 try {
 	const packageReport = JSON.parse(
-		run('npm', ['pack', '--dry-run', '--json'])
+		run('npm', ['pack', '--json', '--pack-destination', temporaryDirectory])
 	)[0];
 	const publishedFiles = packageReport.files.map(({ path }) => path).sort();
 	const expectedFiles = [
@@ -44,10 +44,7 @@ try {
 		);
 	}
 
-	const packOutput = JSON.parse(
-		run('npm', ['pack', '--json', '--pack-destination', temporaryDirectory])
-	)[0];
-	const tarball = join(temporaryDirectory, packOutput.filename);
+	const tarball = join(temporaryDirectory, packageReport.filename);
 	const consumerDirectory = join(temporaryDirectory, 'consumer');
 	mkdirSync(consumerDirectory);
 
