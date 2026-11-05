@@ -33,6 +33,8 @@ type MultiSlotResult = Record<
 	string | ((props?: RuntimeProps) => string)
 >;
 
+type RuntimeVariantFn = (props?: RuntimeProps) => CacheValue | MultiSlotResult;
+
 const { assign, entries, hasOwn, keys } = Object;
 
 const mergeMultiSlotClass = (
@@ -140,18 +142,17 @@ const countMaxEntries = (config: CompiledConfig) => {
 	return count;
 };
 
-const runVariantResult = (
+// Multi-slot wrapping is decided once here, so plain variant functions skip it
+// on every call.
+const createRuntimeVariantFn = (
 	config: CompiledConfig,
-	run: RunFn,
-	props: RuntimeProps
-) => {
-	const result = run(props);
-
+	run: RunFn
+): RuntimeVariantFn => {
 	if (config.multiSlots.size === 0) {
-		return result;
+		return (props = {}) => run(props);
 	}
 
-	return applyMultiSlots(config, run, props, result);
+	return (props = {}) => applyMultiSlots(config, run, props, run(props));
 };
 
 const splitVariantProps = (
@@ -173,10 +174,7 @@ const splitVariantProps = (
 };
 
 const createVariantFn = (config: CompiledConfig) => {
-	const run = createRun(config);
-
-	const variantFn = (props: RuntimeProps = {}) =>
-		runVariantResult(config, run, props);
+	const variantFn = createRuntimeVariantFn(config, createRun(config));
 
 	// Conditionally add introspection properties if enabled in config
 	if (!config.introspection) {
