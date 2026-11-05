@@ -22,6 +22,11 @@ type KeyEntry = {
 	index: number;
 };
 
+// A key reported as out of order, and the earlier key it should precede.
+type OrderViolation = { entry: KeyEntry; before: KeyEntry };
+
+type ReorderFix = (fixer: Rule.RuleFixer) => Rule.Fix;
+
 type BaseStyle = 'field' | 'separateArg' | 'slotsBase';
 
 // The three places base classes can live. `node` is what a mismatch is
@@ -38,8 +43,6 @@ type BaseSource =
 	  };
 
 const ORDER_INDEX = new Map(CONFIG_KEY_ORDER.map((key, index) => [key, index]));
-
-const DEFAULT_SEPARATOR = ',\n\t';
 
 const BASE_STYLE_LABELS: Record<BaseStyle, string> = {
 	field: 'a "base" field in the config',
@@ -96,56 +99,58 @@ const hasCommentsInside = (
 	node: ObjectExpression
 ): boolean => context.sourceCode.getCommentsInside(node).length > 0;
 
-// The separator (comma + whitespace) between the first two properties in
-// their original source order, reused between every reordered property so
-// the rewritten object keeps the file's existing formatting.
+// Rewrites the run of known properties in canonical order. The separator
+// (comma + whitespace) between the first two properties in their original
+// source order is reused between every reordered property, so the rewritten
+// object keeps the file's existing formatting.
 // Tradeoff: sampling a single separator can normalize away uneven spacing —
 // most visibly when a base-style fix has just inserted an inline
 // `base: 'x', ` before the first property, so a following reorder pass samples
 // that inline separator and collapses a multi-line object onto one line.
 // Accepted as cosmetic: the result is still valid, correctly ordered code, and
 // a formatter pass restores the layout.
-const getEntrySeparator = (
-	sourceCode: SourceCode,
-	entries: ReadonlyArray<KeyEntry>
-): string => {
-	const first = entries[0];
-	const second = entries[1];
-
-	if (!first || !second) {
-		return DEFAULT_SEPARATOR;
-	}
-
-	const [, firstEnd] = sourceCode.getRange(first.prop);
-	const [secondStart] = sourceCode.getRange(second.prop);
-
-	return sourceCode.getText().slice(firstEnd, secondStart);
-};
-
 const buildReorderFix = (
 	sourceCode: SourceCode,
 	entries: ReadonlyArray<KeyEntry>
-): ((fixer: Rule.RuleFixer) => Rule.Fix | null) => {
-	const sorted = [...entries].sort((a, b) => a.index - b.index);
-	const separator = getEntrySeparator(sourceCode, entries);
-	const text = sorted
+): ReorderFix | undefined => {
+	const [first, second] = entries;
+	const last = entries[entries.length - 1];
+
+	/* c8 ignore next 3 -- only built once a key is out of order: 2+ entries */
+	if (!first || !second || !last) {
+		return undefined;
+	}
+
+	const [start, firstEnd] = sourceCode.getRange(first.prop);
+	const [secondStart] = sourceCode.getRange(second.prop);
+	const [, end] = sourceCode.getRange(last.prop);
+	const separator = sourceCode.getText().slice(firstEnd, secondStart);
+	const text = [...entries]
+		.sort((a, b) => a.index - b.index)
 		.map((entry) => sourceCode.getText(entry.prop))
 		.join(separator);
 
-	return (fixer) => {
-		const first = entries[0];
-		const last = entries[entries.length - 1];
+	return (fixer) => fixer.replaceTextRange([start, end], text);
+};
 
-		/* c8 ignore next 3 -- callers only call this with non-empty entries */
-		if (!first || !last) {
-			return null;
+// Each key that comes after a key it should precede, paired with the latest
+// such key seen so far.
+const findOrderViolations = (
+	entries: ReadonlyArray<KeyEntry>
+): OrderViolation[] => {
+	const violations: OrderViolation[] = [];
+	let runningMax: KeyEntry | null = null;
+
+	for (const entry of entries) {
+		if (runningMax !== null && entry.index < runningMax.index) {
+			violations.push({ entry, before: runningMax });
+			continue;
 		}
 
-		const [start] = sourceCode.getRange(first.prop);
-		const [, end] = sourceCode.getRange(last.prop);
+		runningMax = entry;
+	}
 
-		return fixer.replaceTextRange([start, end], text);
-	};
+	return violations;
 };
 
 const checkKeyOrder = (
@@ -153,26 +158,25 @@ const checkKeyOrder = (
 	configNode: ObjectExpression
 ) => {
 	const { entries, fixable } = collectOrderedEntries(configNode.properties);
-	let fix: ((fixer: Rule.RuleFixer) => Rule.Fix | null) | undefined;
+	const violations = findOrderViolations(entries);
+
+	if (violations.length === 0) {
+		return;
+	}
+
+	let fix: ReorderFix | undefined;
 
 	if (fixable && !hasCommentsInside(context, configNode)) {
 		fix = buildReorderFix(context.sourceCode, entries);
 	}
 
-	let runningMax: KeyEntry | null = null;
-
-	for (const entry of entries) {
-		if (runningMax !== null && entry.index < runningMax.index) {
-			context.report({
-				node: entry.prop,
-				messageId: 'wrongOrder',
-				data: { key: entry.key, before: runningMax.key },
-				fix
-			});
-			continue;
-		}
-
-		runningMax = entry;
+	for (const { entry, before } of violations) {
+		context.report({
+			node: entry.prop,
+			messageId: 'wrongOrder',
+			data: { key: entry.key, before: before.key },
+			fix
+		});
 	}
 };
 
