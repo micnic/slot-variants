@@ -16,8 +16,8 @@ import {
 	getProperties
 } from './properties.ts';
 import {
+	collectCnEntries,
 	collectConfigEntries,
-	extractCnTokens,
 	forEachStringLiteralElement,
 	readMatchers
 } from './token-extraction.ts';
@@ -121,19 +121,6 @@ const buildStyles = (
 
 const stylesCache = new WeakMap<Node, InternalStyles>();
 
-// Memoized on the call node so a config referenced from many call sites is
-// walked once per lint pass.
-const getStyles = (
-	node: CallExpression,
-	configNode: ObjectExpression,
-	args: ReadonlyArray<Expression | SpreadElement>,
-	sourceCode: SourceCode
-): InternalStyles => {
-	return getOrCreate(stylesCache, node, () =>
-		buildStyles(configNode, args, sourceCode)
-	);
-};
-
 /** Everything the resolver needs from the rule that owns it. */
 export type StyledContext = {
 	sourceCode: SourceCode;
@@ -222,7 +209,13 @@ const resolveVariantFnStyles = (
 		return null;
 	}
 
-	return getStyles(resolved, match.config, match.args, ctx.sourceCode);
+	const { config, args } = match;
+
+	// Memoized on the call node so a config referenced from many call sites is
+	// walked once per lint pass.
+	return getOrCreate(stylesCache, resolved, () =>
+		buildStyles(config, args, ctx.sourceCode)
+	);
 };
 
 /**
@@ -342,15 +335,9 @@ const cnStyles = (
 	sourceCode: SourceCode,
 	node: CallExpression
 ): InternalStyles => {
-	return getOrCreate(stylesCache, node, () => {
-		const entries: Entry[] = [];
-
-		for (const arg of call.args) {
-			extractCnTokens(arg, entries, sourceCode);
-		}
-
-		return buildLiteralStyles(entries);
-	});
+	return getOrCreate(stylesCache, node, () =>
+		buildLiteralStyles(collectCnEntries(call.args, sourceCode))
+	);
 };
 
 /**

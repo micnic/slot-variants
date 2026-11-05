@@ -7,7 +7,7 @@ import {
 	overlapNeighbors
 } from '../tailwind-categories.ts';
 import { getConfigSlotNames, getProperties } from './properties.ts';
-import { collectConfigEntries, extractCnTokens } from './token-extraction.ts';
+import { collectCnEntries, collectConfigEntries } from './token-extraction.ts';
 import {
 	areExclusiveMatchers,
 	arePairwiseExclusive,
@@ -305,13 +305,9 @@ export const analyzeCnForRule = (
 	args: ReadonlyArray<Expression | SpreadElement>,
 	options: ConflictOptions
 ) => {
-	const entries: Entry[] = [];
-
-	for (const arg of args) {
-		extractCnTokens(arg, entries, context.sourceCode);
-	}
-
-	const tokenMap = indexEntriesBySlotAndToken(entries).get('base');
+	const tokenMap = indexEntriesBySlotAndToken(
+		collectCnEntries(args, context.sourceCode)
+	).get('base');
 
 	if (tokenMap) {
 		reportDuplicateTokens(context, tokenMap, 'duplicateCn', {});

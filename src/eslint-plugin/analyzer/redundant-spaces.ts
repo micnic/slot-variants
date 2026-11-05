@@ -45,9 +45,10 @@ const reportRedundantSpaces = (
 	});
 };
 
+// Visits each value of an object; anything else has no values to visit.
 const visitObjectForRedundantSpaces = (
 	context: Rule.RuleContext,
-	node: ObjectExpression
+	node: Node
 ) => {
 	for (const value of getProperties(node).values()) {
 		visitForRedundantSpaces(context, value);
@@ -97,14 +98,6 @@ export const visitForRedundantSpaces = (
 	}
 };
 
-const checkRedundantSpacesRecord = (context: Rule.RuleContext, node: Node) => {
-	if (node.type !== 'ObjectExpression') {
-		return;
-	}
-
-	visitObjectForRedundantSpaces(context, node);
-};
-
 const checkCompoundsForRedundantSpaces = (
 	context: Rule.RuleContext,
 	node: Node
@@ -119,8 +112,8 @@ const svRedundantSpacesConfigValueCheckers: Record<
 	SvConfigValueChecker
 > = {
 	base: visitForRedundantSpaces,
-	slots: checkRedundantSpacesRecord,
-	variants: checkRedundantSpacesRecord,
+	slots: visitObjectForRedundantSpaces,
+	variants: visitObjectForRedundantSpaces,
 	compoundVariants: checkCompoundsForRedundantSpaces,
 	compoundSlots: checkCompoundsForRedundantSpaces
 };

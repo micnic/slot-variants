@@ -199,24 +199,25 @@ const collectBranchLeaves = (node: Node, leaves: Node[]) => {
 // so `cond && a` and `!cond && b` land on opposite values of one key.
 const conditionMatcher = (
 	test: Node,
-	truthyBranch: boolean,
 	sourceCode: SourceCode
-): readonly [string, string] => {
+): readonly [string, boolean] => {
 	let condition = test;
-	let truthy = truthyBranch;
+	let truthy = true;
 
 	while (condition.type === 'UnaryExpression' && condition.operator === '!') {
 		condition = condition.argument;
 		truthy = !truthy;
 	}
 
-	const key = `cond:${sourceCode.getText(condition)}`;
+	return [`cond:${sourceCode.getText(condition)}`, truthy];
+};
 
+const branchName = (truthy: boolean) => {
 	if (truthy) {
-		return [key, 'truthy'];
+		return 'truthy';
 	}
 
-	return [key, 'falsy'];
+	return 'falsy';
 };
 
 // A clsx-style record key is itself a class string, appended verbatim when its
@@ -278,11 +279,10 @@ const extractConditionalTokens = (
 		consequent.type !== 'ConditionalExpression' &&
 		alternate.type !== 'ConditionalExpression'
 	) {
-		const [key, thenBranch] = conditionMatcher(node.test, true, sourceCode);
-		const [, elseBranch] = conditionMatcher(node.test, false, sourceCode);
+		const [key, truthy] = conditionMatcher(node.test, sourceCode);
 		const branches: ReadonlyArray<readonly [Node, string]> = [
-			[consequent, thenBranch],
-			[alternate, elseBranch]
+			[consequent, branchName(truthy)],
+			[alternate, branchName(!truthy)]
 		];
 
 		for (const [leaf, branch] of branches) {
@@ -325,10 +325,6 @@ const extractTernaryTemplateTokens = (
 	}
 };
 
-// `cnStyle` toggles the cn() calling-convention forms — logical-AND, ternaries
-// (chained or nested), ternary templates, and clsx-style records, each of
-// which may nest the others. In an sv() config's class positions an object is
-// instead a slot-keyed record.
 // The shapes only a cn-style position can hold: the conditional forms of the
 // calling convention, and a clsx-style record whose keys are the classes. True
 // when the node was one of them and its tokens have been extracted.
@@ -342,11 +338,14 @@ const extractCnStyleTokens = (
 	// truthy-branch matcher so a complementary `!cond && …` elsewhere resolves
 	// as mutually exclusive.
 	if (node.type === 'LogicalExpression' && node.operator === '&&') {
-		const [key, branch] = conditionMatcher(node.left, true, sourceCode);
+		const [key, truthy] = conditionMatcher(node.left, sourceCode);
 
 		extractTokens(
 			node.right,
-			{ ...context, source: withMatcher(source, key, branch) },
+			{
+				...context,
+				source: withMatcher(source, key, branchName(truthy))
+			},
 			true
 		);
 
@@ -380,6 +379,10 @@ const extractCnStyleTokens = (
 	return false;
 };
 
+// `cnStyle` toggles the cn() calling-convention forms — logical-AND, ternaries
+// (chained or nested), ternary templates, and clsx-style records, each of
+// which may nest the others. In an sv() config's class positions an object is
+// instead a slot-keyed record.
 export const extractTokens = (
 	node: Node,
 	context: TokenExtractionContext,
@@ -433,6 +436,20 @@ export const extractCnTokens = (
 		},
 		true
 	);
+};
+
+// The tokens of a cn()-style argument list, all in the `base` slot.
+export const collectCnEntries = (
+	args: ReadonlyArray<Expression | SpreadElement>,
+	sourceCode: SourceCode
+): Entry[] => {
+	const entries: Entry[] = [];
+
+	for (const arg of args) {
+		extractCnTokens(arg, entries, sourceCode);
+	}
+
+	return entries;
 };
 
 // The conditional forms of the cn() calling convention: only the `&&` right
