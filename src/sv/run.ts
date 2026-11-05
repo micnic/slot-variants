@@ -69,6 +69,10 @@ type RunPlan = {
 	compounds: readonly (readonly CompoundSlotFragment[])[];
 };
 
+type ResolvePreset = (
+	presetName: string | undefined
+) => ResolvedVariantState | undefined;
+
 type CompiledRunContext = {
 	cache: VariantCache;
 	cacheReturn: CacheReturn;
@@ -77,8 +81,7 @@ type CompiledRunContext = {
 	tables: readonly FragmentTable[];
 	merge: MergeClassProp;
 	postProcess: ProcessCacheValue;
-	presets: Record<string, ResolvedVariantState>;
-	resolvePreset: typeof resolvePresetValues;
+	resolvePreset: ResolvePreset;
 	missingVariant: typeof createMissingVariantError;
 	invalidValue: typeof createInvalidValueError;
 };
@@ -573,10 +576,10 @@ const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 
 	return [
 		'"use strict";',
-		'const { cache, cacheReturn, defaults: d, valueIds, tables: t, merge, postProcess: pp, presets, resolvePreset, missingVariant, invalidValue } = ctx;',
+		'const { cache, cacheReturn, defaults: d, valueIds, tables: t, merge, postProcess: pp, resolvePreset, missingVariant, invalidValue } = ctx;',
 		...locals,
 		'return (p) => {',
-		'const pv = resolvePreset(presets, p.preset);',
+		'const pv = resolvePreset(p.preset);',
 		...variantSources,
 		getValidationSource(config),
 		getResultSource(config, plan),
@@ -758,8 +761,8 @@ export const createRun = (config: CompiledConfig): RunFn => {
 		tables: plan.tables,
 		merge: (raw, classProp) => mergeClassProp(config, raw, classProp),
 		postProcess: (value) => applyPostProcess(config.postProcess, value),
-		presets: config.presets,
-		resolvePreset: resolvePresetValues,
+		resolvePreset: (presetName) =>
+			resolvePresetValues(config.presets, presetName),
 		missingVariant: createMissingVariantError,
 		invalidValue: createInvalidValueError
 	};
