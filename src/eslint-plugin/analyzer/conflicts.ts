@@ -39,6 +39,9 @@ type ReportedGroup = Pick<ConflictGroup, 'tokens' | 'entries' | 'exclusive'>;
 
 type GroupMembers = Pick<ConflictGroup, 'tokens' | 'entries'>;
 
+// Overlap node -> that node's own group, for every node in one component.
+type OverlapComponent = Map<string, ConflictGroup>;
+
 // Adds `source`'s tokens and entries to `target`.
 const absorbGroup = (target: GroupMembers, source: GroupMembers) => {
 	for (const token of source.tokens) {
@@ -122,24 +125,26 @@ const areGroupsExclusive = (
 // checked, so `p` merging `px` doesn't poison the later `p`-vs-`pb` check.
 const collectOverlapComponent = (
 	start: string,
+	startGroup: ConflictGroup,
 	byNode: ReadonlyMap<string, ConflictGroup>,
 	visited: Set<string>
-): string[] => {
-	const component: string[] = [];
-	const queue = [start];
+): OverlapComponent => {
+	const component: OverlapComponent = new Map([[start, startGroup]]);
 
 	visited.add(start);
 
-	for (const node of queue) {
-		component.push(node);
-
+	// A Map iterates entries added during iteration, so it doubles as the
+	// BFS queue.
+	for (const node of component.keys()) {
 		for (const neighbor of overlapNeighbors(node)) {
-			if (visited.has(neighbor) || !byNode.has(neighbor)) {
+			const neighborGroup = byNode.get(neighbor);
+
+			if (visited.has(neighbor) || neighborGroup === undefined) {
 				continue;
 			}
 
 			visited.add(neighbor);
-			queue.push(neighbor);
+			component.set(neighbor, neighborGroup);
 		}
 	}
 
@@ -150,29 +155,17 @@ const collectOverlapComponent = (
 // every real covers edge between two present nodes in it is exclusive too —
 // nodes that merely share a bridge node without being adjacent to each other
 // are never compared.
-const isOverlapComponentExclusive = (
-	component: ReadonlyArray<string>,
-	byNode: ReadonlyMap<string, ConflictGroup>
-): boolean => {
-	for (const node of component) {
-		const group = byNode.get(node);
-
-		/* c8 ignore next 3 -- component only holds nodes present in byNode */
-		if (group === undefined) {
-			continue;
-		}
-
-		if (!group.exclusive) {
+const isOverlapComponentExclusive = (component: OverlapComponent): boolean => {
+	for (const [node, group] of component) {
+		// `exclusive` true guarantees non-null `matchers`; the second test
+		// only narrows the type.
+		if (!group.exclusive || group.matchers === null) {
 			return false;
 		}
 
-		/* c8 ignore next 3 -- exclusive true guarantees matchers is non-null */
-		if (group.matchers === null) {
-			return false;
-		}
-
+		// Every present neighbor of a component node is in the component.
 		for (const neighbor of overlapNeighbors(node)) {
-			const neighborGroup = byNode.get(neighbor);
+			const neighborGroup = component.get(neighbor);
 
 			if (
 				neighborGroup !== undefined &&
@@ -187,23 +180,15 @@ const isOverlapComponentExclusive = (
 };
 
 const buildOverlapConflictGroup = (
-	component: ReadonlyArray<string>,
-	byNode: ReadonlyMap<string, ConflictGroup>
+	component: OverlapComponent
 ): ReportedGroup => {
 	const merged: ReportedGroup = {
 		tokens: new Set<string>(),
 		entries: [],
-		exclusive: isOverlapComponentExclusive(component, byNode)
+		exclusive: isOverlapComponentExclusive(component)
 	};
 
-	for (const node of component) {
-		const group = byNode.get(node);
-
-		/* c8 ignore next 3 -- component only holds nodes present in byNode */
-		if (group === undefined) {
-			continue;
-		}
-
+	for (const group of component.values()) {
 		absorbGroup(merged, group);
 	}
 
@@ -248,14 +233,19 @@ const mergeOverlappingGroups = (
 	for (const byNode of overlap.values()) {
 		const visited = new Set<string>();
 
-		for (const node of byNode.keys()) {
+		for (const [node, group] of byNode) {
 			if (visited.has(node)) {
 				continue;
 			}
 
-			const component = collectOverlapComponent(node, byNode, visited);
+			const component = collectOverlapComponent(
+				node,
+				group,
+				byNode,
+				visited
+			);
 
-			result.push(buildOverlapConflictGroup(component, byNode));
+			result.push(buildOverlapConflictGroup(component));
 		}
 	}
 

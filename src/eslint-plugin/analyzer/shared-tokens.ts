@@ -599,7 +599,7 @@ const planSingleKeyCompoundFix = (
 	context: Rule.RuleContext,
 	element: ObjectExpression,
 	matcher: SingleMatcher,
-	variantValue: ObjectExpression,
+	variantValue: Node,
 	siblingElements: ListItems
 ): EntryListFixer | null => {
 	const clsText = getStaticStringText(matcher.cls);
@@ -678,13 +678,13 @@ const checkCompoundEntryForSingleKey = (
 
 	const variantValue = variantsMap.get(matcher.key);
 
-	if (!variantValue || variantValue.type !== 'ObjectExpression') {
+	if (!variantValue) {
 		return;
 	}
 
-	// Boolean shorthand has only one branch — there's no "other" value to hold
-	// the class for the matcher's false case, so this isn't the same
-	// simplification.
+	// Boolean shorthand (which includes any non-object value) has only one
+	// branch — there's no "other" value to hold the class for the matcher's
+	// false case, so this isn't the same simplification.
 	if (isBooleanShorthandVariant(variantValue, slotNames)) {
 		return;
 	}

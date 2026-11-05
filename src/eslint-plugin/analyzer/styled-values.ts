@@ -2,6 +2,7 @@ import type { Scope, SourceCode } from 'eslint';
 import type {
 	CallExpression,
 	Expression,
+	MemberExpression,
 	Node,
 	ObjectExpression,
 	SpreadElement
@@ -274,14 +275,10 @@ const mergeMatchers = (
 
 // `classes.header` — a slot read off a variant function's result.
 const resolveStyledMember = (
-	node: Node,
+	node: MemberExpression,
 	ctx: StyledContext
 ): StyledClasses | null => {
-	if (node.type !== 'MemberExpression' || node.computed) {
-		return null;
-	}
-
-	if (node.property.type !== 'Identifier') {
+	if (node.computed || node.property.type !== 'Identifier') {
 		return null;
 	}
 

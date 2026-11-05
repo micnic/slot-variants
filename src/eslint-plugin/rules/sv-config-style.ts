@@ -285,14 +285,13 @@ const insertAsFirstPropertyFix = (
 	const [first] = obj.properties;
 
 	if (!first) {
-		const openBrace = sourceCode.getFirstToken(obj);
+		// An object literal's range always starts at its `{`.
+		const [objStart] = sourceCode.getRange(obj);
 
-		/* c8 ignore next 3 -- an ObjectExpression always has a `{` token */
-		if (!openBrace) {
-			return fixer.insertTextAfter(obj, text);
-		}
-
-		return fixer.insertTextAfter(openBrace, ` ${text} `);
+		return fixer.insertTextAfterRange(
+			[objStart, objStart + 1],
+			` ${text} `
+		);
 	}
 
 	return fixer.insertTextBefore(first, `${text}, `);

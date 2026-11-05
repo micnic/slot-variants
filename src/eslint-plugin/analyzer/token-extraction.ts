@@ -531,23 +531,6 @@ export const forEachStringLiteralElement = (
 	});
 };
 
-const matchCompoundClass = (
-	element: Expression | SpreadElement | null
-): { cls: Node; compound: ReadonlyMap<string, Node> } | null => {
-	if (element?.type !== 'ObjectExpression') {
-		return null;
-	}
-
-	const compound = getProperties(element);
-	const cls = getClassValue(compound);
-
-	if (!cls) {
-		return null;
-	}
-
-	return { cls, compound };
-};
-
 export const forEachCompoundClass = (
 	node: Node | undefined,
 	visit: (cls: Node, compound: ReadonlyMap<string, Node>) => void
@@ -557,10 +540,15 @@ export const forEachCompoundClass = (
 	}
 
 	forEachStaticItem(node.elements, (element) => {
-		const match = matchCompoundClass(element);
+		if (element.type !== 'ObjectExpression') {
+			return;
+		}
 
-		if (match) {
-			visit(match.cls, match.compound);
+		const compound = getProperties(element);
+		const cls = getClassValue(compound);
+
+		if (cls) {
+			visit(cls, compound);
 		}
 	});
 };
