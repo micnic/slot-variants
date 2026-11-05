@@ -13,7 +13,7 @@ import {
 	getKeyName
 } from '../analyzer/config-keys.ts';
 import { removeFromList } from '../analyzer/list-fix.ts';
-import { getStaticStringText } from '../analyzer/literals.ts';
+import { isStaticStringNode } from '../analyzer/static-predicates.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
 type KeyEntry = {
@@ -239,7 +239,7 @@ const detectBaseSources = (
 };
 
 const isStaticallyMovableValue = (node: Node): boolean => {
-	if (getStaticStringText(node) !== null) {
+	if (isStaticStringNode(node)) {
 		return true;
 	}
 
@@ -247,17 +247,10 @@ const isStaticallyMovableValue = (node: Node): boolean => {
 		return false;
 	}
 
-	for (const element of node.elements) {
-		if (element === null || element.type === 'SpreadElement') {
-			return false;
-		}
-
-		if (getStaticStringText(element) === null) {
-			return false;
-		}
-	}
-
-	return true;
+	// A spread or hole is no static string either.
+	return node.elements.every(
+		(element) => element !== null && isStaticStringNode(element)
+	);
 };
 
 const removePropertyFix = (
