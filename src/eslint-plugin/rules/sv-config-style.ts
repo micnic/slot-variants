@@ -176,14 +176,6 @@ const checkKeyOrder = (
 	}
 };
 
-const normalizeBaseStyle = (option: BaseStyle | undefined): BaseStyle => {
-	if (option === undefined) {
-		return 'field';
-	}
-
-	return option;
-};
-
 const findProperty = (obj: ObjectExpression, key: string): Property | null => {
 	for (const prop of obj.properties) {
 		if (prop.type === 'Property' && getKeyName(prop) === key) {
@@ -324,11 +316,13 @@ const insertLeadingArgFix = (
 	text: string
 ): Rule.Fix => fixer.insertTextBefore(configNode, `${text}, `);
 
+// `insertInto` is the object that receives the `base` property, or null when
+// the classes become a leading argument instead.
 const buildBaseStyleFix = (
 	sourceCode: SourceCode,
 	configNode: ObjectExpression,
 	source: BaseSource,
-	target: BaseStyle
+	insertInto: ObjectExpression | null
 ): ((fixer: Rule.RuleFixer) => Rule.Fix[]) => {
 	const valueText = sourceCode.getText(source.value);
 	const propertyText = `base: ${valueText}`;
@@ -351,32 +345,18 @@ const buildBaseStyleFix = (
 			);
 		}
 
-		if (target === 'separateArg') {
+		if (insertInto === null) {
 			fixes.push(insertLeadingArgFix(fixer, configNode, valueText));
 			return fixes;
 		}
 
-		if (target === 'field') {
-			fixes.push(
-				insertAsFirstPropertyFix(
-					fixer,
-					sourceCode,
-					configNode,
-					propertyText
-				)
-			);
-			return fixes;
-		}
-
-		const slotsObj = getSlotsObject(configNode);
-
-		/* c8 ignore next 3 -- target 'slotsBase' is only reached with slots */
-		if (!slotsObj) {
-			return [];
-		}
-
 		fixes.push(
-			insertAsFirstPropertyFix(fixer, sourceCode, slotsObj, propertyText)
+			insertAsFirstPropertyFix(
+				fixer,
+				sourceCode,
+				insertInto,
+				propertyText
+			)
 		);
 
 		return fixes;
@@ -421,10 +401,20 @@ const checkBaseStyle = (
 	baseStyle: BaseStyle,
 	isFactoryConfig: boolean
 ) => {
-	const slotsObj = getSlotsObject(configNode);
+	let insertInto: ObjectExpression | null = null;
 
-	if (baseStyle === 'slotsBase' && !slotsObj) {
-		return;
+	if (baseStyle === 'field') {
+		insertInto = configNode;
+	}
+
+	if (baseStyle === 'slotsBase') {
+		const slotsObj = getSlotsObject(configNode);
+
+		if (!slotsObj) {
+			return;
+		}
+
+		insertInto = slotsObj;
 	}
 
 	// `createSV(defaults)` takes exactly one argument and ignores any extra, so
@@ -452,7 +442,7 @@ const checkBaseStyle = (
 			context.sourceCode,
 			configNode,
 			onlySource,
-			baseStyle
+			insertInto
 		);
 	}
 
@@ -492,14 +482,13 @@ export const svConfigStyle: Rule.RuleModule = {
 			}
 		],
 		messages: {
-			wrongOrder:
-				'Config key "{{key}}" should come before "{{before}}" (canonical order: base, slots, groups, multiSlots, variants, presets, compoundSlots, compoundVariants, defaultVariants, requiredVariants, cacheSize, introspection, postProcess).',
+			wrongOrder: `Config key "{{key}}" should come before "{{before}}" (canonical order: ${CONFIG_KEY_ORDER.join(', ')}).`,
 			wrongBaseStyle:
 				'Base classes should be expressed as {{style}} — found as {{found}}.'
 		}
 	},
 	create(context) {
-		const baseStyle = normalizeBaseStyle(context.options[0]?.baseStyle);
+		const baseStyle: BaseStyle = context.options[0]?.baseStyle ?? 'field';
 
 		return createTrackedCallListeners(context, (node, call) => {
 			if (!call.config) {
