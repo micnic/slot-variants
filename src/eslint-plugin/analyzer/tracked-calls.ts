@@ -191,7 +191,7 @@ const matchExportCall = (
 	exportName: string
 ): CallMatch | null => {
 	if (exportName === 'sv') {
-		return matchSvCall(node, match.ctx.sourceCode);
+		return matchSvCall(node, match.ctx.resolve);
 	}
 
 	if (exportName === 'cn') {

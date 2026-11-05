@@ -1,4 +1,3 @@
-import type { SourceCode } from 'eslint';
 import type {
 	CallExpression,
 	Expression,
@@ -7,7 +6,6 @@ import type {
 	SpreadElement
 } from 'estree';
 import { CONFIG_KEYS } from './config-keys.ts';
-import { resolveStaticValue } from './const-bindings.ts';
 import { getStrictPropertiesWithKeys } from './properties.ts';
 
 export type CallMatch = {
@@ -18,6 +16,10 @@ export type CallMatch = {
 	// require-top-level-config and the empty-call check.
 	isFactoryConfig: boolean;
 };
+
+// Reads a node through same-file `const` bindings, from whichever scope the
+// caller's context assigns it.
+type ResolveNode = (node: Node) => Node;
 
 /**
  * A config-less, non-factory `sv()`/`cn()` call: a class list in its own
@@ -31,13 +33,13 @@ export const isClassListMatch = (call: CallMatch): boolean =>
 // call rather than a cn-style argument list.
 export const matchSvCall = (
 	node: CallExpression,
-	sourceCode: SourceCode
+	resolve: ResolveNode
 ): CallMatch => {
 	const args = node.arguments;
 	const last = args[args.length - 1];
 
 	if (last) {
-		const resolved = resolveStaticValue(last, sourceCode);
+		const resolved = resolve(last);
 
 		if (isConfigLike(resolved)) {
 			return {
