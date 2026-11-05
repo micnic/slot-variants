@@ -20,6 +20,14 @@ export const hasEscape = (rawText: string): boolean => rawText.includes('\\');
 export const getInnerText = (sourceCode: SourceCode, node: Node): string =>
 	sourceCode.getText(node).slice(1, -1);
 
+// The whitespace-separated tokens of a class string, in source order. The
+// shared-tokens fixers pass a literal's raw inner text (`getInnerText`), never
+// its cooked value: their token identity is the raw source substring, so
+// diffing against the cooked value would miscompare whenever a token contains
+// an escape sequence.
+export const splitClassTokens = (text: string): string[] =>
+	text.split(/\s+/).filter(Boolean);
+
 // A string/template literal's opening delimiter, read from its source text.
 export const getQuoteChar = (sourceCode: SourceCode, node: Node): string => {
 	const raw = sourceCode.getText(node);

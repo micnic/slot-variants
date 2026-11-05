@@ -4,7 +4,8 @@ import { resolveStaticValue } from './const-bindings.ts';
 import {
 	canHoistAsLiteral,
 	getQuoteChar,
-	getStaticStringText
+	getStaticStringText,
+	splitClassTokens
 } from './literals.ts';
 import { getProperties } from './properties.ts';
 import type { SvConfigValueChecker } from './static-values.ts';
@@ -15,12 +16,6 @@ import {
 	forEachStringRecordKey
 } from './token-extraction.ts';
 
-const hasRedundantSpaces = (value: string): boolean =>
-	!/^(?:\S+(?: \S+)*)?$/.test(value);
-
-const canonicalizeWhitespace = (value: string): string =>
-	value.split(/\s+/).filter(Boolean).join(' ');
-
 // Highlights the whole literal: span-level reports would need to chase
 // raw-text/escape-sequence mismatches.
 const reportRedundantSpaces = (
@@ -28,12 +23,13 @@ const reportRedundantSpaces = (
 	node: Node,
 	value: string
 ) => {
-	if (!hasRedundantSpaces(value)) {
+	const canonical = splitClassTokens(value).join(' ');
+
+	if (canonical === value) {
 		return;
 	}
 
 	const quote = getQuoteChar(context.sourceCode, node);
-	const canonical = canonicalizeWhitespace(value);
 
 	context.report({
 		node,

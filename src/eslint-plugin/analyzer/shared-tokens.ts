@@ -5,7 +5,8 @@ import {
 	canHoistAsLiteral,
 	getInnerText,
 	getQuoteChar,
-	getStaticStringText
+	getStaticStringText,
+	splitClassTokens
 } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
@@ -95,15 +96,6 @@ const intersectSharedTokensBySlot = (
 	return sharedTokens;
 };
 
-// The tokens of a static class string, in source order — the shared inputs
-// to both a fix plan's target rewrite (append) and value rewrites (remove).
-// Callers pass a literal's raw inner text (`getInnerText`), never its cooked
-// value: token identity throughout this file is the raw source substring (see
-// `pushStringLiteralTokens`), so diffing against the cooked value would
-// silently miscompare whenever a token contains an escape sequence.
-const splitStaticTokens = (text: string): string[] =>
-	text.trim().split(/\s+/).filter(Boolean);
-
 type LiteralRewrite = { node: Node; nextText: string; quote: string };
 
 // Recomputes a literal node's text from a new token list, reusing
@@ -140,7 +132,7 @@ const planAppendRewrite = (
 		return null;
 	}
 
-	const existingTokens = splitStaticTokens(
+	const existingTokens = splitClassTokens(
 		getInnerText(context.sourceCode, node)
 	);
 	const missingTokens = [...tokens].filter(
@@ -263,7 +255,7 @@ const planValueRewrites = (
 			return null;
 		}
 
-		const remainingTokens = splitStaticTokens(
+		const remainingTokens = splitClassTokens(
 			getInnerText(context.sourceCode, slotNode)
 		).filter((token) => !sharedTokens.has(token));
 
@@ -613,7 +605,7 @@ const planSingleKeyCompoundFix = (
 		return null;
 	}
 
-	const clsTokens = splitStaticTokens(clsText);
+	const clsTokens = splitClassTokens(clsText);
 
 	if (clsTokens.length === 0) {
 		return null;
