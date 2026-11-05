@@ -481,427 +481,438 @@ const transformSpec: PrefixSpec = {
 	fallback: 'hint'
 };
 
-const PREFIX_SPECS: Record<string, PrefixSpec> = {
-	text: {
-		keywords: categoryMap([
-			['align', ['left', 'center', 'right', 'justify', 'start', 'end']],
-			['wrap', ['wrap', 'nowrap', 'balance', 'pretty']],
-			['overflow', ['ellipsis', 'clip']],
-			['color', COLOR_KEYWORDS],
-			['size', [...SIZE_KEYWORDS, 'base']],
-			['opacity', ['opacity']]
-		]),
-		nested: new Map([['shadow', shadowSizeSpec]]),
-		short: 'size',
-		long: 'color',
-		namedColors: true,
-		fallback: 'color'
-	},
-	bg: {
-		keywords: categoryMap([
-			['color', COLOR_KEYWORDS],
-			// The bare keyword forms (`bg-cover`, `bg-center`) and the explicit
-			// `bg-size-*`/`bg-position-*` namespaces Tailwind 4.1 added are the
-			// same two properties, so each namespace segment joins its
-			// keyword's category — `bg-size-[3px_4px]` collides with
-			// `bg-cover`, and neither is mistaken for the color fallback.
-			['size', ['auto', 'cover', 'contain', 'size']],
-			[
-				'position',
-				['bottom', 'center', 'left', 'right', 'top', 'position']
-			],
-			['repeat', ['repeat', 'no']],
-			['attach', ['fixed', 'local', 'scroll']],
-			['image', ['none', 'gradient', 'linear', 'radial', 'conic']],
-			['clip', ['clip']],
-			['origin', ['origin']],
-			['blend', ['blend']],
-			['opacity', ['opacity']]
-		]),
-		arbitraryImage: true,
-		fallback: 'color'
-	},
-	border: {
-		keywords: categoryMap([
-			[
-				'style',
-				['solid', 'dashed', 'dotted', 'double', 'hidden', 'none']
-			],
-			['color', COLOR_KEYWORDS],
-			['collapse', ['collapse', 'separate']],
-			['opacity', ['opacity']]
-		]),
-		// `border-spacing-x`/`-y` compose into the single `border-spacing`
-		// property, so they're keyed per axis rather than lumped together; each
-		// side introduces its own width/color sub-properties.
-		nested: new Map<string, PrefixSpec>([
-			['spacing', axisSpec],
-			...SIDES.map((side): [string, PrefixSpec] => [side, borderSideSpec])
-		]),
-		short: 'width',
-		long: 'color',
-		namedColors: true,
-		fallback: 'color'
-	},
-	ring: {
-		keywords: categoryMap([
-			['inset', ['inset']],
-			['color', COLOR_KEYWORDS],
-			['opacity', ['opacity']]
-		]),
-		nested: new Map([['offset', offsetSpec]]),
-		short: 'width',
-		long: 'color',
-		namedColors: true,
-		fallback: 'color'
-	},
-	outline: {
-		keywords: categoryMap([
-			[
-				'style',
-				['none', 'dashed', 'dotted', 'double', 'solid', 'hidden']
-			],
-			['offset', ['offset']],
-			['color', COLOR_KEYWORDS]
-		]),
-		short: 'width',
-		long: 'color',
-		namedColors: true,
-		fallback: 'color'
-	},
-	divide: {
-		keywords: categoryMap([
-			[
-				'style',
-				['solid', 'dashed', 'dotted', 'double', 'hidden', 'none']
-			],
-			['color', COLOR_KEYWORDS],
-			['width-x', ['x']],
-			['width-y', ['y']],
-			['opacity', ['opacity']]
-		]),
-		reverseComposes: true,
-		long: 'color',
-		fallback: 'color'
-	},
-	decoration: {
-		keywords: categoryMap([
-			['style', ['solid', 'double', 'dotted', 'dashed', 'wavy']],
-			// Tailwind v3's box-decoration-break spelling (v4 renamed these to
-			// `box-decoration-*`) — an unrelated property that would otherwise
-			// fall into the thickness bucket and collide with `decoration-2`.
-			['break', ['clone', 'slice']],
-			['color', COLOR_KEYWORDS],
-			['thickness', ['from', 'auto']]
-		]),
-		// The one prefix where an untyped variable is the narrower property:
-		// `decoration-(--x)` is a thickness, not a color.
-		variable: 'thickness',
-		short: 'thickness',
-		long: 'color',
-		namedColors: true,
-		fallback: 'color'
-	},
-	stroke: {
-		// `stroke-none` sets the `stroke` color property to `none`,
-		// unlike `border-none`/`outline-none`/etc, which are a
-		// `style` keyword — so it joins `COLOR_KEYWORDS` here
-		// rather than falling to the `width` bucket.
-		keywords: categoryMap([['color', [...COLOR_KEYWORDS, 'none']]]),
-		short: 'width',
-		long: 'color',
-		namedColors: true,
-		fallback: 'color'
-	},
-	shadow: {
-		keywords: categoryMap([
-			['color', COLOR_KEYWORDS],
-			['box', [...SIZE_KEYWORDS, 'none', 'inner']]
-		]),
-		short: 'box',
-		long: 'color',
-		namedColors: true,
-		fallback: 'color'
-	},
-	mask: {
-		keywords: categoryMap([
-			['composite', ['add', 'subtract', 'intersect', 'exclude']],
-			['mode', ['alpha', 'luminance', 'match']],
-			// `mask-position-*`/`mask-size-*` join their keyword forms, the
-			// same way the `bg` spec above pairs them.
-			[
-				'position',
-				['center', 'top', 'bottom', 'left', 'right', 'position']
-			],
-			['size', ['auto', 'cover', 'contain', 'size']],
-			['repeat', ['repeat']],
-			['image', ['none']]
-		]),
-		// `mask-[url(/a.svg)]` is a mask-image, like the `bg` equivalent.
-		arbitraryImage: true,
-		nested: new Map([
-			['linear', maskAngleStopSpec],
-			['conic', maskAngleStopSpec],
-			['radial', maskRadialSpec],
-			['t', maskDirectionSpec],
-			['r', maskDirectionSpec],
-			['b', maskDirectionSpec],
-			['l', maskDirectionSpec],
-			['x', maskDirectionSpec],
-			['y', maskDirectionSpec],
-			['clip', unifiedSpec],
-			['origin', unifiedSpec],
-			['type', unifiedSpec],
-			['no', maskNoSpec]
-		]),
-		fallback: 'other'
-	},
-	fill: colorSpec,
-	accent: colorSpec,
-	caret: colorSpec,
-	placeholder: {
-		keywords: categoryMap([['opacity', ['opacity']]]),
-		short: 'color',
-		long: 'color',
-		fallback: 'color'
-	},
-	from: gradientStopSpec,
-	via: gradientStopSpec,
-	to: gradientStopSpec,
-	// `table-auto`/`table-fixed` are `table-layout`;
-	// every other `table-*` (`table-cell`, `table-row`,
-	// `table-header-group`, …) is a `display` value.
-	table: {
-		keywords: categoryMap([['layout', ['auto', 'fixed']]]),
-		fallback: 'display'
-	},
-	content: {
-		keywords: categoryMap([
-			[
-				'align',
+const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
+	Object.entries({
+		text: {
+			keywords: categoryMap([
 				[
-					'center',
-					'start',
-					'end',
-					'between',
-					'around',
-					'evenly',
-					'normal',
-					'stretch',
-					'baseline'
-				]
-			]
-		]),
-		fallback: 'prop'
-	},
-	flex: {
-		keywords: categoryMap([
-			['direction', ['row', 'col']],
-			['wrap', ['wrap', 'nowrap']]
-		]),
-		// Tailwind v3's `flex-grow-*`/`flex-shrink-*`/`flex-basis-*`
-		// spellings are three independent properties — and each is the very
-		// same property as the standalone `grow`/`shrink`/`basis` utility,
-		// which the overlap nodes below reunite them with. Without them all
-		// three would share the `flex` sizing category, so
-		// `flex-grow-0 flex-shrink-0` would read as a conflict.
-		nested: new Map([
-			['grow', unifiedSpec],
-			['shrink', unifiedSpec],
-			['basis', unifiedSpec]
-		]),
-		fallback: 'flex'
-	},
-	font: {
-		keywords: categoryMap([
-			[
-				'weight',
+					'align',
+					['left', 'center', 'right', 'justify', 'start', 'end']
+				],
+				['wrap', ['wrap', 'nowrap', 'balance', 'pretty']],
+				['overflow', ['ellipsis', 'clip']],
+				['color', COLOR_KEYWORDS],
+				['size', [...SIZE_KEYWORDS, 'base']],
+				['opacity', ['opacity']]
+			]),
+			nested: new Map([['shadow', shadowSizeSpec]]),
+			short: 'size',
+			long: 'color',
+			namedColors: true,
+			fallback: 'color'
+		},
+		bg: {
+			keywords: categoryMap([
+				['color', COLOR_KEYWORDS],
+				// The bare keyword forms (`bg-cover`, `bg-center`) and the explicit
+				// `bg-size-*`/`bg-position-*` namespaces Tailwind 4.1 added are the
+				// same two properties, so each namespace segment joins its
+				// keyword's category — `bg-size-[3px_4px]` collides with
+				// `bg-cover`, and neither is mistaken for the color fallback.
+				['size', ['auto', 'cover', 'contain', 'size']],
 				[
-					'thin',
-					'extralight',
-					'light',
-					'normal',
-					'medium',
-					'semibold',
-					'bold',
-					'extrabold',
-					'black'
+					'position',
+					['bottom', 'center', 'left', 'right', 'top', 'position']
+				],
+				['repeat', ['repeat', 'no']],
+				['attach', ['fixed', 'local', 'scroll']],
+				['image', ['none', 'gradient', 'linear', 'radial', 'conic']],
+				['clip', ['clip']],
+				['origin', ['origin']],
+				['blend', ['blend']],
+				['opacity', ['opacity']]
+			]),
+			arbitraryImage: true,
+			fallback: 'color'
+		},
+		border: {
+			keywords: categoryMap([
+				[
+					'style',
+					['solid', 'dashed', 'dotted', 'double', 'hidden', 'none']
+				],
+				['color', COLOR_KEYWORDS],
+				['collapse', ['collapse', 'separate']],
+				['opacity', ['opacity']]
+			]),
+			// `border-spacing-x`/`-y` compose into the single `border-spacing`
+			// property, so they're keyed per axis rather than lumped together; each
+			// side introduces its own width/color sub-properties.
+			nested: new Map<string, PrefixSpec>([
+				['spacing', axisSpec],
+				...SIDES.map((side): [string, PrefixSpec] => [
+					side,
+					borderSideSpec
+				])
+			]),
+			short: 'width',
+			long: 'color',
+			namedColors: true,
+			fallback: 'color'
+		},
+		ring: {
+			keywords: categoryMap([
+				['inset', ['inset']],
+				['color', COLOR_KEYWORDS],
+				['opacity', ['opacity']]
+			]),
+			nested: new Map([['offset', offsetSpec]]),
+			short: 'width',
+			long: 'color',
+			namedColors: true,
+			fallback: 'color'
+		},
+		outline: {
+			keywords: categoryMap([
+				[
+					'style',
+					['none', 'dashed', 'dotted', 'double', 'solid', 'hidden']
+				],
+				['offset', ['offset']],
+				['color', COLOR_KEYWORDS]
+			]),
+			short: 'width',
+			long: 'color',
+			namedColors: true,
+			fallback: 'color'
+		},
+		divide: {
+			keywords: categoryMap([
+				[
+					'style',
+					['solid', 'dashed', 'dotted', 'double', 'hidden', 'none']
+				],
+				['color', COLOR_KEYWORDS],
+				['width-x', ['x']],
+				['width-y', ['y']],
+				['opacity', ['opacity']]
+			]),
+			reverseComposes: true,
+			long: 'color',
+			fallback: 'color'
+		},
+		decoration: {
+			keywords: categoryMap([
+				['style', ['solid', 'double', 'dotted', 'dashed', 'wavy']],
+				// Tailwind v3's box-decoration-break spelling (v4 renamed these to
+				// `box-decoration-*`) — an unrelated property that would otherwise
+				// fall into the thickness bucket and collide with `decoration-2`.
+				['break', ['clone', 'slice']],
+				['color', COLOR_KEYWORDS],
+				['thickness', ['from', 'auto']]
+			]),
+			// The one prefix where an untyped variable is the narrower property:
+			// `decoration-(--x)` is a thickness, not a color.
+			variable: 'thickness',
+			short: 'thickness',
+			long: 'color',
+			namedColors: true,
+			fallback: 'color'
+		},
+		stroke: {
+			// `stroke-none` sets the `stroke` color property to `none`,
+			// unlike `border-none`/`outline-none`/etc, which are a
+			// `style` keyword — so it joins `COLOR_KEYWORDS` here
+			// rather than falling to the `width` bucket.
+			keywords: categoryMap([['color', [...COLOR_KEYWORDS, 'none']]]),
+			short: 'width',
+			long: 'color',
+			namedColors: true,
+			fallback: 'color'
+		},
+		shadow: {
+			keywords: categoryMap([
+				['color', COLOR_KEYWORDS],
+				['box', [...SIZE_KEYWORDS, 'none', 'inner']]
+			]),
+			short: 'box',
+			long: 'color',
+			namedColors: true,
+			fallback: 'color'
+		},
+		mask: {
+			keywords: categoryMap([
+				['composite', ['add', 'subtract', 'intersect', 'exclude']],
+				['mode', ['alpha', 'luminance', 'match']],
+				// `mask-position-*`/`mask-size-*` join their keyword forms, the
+				// same way the `bg` spec above pairs them.
+				[
+					'position',
+					['center', 'top', 'bottom', 'left', 'right', 'position']
+				],
+				['size', ['auto', 'cover', 'contain', 'size']],
+				['repeat', ['repeat']],
+				['image', ['none']]
+			]),
+			// `mask-[url(/a.svg)]` is a mask-image, like the `bg` equivalent.
+			arbitraryImage: true,
+			nested: new Map([
+				['linear', maskAngleStopSpec],
+				['conic', maskAngleStopSpec],
+				['radial', maskRadialSpec],
+				['t', maskDirectionSpec],
+				['r', maskDirectionSpec],
+				['b', maskDirectionSpec],
+				['l', maskDirectionSpec],
+				['x', maskDirectionSpec],
+				['y', maskDirectionSpec],
+				['clip', unifiedSpec],
+				['origin', unifiedSpec],
+				['type', unifiedSpec],
+				['no', maskNoSpec]
+			]),
+			fallback: 'other'
+		},
+		fill: colorSpec,
+		accent: colorSpec,
+		caret: colorSpec,
+		placeholder: {
+			keywords: categoryMap([['opacity', ['opacity']]]),
+			short: 'color',
+			long: 'color',
+			fallback: 'color'
+		},
+		from: gradientStopSpec,
+		via: gradientStopSpec,
+		to: gradientStopSpec,
+		// `table-auto`/`table-fixed` are `table-layout`;
+		// every other `table-*` (`table-cell`, `table-row`,
+		// `table-header-group`, …) is a `display` value.
+		table: {
+			keywords: categoryMap([['layout', ['auto', 'fixed']]]),
+			fallback: 'display'
+		},
+		content: {
+			keywords: categoryMap([
+				[
+					'align',
+					[
+						'center',
+						'start',
+						'end',
+						'between',
+						'around',
+						'evenly',
+						'normal',
+						'stretch',
+						'baseline'
+					]
 				]
-			]
-		]),
-		// `font-stretch-*` (`font-stretch-condensed`, `font-stretch-50%`, …)
-		// and `font-features-*` (font-feature-settings) are each their own font
-		// sub-property, distinct from weight and family and from each other.
-		nested: new Map([
-			['stretch', unifiedSpec],
-			['features', unifiedSpec]
-		]),
-		fallback: 'family'
-	},
-	grid: { keywords: selfMap(['cols', 'rows', 'flow']), fallback: 'other' },
-	auto: { keywords: selfMap(['cols', 'rows']), fallback: 'other' },
-	object: {
-		keywords: categoryMap([
-			['fit', ['contain', 'cover', 'fill', 'none', 'scale']],
-			['position', ['bottom', 'center', 'left', 'right', 'top']]
-		]),
-		// `object-fit` is keyword-only, so every other value — arbitrary or
-		// a multi-word keyword pair like `object-left-top` — is an
-		// object-position.
-		fallback: 'position'
-	},
-	list: {
-		keywords: categoryMap([
-			['position', ['inside', 'outside']],
-			['image', ['image']],
-			// `list-item` is a `display` value, not a list-style-type like
-			// every other bare `list-*` keyword.
-			['display', ['item']]
-		]),
-		fallback: 'type'
-	},
-	place: {
-		keywords: selfMap(['items', 'content', 'self']),
-		fallback: 'other'
-	},
-	justify: { keywords: selfMap(['items', 'self']), fallback: 'content' },
-	items: unifiedSpec,
-	self: unifiedSpec,
-	inline: inlineSpec,
-	block: unifiedSpec,
-	// `col-start-*`/`col-end-*` are their own classGroups (kept as distinct
-	// categories below), but `col-auto`, `col-span-*`, and a bare `col-3` are
-	// all one `col-start-end` classGroup — they share one category, and the
-	// bare-integer/arbitrary form reaches it through the fallback.
-	col: {
-		keywords: categoryMap([
-			['value', ['span', 'auto']],
-			['start', ['start']],
-			['end', ['end']]
-		]),
-		fallback: 'value'
-	},
-	row: {
-		keywords: categoryMap([
-			['value', ['span', 'auto']],
-			['start', ['start']],
-			['end', ['end']]
-		]),
-		fallback: 'value'
-	},
-	min: {
-		keywords: selfMap(['w', 'h', 'inline', 'block']),
-		fallback: 'other'
-	},
-	max: {
-		keywords: selfMap(['w', 'h', 'inline', 'block']),
-		fallback: 'other'
-	},
-	rounded: { keywords: selfMap(CORNERS), fallback: 'all' },
-	backdrop: {
-		keywords: selfMap([
-			'blur',
-			'brightness',
-			'contrast',
-			'grayscale',
-			'hue',
-			'invert',
-			'opacity',
-			'saturate',
-			'sepia'
-		]),
-		fallback: 'other'
-	},
-	scroll: {
-		keywords: categoryMap([
-			['behavior', ['smooth', 'auto']],
-			...[
-				'm',
-				'mt',
-				'mr',
-				'mb',
-				'ml',
-				'mx',
-				'my',
-				'ms',
-				'me',
-				'mbs',
-				'mbe',
-				'p',
-				'pt',
-				'pr',
-				'pb',
-				'pl',
-				'px',
-				'py',
-				'ps',
-				'pe',
-				'pbs',
-				'pbe'
-			].map((side) => [side, [side]] as const)
-		]),
-		fallback: 'other'
-	},
-	scrollbar: {
-		keywords: categoryMap([['w', ['auto', 'thin', 'none']]]),
-		nested: new Map([
-			['thumb', colorSpec],
-			['track', colorSpec],
-			['gutter', unifiedSpec]
-		]),
-		fallback: 'other'
-	},
-	snap: {
-		keywords: categoryMap([
-			['axis', ['x', 'y', 'both', 'none']],
-			['strict', ['mandatory', 'proximity']],
-			['align', ['start', 'center', 'end', 'align']],
-			['stop', ['normal', 'always']]
-		]),
-		fallback: 'other'
-	},
-	break: {
-		keywords: categoryMap([
-			// `break-normal`/`-words`/`-all`/`-keep` are all `word-break`
-			// values, so they share one category.
-			['word', ['normal', 'words', 'all', 'keep']],
-			['before', ['before']],
-			['after', ['after']],
-			['inside', ['inside']]
-		]),
-		fallback: 'other'
-	},
-	touch: {
-		keywords: categoryMap([
-			['base', ['auto', 'none', 'manipulation']],
-			['pinch', ['pinch']]
-		]),
-		nested: new Map([['pan', panSpec]]),
-		fallback: 'base'
-	},
-	transform: transformSpec,
-	transition: transitionSpec,
-	mix: mixSpec,
-	perspective: perspectiveSpec,
-	ease: unifiedSpec,
-	origin: unifiedSpec,
-	cursor: unifiedSpec,
-	align: unifiedSpec,
-	whitespace: unifiedSpec,
-	wrap: unifiedSpec,
-	scheme: unifiedSpec,
-	drop: dropShadowSpec,
-	line: lineSpec,
-	gap: axisSpec,
-	space: spaceSpec,
-	translate: translateSpec,
-	scale: scaleSpec,
-	skew: axisSpec,
-	rotate: axisSpec,
-	inset: insetSpec,
-	overflow: axisSpec,
-	overscroll: axisSpec
-};
+			]),
+			fallback: 'prop'
+		},
+		flex: {
+			keywords: categoryMap([
+				['direction', ['row', 'col']],
+				['wrap', ['wrap', 'nowrap']]
+			]),
+			// Tailwind v3's `flex-grow-*`/`flex-shrink-*`/`flex-basis-*`
+			// spellings are three independent properties — and each is the very
+			// same property as the standalone `grow`/`shrink`/`basis` utility,
+			// which the overlap nodes below reunite them with. Without them all
+			// three would share the `flex` sizing category, so
+			// `flex-grow-0 flex-shrink-0` would read as a conflict.
+			nested: new Map([
+				['grow', unifiedSpec],
+				['shrink', unifiedSpec],
+				['basis', unifiedSpec]
+			]),
+			fallback: 'flex'
+		},
+		font: {
+			keywords: categoryMap([
+				[
+					'weight',
+					[
+						'thin',
+						'extralight',
+						'light',
+						'normal',
+						'medium',
+						'semibold',
+						'bold',
+						'extrabold',
+						'black'
+					]
+				]
+			]),
+			// `font-stretch-*` (`font-stretch-condensed`, `font-stretch-50%`, …)
+			// and `font-features-*` (font-feature-settings) are each their own font
+			// sub-property, distinct from weight and family and from each other.
+			nested: new Map([
+				['stretch', unifiedSpec],
+				['features', unifiedSpec]
+			]),
+			fallback: 'family'
+		},
+		grid: {
+			keywords: selfMap(['cols', 'rows', 'flow']),
+			fallback: 'other'
+		},
+		auto: { keywords: selfMap(['cols', 'rows']), fallback: 'other' },
+		object: {
+			keywords: categoryMap([
+				['fit', ['contain', 'cover', 'fill', 'none', 'scale']],
+				['position', ['bottom', 'center', 'left', 'right', 'top']]
+			]),
+			// `object-fit` is keyword-only, so every other value — arbitrary or
+			// a multi-word keyword pair like `object-left-top` — is an
+			// object-position.
+			fallback: 'position'
+		},
+		list: {
+			keywords: categoryMap([
+				['position', ['inside', 'outside']],
+				['image', ['image']],
+				// `list-item` is a `display` value, not a list-style-type like
+				// every other bare `list-*` keyword.
+				['display', ['item']]
+			]),
+			fallback: 'type'
+		},
+		place: {
+			keywords: selfMap(['items', 'content', 'self']),
+			fallback: 'other'
+		},
+		justify: { keywords: selfMap(['items', 'self']), fallback: 'content' },
+		items: unifiedSpec,
+		self: unifiedSpec,
+		inline: inlineSpec,
+		block: unifiedSpec,
+		// `col-start-*`/`col-end-*` are their own classGroups (kept as distinct
+		// categories below), but `col-auto`, `col-span-*`, and a bare `col-3` are
+		// all one `col-start-end` classGroup — they share one category, and the
+		// bare-integer/arbitrary form reaches it through the fallback.
+		col: {
+			keywords: categoryMap([
+				['value', ['span', 'auto']],
+				['start', ['start']],
+				['end', ['end']]
+			]),
+			fallback: 'value'
+		},
+		row: {
+			keywords: categoryMap([
+				['value', ['span', 'auto']],
+				['start', ['start']],
+				['end', ['end']]
+			]),
+			fallback: 'value'
+		},
+		min: {
+			keywords: selfMap(['w', 'h', 'inline', 'block']),
+			fallback: 'other'
+		},
+		max: {
+			keywords: selfMap(['w', 'h', 'inline', 'block']),
+			fallback: 'other'
+		},
+		rounded: { keywords: selfMap(CORNERS), fallback: 'all' },
+		backdrop: {
+			keywords: selfMap([
+				'blur',
+				'brightness',
+				'contrast',
+				'grayscale',
+				'hue',
+				'invert',
+				'opacity',
+				'saturate',
+				'sepia'
+			]),
+			fallback: 'other'
+		},
+		scroll: {
+			keywords: categoryMap([
+				['behavior', ['smooth', 'auto']],
+				...[
+					'm',
+					'mt',
+					'mr',
+					'mb',
+					'ml',
+					'mx',
+					'my',
+					'ms',
+					'me',
+					'mbs',
+					'mbe',
+					'p',
+					'pt',
+					'pr',
+					'pb',
+					'pl',
+					'px',
+					'py',
+					'ps',
+					'pe',
+					'pbs',
+					'pbe'
+				].map((side) => [side, [side]] as const)
+			]),
+			fallback: 'other'
+		},
+		scrollbar: {
+			keywords: categoryMap([['w', ['auto', 'thin', 'none']]]),
+			nested: new Map([
+				['thumb', colorSpec],
+				['track', colorSpec],
+				['gutter', unifiedSpec]
+			]),
+			fallback: 'other'
+		},
+		snap: {
+			keywords: categoryMap([
+				['axis', ['x', 'y', 'both', 'none']],
+				['strict', ['mandatory', 'proximity']],
+				['align', ['start', 'center', 'end', 'align']],
+				['stop', ['normal', 'always']]
+			]),
+			fallback: 'other'
+		},
+		break: {
+			keywords: categoryMap([
+				// `break-normal`/`-words`/`-all`/`-keep` are all `word-break`
+				// values, so they share one category.
+				['word', ['normal', 'words', 'all', 'keep']],
+				['before', ['before']],
+				['after', ['after']],
+				['inside', ['inside']]
+			]),
+			fallback: 'other'
+		},
+		touch: {
+			keywords: categoryMap([
+				['base', ['auto', 'none', 'manipulation']],
+				['pinch', ['pinch']]
+			]),
+			nested: new Map([['pan', panSpec]]),
+			fallback: 'base'
+		},
+		transform: transformSpec,
+		transition: transitionSpec,
+		mix: mixSpec,
+		perspective: perspectiveSpec,
+		ease: unifiedSpec,
+		origin: unifiedSpec,
+		cursor: unifiedSpec,
+		align: unifiedSpec,
+		whitespace: unifiedSpec,
+		wrap: unifiedSpec,
+		scheme: unifiedSpec,
+		drop: dropShadowSpec,
+		line: lineSpec,
+		gap: axisSpec,
+		space: spaceSpec,
+		translate: translateSpec,
+		scale: scaleSpec,
+		skew: axisSpec,
+		rotate: axisSpec,
+		inset: insetSpec,
+		overflow: axisSpec,
+		overscroll: axisSpec
+	})
+);
 
 const COLOR_FUNCTIONS = [
 	'rgb',
@@ -1342,7 +1353,7 @@ const categorize = (
 	firstSegment: string,
 	value: ReadonlyArray<string>
 ): string => {
-	const spec = PREFIX_SPECS[firstSegment];
+	const spec = PREFIX_SPECS.get(firstSegment);
 
 	if (!spec) {
 		return String(value.length);
@@ -1357,23 +1368,25 @@ const categorize = (
 // resolves to the very same conflict key as its sibling — `rounded` collides
 // with `rounded-lg`, `transition` with `transition-none` — while `border` still
 // stays clear of `border-gray-200` (a color, not a width).
-const BARE_UTILITIES: Record<string, ReadonlyArray<string>> = {
-	rounded: ['lg'],
-	border: ['2'],
-	ring: ['2'],
-	outline: ['2'],
-	shadow: ['md'],
-	blur: ['sm'],
-	grow: ['0'],
-	shrink: ['0'],
-	transition: ['all'],
-	transform: ['none'],
-	filter: ['none'],
-	resize: ['none'],
-	grayscale: ['0'],
-	invert: ['0'],
-	sepia: ['0']
-};
+const BARE_UTILITIES: ReadonlyMap<string, ReadonlyArray<string>> = new Map(
+	Object.entries({
+		rounded: ['lg'],
+		border: ['2'],
+		ring: ['2'],
+		outline: ['2'],
+		shadow: ['md'],
+		blur: ['sm'],
+		grow: ['0'],
+		shrink: ['0'],
+		transition: ['all'],
+		transform: ['none'],
+		filter: ['none'],
+		resize: ['none'],
+		grayscale: ['0'],
+		invert: ['0'],
+		sepia: ['0']
+	})
+);
 
 // --- Shorthand/longhand overlap nodes ----------------------------------------
 //
@@ -1808,28 +1821,33 @@ const getOverlapNode = (segment: string, category: string): string | null => {
 // `normal-nums` reaches every value, via the `fvn-normal` bridge in
 // `OVERLAP_COVERS`. Default-on (unlike `display`) since these words are
 // unlikely to collide with a project's own class names.
-const SINGLE_WORD_OVERLAP_NODES: Record<string, string> = {
-	truncate: 'truncate',
-	...Object.fromEntries(
-		SINGLE_WORD_DISPLAY_KEYWORDS.map((word) => [word, `display-${word}`])
-	),
-	'normal-nums': 'fvn-normal',
-	ordinal: 'fvn-ordinal',
-	'slashed-zero': 'fvn-slashed-zero',
-	'lining-nums': 'fvn-figure',
-	'oldstyle-nums': 'fvn-figure',
-	'proportional-nums': 'fvn-spacing',
-	'tabular-nums': 'fvn-spacing',
-	'diagonal-fractions': 'fvn-fraction',
-	'stacked-fractions': 'fvn-fraction'
-};
+const SINGLE_WORD_OVERLAP_NODES: ReadonlyMap<string, string> = new Map(
+	Object.entries({
+		truncate: 'truncate',
+		...Object.fromEntries(
+			SINGLE_WORD_DISPLAY_KEYWORDS.map((word) => [
+				word,
+				`display-${word}`
+			])
+		),
+		'normal-nums': 'fvn-normal',
+		ordinal: 'fvn-ordinal',
+		'slashed-zero': 'fvn-slashed-zero',
+		'lining-nums': 'fvn-figure',
+		'oldstyle-nums': 'fvn-figure',
+		'proportional-nums': 'fvn-spacing',
+		'tabular-nums': 'fvn-spacing',
+		'diagonal-fractions': 'fvn-fraction',
+		'stacked-fractions': 'fvn-fraction'
+	})
+);
 
 // A node for every display keyword, so `line-clamp-*` reaches the hyphenated
 // ones (`inline-flex`, `table-cell`, `flow-root`, `list-item`) as well
 // as the single words above. Only the node comes from here — a hyphenated
 // keyword keeps whatever conflict key its dashed family gives it, so
 // `table-cell` stays grouped with `table-row`.
-const DISPLAY_OVERLAP_NODES: Record<string, string> = Object.fromEntries(
+const DISPLAY_OVERLAP_NODES: ReadonlyMap<string, string> = new Map(
 	DISPLAY_KEYWORDS.map((word) => [word, `display-${word}`])
 );
 
@@ -1992,7 +2010,7 @@ const getBareUtilityKey = (
 	firstSegment: string,
 	variantPrefix: string
 ): ConflictKeyInfo | null => {
-	const bareValue = BARE_UTILITIES[firstSegment];
+	const bareValue = BARE_UTILITIES.get(firstSegment);
 
 	if (bareValue === undefined) {
 		return null;
@@ -2056,10 +2074,10 @@ export const getConflictKey = (
 	// `-` themselves (`inline-block`, `table-caption`, `diagonal-fractions`),
 	// so this has to run before the dash-split below, not inside its
 	// `value.length === 0` branch (which would miss every hyphenated one).
-	const ownKeyOverlap = SINGLE_WORD_OVERLAP_NODES[bare];
+	const ownKeyOverlap = SINGLE_WORD_OVERLAP_NODES.get(bare);
 	// A hyphenated display keyword takes only the node, and keeps the key its
 	// dashed family gives it further down.
-	const wordOverlap = ownKeyOverlap ?? DISPLAY_OVERLAP_NODES[bare];
+	const wordOverlap = ownKeyOverlap ?? DISPLAY_OVERLAP_NODES.get(bare);
 
 	// Takes precedence — can unify utilities the heuristic can't (single words,
 	// or hyphenated siblings that don't share a prefix). The overlap node

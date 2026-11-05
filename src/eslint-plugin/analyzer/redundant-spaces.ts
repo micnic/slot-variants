@@ -107,22 +107,23 @@ const checkCompoundsForRedundantSpaces = (
 	});
 };
 
-const svRedundantSpacesConfigValueCheckers: Record<
+// A Map, so a key named like an `Object.prototype` member finds no checker.
+const svRedundantSpacesConfigValueCheckers: ReadonlyMap<
 	string,
 	SvConfigValueChecker
-> = {
-	base: visitForRedundantSpaces,
-	slots: visitObjectForRedundantSpaces,
-	variants: visitObjectForRedundantSpaces,
-	compoundVariants: checkCompoundsForRedundantSpaces,
-	compoundSlots: checkCompoundsForRedundantSpaces
-};
+> = new Map([
+	['base', visitForRedundantSpaces],
+	['slots', visitObjectForRedundantSpaces],
+	['variants', visitObjectForRedundantSpaces],
+	['compoundVariants', checkCompoundsForRedundantSpaces],
+	['compoundSlots', checkCompoundsForRedundantSpaces]
+]);
 
 export const checkConfigForRedundantSpaces = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
 ) => {
 	for (const [key, value] of getProperties(configNode)) {
-		svRedundantSpacesConfigValueCheckers[key]?.(context, value);
+		svRedundantSpacesConfigValueCheckers.get(key)?.(context, value);
 	}
 };

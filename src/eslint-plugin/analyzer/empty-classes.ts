@@ -274,20 +274,27 @@ const checkEmptyConfigContainer: EmptyConfigChecker = (
 	});
 };
 
-const svEmptyConfigValueCheckers: Record<string, EmptyConfigChecker> = {
-	base: (context, node, remove) => {
-		visitForEmptyClasses(context, node, false, remove);
-	},
-	slots: checkSlotsForEmpty,
-	groups: checkEmptyConfigContainer,
-	variants: checkVariantsForEmpty,
-	compoundVariants: checkCompoundsForEmpty,
-	compoundSlots: checkCompoundsForEmpty,
-	defaultVariants: checkEmptyConfigContainer,
-	requiredVariants: checkEmptyConfigContainer,
-	multiSlots: checkEmptyConfigContainer,
-	presets: checkEmptyConfigContainer
-};
+// A Map rather than a plain object: a `createSV()` config may hold any key,
+// and a key named like an `Object.prototype` member (`toString`,
+// `__defineGetter__`) must find no checker.
+const svEmptyConfigValueCheckers: ReadonlyMap<string, EmptyConfigChecker> =
+	new Map<string, EmptyConfigChecker>([
+		[
+			'base',
+			(context, node, remove) => {
+				visitForEmptyClasses(context, node, false, remove);
+			}
+		],
+		['slots', checkSlotsForEmpty],
+		['groups', checkEmptyConfigContainer],
+		['variants', checkVariantsForEmpty],
+		['compoundVariants', checkCompoundsForEmpty],
+		['compoundSlots', checkCompoundsForEmpty],
+		['defaultVariants', checkEmptyConfigContainer],
+		['requiredVariants', checkEmptyConfigContainer],
+		['multiSlots', checkEmptyConfigContainer],
+		['presets', checkEmptyConfigContainer]
+	]);
 
 // A `createSV()` factory config may carry a spread or computed key (reported
 // as dynamic by no-dynamic-classes); those aren't class-bearing, so they're
@@ -307,7 +314,7 @@ export const checkConfigForEmptyClasses = (
 			continue;
 		}
 
-		const checker = svEmptyConfigValueCheckers[key];
+		const checker = svEmptyConfigValueCheckers.get(key);
 
 		if (checker) {
 			checker(

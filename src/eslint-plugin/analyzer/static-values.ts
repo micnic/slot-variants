@@ -348,10 +348,12 @@ const checkCompoundEntryProperty = (
 	}
 };
 
-const svConfigValueCheckers: Record<string, SvConfigValueChecker> = {
-	base: checkConfigClassValueIsStatic,
-	slots: checkClassValueRecord
-};
+// A Map, so a key named like an `Object.prototype` member finds no checker.
+const svConfigValueCheckers: ReadonlyMap<string, SvConfigValueChecker> =
+	new Map([
+		['base', checkConfigClassValueIsStatic],
+		['slots', checkClassValueRecord]
+	]);
 
 const checkSvConfigProperty = (
 	context: Rule.RuleContext,
@@ -376,7 +378,7 @@ const checkSvConfigProperty = (
 	}
 
 	if (key !== null) {
-		svConfigValueCheckers[key]?.(context, prop.value);
+		svConfigValueCheckers.get(key)?.(context, prop.value);
 	}
 };
 

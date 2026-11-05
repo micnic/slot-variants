@@ -90,6 +90,8 @@ const restyle = (token: string, internal: string, slot = 'base') =>
 const conflictCn = (tokens: string) => err('conflictCn', { tokens });
 
 const NO_REDUNDANT_SPACES_VALID = [
+	// Keys named like `Object.prototype` members are no config keys.
+	IMPORT_CREATE_SV + "createSV({ toString: 'x', __defineGetter__: 'y' });",
 	// Single token, no whitespace.
 	IMPORT + "sv({ base: 'flex' });",
 	// Multiple tokens separated by single spaces.
@@ -620,6 +622,8 @@ t.test('no-redundant-spaces', (t) => {
 });
 
 const NO_DYNAMIC_CLASSES_VALID = [
+	// Keys named like `Object.prototype` members are no config keys.
+	IMPORT_CREATE_SV + "createSV({ toString: 'x', __defineGetter__: 'y' });",
 	// Static class strings in cn-style call.
 	IMPORT + "sv('flex', 'items-center');",
 	// Another sv()/cn() call's output is not a literal, but its classes are
@@ -1572,6 +1576,9 @@ const NO_EMPTY_CLASSES_VALID = [
 	IMPORT_CREATE_SV + "createSV({ ...rest, base: 'flex' });",
 	// A computed key in a createSV() factory config is skipped.
 	IMPORT_CREATE_SV + "createSV({ [k]: 'x', base: 'flex' });",
+	// Keys named like `Object.prototype` members are no config keys either.
+	IMPORT_CREATE_SV +
+		"createSV({ toString: 'x', __defineGetter__: 'y', constructor: [] });",
 	// Non-empty `&&` right operand.
 	IMPORT_CN + "cn(isActive && 'flex');",
 	// Non-empty ternary branches.
@@ -2471,6 +2478,10 @@ t.test('no-conflicting-classes (duplicate detection)', (t) => {
 });
 
 const NO_CONFLICTING_NS_VALID = [
+	// Class prefixes named like `Object.prototype` members are no known
+	// Tailwind families.
+	IMPORT +
+		"sv({ base: '__defineGetter__-2 toString constructor-4 hasOwnProperty' });",
 	// Single namespaced utility — nothing to conflict with.
 	IMPORT + "sv({ base: 'w-100' });",
 	// Single-word utilities have no namespace and are skipped.
