@@ -1,4 +1,4 @@
-import type { Rule, Scope, SourceCode } from 'eslint';
+import type { Rule, SourceCode } from 'eslint';
 import type {
 	CallExpression,
 	Identifier,
@@ -8,13 +8,6 @@ import type {
 import { type CallMatch, matchCnCall, matchSvCall } from './call-matching.ts';
 import { findVariable, resolveStaticValueFrom } from './const-bindings.ts';
 import { createStyledContext, type StyledContext } from './styled-values.ts';
-
-/**
- * The scope an identifier is looked up from. Plain JS uses the node's own; a
- * Vue template expression, whose own scope never reaches the `<script>`
- * bindings it names, uses the script's module scope.
- */
-type ScopeOf = (node: Node) => Scope.Scope;
 
 // The tracked export each named-import local stands for, plus the locals bound
 // to a whole-module namespace import.
@@ -27,7 +20,7 @@ type TrackedNames = {
 type MatchContext = {
 	sourceCode: SourceCode;
 	names: TrackedNames;
-	scopeOf: ScopeOf;
+	scopeOf: StyledContext['scopeOf'];
 };
 
 const TRACKED_EXPORTS = new Set(['sv', 'cn', 'createSV']);
@@ -260,33 +253,33 @@ export const createTrackedCallResolver = (context: Rule.RuleContext) => {
 	const hasTrackedImports = (): boolean =>
 		names.exportByLocal.size > 0 || names.namespaceNames.size > 0;
 
-	// A classifier whose identifiers are looked up from the given scopes.
-	const matchCallFrom =
-		(scopeOf: ScopeOf) =>
-		(node: CallExpression): CallMatch | null => {
-			if (!hasTrackedImports()) {
-				return null;
-			}
+	// A context whose identifiers are looked up from the given scopes.
+	const contextFrom = (scopeOf: StyledContext['scopeOf']): StyledContext => {
+		const { sourceCode } = context;
 
-			return matchTrackedCall(
-				{ sourceCode: context.sourceCode, names, scopeOf },
-				node
-			);
-		};
+		return createStyledContext(
+			sourceCode,
+			(node) => {
+				if (!hasTrackedImports()) {
+					return null;
+				}
 
-	return { importsTracker, matchCallFrom };
+				return matchTrackedCall({ sourceCode, names, scopeOf }, node);
+			},
+			scopeOf
+		);
+	};
+
+	return { importsTracker, contextFrom };
 };
 
 export const createTrackedCallListeners = (
 	context: Rule.RuleContext,
 	onCall: (node: CallExpression, call: CallMatch, ctx: StyledContext) => void
 ) => {
-	const { importsTracker, matchCallFrom } =
-		createTrackedCallResolver(context);
+	const { importsTracker, contextFrom } = createTrackedCallResolver(context);
 	const { sourceCode } = context;
-	const ctx = createStyledContext(sourceCode, matchCallFrom, (node) =>
-		sourceCode.getScope(node)
-	);
+	const ctx = contextFrom((node) => sourceCode.getScope(node));
 
 	return {
 		ImportDeclaration(node: ImportDeclaration) {

@@ -135,13 +135,11 @@ export type StyledContext = {
 
 export const createStyledContext = (
 	sourceCode: SourceCode,
-	matchCallFrom: (
-		scopeOf: StyledContext['scopeOf']
-	) => StyledContext['matchCall'],
+	matchCall: StyledContext['matchCall'],
 	scopeOf: StyledContext['scopeOf']
 ): StyledContext => ({
 	sourceCode,
-	matchCall: matchCallFrom(scopeOf),
+	matchCall,
 	scopeOf,
 	resolve: (node) => resolveStaticValueFrom(node, sourceCode, scopeOf(node))
 });

@@ -36,7 +36,6 @@ import {
 	isClassListCall
 } from './restyle.ts';
 import {
-	createStyledContext,
 	getOverrideValue,
 	literalStyles,
 	resolveInvocation,
@@ -191,11 +190,8 @@ export const createForwardingScan = (
 	handlers: PositionHandlers
 ): ForwardingScan => {
 	const { sourceCode } = context;
-	const { importsTracker, matchCallFrom } =
-		createTrackedCallResolver(context);
-	const ctx = createStyledContext(sourceCode, matchCallFrom, (node) =>
-		sourceCode.getScope(node)
-	);
+	const { importsTracker, contextFrom } = createTrackedCallResolver(context);
+	const ctx = contextFrom((node) => sourceCode.getScope(node));
 	const forwarded = new Map<Component, ForwardedStyles>();
 	// Where a component's `class` prop can be read from: the binding a props
 	// pattern put it in, or an object holding the whole props — the props
@@ -221,11 +217,7 @@ export const createForwardingScan = (
 		if (templateCtx === null) {
 			const scope = moduleScope();
 
-			templateCtx = createStyledContext(
-				sourceCode,
-				matchCallFrom,
-				() => scope
-			);
+			templateCtx = contextFrom(() => scope);
 		}
 
 		return templateCtx;
