@@ -6606,6 +6606,17 @@ writeFixture(
 	`
 );
 
+// A barrel that imports first and re-exports the bindings: by name, and as
+// its default export.
+writeFixture(
+	'ui/relay.ts',
+	`import Chip, { Button } from './button.tsx';
+
+	export { Button as RelayedButton };
+	export default Chip;
+	`
+);
+
 // A component whose own file never calls sv().
 writeFixture(
 	'ui/plain.tsx',
@@ -6904,6 +6915,18 @@ const CROSS_FILE_INVALID = [
 		code: `import { Button } from './ui';\n<Button className="p-6" />;`,
 		filename: join(fixtureDir, 'page.tsx'),
 		errors: [restyle('p-6', 'p-2')]
+	},
+	{
+		// Through a barrel that re-exports an imported binding by name, and
+		// one it re-exports as its default.
+		code: `import { RelayedButton } from './ui/relay.ts';\n<RelayedButton className="p-6" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('p-6', 'p-2')]
+	},
+	{
+		code: `import Relayed from './ui/relay.ts';\n<Relayed className="p-8" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('p-8', 'p-2')]
 	},
 	{
 		// Through the barrel's `export *`, to a renamed export.

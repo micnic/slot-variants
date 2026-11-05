@@ -110,28 +110,10 @@ const getImportSource = (def: ImportDefinition): ImportSource | null => {
 };
 
 /**
- * The same-file function a component name resolves to — a function
+ * What a component name is bound to: a same-file function — a function
  * declaration, or a `const` bound to a function expression, possibly through a
- * wrapper call. Null for anything reached through an import, a `let`/`var`, or
- * a redeclared binding.
- */
-export const resolveComponentFunction = (
-	name: string,
-	scope: Scope.Scope
-): ComponentFunction | null => {
-	const def = findSingleDef(scope, name);
-
-	if (!def) {
-		return null;
-	}
-
-	return getDefComponentFunction(def);
-};
-
-/**
- * What a component name is bound to: a same-file function (as
- * `resolveComponentFunction` finds it) or the module and export name it is
- * imported from. Null for anything else.
+ * wrapper call — or the module and export name it is imported from. Null for
+ * anything else: a `let`/`var`, a redeclared binding, a namespace import.
  */
 export const resolveComponentBinding = (
 	name: string,

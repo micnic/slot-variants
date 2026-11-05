@@ -6,7 +6,7 @@ import type { Program } from 'estree';
 import {
 	type Component,
 	DEFAULT_EXPORT,
-	resolveComponentFunction
+	resolveComponentBinding
 } from './components.ts';
 import { createForwardingScan, type ForwardedStyles } from './forwarding.ts';
 import { type ExportTarget, findExportTargets } from './module-exports.ts';
@@ -321,11 +321,23 @@ const followExportTarget = (
 		return analysis.forwarded.get(target.node) ?? null;
 	}
 
-	const fn = resolveComponentFunction(target.name, analysis.moduleScope);
+	// A local name is a function declared here, or a binding this module
+	// imported and re-exports — followed on to the module it comes from.
+	const binding = resolveComponentBinding(target.name, analysis.moduleScope);
 
-	if (fn === null) {
+	if (binding === null) {
 		return null;
 	}
 
-	return analysis.forwarded.get(fn) ?? null;
+	if (binding.kind === 'local') {
+		return analysis.forwarded.get(binding.fn) ?? null;
+	}
+
+	return resolveImportedComponent(
+		binding.source.specifier,
+		binding.source.exportName,
+		path,
+		moduleContext,
+		seen
+	);
 };
