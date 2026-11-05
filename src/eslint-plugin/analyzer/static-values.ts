@@ -45,15 +45,7 @@ const reportDynamic = (context: Rule.RuleContext, node: Node) => {
 // top-level-only concern and deliberately dropped.
 const branchOptions = (
 	options: StaticClassValueOptions
-): StaticClassValueOptions => {
-	const branch: StaticClassValueOptions = { cnStyle: options.cnStyle };
-
-	if (options.isStyled) {
-		branch.isStyled = options.isStyled;
-	}
-
-	return branch;
-};
+): StaticClassValueOptions => ({ ...options, allowUndefined: false });
 
 // Like forEachStaticItem, but spreads
 // are reported as dynamic rather than skipped.
@@ -88,8 +80,9 @@ const checkConditionalClassValue = (
 		return false;
 	}
 
+	const nested = branchOptions(options);
 	const isBranch = forEachCnBranch(node, (branch) => {
-		checkClassValueIsStatic(context, branch, branchOptions(options));
+		checkClassValueIsStatic(context, branch, nested);
 	});
 
 	if (isBranch) {
@@ -104,13 +97,15 @@ const checkArrayClassValue = (
 	node: ArrayExpression,
 	options: StaticClassValueOptions
 ) => {
+	const nested = branchOptions(options);
+
 	forEachItemReportingSpread(context, node.elements, (element) => {
 		if (!options.cnStyle && element.type === 'ArrayExpression') {
 			reportDynamic(context, element);
 			return;
 		}
 
-		checkClassValueIsStatic(context, element, branchOptions(options));
+		checkClassValueIsStatic(context, element, nested);
 	});
 };
 
