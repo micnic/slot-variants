@@ -4,9 +4,7 @@ import { type ListItems, makeListFix } from './list-fix.ts';
 import {
 	canHoistAsLiteral,
 	getQuoteChar,
-	getRawLiteralTokens,
-	getStaticStringText,
-	splitClassTokens
+	getRawLiteralTokens
 } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
@@ -606,29 +604,25 @@ const planSingleKeyCompoundFix = (
 	matcher: SingleMatcher,
 	variantValue: Node,
 	siblingElements: ListItems
-): EntryListFixer | null => {
-	const clsText = getStaticStringText(matcher.cls);
+): EntryListFixer | undefined => {
+	// Raw tokens, like the other shared-tokens fixers: the rewrite diffs and
+	// re-emits source text, never cooked values.
+	const clsTokens = getRawLiteralTokens(context.sourceCode, matcher.cls);
 
-	if (clsText === null) {
-		return null;
-	}
-
-	const clsTokens = splitClassTokens(clsText);
-
-	if (clsTokens.length === 0) {
-		return null;
+	if (clsTokens === null || clsTokens.length === 0) {
+		return undefined;
 	}
 
 	const matcherValues = getStaticMatcherValues(matcher.value);
 
 	if (!matcherValues) {
-		return null;
+		return undefined;
 	}
 
 	const valueEntries = getStrictProperties(variantValue);
 
 	if (!valueEntries) {
-		return null;
+		return undefined;
 	}
 
 	const rewrites: LiteralRewrite[] = [];
@@ -637,7 +631,7 @@ const planSingleKeyCompoundFix = (
 		const targetNode = valueEntries.get(value);
 
 		if (!targetNode) {
-			return null;
+			return undefined;
 		}
 
 		// The compound's class tokens merge into each target literal; one that
@@ -645,7 +639,7 @@ const planSingleKeyCompoundFix = (
 		const rewrite = planAppendRewrite(context, targetNode, clsTokens);
 
 		if (!rewrite) {
-			return null;
+			return undefined;
 		}
 
 		rewrites.push(rewrite);
@@ -694,7 +688,7 @@ const checkCompoundEntryForSingleKey = (
 		return;
 	}
 
-	let fix: EntryListFixer | null = null;
+	let fix: EntryListFixer | undefined;
 
 	if (kind === 'compoundVariants') {
 		fix = planSingleKeyCompoundFix(
@@ -714,7 +708,7 @@ const checkCompoundEntryForSingleKey = (
 			key: matcher.key,
 			value: context.sourceCode.getText(matcher.value)
 		},
-		fix: fix ?? undefined
+		fix
 	});
 };
 
