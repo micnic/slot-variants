@@ -253,12 +253,7 @@ export const resolveImportedComponent = (
 		return null;
 	}
 
-	const path = resolveModulePath(
-		specifier,
-		fromFile,
-		moduleContext.aliases,
-		moduleContext.cwd
-	);
+	const path = resolveModulePath(specifier, fromFile, moduleContext.aliases);
 
 	if (path === null) {
 		return null;

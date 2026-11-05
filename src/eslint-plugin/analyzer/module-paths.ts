@@ -113,8 +113,7 @@ const applyAlias = (specifier: string, aliases: AliasMap): string | null => {
 export const resolveModulePath = (
 	specifier: string,
 	fromFile: string,
-	aliases: AliasMap,
-	cwd: string
+	aliases: AliasMap
 ): string | null => {
 	if (isRelative(specifier)) {
 		return resolveFile(resolve(dirname(fromFile), specifier));
@@ -130,7 +129,8 @@ export const resolveModulePath = (
 		return null;
 	}
 
-	return resolveFile(resolve(cwd, aliased));
+	// Alias targets are already absolute; resolving only normalizes the path.
+	return resolveFile(resolve(aliased));
 };
 
 /** The `alias` option, with each target normalized against `cwd`. */
