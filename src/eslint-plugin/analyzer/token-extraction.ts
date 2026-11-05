@@ -83,9 +83,8 @@ const pushTokensFromText = (
 	}
 };
 
-// Exported for `no-restyle`, which tokenizes raw class text that no estree
-// string literal covers: template quasis around a substitution, and the text
-// runs of a Svelte `class` attribute.
+// Exported for `no-restyle`, which tokenizes markup class text that no estree
+// string literal covers, like the text runs of a Svelte `class` attribute.
 export const pushBaseTokensFromText = (
 	text: string,
 	base: number,
@@ -133,6 +132,37 @@ const pushLiteralTokens = (
 	// String/template delimiters are single-char, so start offset + 1 is the
 	// first inner character.
 	pushTokensFromText(raw, range[0] + 1, slot, source, entries);
+};
+
+// The tokens of a template's quasis, the classes around its substitutions.
+// Callers make sure no token straddles a substitution.
+const pushQuasiTokens = (
+	node: TemplateLiteral,
+	slot: string,
+	source: Source,
+	entries: Entry[],
+	sourceCode: SourceCode
+) => {
+	for (const quasi of node.quasis) {
+		pushLiteralTokens(
+			quasi.value.raw,
+			quasi.value.cooked,
+			sourceCode.getRange(quasi),
+			slot,
+			source,
+			entries
+		);
+	}
+};
+
+// Exported for `no-restyle`, which reads the literal classes of a template
+// whose substitutions aren't static, so no other extraction covers them.
+export const pushBaseQuasiTokens = (
+	node: TemplateLiteral,
+	entries: Entry[],
+	sourceCode: SourceCode
+) => {
+	pushQuasiTokens(node, 'base', baseSource, entries, sourceCode);
 };
 
 const pushStringLiteralTokens = (
@@ -288,16 +318,7 @@ const extractTernaryTemplateTokens = (
 ) => {
 	const { slot, source, entries, sourceCode } = context;
 
-	for (const quasi of node.quasis) {
-		pushLiteralTokens(
-			quasi.value.raw,
-			quasi.value.cooked,
-			sourceCode.getRange(quasi),
-			slot,
-			source,
-			entries
-		);
-	}
+	pushQuasiTokens(node, slot, source, entries, sourceCode);
 
 	for (const expression of node.expressions) {
 		extractTokens(expression, context, true);

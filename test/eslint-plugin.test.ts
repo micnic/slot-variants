@@ -6324,6 +6324,14 @@ cn(classes.item({ active: true }), 'px-4');`,
 			'const c = card();\n<div className={`${c.base} p-4`} />;',
 		errors: [restyle('p-4', 'p-2')]
 	},
+	// An escape in the template text is read as the browser sees it.
+	{
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_CARD +
+			'const c = card();\n<div className={`${c.base} p\\x2d4`} />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
 	{
 		code:
 			IMPORT_SV_CN +

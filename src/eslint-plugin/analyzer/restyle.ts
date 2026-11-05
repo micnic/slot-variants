@@ -1,10 +1,9 @@
-import type { Rule, SourceCode } from 'eslint';
+import type { Rule } from 'eslint';
 import type {
 	CallExpression,
 	Identifier,
 	MemberExpression,
-	Node,
-	TemplateLiteral
+	Node
 } from 'estree';
 import {
 	areConflictingKeys,
@@ -24,7 +23,7 @@ import {
 import {
 	extractCnTokens,
 	forEachStaticItem,
-	pushBaseTokensFromText
+	pushBaseQuasiTokens
 } from './token-extraction.ts';
 import {
 	areExclusiveMatchers,
@@ -61,25 +60,6 @@ export const emptyParts = (): ClassParts => ({
 	dynamic: [],
 	merged: false
 });
-
-// Template quasis carry classes no string literal covers, so their text is
-// tokenized directly. `hasIsolatedQuasis` has already established that every
-// substitution is whitespace-separated, so no token straddles a boundary.
-const pushQuasiTokens = (
-	node: TemplateLiteral,
-	literals: Entry[],
-	sourceCode: SourceCode
-) => {
-	for (const quasi of node.quasis) {
-		// Template delimiters are single-char on both sides of a quasi, so
-		// start offset + 1 is its first inner character.
-		pushBaseTokensFromText(
-			quasi.value.raw,
-			sourceCode.getRange(quasi)[0] + 1,
-			literals
-		);
-	}
-};
 
 /**
  * A config-less `sv()`/`cn()` call: a class list in its own right, whose
@@ -174,8 +154,9 @@ export const collectParts = (
 		resolved.type === 'TemplateLiteral' &&
 		resolved.expressions.length > 0
 	) {
+		// Substitutions are whitespace-separated, so no token straddles one.
 		if (hasIsolatedQuasis(resolved)) {
-			pushQuasiTokens(resolved, parts.literals, ctx.sourceCode);
+			pushBaseQuasiTokens(resolved, parts.literals, ctx.sourceCode);
 
 			for (const expression of resolved.expressions) {
 				collectParts(expression, ctx, parts);
