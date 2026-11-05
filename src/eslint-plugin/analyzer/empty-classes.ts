@@ -16,7 +16,8 @@ import {
 type EmptyConfigChecker = (
 	context: Rule.RuleContext,
 	value: Node,
-	remove: EmptyFix
+	remove: EmptyFix,
+	key: string
 ) => void;
 
 type ValueVisitor = (value: Node) => void;
@@ -255,34 +256,37 @@ const isEmptyContainer = (value: Node): boolean => {
 // selections and slot/variant name lists. Empty, each is inert: it reads as
 // configuration but changes nothing about the output, so it's reported to be
 // removed rather than left to look meaningful.
-const checkEmptyConfigContainer =
-	(key: string): EmptyConfigChecker =>
-	(context, value, remove) => {
-		if (!isEmptyContainer(value)) {
-			return;
-		}
+const checkEmptyConfigContainer: EmptyConfigChecker = (
+	context,
+	value,
+	remove,
+	key
+) => {
+	if (!isEmptyContainer(value)) {
+		return;
+	}
 
-		context.report({
-			node: value,
-			messageId: 'emptyConfig',
-			data: { key },
-			fix: remove
-		});
-	};
+	context.report({
+		node: value,
+		messageId: 'emptyConfig',
+		data: { key },
+		fix: remove
+	});
+};
 
 const svEmptyConfigValueCheckers: Record<string, EmptyConfigChecker> = {
 	base: (context, node, remove) => {
 		visitForEmptyClasses(context, node, false, remove);
 	},
 	slots: checkSlotsForEmpty,
-	groups: checkEmptyConfigContainer('groups'),
+	groups: checkEmptyConfigContainer,
 	variants: checkVariantsForEmpty,
 	compoundVariants: checkCompoundsForEmpty,
 	compoundSlots: checkCompoundsForEmpty,
-	defaultVariants: checkEmptyConfigContainer('defaultVariants'),
-	requiredVariants: checkEmptyConfigContainer('requiredVariants'),
-	multiSlots: checkEmptyConfigContainer('multiSlots'),
-	presets: checkEmptyConfigContainer('presets')
+	defaultVariants: checkEmptyConfigContainer,
+	requiredVariants: checkEmptyConfigContainer,
+	multiSlots: checkEmptyConfigContainer,
+	presets: checkEmptyConfigContainer
 };
 
 // A `createSV()` factory config may carry a spread or computed key (reported
@@ -309,7 +313,8 @@ export const checkConfigForEmptyClasses = (
 			checker(
 				context,
 				prop.value,
-				makeListFix(context, prop, config.properties)
+				makeListFix(context, prop, config.properties),
+				key
 			);
 		}
 	}
