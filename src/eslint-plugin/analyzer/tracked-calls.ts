@@ -159,6 +159,8 @@ const resolveIdentifierExportName = (
 
 // The export a call names, either as a namespace member (`SV.sv(…)`) or through
 // a named import read via same-file `const` aliases (`const cx = cn; cx(…)`).
+// A callee bound to a `createSV(...)` call is a pre-configured `sv()`, so it
+// names `sv` and its call sites are analyzed exactly like `sv()` calls.
 const resolveExportName = (
 	match: MatchContext,
 	node: CallExpression
@@ -175,11 +177,18 @@ const resolveExportName = (
 
 	const resolved = resolve(match, node.callee);
 
-	if (resolved.type !== 'Identifier') {
-		return null;
+	if (resolved.type === 'Identifier') {
+		return resolveIdentifierExportName(match, resolved);
 	}
 
-	return resolveIdentifierExportName(match, resolved);
+	if (
+		resolved.type === 'CallExpression' &&
+		resolveExportName(match, resolved) === 'createSV'
+	) {
+		return 'sv';
+	}
+
+	return null;
 };
 
 // The `createSV(defaults)` call itself: its sole argument is unambiguously the
@@ -225,46 +234,19 @@ const matchExportCall = (
 	return null;
 };
 
-// Classifies a call as sv/cn-style, reading the callee through same-file
-// `const` aliases. A namespace member call (`SV.sv(…)`) or direct import names
-// its export outright; a callee resolving to a `createSV(...)`-initialized
-// binding is treated like `sv`. Null for anything untracked.
+// Classifies a call as sv/cn-style by the export its callee names. Null for
+// anything untracked.
 const matchTrackedCall = (
 	match: MatchContext,
 	node: CallExpression
 ): CallMatch | null => {
-	const namespaceExport = resolveNamespaceExportName(match, node);
+	const exportName = resolveExportName(match, node);
 
-	if (namespaceExport !== null) {
-		return matchExportCall(match, node, namespaceExport);
-	}
-
-	if (node.callee.type !== 'Identifier') {
+	if (exportName === null) {
 		return null;
 	}
 
-	const resolved = resolve(match, node.callee);
-
-	if (resolved.type === 'Identifier') {
-		const exportName = resolveIdentifierExportName(match, resolved);
-
-		if (exportName === null) {
-			return null;
-		}
-
-		return matchExportCall(match, node, exportName);
-	}
-
-	// A `const button = createSV(...)` binding is a pre-configured `sv()`, so
-	// its call sites are analyzed exactly like `sv()` calls.
-	if (
-		resolved.type === 'CallExpression' &&
-		resolveExportName(match, resolved) === 'createSV'
-	) {
-		return matchSvCall(node, match.sourceCode);
-	}
-
-	return null;
+	return matchExportCall(match, node, exportName);
 };
 
 // The import tracker plus an on-demand classifier, for rules that need to ask
