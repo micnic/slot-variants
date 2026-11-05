@@ -235,12 +235,7 @@ type MultiSlotFnProps<
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
 	P extends MaybePresets<S, G, V>
-> = Prettify<
-	P extends undefined
-		? PartialNullable<VariantPropsInternal<S, G, V>>
-		: PresetVariantProps<S, G, V, P>
-> &
-	EitherClassProp<ClassValue, true>;
+> = VariantArgs<S, G, V, P, false> & EitherClassProp<ClassValue, true>;
 
 type DefaultVariantValue<
 	S extends MaybeSlots,
@@ -335,7 +330,7 @@ type VariantPropsWithRequired<
 		RequiredVariantKeys<V, R>
 	>;
 
-type Props<
+type VariantArgs<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
@@ -345,8 +340,15 @@ type Props<
 	P extends undefined
 		? VariantPropsWithRequired<S, G, V, R>
 		: PresetVariantProps<S, G, V, P>
-> &
-	ClassProp<S, G, ClassValue>;
+>;
+
+type Props<
+	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
+	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, G, V>,
+	R extends RequiredVariants<V>
+> = VariantArgs<S, G, V, P, R> & ClassProp<S, G, ClassValue>;
 
 export type Config<
 	S extends MaybeSlots,
