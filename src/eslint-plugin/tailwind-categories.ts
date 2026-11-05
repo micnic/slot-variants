@@ -1581,22 +1581,98 @@ const SEGMENT_OVERLAP_NODES: ReadonlySet<string> = new Set([
 // Prefixes classified by axisSpec whose bare form sets all axes: the category
 // picks between the whole-property node and a per-axis node.
 // `scale`/`skew` are deliberately excluded: unlike `gap`/`overflow`/
-// `overscroll`, tailwind-merge does not treat the bare form as conflicting
-// with its `-x`/`-y` siblings (they compose as independent per-axis
-// overrides). `translate` and `inset` are axis families too, but their
-// dedicated handlers below cover their extra nodes and fall back to the same
-// per-axis naming.
+// `overscroll`/`translate`/`inset`, tailwind-merge does not treat the bare
+// form as conflicting with its `-x`/`-y` siblings (they compose as
+// independent per-axis overrides). `translate` and `inset` have extra nodes
+// of their own in `CATEGORY_OVERLAP_NODES`, consulted first.
 const AXIS_OVERLAP_PREFIXES: ReadonlySet<string> = new Set([
 	'gap',
 	'overflow',
-	'overscroll'
+	'overscroll',
+	'translate',
+	'inset'
 ]);
 
-// The scroll-margin/scroll-padding categories of the `scroll` prefix spec —
-// the only `scroll-*` utilities with a shorthand overlap.
-const SCROLL_SPACING_CATEGORIES: ReadonlySet<string> = new Set(
-	SPACING_OVERLAP_NODES
-);
+// Segment -> category -> overlap node, for the families whose node is a
+// plain lookup of the value category. A category missing here falls through
+// to the per-axis naming for an `AXIS_OVERLAP_PREFIXES` family, and to no node
+// otherwise.
+const CATEGORY_OVERLAP_NODES: ReadonlyMap<
+	string,
+	ReadonlyMap<string, string>
+> = new Map([
+	// `translate-none` resets every axis including `z`, unlike the bare form
+	// (which only reaches `x`/`y` through the generic axis handling) — see
+	// `translateSpec` and the `translate-none` entry in `OVERLAP_COVERS`.
+	[
+		'translate',
+		new Map([
+			['none', 'translate-none'],
+			['z', 'translate-z']
+		])
+	],
+	// `inset-s`/`inset-e` are tailwind-merge's own aliases for the standalone
+	// `start`/`end` utilities (the very same classGroup), so they resolve to
+	// those nodes directly rather than the generic per-axis naming.
+	[
+		'inset',
+		new Map([
+			['s', 'start'],
+			['e', 'end']
+		])
+	],
+	// The scroll-margin/scroll-padding categories of the `scroll` prefix spec
+	// — the only `scroll-*` utilities with a shorthand overlap.
+	[
+		'scroll',
+		new Map(
+			SPACING_OVERLAP_NODES.map((category) => [
+				category,
+				`scroll-${category}`
+			])
+		)
+	],
+	// The `flex` sizing values (`flex-1`, `flex-auto`, `flex-none`) overlap
+	// grow/shrink/basis; the direction and wrap categories don't. A v3
+	// longhand (`flex-grow-0`) resolves to the same node as its standalone
+	// spelling (`grow-0`), so the two are one conflict group.
+	[
+		'flex',
+		new Map([
+			['flex', 'flex-sizing'],
+			['grow-value', 'grow'],
+			['shrink-value', 'shrink'],
+			['basis-value', 'basis']
+		])
+	],
+	// A font-size utility always overlaps its sibling sizes, and — only when
+	// it carries a `/leading` postfix modifier (see `getConflictKey`) — the
+	// separate `leading-*` utility too, since the modifier sets line-height
+	// directly.
+	[
+		'text',
+		new Map([
+			['overflow', 'text-overflow'],
+			['size', 'text-size']
+		])
+	],
+	// `line-clamp-*` sets display and overflow as a side effect (see
+	// `OVERLAP_COVERS['line-clamp']`); `line-through` and other `line-*`
+	// categories take no part in the overlap graph.
+	['line', new Map([['clamp-value', 'line-clamp']])],
+	// `touch-none`/`touch-auto`/`touch-manipulation` overlap the `pan`/`pinch`
+	// sub-utilities; the other pan directions (`left`/`right`/`up`/`down`)
+	// compose instead of conflicting, so they're left unconnected.
+	[
+		'touch',
+		new Map([
+			['base', 'touch'],
+			['pan-x', 'touch-x'],
+			['pan-y', 'touch-y'],
+			['pinch', 'touch-pz']
+		])
+	]
+]);
 
 const getAxisOverlapNode = (
 	segment: string,
@@ -1656,131 +1732,12 @@ const getBorderOverlapNode = (category: string): string | null => {
 	return null;
 };
 
-// `translate-none` resets every axis including `z`, unlike the bare form
-// (which only reaches `x`/`y` through the generic axis handling) — see
-// `translateSpec` and the `translate-none` entry in `OVERLAP_COVERS`.
-const getTranslateOverlapNode = (category: string): string | null => {
-	if (category === 'none') {
-		return 'translate-none';
-	}
-
-	if (category === 'z') {
-		return 'translate-z';
-	}
-
-	return getAxisOverlapNode('translate', category);
-};
-
-const getScrollOverlapNode = (category: string): string | null => {
-	if (SCROLL_SPACING_CATEGORIES.has(category)) {
-		return `scroll-${category}`;
-	}
-
-	return null;
-};
-
-// The `flex` sizing values (`flex-1`, `flex-auto`, `flex-none`) overlap
-// grow/shrink/basis; the direction and wrap categories don't. A v3 longhand
-// (`flex-grow-0`) resolves to the same node as its standalone spelling
-// (`grow-0`), so the two are one conflict group.
-const getFlexOverlapNode = (category: string): string | null => {
-	if (category === 'flex') {
-		return 'flex-sizing';
-	}
-
-	if (category === 'grow-value') {
-		return 'grow';
-	}
-
-	if (category === 'shrink-value') {
-		return 'shrink';
-	}
-
-	if (category === 'basis-value') {
-		return 'basis';
-	}
-
-	return null;
-};
-
-// A font-size utility always overlaps its sibling sizes, and — only when it
-// carries a `/leading` postfix modifier (see `getConflictKey`) — the
-// separate `leading-*` utility too, since the modifier sets line-height
-// directly.
-const getTextOverlapNode = (category: string): string | null => {
-	if (category === 'overflow') {
-		return 'text-overflow';
-	}
-
-	if (category === 'size') {
-		return 'text-size';
-	}
-
-	return null;
-};
-
-// `line-clamp-*` sets display and overflow as a side effect (see
-// `OVERLAP_COVERS['line-clamp']`); `line-through` and other `line-*`
-// categories take no part in the overlap graph.
-const getLineOverlapNode = (category: string): string | null => {
-	if (category === 'clamp-value') {
-		return 'line-clamp';
-	}
-
-	return null;
-};
-
-// `touch-none`/`touch-auto`/`touch-manipulation` overlap the `pan`/`pinch`
-// sub-utilities; the other pan directions (`left`/`right`/`up`/`down`)
-// compose instead of conflicting, so they're left unconnected.
-const getTouchOverlapNode = (category: string): string | null => {
-	if (category === 'base') {
-		return 'touch';
-	}
-
-	if (category === 'pan-x') {
-		return 'touch-x';
-	}
-
-	if (category === 'pan-y') {
-		return 'touch-y';
-	}
-
-	if (category === 'pinch') {
-		return 'touch-pz';
-	}
-
-	return null;
-};
-
-// `inset-s`/`inset-e` are tailwind-merge's own aliases for the standalone
-// `start`/`end` utilities (the very same classGroup), so they resolve to
-// those nodes directly rather than the generic per-axis naming.
-const getInsetOverlapNode = (category: string): string | null => {
-	if (category === 's') {
-		return 'start';
-	}
-
-	if (category === 'e') {
-		return 'end';
-	}
-
-	return getAxisOverlapNode('inset', category);
-};
-
 const SEGMENT_OVERLAP_HANDLERS: ReadonlyMap<
 	string,
 	(category: string) => string | null
 > = new Map([
-	['translate', getTranslateOverlapNode],
 	['rounded', getRoundedOverlapNode],
-	['border', getBorderOverlapNode],
-	['scroll', getScrollOverlapNode],
-	['flex', getFlexOverlapNode],
-	['text', getTextOverlapNode],
-	['line', getLineOverlapNode],
-	['touch', getTouchOverlapNode],
-	['inset', getInsetOverlapNode]
+	['border', getBorderOverlapNode]
 ]);
 
 // The overlap node for a token's conflict group, or null when the token takes
@@ -1788,6 +1745,12 @@ const SEGMENT_OVERLAP_HANDLERS: ReadonlyMap<
 const getOverlapNode = (segment: string, category: string): string | null => {
 	if (SEGMENT_OVERLAP_NODES.has(segment)) {
 		return segment;
+	}
+
+	const categoryNode = CATEGORY_OVERLAP_NODES.get(segment)?.get(category);
+
+	if (categoryNode !== undefined) {
+		return categoryNode;
 	}
 
 	const handler = SEGMENT_OVERLAP_HANDLERS.get(segment);
