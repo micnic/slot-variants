@@ -2018,6 +2018,38 @@ const NO_EMPTY_CLASSES_INVALID = [
 		code: IMPORT_CN + "cn('flex', isActive && '');",
 		output: IMPORT_CN + "cn('flex');",
 		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// Empty string in one ternary branch alongside another arg — removing
+		// the whole arg would drop the other branch's classes, so no fix.
+		code: IMPORT_CN + "cn('flex', isActive ? '' : 'foo');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// The same, with the empty string in the alternate branch.
+		code: IMPORT_CN + "cn('flex', isActive ? 'foo' : '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// The same, as an array element.
+		code: IMPORT_CN + "cn(['flex', isActive ? '' : 'foo']);",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// Empty string in both ternary branches alongside another arg — the
+		// arg applies no classes either way, so it's removed on --fix.
+		code: IMPORT_CN + "cn('flex', isActive ? '' : '');",
+		output: IMPORT_CN + "cn('flex');",
+		errors: [{ messageId: 'emptyString' }, { messageId: 'emptyString' }]
+	},
+	{
+		// A `const` empty-string alias counts as an empty branch.
+		code: IMPORT_CN + "const none = '';\ncn('flex', isActive ? none : '');",
+		output: IMPORT_CN + "const none = '';\ncn('flex');",
+		errors: [{ messageId: 'emptyString' }, { messageId: 'emptyString' }]
 	}
 ];
 

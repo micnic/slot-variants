@@ -25,6 +25,32 @@ type ValueVisitor = (value: Node) => void;
 const isEmptyStringNode = (node: Node): boolean =>
 	getStaticStringText(node) === '';
 
+const resolvesToEmptyString = (context: Rule.RuleContext, node: Node) =>
+	isEmptyStringNode(resolveStaticValue(node, context.sourceCode));
+
+// The fix a cn-style branch inherits, which removes the whole enclosing
+// argument or element. An `&&` applies classes only through its right
+// operand, so it always inherits it; a ternary only when both branches are
+// empty — otherwise the removal would drop the other branch's classes.
+const getBranchFix = (
+	context: Rule.RuleContext,
+	node: Node,
+	fix: EmptyFix | undefined
+): EmptyFix | undefined => {
+	if (node.type !== 'ConditionalExpression') {
+		return fix;
+	}
+
+	if (
+		resolvesToEmptyString(context, node.consequent) &&
+		resolvesToEmptyString(context, node.alternate)
+	) {
+		return fix;
+	}
+
+	return undefined;
+};
+
 const shouldReportEmptyString = (
 	node: Node,
 	allowEmptyString: boolean
@@ -84,12 +110,16 @@ export const visitForEmptyClasses = (
 		return;
 	}
 
-	// The same `fix` removes the whole enclosing argument or element,
-	// whichever branch reported.
 	const isBranch =
 		cnStyle &&
 		forEachCnBranch(node, (branch) => {
-			visitForEmptyClasses(context, branch, false, fix, true);
+			visitForEmptyClasses(
+				context,
+				branch,
+				false,
+				getBranchFix(context, node, fix),
+				true
+			);
 		});
 
 	if (isBranch) {
