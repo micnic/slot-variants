@@ -89,6 +89,8 @@ export type VariantData = {
 	unsetId: number;
 	stride: number;
 	values: NormalizedVariantValues;
+	defaultValue: RuntimeDefaultVariant;
+	inherited: boolean;
 };
 
 export type CacheValue = string | Record<string, string>;

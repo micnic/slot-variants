@@ -84,6 +84,7 @@ type CompiledRunContext = {
 	resolvePreset: ResolvePreset;
 	missingVariant: typeof createMissingVariantError;
 	invalidValue: typeof createInvalidValueError;
+	hasOwn: typeof hasOwn;
 };
 
 type ResolvedVariant = {
@@ -123,13 +124,25 @@ const resolvePresetValues = (
 	return presets[presetName];
 };
 
+// Props and presets are plain objects, so a variant named like an
+// `Object.prototype` member (`toString`) is read as an own property only.
+const readVariantState = <T>(
+	state: Record<string, T>,
+	variant: VariantData
+): T | undefined => {
+	if (variant.inherited && !hasOwn(state, variant.key)) {
+		return undefined;
+	}
+
+	return state[variant.key];
+};
+
 const resolveVariantValue = (
-	defaultVariants: Record<string, RuntimeDefaultVariant>,
-	variantKey: string,
+	variant: VariantData,
 	props: RuntimeVariantState,
 	presetValues: ResolvedVariantState | undefined
 ) => {
-	const propValue = props[variantKey];
+	const propValue = readVariantState(props, variant);
 
 	if (propValue === null) {
 		return undefined;
@@ -139,14 +152,16 @@ const resolveVariantValue = (
 		return propValue;
 	}
 
-	const presetValue = presetValues?.[variantKey];
+	if (presetValues !== undefined) {
+		const presetValue = readVariantState(presetValues, variant);
 
-	// Check if preset value is defined, it takes precedence over default value.
-	if (presetValue !== undefined) {
-		return presetValue;
+		// A defined preset value takes precedence over the default value.
+		if (presetValue !== undefined) {
+			return presetValue;
+		}
 	}
 
-	const defaultValue = defaultVariants[variantKey];
+	const { defaultValue } = variant;
 
 	// Check for function default value, to evaluate it with the current props.
 	if (typeof defaultValue === 'function') {
@@ -366,12 +381,22 @@ const getVariantSource = (
 	index: number
 ) => {
 	const key = JSON.stringify(variant.key);
-	const defaultValue = config.defaultVariants[variant.key];
+	const { defaultValue } = variant;
 	const value = `v${index}`;
 	const fallbacks: string[] = [];
 
+	// Only a variant named like an `Object.prototype` member pays for an
+	// own-property check; every other read stays a plain lookup.
+	let propRead = `let ${value} = p[${key}];`;
+	let presetCheck = 'pv !== undefined';
+
+	if (variant.inherited) {
+		propRead = `let ${value}; if (hasOwn(p, ${key})) ${value} = p[${key}];`;
+		presetCheck += ` && hasOwn(pv, ${key})`;
+	}
+
 	if (keys(config.presets).length > 0) {
-		fallbacks.push(`if (pv !== undefined) ${value} = pv[${key}];`);
+		fallbacks.push(`if (${presetCheck}) ${value} = pv[${key}];`);
 	}
 
 	if (defaultValue !== undefined) {
@@ -392,7 +417,7 @@ const getVariantSource = (
 	);
 
 	return [
-		`let ${value} = p[${key}];`,
+		propRead,
 		`if (${value} === undefined) { ${fallbacks.join(' ')} } else if (${value} === null) { ${value} = undefined; }`,
 		`let i${index};`,
 		`switch (${value}) { ${cases.join(' ')} }`
@@ -557,7 +582,7 @@ const getResultSource = (config: CompiledConfig, plan: RunPlan) => {
  * built by concatenating precomputed class name fragments.
  */
 const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
-	const { variantData, defaultVariants } = config;
+	const { variantData } = config;
 	const variantSources = plan.variants.map((variant, index) =>
 		getVariantSource(config, variant, index)
 	);
@@ -566,17 +591,17 @@ const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 		(_table, index) => `const t${index} = t[${index}];`
 	);
 
-	variantData.forEach(({ key }, index) => {
+	variantData.forEach(({ defaultValue }, index) => {
 		locals.push(`const ids${index} = valueIds[${index}];`);
 
-		if (typeof defaultVariants[key] === 'function') {
+		if (typeof defaultValue === 'function') {
 			locals.push(`const d${index} = d[${index}];`);
 		}
 	});
 
 	return [
 		'"use strict";',
-		'const { cache, cacheReturn, defaults: d, valueIds, tables: t, merge, postProcess: pp, resolvePreset, missingVariant, invalidValue } = ctx;',
+		'const { cache, cacheReturn, defaults: d, valueIds, tables: t, merge, postProcess: pp, resolvePreset, missingVariant, invalidValue, hasOwn } = ctx;',
 		...locals,
 		'return (p) => {',
 		'const pv = resolvePreset(p.preset);',
@@ -598,12 +623,7 @@ const resolveVariants = (
 	const presetValues = resolvePresetValues(config.presets, props.preset);
 
 	return plan.variants.map((variant) => {
-		const value = resolveVariantValue(
-			config.defaultVariants,
-			variant.data.key,
-			props,
-			presetValues
-		);
+		const value = resolveVariantValue(variant.data, props, presetValues);
 
 		let id = variant.undefinedId;
 
@@ -754,9 +774,7 @@ export const createRun = (config: CompiledConfig): RunFn => {
 	const context: CompiledRunContext = {
 		cache: config.cache,
 		cacheReturn: config.cacheReturn,
-		defaults: config.variantData.map(
-			({ key }) => config.defaultVariants[key]
-		),
+		defaults: config.variantData.map(({ defaultValue }) => defaultValue),
 		valueIds: config.variantData.map(({ valueIds }) => valueIds),
 		tables: plan.tables,
 		merge: (raw, classProp) => mergeClassProp(config, raw, classProp),
@@ -764,7 +782,8 @@ export const createRun = (config: CompiledConfig): RunFn => {
 		resolvePreset: (presetName) =>
 			resolvePresetValues(config.presets, presetName),
 		missingVariant: createMissingVariantError,
-		invalidValue: createInvalidValueError
+		invalidValue: createInvalidValueError,
+		hasOwn
 	};
 
 	try {

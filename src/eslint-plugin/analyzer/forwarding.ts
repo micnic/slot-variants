@@ -46,12 +46,7 @@ import { createTrackedCallResolver } from './tracked-calls.ts';
 
 /** What a component merges its `class` prop into. */
 export type ForwardedStyles = {
-	// The prop name a call site passes — the key the component reads, not the
-	// key it forwards under.
 	prop: string;
-	// The styled parts the prop lands beside: the slots an override targets,
-	// or the slot-variants parts (and `cn()` literals) written next to it in
-	// one class list.
 	targets: ReadonlyArray<StyledClasses>;
 };
 
@@ -59,18 +54,11 @@ export type ForwardedStyles = {
 export type ComponentSite = {
 	component: string;
 	prop: string;
-	// Where the component name is looked up from.
 	scope: Scope.Scope;
 };
 
 type PositionHandlers = {
-	// Called once per class-list position after the whole file has been
-	// walked: a variant call's override (per slot it targets), a `cn()` call,
-	// a class attribute in whichever framework spells it. `site` names the
-	// component element the attribute sits on, or is null for a host element
-	// and for a call.
 	onPosition?: (parts: ClassParts, site: ComponentSite | null) => void;
-	// Called after the last position.
 	onExit?: () => void;
 };
 
@@ -82,8 +70,6 @@ type PositionHandlers = {
  */
 type ForwardingScan = {
 	moduleScope: () => Scope.Scope;
-	// Components of this file, by the function that declares them — or by the
-	// program itself for a single-file component.
 	forwarded: ReadonlyMap<Component, ForwardedStyles>;
 	listener: Rule.RuleListener;
 };

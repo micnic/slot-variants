@@ -142,33 +142,13 @@ export const buildExclusiveGroupMap = (
 
 type PrefixSpec = {
 	keywords: ReadonlyMap<string, string>;
-	// A keyword that introduces a sub-property classified from the remaining
-	// segments (`ring-offset-2` width vs `ring-offset-red-500` color).
 	nested?: ReadonlyMap<string, PrefixSpec>;
-	// Set on a nested spec whose keyword names no sub-property of
-	// its own, so its categories are the parent's rather than being
-	// prefixed by the keyword: `mask-no-clip` is the boolean-off
-	// form of `mask-clip-*`, the same property, so it has to reach
-	// the same category — not a `no-clip` one.
 	flattensIntoParent?: boolean;
 	short?: string;
 	long?: string;
-	// The category of an untyped CSS-variable shorthand (`decoration-(--x)`),
-	// for the prefixes where it isn't the widest value type `long` names.
 	variable?: string;
-	// A trailing `reverse` segment is a composing flag, not a value —
-	// it sets a CSS variable (`space-x-reverse`, `divide-x-reverse`)
-	// rather than replacing the base utility, so it gets its
-	// own category and doesn't conflict with it.
 	reverseComposes?: boolean;
-	// The prefix has arbitrary image values (`bg-[url(...)]`,
-	// `bg-[linear-gradient(...)]`) that classify as an image rather than
-	// falling into the color fallback.
 	arbitraryImage?: boolean;
-	// A one-word value that isn't a keyword is a theme color named after its
-	// `--color-*` variable (`text-primary`, `border-accent`), not the `short`
-	// bucket — the prefix's own one-word sizes are listed as keywords instead,
-	// the same split tailwind-merge makes.
 	namedColors?: boolean;
 	fallback: string;
 };
@@ -1826,7 +1806,6 @@ type ConflictKeyInfo = {
 // The parts of the rule's options that shape a token's conflict key.
 export type ConflictOptions = {
 	exclusiveGroups: ReadonlyMap<string, string>;
-	// A Tailwind v3 `prefix`, trailing `-` included, or empty when unset.
 	prefix: string;
 };
 

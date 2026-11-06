@@ -96,8 +96,6 @@ export type VAttribute = {
 
 export type VElement = {
 	type: 'VElement';
-	// The tag as written — `name` is lowercased, which would fold `<Button>`
-	// into the `<button>` host element.
 	rawName: string;
 	startTag: { attributes: ReadonlyArray<VAttribute> };
 };

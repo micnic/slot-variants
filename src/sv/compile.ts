@@ -37,7 +37,6 @@ type ApplySlotClasses = (slotClasses: SlotClasses) => void;
 
 type VariantLayout = {
 	variantData: readonly VariantData[];
-	// How many distinct cache keys the variants span, unset states included.
 	combinationCount: number;
 };
 
@@ -367,13 +366,27 @@ const createNormalizedVariants = <S extends MaybeSlots>(
 	return result;
 };
 
+// A variant named like an `Object.prototype` member (`toString`) would
+// otherwise read that inherited member as its default.
+const getOwnDefault = (
+	defaultVariants: Record<string, RuntimeDefaultVariant>,
+	variantKey: string
+): RuntimeDefaultVariant => {
+	if (!hasOwn(defaultVariants, variantKey)) {
+		return undefined;
+	}
+
+	return defaultVariants[variantKey];
+};
+
 /**
  * Numbers each variant's values, so a combination of resolved values maps to a
  * single cache key: the sum of every value id times its variant's stride, with
  * each variant spanning its value count plus one for the unset state.
  */
 const createVariantData = (
-	normalizedVariants: NormalizedVariants
+	normalizedVariants: NormalizedVariants,
+	defaultVariants: Record<string, RuntimeDefaultVariant>
 ): VariantLayout => {
 	let stride = 1;
 
@@ -387,7 +400,9 @@ const createVariantData = (
 				),
 				unsetId: valueKeys.length,
 				stride,
-				values: variantValues
+				values: variantValues,
+				defaultValue: getOwnDefault(defaultVariants, variantKey),
+				inherited: variantKey in Object.prototype
 			};
 
 			stride *= valueKeys.length + 1;
@@ -726,8 +741,10 @@ export const compileConfig = (
 	]);
 
 	const normalizedVariants = createNormalizedVariants(variants, targetKeys);
-	const { variantData, combinationCount } =
-		createVariantData(normalizedVariants);
+	const { variantData, combinationCount } = createVariantData(
+		normalizedVariants,
+		defaultVariants
+	);
 
 	const resolvedMultiSlots = resolveMultiSlots(
 		multiSlots,

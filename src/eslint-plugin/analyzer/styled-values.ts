@@ -34,16 +34,8 @@ import {
 /** The classes one `sv()`/`cn()` call applies internally, indexed per slot. */
 type InternalStyles = {
 	bySlot: TokenEntriesBySlot;
-	// The declared slot names plus the group names that stand for them, exactly
-	// as `collectConfigEntries` bucketed the entries above. Empty for a
-	// slotless config and for `cn()`.
 	slotNames: Set<string>;
-	// `defaultVariants`, as matchers — the variant values that apply when a
-	// call site doesn't pass them.
 	defaults: VariantMatchers;
-	// `groups`, both ways round. Entries bucket under whichever name the config
-	// wrote, so a slot's classes are spread across its own bucket and every
-	// group bucket naming it.
 	groupSlots: ReadonlyMap<string, ReadonlyArray<string>>;
 	slotGroups: ReadonlyMap<string, ReadonlyArray<string>>;
 };
@@ -52,8 +44,6 @@ type InternalStyles = {
 export type StyledClasses = {
 	styles: InternalStyles;
 	slot: string;
-	// The variant values known to hold where the classes were produced, used to
-	// drop internal entries that can't render alongside them.
 	matchers: VariantMatchers;
 };
 
@@ -64,8 +54,6 @@ export type StyledClasses = {
 export type Invocation = {
 	styles: InternalStyles;
 	matchers: VariantMatchers;
-	// The slot a multi-slot call is pinned to, or null when the call yields the
-	// whole result and the target slot follows the `class` value's shape.
 	slot: string | null;
 };
 
@@ -122,11 +110,7 @@ const stylesCache = new WeakMap<Node, InternalStyles>();
 export type StyledContext = {
 	sourceCode: SourceCode;
 	matchCall: (node: CallExpression) => CallMatch | null;
-	// The scope an identifier is looked up from. Plain JS uses the node's own;
-	// a Vue template expression lives in a scope of its own that never reaches
-	// the `<script>` bindings it names, so it resolves from the script's.
 	scopeOf: (node: Node) => Scope.Scope;
-	// How an expression is read through `const` bindings, from that scope.
 	resolve: (node: Node) => Node;
 };
 

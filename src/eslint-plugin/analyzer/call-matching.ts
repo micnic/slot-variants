@@ -11,9 +11,6 @@ import { getStrictPropertiesWithKeys } from './properties.ts';
 export type CallMatch = {
 	config: ObjectExpression | null;
 	args: ReadonlyArray<Expression | SpreadElement>;
-	// True only for a `createSV(defaults)` factory call —
-	// it compiles no variant function, so it's exempt from
-	// require-top-level-config and the empty-call check.
 	isFactoryConfig: boolean;
 };
 

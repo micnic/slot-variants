@@ -24,13 +24,7 @@ type ConflictGroup = {
 	entries: Entry[];
 	variantPrefix: string;
 	overlap: string | null;
-	// Whether this group alone (before any overlap merge) has no two entries
-	// that can render together.
 	exclusive: boolean;
-	// Every entry's matcher list, or null if some entry has no readable
-	// matcher (base/compound). Non-null whenever `exclusive` is true — kept
-	// alongside it so a neighbor edge check can reuse it without re-walking
-	// `entries` and re-deriving what `exclusive` already established.
 	matchers: VariantMatchers[] | null;
 };
 

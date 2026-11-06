@@ -42,11 +42,7 @@ import {
 export type ClassParts = {
 	styled: StyledClasses[];
 	literals: Entry[];
-	// Identifiers and property reads with no static value — where a component
-	// forwards its `class` prop, that prop is one of these.
 	dynamic: Array<Identifier | MemberExpression>;
-	// Whether the position is a `cn()`-style merge, whose literals are classes
-	// the position applies on its own rather than a plain attribute value.
 	merged: boolean;
 };
 

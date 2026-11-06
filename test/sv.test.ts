@@ -3625,6 +3625,108 @@ t.test('variant value named after an object method is invalid', (t) => {
 	t.end();
 });
 
+t.test('variants named after object members resolve like any other', (t) => {
+	// TypeScript checks an object literal's inherited members against the
+	// declared ones, so a literal leaving out `toString` doesn't match a type
+	// declaring it — those spots carry a `@ts-expect-error`, as a JavaScript
+	// caller would write them.
+	const assertResolves = (mode: string) => {
+		const plain = sv('btn', {
+			variants: {
+				toString: { a: 'ts-a' },
+				constructor: { x: 'ctor-x' }
+			}
+		});
+
+		t.equal(plain(), 'btn', `${mode}: unset when not passed`);
+		t.equal(
+			plain({ toString: 'a', constructor: 'x' }),
+			'btn ts-a ctor-x',
+			`${mode}: passed values apply`
+		);
+
+		const variants = {
+			toString: { a: 'ts-a', b: 'ts-b' },
+			size: { sm: 'sm', lg: 'lg' }
+		};
+
+		t.equal(
+			sv('btn', { variants, defaultVariants: { toString: 'b' } })(),
+			'btn ts-b',
+			`${mode}: a static default applies`
+		);
+		t.equal(
+			sv('btn', { variants, defaultVariants: { toString: () => 'a' } })(),
+			'btn ts-a',
+			`${mode}: a function default applies`
+		);
+
+		const preset = sv('btn', {
+			variants,
+			presets: {
+				named: { toString: 'b' },
+				// @ts-expect-error - the literal's inherited `toString` is checked
+				sized: { size: 'lg' }
+			}
+		});
+
+		t.equal(
+			// @ts-expect-error - the literal's inherited `toString` is checked
+			preset({ preset: 'named' }),
+			'btn ts-b',
+			`${mode}: a preset value applies`
+		);
+		t.equal(
+			// @ts-expect-error - the literal's inherited `toString` is checked
+			preset({ preset: 'sized' }),
+			'btn lg',
+			`${mode}: a preset that skips the variant leaves it unset`
+		);
+
+		t.throws(
+			// @ts-expect-error - omitting a required variant for the runtime check
+			() => sv('btn', { variants, requiredVariants: ['toString'] })({}),
+			{ message: 'Missing required variant: "toString"' },
+			`${mode}: a required variant is reported missing`
+		);
+
+		const compound = sv('btn', {
+			variants,
+			compoundVariants: [{ toString: 'a', size: 'sm', class: 'both' }]
+		});
+
+		t.equal(
+			compound({ toString: 'a', size: 'sm' }),
+			'btn ts-a sm both',
+			`${mode}: a compound matching it applies`
+		);
+		t.equal(
+			// @ts-expect-error - the literal's inherited `toString` is checked
+			compound({ size: 'sm' }),
+			'btn sm',
+			`${mode}: a compound matching it is skipped when unset`
+		);
+	};
+
+	assertResolves('compiled');
+
+	const NativeFunction = globalThis.Function;
+
+	globalThis.Function = new Proxy(NativeFunction, {
+		construct: () => {
+			throw new EvalError('Code generation from strings disallowed');
+		}
+	});
+
+	t.teardown(() => {
+		globalThis.Function = NativeFunction;
+	});
+
+	assertResolves('interpreted');
+
+	t.end();
+});
+
 t.test('missing required variants are reported in listed order', (t) => {
 	const button = sv('btn', {
 		variants: {

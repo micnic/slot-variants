@@ -22,13 +22,8 @@ import {
 import { forEachCnBranch } from './token-extraction.ts';
 
 type StaticClassValueOptions = {
-	// The cn() calling convention: `&&`/ternary conditionals, nested arrays and
-	// clsx-style class records. Config class values allow none of these.
 	cnStyle: boolean;
 	allowUndefined?: boolean;
-	// Reads a value as slot-variants-produced classes. A `cn()` argument that
-	// resolves to another `sv()`/`cn()` call's output is statically known after
-	// all — it just isn't spelled as a literal — so it is not dynamic.
 	isStyled?: (node: Node) => boolean;
 };
 

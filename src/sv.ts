@@ -123,12 +123,14 @@ const applyMultiSlots = (
  */
 const countMaxEntries = (config: CompiledConfig) => {
 	const requiredVariants = new Set(config.requiredVariants);
-	const { defaultVariants } = config;
 
 	let count = 1;
 
-	for (const { key, unsetId: valueCount } of config.variantData) {
-		const defaultValue = defaultVariants[key];
+	for (const {
+		key,
+		unsetId: valueCount,
+		defaultValue
+	} of config.variantData) {
 		const hasStaticDefault =
 			defaultValue !== undefined && typeof defaultValue !== 'function';
 
