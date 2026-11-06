@@ -2,6 +2,7 @@ import { cn, type ClassValue } from './cn.ts';
 import {
 	coerceVariantKeyValue,
 	compileConfig,
+	getTargetSlots,
 	isConfig,
 	isReservedProp,
 	isSlotObjectValue
@@ -11,6 +12,7 @@ import {
 	type AnyFn,
 	type CacheValue,
 	type CompiledConfig,
+	type CompiledGroups,
 	type Config,
 	type MaybeGroups,
 	type MaybePresets,
@@ -37,18 +39,50 @@ type RuntimeVariantFn = (props?: RuntimeProps) => CacheValue | MultiSlotResult;
 
 const { assign, entries, hasOwn, keys } = Object;
 
+const hasGroupKey = (
+	classProp: Record<string, ClassValue>,
+	groups: CompiledGroups
+) => {
+	if (groups.size === 0) {
+		return false;
+	}
+
+	for (const key of keys(classProp)) {
+		if (groups.has(key)) {
+			return true;
+		}
+	}
+
+	return false;
+};
+
 const mergeMultiSlotClass = (
-	targetKeys: ReadonlySet<string>,
+	config: CompiledConfig,
 	outerClass: RuntimeClassValue | undefined,
 	innerClass: RuntimeClassValue,
 	slotKey: string
 ): RuntimeClassValue => {
+	const { targetKeys, groups } = config;
 	const merged: Record<string, ClassValue> = {};
 
-	if (isSlotObjectValue(outerClass, targetKeys)) {
+	if (!isSlotObjectValue(outerClass, targetKeys)) {
+		merged.base = outerClass;
+	} else if (!hasGroupKey(outerClass, groups)) {
 		assign(merged, outerClass);
 	} else {
-		merged.base = outerClass;
+		// A slot's own key holds only the classes written for it, while a
+		// group key written later still reaches it. Expanding groups gathers
+		// every outer class per slot, in order, so the inner class appended
+		// below follows all of them.
+		for (const [targetKey, value] of entries(outerClass)) {
+			for (const slot of getTargetSlots(groups, targetKey)) {
+				if (hasOwn(merged, slot)) {
+					merged[slot] = cn(merged[slot], value);
+				} else {
+					merged[slot] = value;
+				}
+			}
+		}
 	}
 
 	merged[slotKey] = cn(merged[slotKey], innerClass);
@@ -71,7 +105,7 @@ const buildSlotFn =
 
 		if (innerClass !== undefined) {
 			mergedProps.class = mergeMultiSlotClass(
-				config.targetKeys,
+				config,
 				outerClass,
 				innerClass,
 				slotKey

@@ -7122,6 +7122,53 @@ t.test('multiSlots group function merges an outer group class', (t) => {
 	t.end();
 });
 
+t.test(
+	'multiSlots slot function applies its class after every outer one',
+	(t) => {
+		const card = sv({
+			slots: {
+				header: 'h',
+				body: 'b'
+			},
+			groups: {
+				content: ['header', 'body']
+			},
+			multiSlots: ['header']
+		});
+
+		const slotFirst = card({ class: { header: 'px-1', content: 'px-2' } });
+
+		t.equal(
+			slotFirst.header(),
+			'h px-1 px-2',
+			'outer classes apply in the order they are written'
+		);
+		t.equal(
+			slotFirst.header({ class: 'px-4' }),
+			'h px-1 px-2 px-4',
+			'inner class follows an outer group class written after the slot'
+		);
+
+		const groupFirst = card({ class: { content: 'px-2', header: 'px-1' } });
+
+		t.equal(
+			groupFirst.header({ class: 'px-4' }),
+			'h px-2 px-1 px-4',
+			'inner class follows an outer slot class written after the group'
+		);
+
+		const slotsOnly = card({ class: { header: 'px-1', body: 'py-1' } });
+
+		t.equal(
+			slotsOnly.header({ class: 'px-4' }),
+			'h px-1 px-4',
+			'inner class follows an outer class naming slots only'
+		);
+
+		t.end();
+	}
+);
+
 t.test('introspection exposes groups', (t) => {
 	const card = sv({
 		slots: {
