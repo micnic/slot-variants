@@ -2821,6 +2821,13 @@ const NO_CONFLICTING_NS_VALID = [
 	// Project class names share a prefix but name no Tailwind utility, so
 	// nothing says they set the same property.
 	IMPORT_CN + "cn('btn-primary btn-lg');",
+	// An untyped CSS variable on a shadow utility is the shadow itself, and on
+	// `font` a weight — neither collides with a color or a family.
+	IMPORT_CN + "cn('shadow-(--x) shadow-red-500');",
+	IMPORT_CN + "cn('inset-shadow-(--x) inset-shadow-red-500');",
+	IMPORT_CN + "cn('text-shadow-(--x) text-shadow-red-500');",
+	IMPORT_CN + "cn('drop-shadow-(--x) drop-shadow-red-500');",
+	IMPORT_CN + "cn('font-(--x) font-sans');",
 	// Record keys under complementary conditions never apply together, in a
 	// record or against a `&&`.
 	IMPORT_CN + "cn({ 'w-2': active, 'w-4': !active });",
@@ -3285,6 +3292,21 @@ const NO_CONFLICTING_NS_VALID = [
 ];
 
 const NO_CONFLICTING_NS_INVALID = [
+	{
+		// An untyped CSS variable on a shadow utility collides with a preset
+		// size, on `font` with a weight; a `color:` hint stays a color.
+		code:
+			IMPORT_CN +
+			"cn('shadow-(--x) shadow-lg', 'inset-shadow-(--x) inset-shadow-sm', 'text-shadow-(--x) text-shadow-sm', 'drop-shadow-(--x) drop-shadow-md', 'font-(--x) font-bold', 'shadow-(color:--y) shadow-blue-500');",
+		errors: [
+			...repeat(conflictCn('shadow-(--x), shadow-lg'), 2),
+			...repeat(conflictCn('inset-shadow-(--x), inset-shadow-sm'), 2),
+			...repeat(conflictCn('text-shadow-(--x), text-shadow-sm'), 2),
+			...repeat(conflictCn('drop-shadow-(--x), drop-shadow-md'), 2),
+			...repeat(conflictCn('font-(--x), font-bold'), 2),
+			...repeat(conflictCn('shadow-(color:--y), shadow-blue-500'), 2)
+		]
+	},
 	{
 		// Record keys under the same condition apply together.
 		code: IMPORT_CN + "cn({ 'w-2': active, 'w-4': active });",

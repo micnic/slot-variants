@@ -256,6 +256,9 @@ const shadowSizeSpec: PrefixSpec = {
 		['color', COLOR_KEYWORDS],
 		['size', [...SIZE_KEYWORDS, 'none']]
 	]),
+	// An untyped variable is the shadow itself (`text-shadow-(--x)`); a
+	// color needs the `color:` hint.
+	variable: 'size',
 	short: 'size',
 	long: 'color',
 	namedColors: true,
@@ -581,7 +584,7 @@ const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
 				['color', COLOR_KEYWORDS],
 				['thickness', ['from', 'auto']]
 			]),
-			// The one prefix where an untyped variable is the narrower property:
+			// An untyped variable is the narrower property here:
 			// `decoration-(--x)` is a thickness, not a color.
 			variable: 'thickness',
 			short: 'thickness',
@@ -605,6 +608,8 @@ const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
 				['color', COLOR_KEYWORDS],
 				['box', [...SIZE_KEYWORDS, 'none', 'inner']]
 			]),
+			// `shadow-(--x)` is the shadow itself; a color needs `color:`.
+			variable: 'box',
 			short: 'box',
 			long: 'color',
 			namedColors: true,
@@ -723,6 +728,8 @@ const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
 				['stretch', unifiedSpec],
 				['features', unifiedSpec]
 			]),
+			// `font-(--x)` is a weight; a family needs `family-name:`.
+			variable: 'weight',
 			fallback: 'family'
 		},
 		grid: {
