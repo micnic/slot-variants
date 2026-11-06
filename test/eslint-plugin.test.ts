@@ -6354,6 +6354,8 @@ const RESTYLE_BUTTON = `const button = sv({
 });\n`;
 
 const RESTYLE_VALID = [
+	// A wrapper bound to itself names no component, and lints without looping.
+	IMPORT + 'const Loop = memo(Loop);\n<Loop className="p-4" />;',
 	// No slot-variants import at all — nothing is tracked.
 	"const card = sv({ base: 'p-2' });\ncard({ class: 'p-4' });",
 	// A call with no arguments, and one whose props carry no class override.
@@ -6925,6 +6927,44 @@ cn(classes.item({ active: true }), 'px-4');`,
 			'const Button = memo(forwardRef(function Button({ className }, ref) { return <button ref={ref} className={button({ class: className })} />; }));\n<Button className="p-4" />;',
 		errors: [restyle('p-4', 'p-2')]
 	},
+	// A wrapper handed a component by name, a plain alias of one, and a
+	// wrapper whose later argument is a function that isn't the component.
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'function ButtonImpl({ className }) { return <button className={button({ class: className })} />; }\nconst Button = memo(ButtonImpl);\n<Button className="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'const ButtonImpl = ({ className }) => <button className={button({ class: className })} />;\nconst Button = ButtonImpl;\n<Button className="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'function ButtonImpl({ className }) { return <button className={button({ class: className })} />; }\nconst Button = memo(ButtonImpl, (a, b) => a.id === b.id);\n<Button className="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// A props parameter with a default, destructured or taken whole.
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'function Button({ className } = {}) { return <button className={button({ class: className })} />; }\n<Button className="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			'function Button(props = {}) { return <button className={button({ class: props.className })} />; }\n<Button className="p-4" />;',
+		errors: [restyle('p-4', 'p-2')]
+	},
 	// Solid: the props object split or merged into another object.
 	{
 		code:
@@ -7112,6 +7152,8 @@ writeFixture(
 // a function nor a call.
 writeFixture('ui/bare.tsx', 'export default ({ id }) => <i id={id} />;\n');
 writeFixture('ui/object.tsx', "export default { name: 'x' };\n");
+// A default-exported call that wraps neither a function nor a name.
+writeFixture('ui/factory.tsx', "export default createThing({ name: 'x' });\n");
 
 // An exported name bound more than once, which resolves to no single binding.
 writeFixture(
@@ -7137,6 +7179,36 @@ writeFixture(
 
 	export default forwardRef(({ className }, ref) => <i ref={ref} className={wrapped({ class: className })} />);
 	`
+);
+
+// Components wrapped by name: a function declared here, and one imported.
+writeFixture(
+	'ui/wrapped-by-name.tsx',
+	`${IMPORT}import { Button } from './button.tsx';
+	const named = sv({ base: 'm-7' });
+
+	function Impl({ className }) {
+		return <i className={named({ class: className })} />;
+	}
+
+	export const Named = memo(Impl);
+	export const WrappedButton = memo(Button);
+	export default memo(Impl);
+	`
+);
+
+// A barrel with more `export *` lines than the re-export hop limit, ahead of
+// the one that leads to the component.
+for (let index = 0; index < 11; index += 1) {
+	writeFixture(
+		`ui/many/empty-${index}.ts`,
+		`export const value${index} = ${index};\n`
+	);
+}
+
+writeFixture(
+	'ui/many/index.ts',
+	`${Array.from({ length: 11 }, (_, index) => `export * from './empty-${index}.ts';`).join('\n')}\nexport * from '../button.tsx';\n`
 );
 
 // Single-file components: the module itself is the component, whose props
@@ -7325,6 +7397,10 @@ const CROSS_FILE_VALID = [
 		filename: join(fixtureDir, 'page.tsx')
 	},
 	{
+		code: `import Thing from './ui/factory.tsx';\n<Thing className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
 		code: `import { Twice } from './ui/redeclared.ts';\n<Twice className="p-4" />;`,
 		filename: join(fixtureDir, 'page.tsx')
 	},
@@ -7439,6 +7515,23 @@ const CROSS_FILE_INVALID = [
 		code: `import Ref, { Memoized } from './ui/wrapped.tsx';\n<><Memoized className="m-4" /><Ref className="m-6" /></>;`,
 		filename: join(fixtureDir, 'page.tsx'),
 		errors: [restyle('m-4', 'm-5'), restyle('m-6', 'm-5')]
+	},
+	{
+		// Components wrapped by name, exported by name and as the default, and
+		// a wrapped import followed on to its own module.
+		code: `import Memo, { Named, WrappedButton } from './ui/wrapped-by-name.tsx';\n<><Named className="m-4" /><Memo className="m-6" /><WrappedButton className="p-4" /></>;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [
+			restyle('m-4', 'm-7'),
+			restyle('m-6', 'm-7'),
+			restyle('p-4', 'p-2')
+		]
+	},
+	{
+		// Through a barrel whose sibling re-exports outnumber the hop limit.
+		code: `import { Button } from './ui/many/index.ts';\n<Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('p-4', 'p-2')]
 	},
 	{
 		// The longest matching alias wins over a broader one.

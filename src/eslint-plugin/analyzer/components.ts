@@ -3,11 +3,12 @@ import type {
 	ArrowFunctionExpression,
 	FunctionDeclaration,
 	FunctionExpression,
+	Identifier,
 	Node,
 	Program
 } from 'estree';
 import { getExportName } from './config-keys.ts';
-import { findSingleDef, getConstDefInit } from './const-bindings.ts';
+import { findSingleBinding, getConstDefInit } from './const-bindings.ts';
 
 export type ComponentFunction =
 	| FunctionDeclaration
@@ -43,14 +44,16 @@ export const isComponentFunction = (node: {
 	node.type === 'ArrowFunctionExpression';
 
 /**
- * The component function `node` is, or wraps: `forwardRef(fn)`, `memo(fn)` and
- * any other call handed the function as an argument, however deeply nested
- * (`memo(forwardRef(fn))`). Null when no function is reachable that way.
+ * The component `node` is, or wraps: a function, or the name of one, handed to
+ * `forwardRef()`, `memo()` or any other call, however deeply nested
+ * (`memo(forwardRef(fn))`, `memo(Impl)`). The first argument that leads
+ * somewhere wins, so a later one (`memo(Impl, areEqual)`) isn't mistaken for
+ * the component. Null when nothing is reachable that way.
  */
-export const unwrapComponentFunction = (
+export const findWrappedComponent = (
 	node: Node
-): ComponentFunction | null => {
-	if (isComponentFunction(node)) {
+): ComponentFunction | Identifier | null => {
+	if (isComponentFunction(node) || node.type === 'Identifier') {
 		return node;
 	}
 
@@ -63,32 +66,14 @@ export const unwrapComponentFunction = (
 			continue;
 		}
 
-		const fn = unwrapComponentFunction(arg);
+		const wrapped = findWrappedComponent(arg);
 
-		if (fn !== null) {
-			return fn;
+		if (wrapped !== null) {
+			return wrapped;
 		}
 	}
 
 	return null;
-};
-
-// The function a same-file declaration or `const` binding holds, possibly
-// through a wrapper call.
-const getDefComponentFunction = (
-	def: Scope.Definition
-): ComponentFunction | null => {
-	if (def.type === 'FunctionName') {
-		return def.node;
-	}
-
-	const init = getConstDefInit(def);
-
-	if (!init) {
-		return null;
-	}
-
-	return unwrapComponentFunction(init);
 };
 
 // The module and export name an import binding reads, or null for a namespace
@@ -118,12 +103,25 @@ const getImportSource = (def: ImportDefinition): ImportSource | null => {
 export const resolveComponentBinding = (
 	name: string,
 	scope: Scope.Scope
-): ComponentBinding => {
-	const def = findSingleDef(scope, name);
+): ComponentBinding => resolveBindingOnce(name, scope, new Set());
 
-	if (!def) {
+// A name wrapped (`memo(Impl)`) or aliased (`const Button = Impl`) is
+// resolved from the scope that declares the wrapper. `seen` stops a binding
+// that wraps itself (`const Loop = memo(Loop)`).
+const resolveBindingOnce = (
+	name: string,
+	scope: Scope.Scope,
+	seen: Set<Scope.Definition>
+): ComponentBinding => {
+	const binding = findSingleBinding(scope, name);
+
+	if (binding === null || seen.has(binding.def)) {
 		return null;
 	}
+
+	const { def } = binding;
+
+	seen.add(def);
 
 	if (def.type === 'ImportBinding') {
 		const source = getImportSource(def);
@@ -135,11 +133,25 @@ export const resolveComponentBinding = (
 		return { kind: 'import', source };
 	}
 
-	const fn = getDefComponentFunction(def);
+	if (def.type === 'FunctionName') {
+		return { kind: 'local', fn: def.node };
+	}
 
-	if (fn === null) {
+	const init = getConstDefInit(def);
+
+	if (!init) {
 		return null;
 	}
 
-	return { kind: 'local', fn };
+	const wrapped = findWrappedComponent(init);
+
+	if (wrapped === null) {
+		return null;
+	}
+
+	if (wrapped.type === 'Identifier') {
+		return resolveBindingOnce(wrapped.name, binding.scope, seen);
+	}
+
+	return { kind: 'local', fn: wrapped };
 };

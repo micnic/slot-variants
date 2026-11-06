@@ -4,6 +4,9 @@ import type { Node } from 'estree';
 // A node that only wraps another expression without changing its value.
 type TransparentWrapper = Node & { expression: Node };
 
+// A name's single definition, and the scope that declares it.
+type SingleBinding = { def: Scope.Definition; scope: Scope.Scope };
+
 // Type-only wrappers (`as`, `satisfies`, `!`, `<T>`), which the TypeScript
 // parser adds and ESTree's own node types don't list, and the optional-chain
 // wrapper around `a?.b` / `a?.()`.
@@ -50,12 +53,12 @@ export const findVariable = (
 	return null;
 };
 
-// The one definition `name` resolves to, or null when it's unbound or
-// declared more than once.
-export const findSingleDef = (
+// The one definition `name` resolves to, with the scope it's declared in, or
+// null when it's unbound or declared more than once.
+export const findSingleBinding = (
 	scope: Scope.Scope,
 	name: string
-): Scope.Definition | null => {
+): SingleBinding | null => {
 	const variable = findVariable(scope, name);
 
 	if (!variable || variable.defs.length !== 1) {
@@ -64,8 +67,27 @@ export const findSingleDef = (
 
 	const [def] = variable.defs;
 
-	/* c8 ignore next -- a length-1 defs array always has a first element */
-	return def ?? null;
+	/* c8 ignore next 3 -- a length-1 defs array always has a first element */
+	if (!def) {
+		return null;
+	}
+
+	return { def, scope: variable.scope };
+};
+
+// The one definition `name` resolves to, or null when it's unbound or
+// declared more than once.
+export const findSingleDef = (
+	scope: Scope.Scope,
+	name: string
+): Scope.Definition | null => {
+	const binding = findSingleBinding(scope, name);
+
+	if (binding === null) {
+		return null;
+	}
+
+	return binding.def;
 };
 
 // The initializer of a single same-file `const name = <value>` binding, or null

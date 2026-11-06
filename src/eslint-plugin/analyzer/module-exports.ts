@@ -2,8 +2,8 @@ import type { ExportNamedDeclaration, Node, Program } from 'estree';
 import {
 	type ComponentFunction,
 	DEFAULT_EXPORT,
-	isComponentFunction,
-	unwrapComponentFunction
+	findWrappedComponent,
+	isComponentFunction
 } from './components.ts';
 import { getExportName } from './config-keys.ts';
 
@@ -115,11 +115,20 @@ const collectDefaultExport = (
 		return;
 	}
 
-	const wrapped = unwrapComponentFunction(declaration);
+	// A wrapper handed a named component (`memo(Impl)`) exports that binding.
+	const wrapped = findWrappedComponent(declaration);
 
-	if (wrapped !== null) {
-		targets.push({ kind: 'node', node: wrapped });
+	if (wrapped === null) {
+		return;
 	}
+
+	if (wrapped.type === 'Identifier') {
+		targets.push({ kind: 'local', name: wrapped.name });
+
+		return;
+	}
+
+	targets.push({ kind: 'node', node: wrapped });
 };
 
 /**

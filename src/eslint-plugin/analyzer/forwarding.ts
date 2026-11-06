@@ -243,12 +243,16 @@ export const createForwardingScan = (
 	};
 
 	// A component function's props are its first parameter, destructured or
-	// taken whole.
+	// taken whole, with or without a default (`{ className } = {}`).
 	const registerFunctionProps = (fn: ComponentFunction) => {
-		const [param] = fn.params;
+		let [param] = fn.params;
 
 		if (param === undefined) {
 			return;
+		}
+
+		if (param.type === 'AssignmentPattern') {
+			param = param.left;
 		}
 
 		const declared = sourceCode.getDeclaredVariables(fn);

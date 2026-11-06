@@ -69,7 +69,9 @@ const MAX_CACHED_MODULES = 200;
 
 const moduleCache = new Map<string, CacheEntry>();
 
-// Enough to walk a barrel or two without following a pathological chain.
+// How many re-exports deep an import is followed: enough to walk a barrel or
+// two without following a pathological chain. Sibling `export *` entries of
+// one barrel are the same depth, however many it has.
 const MAX_MODULE_HOPS = 10;
 
 const loadLinterFrom = (base: string): LinterConstructor | null => {
@@ -240,9 +242,10 @@ export const resolveImportedComponent = (
 	exportName: string,
 	fromFile: string,
 	moduleContext: ModuleContext,
-	seen: Set<string>
+	seen: Set<string>,
+	depth: number
 ): ForwardedStyles | null => {
-	if (seen.size >= MAX_MODULE_HOPS) {
+	if (depth >= MAX_MODULE_HOPS) {
 		return null;
 	}
 
@@ -276,7 +279,8 @@ export const resolveImportedComponent = (
 			analysis,
 			path,
 			moduleContext,
-			seen
+			seen,
+			depth + 1
 		);
 
 		if (found !== null) {
@@ -298,7 +302,8 @@ const followExportTarget = (
 	analysis: ModuleAnalysis,
 	path: string,
 	moduleContext: ModuleContext,
-	seen: Set<string>
+	seen: Set<string>,
+	depth: number
 ): ForwardedStyles | null => {
 	if (target.kind === 'forward') {
 		return resolveImportedComponent(
@@ -306,7 +311,8 @@ const followExportTarget = (
 			target.name,
 			path,
 			moduleContext,
-			seen
+			seen,
+			depth
 		);
 	}
 
@@ -331,6 +337,7 @@ const followExportTarget = (
 		binding.source.exportName,
 		path,
 		moduleContext,
-		seen
+		seen,
+		depth
 	);
 };

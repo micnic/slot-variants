@@ -118,7 +118,8 @@ export const noRestyle: Rule.RuleModule = {
 				binding.source.exportName,
 				context.physicalFilename,
 				moduleContext,
-				new Set()
+				new Set(),
+				0
 			);
 		};
 
