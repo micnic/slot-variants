@@ -657,6 +657,82 @@ t.test('const containers are read like inline ones', (t) => {
 	t.end();
 });
 
+t.test('Svelte and Vue templates are checked like script code', (t) => {
+	const linter = new Linter({ configType: 'flat' });
+	const allRules: Linter.RulesRecord = Object.fromEntries(
+		Object.keys(rules).map((name) => [`slot-variants/${name}`, 2])
+	);
+	const config: Linter.Config[] = [
+		{
+			files: ['**/*.svelte'],
+			plugins: { 'slot-variants': plugin },
+			rules: allRules,
+			languageOptions: { parser: svelteParser }
+		},
+		{
+			files: ['**/*.vue'],
+			plugins: { 'slot-variants': plugin },
+			rules: allRules,
+			languageOptions: {
+				parser: vueParser,
+				ecmaVersion: 'latest',
+				sourceType: 'module'
+			}
+		}
+	];
+	const lint = (code: string, filename: string) =>
+		linter
+			.verify(code, config, { filename })
+			.map(({ ruleId, messageId }) => `${ruleId}:${messageId}`)
+			.sort();
+	const script = (body: string) =>
+		`<script setup>\nimport { cn, sv } from 'slot-variants';\n${body}\n</script>\n`;
+	const cases = [
+		[
+			'Svelte markup written before its <script>',
+			"<div class={cn('p-2 p-4')}></div>\n<script>import { cn } from 'slot-variants';</script>",
+			'a.svelte',
+			repeat('slot-variants/no-conflicting-classes:conflictCn', 2)
+		],
+		[
+			'a cn() call in a Vue template',
+			`${script('')}<template><div :class="cn('p-2 p-4')" /></template>`,
+			'a.vue',
+			repeat('slot-variants/no-conflicting-classes:conflictCn', 2)
+		],
+		[
+			'a <script> const read in a Vue template',
+			`${script("const extra = 'flex';")}<template><div :class="cn(extra, 'p-4')" /></template>`,
+			'a.vue',
+			[]
+		],
+		[
+			'a v-for local is no <script> binding, and no static value',
+			`${script("const card = sv({ base: 'p-2' });\nconst cls = card();")}<template><div v-for="cls in list" :class="cn(cls, 'p-4')" /></template>`,
+			'a.vue',
+			['slot-variants/no-dynamic-classes:dynamic']
+		],
+		[
+			'a v-slot local is no <script> binding either',
+			`${script("const card = sv({ base: 'p-2' });\nconst cls = card();")}<template><Comp v-slot="{ cls }"><div :class="[cls, 'p-4']" /></Comp></template>`,
+			'a.vue',
+			[]
+		],
+		[
+			'a v-for local named like the cn import is no cn() call',
+			`${script('')}<template><div v-for="cn in list" :class="cn('p-2 p-4')" /></template>`,
+			'a.vue',
+			[]
+		]
+	] as const;
+
+	for (const [label, code, filename, expected] of cases) {
+		t.strictSame(lint(code, filename), expected, label);
+	}
+
+	t.end();
+});
+
 t.test('call cycles through const bindings terminate', (t) => {
 	const linter = new Linter({ configType: 'flat' });
 	const config: Linter.Config[] = [

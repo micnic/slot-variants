@@ -1,5 +1,10 @@
-import type { Rule } from 'eslint';
-import type { CallExpression, Identifier, ImportDeclaration } from 'estree';
+import type { AST, Rule } from 'eslint';
+import type {
+	CallExpression,
+	Identifier,
+	ImportDeclaration,
+	Node
+} from 'estree';
 import { type CallMatch, matchSvCall } from './call-matching.ts';
 import { getExportName } from './config-keys.ts';
 import { findVariable } from './const-bindings.ts';
@@ -70,7 +75,14 @@ const identifierResolvesToImport = (
 	{ ctx }: MatchContext,
 	identifier: Identifier
 ): boolean => {
-	const variable = findVariable(ctx.scopeOf(identifier), identifier.name);
+	const scope = ctx.scopeOf(identifier);
+
+	// Bound by a Vue template (`v-for="cn in list"`), not by the import.
+	if (scope === null) {
+		return false;
+	}
+
+	const variable = findVariable(scope, identifier.name);
 
 	/* c8 ignore next 3 -- a tracked name always resolves to a binding */
 	if (!variable) {
@@ -229,51 +241,70 @@ const matchTrackedCall = (
 	return matchExportCall(match, node, exportName);
 };
 
-// The import tracker plus an on-demand classifier, for rules that need to ask
-// whether an arbitrary call is a tracked sv/cn call outside a CallExpression
-// visitor (`no-restyle` resolves callees and class-list parts that way).
-// `ImportDeclaration` is visited before any call in source order, so by the
-// time `matchCall` runs the tracked names are already complete.
-export const createTrackedCallResolver = (context: Rule.RuleContext) => {
-	const { names, importsTracker } = createImportsTracker();
+// Every import of the file, read up front rather than as the traversal meets
+// them: a Svelte component's markup may come before its `<script>`, whose
+// statements sit in a body of the script element's own.
+const collectImportDeclarations = (
+	program: AST.Program
+): ImportDeclaration[] => {
+	const imports: ImportDeclaration[] = [];
 
-	const hasTrackedImports = (): boolean =>
-		names.exportByLocal.size > 0 || names.namespaceNames.size > 0;
+	for (const node of program.body) {
+		if (node.type === 'ImportDeclaration') {
+			imports.push(node);
+			continue;
+		}
 
-	// A context whose identifiers are looked up from the given scopes.
-	const contextFrom = (scopeOf: StyledContext['scopeOf']): StyledContext => {
-		const ctx = createStyledContext(
-			context.sourceCode,
-			(node) => {
-				if (!hasTrackedImports()) {
-					return null;
+		if ('body' in node && Array.isArray(node.body)) {
+			const statements: ReadonlyArray<Node> = node.body;
+
+			for (const statement of statements) {
+				if (statement.type === 'ImportDeclaration') {
+					imports.push(statement);
 				}
+			}
+		}
+	}
 
-				return matchTrackedCall(match, node);
-			},
-			scopeOf
-		);
-		// Read lazily by the classifier above, so it is set before any call.
-		const match: MatchContext = { names, ctx };
-
-		return ctx;
-	};
-
-	return { importsTracker, contextFrom };
+	return imports;
 };
 
+// An on-demand classifier, for rules that need to ask whether an arbitrary call
+// is a tracked sv/cn call outside a CallExpression visitor (`no-restyle`
+// resolves callees and class-list parts that way). The file's imports are read
+// before any call is classified.
+export const createTrackedCallResolver = (
+	context: Rule.RuleContext
+): StyledContext => {
+	const { names, importsTracker } = createImportsTracker();
+
+	for (const node of collectImportDeclarations(context.sourceCode.ast)) {
+		importsTracker(node);
+	}
+
+	const hasTrackedImports =
+		names.exportByLocal.size > 0 || names.namespaceNames.size > 0;
+	const ctx = createStyledContext(context.sourceCode, (node) => {
+		if (!hasTrackedImports) {
+			return null;
+		}
+
+		return matchTrackedCall(match, node);
+	});
+	// Read lazily by the classifier above, so it is set before any call.
+	const match: MatchContext = { names, ctx };
+
+	return ctx;
+};
+
+// Calls in a Vue `<template>` are only walked by a template visitor, so one
+// is registered alongside the script's wherever the parser offers it.
 export const createTrackedCallListeners = (
 	context: Rule.RuleContext,
 	onCall: (node: CallExpression, call: CallMatch, ctx: StyledContext) => void
-) => {
-	const { importsTracker, contextFrom } = createTrackedCallResolver(context);
-	const { sourceCode } = context;
-	const ctx = contextFrom((node) => sourceCode.getScope(node));
-
-	return {
-		ImportDeclaration(node: ImportDeclaration) {
-			importsTracker(node);
-		},
+): Rule.RuleListener => {
+	const ctx = createTrackedCallResolver(context);
+	const visitors = {
 		CallExpression(node: CallExpression) {
 			const call = ctx.matchCall(node);
 
@@ -282,4 +313,11 @@ export const createTrackedCallListeners = (
 			}
 		}
 	};
+	const { defineTemplateBodyVisitor } = context.sourceCode.parserServices;
+
+	if (typeof defineTemplateBodyVisitor === 'function') {
+		return defineTemplateBodyVisitor(visitors, visitors);
+	}
+
+	return visitors;
 };

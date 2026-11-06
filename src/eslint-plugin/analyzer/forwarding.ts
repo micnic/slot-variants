@@ -2,7 +2,6 @@ import type { Rule, Scope } from 'eslint';
 import type {
 	CallExpression,
 	Identifier,
-	ImportDeclaration,
 	MemberExpression,
 	Node,
 	ObjectPattern,
@@ -14,7 +13,7 @@ import {
 	isComponentFunction
 } from './components.ts';
 import { getKeyName } from './config-keys.ts';
-import { findVariable } from './const-bindings.ts';
+import { findVariable, getModuleScope } from './const-bindings.ts';
 import {
 	CLASS_ATTRIBUTES,
 	getJsxAttributeName,
@@ -100,11 +99,17 @@ const PROPS_SOURCES = new Set([
 ]);
 
 // What `bindings` holds for the variable `name` refers to from `scope`.
+// A null scope is a name a Vue template binds itself (`v-for`, `v-slot`),
+// which no script binding stands for.
 const lookupBinding = <T>(
 	bindings: ReadonlyMap<Scope.Variable, T>,
-	scope: Scope.Scope,
+	scope: Scope.Scope | null,
 	name: string
 ): T | null => {
+	if (scope === null) {
+		return null;
+	}
+
 	const variable = findVariable(scope, name);
 
 	if (variable === null) {
@@ -176,8 +181,7 @@ export const createForwardingScan = (
 	handlers: PositionHandlers
 ): ForwardingScan => {
 	const { sourceCode } = context;
-	const { importsTracker, contextFrom } = createTrackedCallResolver(context);
-	const ctx = contextFrom((node) => sourceCode.getScope(node));
+	const ctx = createTrackedCallResolver(context);
 	const forwarded = new Map<Component, ForwardedStyles>();
 	// Where a component's `class` prop can be read from: the binding a props
 	// pattern put it in, or an object holding the whole props — the props
@@ -187,27 +191,7 @@ export const createForwardingScan = (
 	const propsObjects = new Map<Scope.Variable, Component>();
 	const pending: PendingPosition[] = [];
 
-	// The innermost scope the program node owns — the module scope holding the
-	// file's own bindings, rather than the global one `getScope()` hands back
-	// for a Program.
-	/* c8 ignore next 4 -- a Program node always owns a scope */
-	const moduleScope = (): Scope.Scope =>
-		sourceCode.scopeManager.acquire(sourceCode.ast, true) ??
-		sourceCode.getScope(sourceCode.ast);
-
-	// Vue template expressions resolve against the `<script>` module scope;
-	// their own scope never reaches the bindings they name.
-	let templateCtx: StyledContext | null = null;
-
-	const getTemplateCtx = (): StyledContext => {
-		if (templateCtx === null) {
-			const scope = moduleScope();
-
-			templateCtx = contextFrom(() => scope);
-		}
-
-		return templateCtx;
-	};
+	const moduleScope = (): Scope.Scope => getModuleScope(sourceCode);
 
 	const deferParts = (
 		positionCtx: StyledContext,
@@ -499,14 +483,11 @@ export const createForwardingScan = (
 		}
 
 		if (value.expression !== null) {
-			collectParts(value.expression, getTemplateCtx(), parts);
+			collectParts(value.expression, ctx, parts);
 		}
 	};
 
 	const scriptVisitors = {
-		ImportDeclaration(node: ImportDeclaration) {
-			importsTracker(node);
-		},
 		':function'(node: MarkupNode) {
 			if (isComponentFunction(node)) {
 				registerFunctionProps(node);
@@ -593,7 +574,7 @@ export const createForwardingScan = (
 	// call written inside a `:class` binding is picked up here.
 	const templateVisitors = {
 		CallExpression(node: CallExpression) {
-			visitCall(node, getTemplateCtx());
+			visitCall(node, ctx);
 		},
 		VElement(node: MarkupNode) {
 			/* c8 ignore next 3 -- the selector only matches this type */
@@ -609,7 +590,7 @@ export const createForwardingScan = (
 			}
 
 			deferParts(
-				getTemplateCtx(),
+				ctx,
 				makeSite(getVueComponentName(node), 'class', moduleScope()),
 				(parts) => {
 					for (const attribute of attributes) {

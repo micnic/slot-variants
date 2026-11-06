@@ -7,6 +7,23 @@ type TransparentWrapper = Node & { expression: Node };
 // A name's single definition, and the scope that declares it.
 type SingleBinding = { def: Scope.Definition; scope: Scope.Scope };
 
+// A name a Vue template expression reads, as vue-eslint-parser records it on
+// the expression's container: the identifier, and the template variable
+// (`v-for`, `v-slot`) that binds it, or null when the `<script>` does.
+type TemplateReference = { id: object; variable: object | null };
+
+// The structural minimum to walk a node's ancestors, across the ESTree and Vue
+// template node kinds alike.
+type ParentedNode = {
+	type: string;
+	parent?: ParentedNode | null;
+	references?: ReadonlyArray<TemplateReference>;
+};
+
+type TemplateContainer = ParentedNode & {
+	references: ReadonlyArray<TemplateReference>;
+};
+
 // Type-only wrappers (`as`, `satisfies`, `!`, `<T>`), which the TypeScript
 // parser adds and ESTree's own node types don't list, and the optional-chain
 // wrapper around `a?.b` / `a?.()`.
@@ -31,6 +48,71 @@ export const unwrapExpression = (node: Node): Node => {
 	}
 
 	return current;
+};
+
+const isTemplateContainer = (node: ParentedNode): node is TemplateContainer =>
+	node.type === 'VExpressionContainer' && node.references !== undefined;
+
+// The Vue template expression container `node` sits in, or null outside a Vue
+// template (any other file only pays for the parser-services check).
+const findTemplateContainer = (
+	node: ParentedNode,
+	sourceCode: SourceCode
+): TemplateContainer | null => {
+	if (
+		typeof sourceCode.parserServices.defineTemplateBodyVisitor !==
+		'function'
+	) {
+		return null;
+	}
+
+	let current = node.parent;
+
+	while (current) {
+		if (isTemplateContainer(current)) {
+			return current;
+		}
+
+		current = current.parent;
+	}
+
+	return null;
+};
+
+// The innermost scope the program node owns — the module scope holding the
+// file's own bindings, rather than the global one `getScope()` hands back for
+// a Program.
+export const getModuleScope = (sourceCode: SourceCode): Scope.Scope =>
+	/* c8 ignore next -- a Program node always owns a scope */
+	sourceCode.scopeManager.acquire(sourceCode.ast, true) ??
+	sourceCode.getScope(sourceCode.ast);
+
+/**
+ * The scope a name read at `node` is looked up from. A Vue template expression
+ * gets a scope of its own that never reaches the `<script>` bindings it names,
+ * so it reads the script's module scope instead — unless the template itself
+ * binds the name (`v-for`, `v-slot`), which is null: nothing it can be
+ * resolved to statically.
+ */
+export const getLookupScope = (
+	node: Node,
+	sourceCode: SourceCode
+): Scope.Scope | null => {
+	const container = findTemplateContainer(node, sourceCode);
+
+	if (container === null) {
+		return sourceCode.getScope(node);
+	}
+
+	const isTemplateBound = container.references.some(
+		(reference) => reference.id === node && reference.variable !== null
+	);
+
+	if (isTemplateBound) {
+		return null;
+	}
+
+	return getModuleScope(sourceCode);
 };
 
 // Walks outward so shadowing is respected.
@@ -138,10 +220,13 @@ export const resolveStaticValue = (
 
 		seen.add(current);
 
-		const init = getConstBindingInit(
-			sourceCode.getScope(current),
-			current.name
-		);
+		const scope = getLookupScope(current, sourceCode);
+
+		if (scope === null) {
+			return current;
+		}
+
+		const init = getConstBindingInit(scope, current.name);
 
 		if (!init) {
 			return current;
@@ -165,29 +250,4 @@ export const resolveContainer = (
 	}
 
 	return resolveStaticValue(node, sourceCode);
-};
-
-// Resolves an identifier against a fixed scope instead of the one it sits in.
-// Vue template expressions live in a scope of their own that never reaches the
-// `<script>` bindings they name, so the script's module scope is passed in.
-export const resolveStaticValueFrom = (
-	node: Node,
-	sourceCode: SourceCode,
-	scope: Scope.Scope
-): Node => {
-	const unwrapped = unwrapExpression(node);
-
-	if (unwrapped.type !== 'Identifier') {
-		return resolveStaticValue(unwrapped, sourceCode);
-	}
-
-	const init = getConstBindingInit(scope, unwrapped.name);
-
-	if (init === null) {
-		return unwrapped;
-	}
-
-	// The initializer lives in the script, where ordinary scope resolution
-	// applies again.
-	return resolveStaticValue(init, sourceCode);
 };

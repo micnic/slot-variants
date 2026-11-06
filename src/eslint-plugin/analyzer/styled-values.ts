@@ -9,7 +9,11 @@ import type {
 } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { type CallMatch, isClassListMatch } from './call-matching.ts';
-import { resolveContainer, resolveStaticValueFrom } from './const-bindings.ts';
+import {
+	getLookupScope,
+	resolveContainer,
+	resolveStaticValue
+} from './const-bindings.ts';
 import {
 	collectSlotKeyedProperties,
 	getClassValue,
@@ -113,19 +117,18 @@ const stylesCache = new WeakMap<Node, InternalStyles>();
 export type StyledContext = {
 	sourceCode: SourceCode;
 	matchCall: (node: CallExpression) => CallMatch | null;
-	scopeOf: (node: Node) => Scope.Scope;
+	scopeOf: (node: Node) => Scope.Scope | null;
 	resolve: (node: Node) => Node;
 };
 
 export const createStyledContext = (
 	sourceCode: SourceCode,
-	matchCall: StyledContext['matchCall'],
-	scopeOf: StyledContext['scopeOf']
+	matchCall: StyledContext['matchCall']
 ): StyledContext => ({
 	sourceCode,
 	matchCall,
-	scopeOf,
-	resolve: (node) => resolveStaticValueFrom(node, sourceCode, scopeOf(node))
+	scopeOf: (node) => getLookupScope(node, sourceCode),
+	resolve: (node) => resolveStaticValue(node, sourceCode)
 });
 
 // `defaultVariants` values a call site doesn't override, merged under the
