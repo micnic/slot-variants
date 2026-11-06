@@ -25,6 +25,7 @@ import {
 import {
 	type Entry,
 	type EntryListFixer,
+	type EntryRemedy,
 	indexEntriesBySlotAndToken,
 	reportEntryList,
 	type TokenEntriesBySlot,
@@ -35,10 +36,13 @@ import {
 // the tokens every value shares, with what each value contributes.
 type SharedEntries = Map<string, Map<string, Entry[][]>>;
 
-// A variant is "exhaustive" when it has a defaultVariants entry, is listed in
-// requiredVariants, or every variant is required (`requiredVariants: true`).
-// Without coverage the prop can be undefined at runtime, so a shared token
-// isn't guaranteed to render.
+// How a variant is known to apply one of its values. `required` (listed in
+// requiredVariants, or `requiredVariants: true`) always does — leaving it out or
+// passing `null` throws. `default` (a defaultVariants entry) does unless a call
+// passes `null`, which skips the default. Without either, the prop can be
+// undefined at runtime, so a shared token isn't guaranteed to render.
+type VariantCoverage = 'required' | 'default';
+
 const intersectSharedTokensStep = (
 	sharedTokens: SharedEntries,
 	valueMap: TokenEntriesBySlot
@@ -377,27 +381,54 @@ const applySharedTokensFixPlan = (
 	return fixes;
 };
 
+// A required variant always applies one of its values, so lifting the shared
+// tokens leaves every output unchanged and is safe as an autofix. A defaulted
+// one doesn't — `null` skips the default, and the lifted tokens would then
+// apply where they didn't before — so the lift is only offered as a
+// suggestion.
+const getSharedTokensRemedy = (
+	plan: SharedTokensFixPlan | null,
+	coverage: VariantCoverage,
+	variantKey: string,
+	slot: string
+): EntryRemedy => {
+	if (plan === null) {
+		return {};
+	}
+
+	const fix: EntryListFixer = (fixer) =>
+		applySharedTokensFixPlan(fixer, plan);
+
+	if (coverage === 'required') {
+		return { fix };
+	}
+
+	return {
+		suggest: [
+			{
+				messageId: 'liftShared',
+				data: { variant: variantKey, slot },
+				fix
+			}
+		]
+	};
+};
+
 const reportSharedTokenEntries = (
 	context: Rule.RuleContext,
 	entryLists: ReadonlyArray<ReadonlyArray<Entry>>,
 	variantKey: string,
 	slot: string,
 	token: string,
-	plan: SharedTokensFixPlan | null
+	remedy: EntryRemedy
 ) => {
-	let fix: EntryListFixer | undefined;
-
-	if (plan) {
-		fix = (fixer) => applySharedTokensFixPlan(fixer, plan);
-	}
-
 	for (const entryList of entryLists) {
 		reportEntryList(
 			context,
 			entryList,
 			'shared',
 			{ token, variant: variantKey, slot },
-			fix
+			remedy
 		);
 	}
 };
@@ -406,6 +437,7 @@ const reportSharedTokensBySlot = (
 	context: Rule.RuleContext,
 	sharedTokens: SharedEntries,
 	variantKey: string,
+	coverage: VariantCoverage,
 	valueEntries: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
 	getTarget: (slot: string) => SharedTokensTarget | null
@@ -427,6 +459,8 @@ const reportSharedTokensBySlot = (
 			);
 		}
 
+		const remedy = getSharedTokensRemedy(plan, coverage, variantKey, slot);
+
 		for (const [token, entryLists] of tokens) {
 			reportSharedTokenEntries(
 				context,
@@ -434,7 +468,7 @@ const reportSharedTokensBySlot = (
 				variantKey,
 				slot,
 				token,
-				plan
+				remedy
 			);
 		}
 	}
@@ -442,47 +476,55 @@ const reportSharedTokensBySlot = (
 
 const collectDefaultVariantKeys = (
 	defaultVariants: Node | undefined
-): Set<string> => {
-	const keys = new Set<string>();
+): Map<string, VariantCoverage> => {
+	const coverage = new Map<string, VariantCoverage>();
 
 	for (const [key, value] of getProperties(defaultVariants)) {
 		if (getStaticMatcherValue(value) !== null) {
-			keys.add(key);
+			coverage.set(key, 'default');
 		}
 	}
 
-	return keys;
+	return coverage;
 };
 
 const isLiteralTrue = (node: Node): boolean =>
 	node.type === 'Literal' && node.value === true;
 
-const collectExhaustiveVariantKeys = (
+// How each covered variant is covered. A variant that's both defaulted and
+// required counts as required (sv() rejects that config anyway).
+const collectVariantCoverage = (
 	config: ReadonlyMap<string, Node>,
 	variantsMap: ReadonlyMap<string, Node>
-): Set<string> => {
-	const exhaustive = collectDefaultVariantKeys(config.get('defaultVariants'));
+): Map<string, VariantCoverage> => {
+	const coverage = collectDefaultVariantKeys(config.get('defaultVariants'));
 	const requiredVariants = config.get('requiredVariants');
 
 	if (!requiredVariants) {
-		return exhaustive;
+		return coverage;
 	}
 
-	// `requiredVariants: true` makes every variant required — hence exhaustive.
+	// `requiredVariants: true` makes every variant required.
 	if (isLiteralTrue(requiredVariants)) {
 		for (const key of variantsMap.keys()) {
-			exhaustive.add(key);
+			coverage.set(key, 'required');
 		}
 
-		return exhaustive;
+		return coverage;
 	}
 
 	forEachStringLiteralElement(requiredVariants, (value) => {
-		exhaustive.add(value);
+		coverage.set(value, 'required');
 	});
 
-	return exhaustive;
+	return coverage;
 };
+
+// A record whose only value is keyed `true` or `false` still accepts the
+// other boolean, which applies none of its classes.
+const isLoneBooleanValue = (valueEntries: ReadonlyMap<string, Node>) =>
+	valueEntries.size === 1 &&
+	(valueEntries.has('true') || valueEntries.has('false'));
 
 const collectVariantTokensByValue = (
 	variantEntries: ReadonlyMap<string, Node>,
@@ -512,6 +554,7 @@ const collectVariantTokensByValue = (
 const analyzeVariantSharedTokens = (
 	context: Rule.RuleContext,
 	variantKey: string,
+	coverage: VariantCoverage,
 	variantValue: Node,
 	slotNames: Set<string>,
 	getTarget: (slot: string) => SharedTokensTarget | null
@@ -526,9 +569,14 @@ const analyzeVariantSharedTokens = (
 	// A spread or computed key means we can't see every value, so we'd
 	// over-flag tokens that may differ in the unseen branches. An empty record
 	// has no tokens to compare and is reported by no-empty-classes instead. A
-	// single value needs no comparison — the variant is exhaustive, so that one
-	// value always applies and every token in it is constant.
-	if (!valueEntries || valueEntries.size === 0) {
+	// single value needs no comparison — the variant is covered, so that one
+	// value applies and every token in it is constant — unless it's a lone
+	// boolean value, whose counterpart applies nothing.
+	if (
+		!valueEntries ||
+		valueEntries.size === 0 ||
+		isLoneBooleanValue(valueEntries)
+	) {
 		return;
 	}
 
@@ -546,6 +594,7 @@ const analyzeVariantSharedTokens = (
 		context,
 		sharedTokens,
 		variantKey,
+		coverage,
 		valueEntries,
 		slotNames,
 		getTarget
@@ -742,18 +791,21 @@ const checkCompoundsForSingleKey = (
 const analyzeExhaustiveVariants = (
 	context: Rule.RuleContext,
 	variantsMap: ReadonlyMap<string, Node>,
-	exhaustive: Set<string>,
+	coverageByVariant: ReadonlyMap<string, VariantCoverage>,
 	slotNames: Set<string>,
 	getTarget: (slot: string) => SharedTokensTarget | null
 ) => {
 	for (const [variantKey, variantValue] of variantsMap) {
-		if (!exhaustive.has(variantKey)) {
+		const coverage = coverageByVariant.get(variantKey);
+
+		if (coverage === undefined) {
 			continue;
 		}
 
 		analyzeVariantSharedTokens(
 			context,
 			variantKey,
+			coverage,
 			variantValue,
 			slotNames,
 			getTarget
@@ -816,7 +868,7 @@ export const analyzeSharedTokens = (
 	analyzeExhaustiveVariants(
 		context,
 		variantsMap,
-		collectExhaustiveVariantKeys(config, variantsMap),
+		collectVariantCoverage(config, variantsMap),
 		slotNames,
 		getTarget
 	);

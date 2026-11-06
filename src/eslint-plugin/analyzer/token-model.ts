@@ -160,12 +160,15 @@ export const indexEntriesBySlotAndToken = (
 
 export type EntryListFixer = (fixer: Rule.RuleFixer) => Rule.Fix[] | null;
 
+/** How a finding can be resolved: an autofix, editor suggestions, or neither. */
+export type EntryRemedy = Pick<Rule.ReportDescriptorOptions, 'fix' | 'suggest'>;
+
 export const reportEntryList = (
 	context: Rule.RuleContext,
 	entries: ReadonlyArray<Entry>,
 	messageId: string,
 	data: Record<string, string>,
-	fix?: EntryListFixer
+	remedy?: EntryRemedy
 ) => {
 	const { sourceCode } = context;
 
@@ -177,7 +180,7 @@ export const reportEntryList = (
 			},
 			messageId,
 			data,
-			fix
+			...remedy
 		});
 	}
 };

@@ -9,9 +9,14 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  * (or the corresponding `slots[slot]` entry) rather than being repeated across
  * each variant value. Coverage is treated as exhaustive when the variant has a
  * `defaultVariants` entry, is listed in `requiredVariants`, or every variant is
- * required via `requiredVariants: true`.
+ * required via `requiredVariants: true`. A record whose only value is keyed
+ * `true` or `false` is never exhaustive: the other boolean applies nothing.
  *
- * Auto-fixable when the fix is unambiguous: the `base`/`slots[slot]` target and
+ * The lift is an autofix for a required variant only. Passing `null` skips a
+ * default, so for a defaulted variant lifting the token would also apply it to
+ * those calls — there the lift is offered as a suggestion instead.
+ *
+ * Fixable when the fix is unambiguous: the `base`/`slots[slot]` target and
  * every variant value's contribution to that slot must each be a plain,
  * directly-authored string or template literal — an array, a value nested
  * inside further structure, or one read through a hoisted `const` binding
@@ -42,9 +47,12 @@ export const noSharedTokens: Rule.RuleModule = {
 			url: docsUrl('no-shared-tokens')
 		},
 		fixable: 'code',
+		hasSuggestions: true,
 		schema: [],
 		messages: {
 			shared: 'Class "{{token}}" appears in every value of variant "{{variant}}" for slot "{{slot}}" — lift it out of the variant.',
+			liftShared:
+				'Lift the classes every value of variant "{{variant}}" shares into slot "{{slot}}" (they then also apply when "{{variant}}" is passed as null).',
 			singleKeyCompound:
 				'This {{kind}} entry only matches variant "{{key}}" ({{value}}) — move its class onto that variant\'s value instead of using {{kind}}.'
 		}

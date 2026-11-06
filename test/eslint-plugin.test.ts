@@ -70,6 +70,18 @@ const repeat = <T>(value: T, count: number): T[] =>
 const shared = (token: string, variant: string, slot = 'base') =>
 	err('shared', { token, variant, slot });
 
+// A `shared` finding on a variant that's only covered by a default: passing
+// `null` skips the default, so the lift is offered as a suggestion, not a fix.
+const sharedLift = (
+	token: string,
+	variant: string,
+	output: string,
+	slot = 'base'
+) => ({
+	...shared(token, variant, slot),
+	suggestions: [{ messageId: 'liftShared', data: { variant, slot }, output }]
+});
+
 const singleKeyCompound = (kind: string, key: string, value: string) =>
 	err('singleKeyCompound', { kind, key, value });
 
@@ -4554,6 +4566,24 @@ const NO_SHARED_TOKENS_VALID = [
 			variants: { disabled: { body: 'opacity-50' } },
 			defaultVariants: { disabled: false }
 		});`,
+	// A record with only a `true` value still accepts `false`, which applies
+	// nothing — here it's even the default, so the value's tokens aren't
+	// constant.
+	IMPORT +
+		`sv({
+			base: 'x',
+			variants: { disabled: { true: 'opacity-50 cursor-not-allowed' } },
+			defaultVariants: { disabled: false }
+		});`,
+	// The same holds for a required variant, and for a lone `false` value.
+	IMPORT +
+		`sv({
+			variants: {
+				disabled: { true: 'opacity-50 cursor-not-allowed' },
+				open: { false: 'hidden' }
+			},
+			requiredVariants: true
+		});`,
 	// Spread inside variant value record — can't enumerate values.
 	IMPORT +
 		`sv({
@@ -4784,16 +4814,23 @@ const NO_SHARED_TOKENS_INVALID = [
 		code:
 			IMPORT_NS +
 			"SV.sv({ variants: { size: { sm: 'flex p-1', lg: 'flex p-2' } }, defaultVariants: { size: 'sm' } });",
-		output:
-			IMPORT_NS +
-			"SV.sv({ base: 'flex', variants: { size: { sm: 'p-1', lg: 'p-2' } }, defaultVariants: { size: 'sm' } });",
-		errors: repeat(shared('flex', 'size'), 2)
+		output: null,
+		errors: repeat(
+			sharedLift(
+				'flex',
+				'size',
+				IMPORT_NS +
+					"SV.sv({ base: 'flex', variants: { size: { sm: 'p-1', lg: 'p-2' } }, defaultVariants: { size: 'sm' } });"
+			),
+			2
+		)
 	},
 	{
-		// Token shared across all values of an exhaustive variant
-		// (via defaultVariants) — flag every occurrence. With no
-		// `base` property to lift into, the fix creates one, laid
-		// out like the config's existing first property.
+		// Token shared across all values of a defaulted variant — flag every
+		// occurrence. `{ size: null }` skips the default, so lifting the token
+		// would change that call's output: the lift is a suggestion, not a
+		// fix. With no `base` property to lift into, it creates one, laid out
+		// like the config's existing first property.
 		code:
 			IMPORT +
 			`sv({
@@ -4806,9 +4843,13 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { size: 'md' }
 			});`,
-		output:
-			IMPORT +
-			`sv({
+		output: null,
+		errors: repeat(
+			sharedLift(
+				'rounded',
+				'size',
+				IMPORT +
+					`sv({
 				base: 'rounded',
 				variants: {
 					size: {
@@ -4818,8 +4859,10 @@ const NO_SHARED_TOKENS_INVALID = [
 					}
 				},
 				defaultVariants: { size: 'md' }
-			});`,
-		errors: repeat(shared('rounded', 'size'), 3)
+			});`
+			),
+			3
+		)
 	},
 	{
 		// Two-value variant, exhaustive via requiredVariants —
@@ -4918,9 +4961,13 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { size: 'sm' }
 			});`,
-		output:
-			IMPORT +
-			`sv({
+		output: null,
+		errors: repeat(
+			sharedLift(
+				'rounded',
+				'size',
+				IMPORT +
+					`sv({
 				slots: { root: 'flex rounded', body: 'p-4' },
 				variants: {
 					size: {
@@ -4930,7 +4977,10 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { size: 'sm' }
 			});`,
-		errors: repeat(shared('rounded', 'size', 'root'), 2)
+				'root'
+			),
+			2
+		)
 	},
 	{
 		// Variant value as an array of strings — extractor walks
@@ -4962,9 +5012,13 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { on: false }
 			});`,
-		output:
-			IMPORT +
-			`sv({
+		output: null,
+		errors: repeat(
+			sharedLift(
+				'highlight',
+				'on',
+				IMPORT +
+					`sv({
 				base: 'highlight',
 				variants: {
 					on: {
@@ -4973,8 +5027,10 @@ const NO_SHARED_TOKENS_INVALID = [
 					}
 				},
 				defaultVariants: { on: false }
-			});`,
-		errors: repeat(shared('highlight', 'on'), 2)
+			});`
+			),
+			2
+		)
 	},
 	{
 		// Numeric variant value keys are parsed as literal property keys
@@ -4990,9 +5046,13 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { size: 1 }
 			});`,
-		output:
-			IMPORT +
-			`sv({
+		output: null,
+		errors: repeat(
+			sharedLift(
+				'rounded',
+				'size',
+				IMPORT +
+					`sv({
 				base: 'rounded',
 				variants: {
 					size: {
@@ -5001,8 +5061,10 @@ const NO_SHARED_TOKENS_INVALID = [
 					}
 				},
 				defaultVariants: { size: 1 }
-			});`,
-		errors: repeat(shared('rounded', 'size'), 2)
+			});`
+			),
+			2
+		)
 	},
 	{
 		// A value read through a hoisted `const` still counts for shared-token
@@ -5094,6 +5156,42 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				defaultVariants: { size: 'sm' }
 			});`,
+		output: null,
+		errors: repeat(
+			sharedLift(
+				'rounded',
+				'size',
+				IMPORT +
+					`sv({
+				base: 'flex rounded',
+				variants: {
+					size: {
+						sm: 'text-sm',
+						lg: 'text-lg'
+					}
+				},
+				defaultVariants: { size: 'sm' }
+			});`
+			),
+			2
+		)
+	},
+	{
+		// A required variant can't be skipped (`null` throws), so the lift is
+		// an autofix there — the same config as above, required instead of
+		// defaulted.
+		code:
+			IMPORT +
+			`sv({
+				base: 'flex',
+				variants: {
+					size: {
+						sm: 'rounded text-sm',
+						lg: 'rounded text-lg'
+					}
+				},
+				requiredVariants: ['size']
+			});`,
 		output:
 			IMPORT +
 			`sv({
@@ -5104,7 +5202,7 @@ const NO_SHARED_TOKENS_INVALID = [
 						lg: 'text-lg'
 					}
 				},
-				defaultVariants: { size: 'sm' }
+				requiredVariants: ['size']
 			});`,
 		errors: repeat(shared('rounded', 'size'), 2)
 	},

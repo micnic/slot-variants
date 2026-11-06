@@ -1389,7 +1389,7 @@ Either drop the overriding class, or — if the override is deliberate — move 
 
 #### `slot-variants/no-shared-tokens`
 
-Flags class tokens repeated in every value of a variant that's always applied (has a static default, or is required), since those tokens are constant in the output and belong in `base` (or the corresponding slot) instead. Partially auto-fixable — it lifts the token into `base`/`slots[slot]` where that's straightforward to do automatically.
+Flags class tokens repeated in every value of a variant that's always applied (has a static default, or is required), since those tokens are constant in the output and belong in `base` (or the corresponding slot) instead. Where it's straightforward to do automatically, it offers to lift the token into `base`/`slots[slot]`: as an autofix for a required variant, and as an editor suggestion for a defaulted one, since passing `null` skips the default and the lifted token would then apply to that call too. A variant whose only value is keyed `true` (or `false`) isn't flagged, since passing the other boolean applies none of its classes.
 
 ```typescript
 const button = sv({
