@@ -3625,6 +3625,47 @@ t.test('variant value named after an object method is invalid', (t) => {
 	t.end();
 });
 
+t.test(
+	'a record mixing true with other keys takes each key as a value',
+	(t) => {
+		const card = sv({
+			slots: { header: 'h' },
+			variants: { tone: { true: 'a', header: 'b' } }
+		});
+
+		t.equal(card({ tone: true }).base, 'a', '`true` names the true key');
+		t.equal(
+			card({ tone: 'header' }).base,
+			'b',
+			'a slot name is a plain value'
+		);
+		t.throws(
+			// @ts-expect-error - `false` names no value of this variant
+			() => card({ tone: false }),
+			{ message: 'Invalid value "false" for variant "tone"' },
+			'`false` is rejected by the types and at runtime'
+		);
+
+		const badge = sv('badge', {
+			variants: { size: { true: 'a', big: 'b' } }
+		});
+
+		t.equal(badge({ size: 'big' }), 'badge b', 'without slots too');
+		// @ts-expect-error - `false` names no value of this variant
+		t.throws(() => badge({ size: false }), 'and `false` is rejected there');
+
+		const only = sv('x', { variants: { on: { true: 'a' } } });
+
+		t.equal(
+			only({ on: false }),
+			'x',
+			'a true-only record still takes false'
+		);
+
+		t.end();
+	}
+);
+
 t.test('variants named after object members resolve like any other', (t) => {
 	// TypeScript checks an object literal's inherited members against the
 	// declared ones, so a literal leaving out `toString` doesn't match a type

@@ -38,7 +38,9 @@ export type Slots = Record<string, ConfigClassValue>;
 
 export type MaybeSlots = Slots | undefined;
 
-type BooleanString<T> = T extends `${boolean}` ? boolean : T;
+// The prop value a variant's value key stands for: a `true`/`false` key is
+// matched by that boolean, any other key by itself.
+type KeyValue<K> = K extends 'true' ? true : K extends 'false' ? false : K;
 
 type SlotKey<S extends MaybeSlots> = 'base' | StringKeyof<S>;
 
@@ -59,18 +61,23 @@ type GroupSlots<
 		: never
 	: never;
 
-type BooleanShorthandKeys<S extends MaybeSlots, G extends MaybeGroups<S>> =
-	| (S extends Slots ? SlotTarget<S, G> : never)
-	| 'true'
-	| 'false';
+type BooleanShorthandKeys<
+	S extends MaybeSlots,
+	G extends MaybeGroups<S>
+> = S extends Slots ? SlotTarget<S, G> : never;
 
+// A record keyed only by slots is a boolean shorthand, and one keyed only by
+// `true`/`false` is a boolean whichever keys it has. Any other record's keys are
+// its values — a `true` key among them takes `true` alone, not `false`.
 type VariantPropType<S extends MaybeSlots, G extends MaybeGroups<S>, T> =
 	T extends Record<string | number, unknown>
 		? [Extract<keyof T, number>] extends [never]
 			? StringKeyof<T> extends BooleanShorthandKeys<S, G>
 				? boolean
-				: BooleanString<StringKeyof<T>>
-			: BooleanString<StringKeyof<T>> | Extract<keyof T, number>
+				: StringKeyof<T> extends 'true' | 'false'
+					? boolean
+					: KeyValue<StringKeyof<T>>
+			: KeyValue<StringKeyof<T>> | Extract<keyof T, number>
 		: boolean;
 
 export type NormalizedVariantValue =
