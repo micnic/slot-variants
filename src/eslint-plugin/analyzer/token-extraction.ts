@@ -262,7 +262,9 @@ const pushRecordKeyTokens = (
 };
 
 // Spreads and computed keys carry an unknowable class name and are skipped
-// (no-dynamic-classes flags them separately).
+// (no-dynamic-classes flags them separately). Each key applies when its value
+// is truthy, so `{ a: cond }` is matched like `cond && a`: keys under `cond`
+// and `!cond` resolve as mutually exclusive.
 const extractRecordTokens = (
 	node: ObjectExpression,
 	slot: string,
@@ -275,7 +277,10 @@ const extractRecordTokens = (
 			continue;
 		}
 
-		pushRecordKeyTokens(prop, slot, source, entries, sourceCode);
+		const [key, truthy] = conditionMatcher(prop.value, sourceCode);
+		const keySource = withMatcher(source, key, branchName(truthy));
+
+		pushRecordKeyTokens(prop, slot, keySource, entries, sourceCode);
 	}
 };
 

@@ -2289,6 +2289,8 @@ const NO_CONFLICTING_DUP_VALID = [
 	// opposite branches of one condition.
 	IMPORT_CN + "cn(isActive && 'flex', !isActive && 'flex');",
 	IMPORT_CN + "cn(isActive ? 'flex' : '', isActive ? '' : 'flex');",
+	// A clsx-style record value is its key's condition, like `&&`'s left side.
+	IMPORT_CN + "cn({ flex: isActive }, !isActive && 'flex');",
 	// Ternary branches with conflicting namespaces are mutually exclusive.
 	IMPORT_CN + "cn(isActive ? 'w-100' : 'w-200');",
 	// Ternary in an sv() cn-style leading argument — branches are exclusive.
@@ -2743,6 +2745,10 @@ const NO_CONFLICTING_NS_VALID = [
 	// Project class names share a prefix but name no Tailwind utility, so
 	// nothing says they set the same property.
 	IMPORT_CN + "cn('btn-primary btn-lg');",
+	// Record keys under complementary conditions never apply together, in a
+	// record or against a `&&`.
+	IMPORT_CN + "cn({ 'w-2': active, 'w-4': !active });",
+	IMPORT_CN + "cn(active && 'w-2', { 'w-4': !active });",
 	IMPORT + "sv({ base: 'card-body card-title card-header-actions' });",
 	// Single namespaced utility — nothing to conflict with.
 	IMPORT + "sv({ base: 'w-100' });",
@@ -3203,6 +3209,11 @@ const NO_CONFLICTING_NS_VALID = [
 ];
 
 const NO_CONFLICTING_NS_INVALID = [
+	{
+		// Record keys under the same condition apply together.
+		code: IMPORT_CN + "cn({ 'w-2': active, 'w-4': active });",
+		errors: repeat(conflictCn('w-2, w-4'), 2)
+	},
 	{
 		// Basic conflict in base.
 		code: IMPORT + "sv({ base: 'w-100 w-200' });",
