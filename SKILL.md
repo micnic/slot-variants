@@ -191,7 +191,7 @@ The library caches results automatically (default 256 entries). Each cache entry
 maxEntries = factor₁ × factor₂ × ... × factorₙ
 ```
 
-A variant's factor is its value count `+ 1` (the `+ 1` counts the variant being left unset). The `+ 1` is dropped — factor is just the value count — when the variant is required or has a static default, since it can never be unset. Function-based defaults still count as unset-able, so they keep the `+ 1`. Raise `cacheSize` only when `maxEntries` exceeds 256 — below that the cache never evicts. With `introspection: true`, `getMaxEntries()` returns this exact number, and `getCacheSize()`/`clearCache()` inspect the live cache.
+A variant's factor is its value count `+ 1` (the `+ 1` counts the variant being left unset). The `+ 1` is dropped — factor is just the value count — only when the variant is required, since it can never be unset. Defaults keep the `+ 1`: passing `null` skips a default, and a function default may return `undefined`. Raise `cacheSize` only when `maxEntries` exceeds 256 — below that the cache never evicts. With `introspection: true`, `getMaxEntries()` returns this exact number, and `getCacheSize()`/`clearCache()` inspect the live cache.
 
 ### 13. Use Presets for Reusable Variant Combinations
 

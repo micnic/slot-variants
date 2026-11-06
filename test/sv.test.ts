@@ -4541,7 +4541,7 @@ t.test('getMaxEntries matches the README four-variant example', (t) => {
 	t.end();
 });
 
-t.test('getMaxEntries drops the unset state for a static default', (t) => {
+t.test('getMaxEntries keeps the unset state for a static default', (t) => {
 	const button = sv('btn', {
 		variants: {
 			size: { sm: 'text-sm', md: 'text-base', lg: 'text-lg' },
@@ -4551,8 +4551,20 @@ t.test('getMaxEntries drops the unset state for a static default', (t) => {
 		introspection: true
 	});
 
-	// size pinned by default: 3, intent: 2 + 1
-	t.equal(button.getMaxEntries(), 9, '3 * (2 + 1)');
+	// `null` skips the default, so size can still be left unset
+	t.equal(button.getMaxEntries(), 12, '(3 + 1) * (2 + 1)');
+
+	for (const size of ['sm', 'md', 'lg', null] as const) {
+		for (const intent of ['primary', 'danger', undefined] as const) {
+			button({ size, intent });
+		}
+	}
+
+	t.equal(
+		button.getCacheSize(),
+		button.getMaxEntries(),
+		'every reachable combination fits the count'
+	);
 
 	t.end();
 });

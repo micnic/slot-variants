@@ -151,24 +151,17 @@ const applyMultiSlots = (
  * which is also the largest number of entries its cache can ever hold.
  *
  * Each variant contributes its value count, plus one for the unset state. The
- * unset state is dropped when the variant cannot actually be left unset — it
- * is required, or it has a static default value that always fills it in. A
- * function-based default keeps the `+ 1`, since it may return `undefined`.
+ * unset state is dropped only for a required variant, which can never be left
+ * unset. A default doesn't drop it: passing `null` skips the default, and a
+ * function default may return `undefined`.
  */
 const countMaxEntries = (config: CompiledConfig) => {
 	const requiredVariants = new Set(config.requiredVariants);
 
 	let count = 1;
 
-	for (const {
-		key,
-		unsetId: valueCount,
-		defaultValue
-	} of config.variantData) {
-		const hasStaticDefault =
-			defaultValue !== undefined && typeof defaultValue !== 'function';
-
-		if (requiredVariants.has(key) || hasStaticDefault) {
+	for (const { key, unsetId: valueCount } of config.variantData) {
+		if (requiredVariants.has(key)) {
 			count *= valueCount;
 		} else {
 			count *= valueCount + 1;

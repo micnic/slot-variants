@@ -882,7 +882,7 @@ button.presets;                     // { cta: { size: 'lg', intent: 'primary' } 
 button.getVariantValues('size');    // ['sm', 'lg']
 button.getVariantValues('intent');  // ['primary', 'danger']
 button.splitProps(props);           // [variantProps, restProps]
-button.getMaxEntries();             // 4 — distinct variant combinations
+button.getMaxEntries();             // 6 — distinct variant combinations
 button.getCacheSize();              // current number of cached entries
 button.clearCache();                // clear all cached entries
 ```
