@@ -6526,6 +6526,22 @@ t.test('multiSlots slot function merges outer string class', (t) => {
 	t.end();
 });
 
+t.test('multiSlots without a slots config makes base a function', (t) => {
+	const all = sv('btn', { multiSlots: true });
+	const listed = sv('btn', { multiSlots: ['base'] });
+
+	t.equal(all().base({ class: 'mt-2' }), 'btn mt-2', 'multiSlots: true');
+	t.equal(listed().base(), 'btn', "multiSlots: ['base']");
+
+	const none: string = sv('btn', { multiSlots: [] })();
+	const off: string = sv('btn', { multiSlots: false })();
+
+	t.equal(none, 'btn', 'an empty list keeps the class string');
+	t.equal(off, 'btn', 'multiSlots: false keeps the class string');
+
+	t.end();
+});
+
 t.test('multiSlots on a base-only config returns a function', (t) => {
 	const box = sv('border rounded-lg', {
 		slots: {},

@@ -143,6 +143,21 @@ type MultiSlotKeys<
 		? (M[number] & SlotKey<S>) | GroupSlots<G, M[number]>
 		: never;
 
+type SlotResult<
+	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
+	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, G, V>,
+	M extends MultiSlots<S, G>
+> = Prettify<{
+	readonly [K in SlotKey<S>]: K extends MultiSlotKeys<S, G, M>
+		? (props?: MultiSlotFnProps<S, G, V, P>) => string
+		: string;
+}>;
+
+// Without slots the result is the class string, unless `multiSlots` makes
+// `base` a function — then it's the same `{ base }` object a slotted config
+// returns.
 type ReturnValue<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
@@ -150,12 +165,10 @@ type ReturnValue<
 	P extends MaybePresets<S, G, V>,
 	M extends MultiSlots<S, G>
 > = S extends undefined
-	? string
-	: Prettify<{
-			readonly [K in SlotKey<S>]: K extends MultiSlotKeys<S, G, M>
-				? (props?: MultiSlotFnProps<S, G, V, P>) => string
-				: string;
-		}>;
+	? [MultiSlotKeys<S, G, M>] extends [never]
+		? string
+		: SlotResult<S, G, V, P, M>
+	: SlotResult<S, G, V, P, M>;
 
 export type SlotValue<
 	S extends MaybeSlots,
