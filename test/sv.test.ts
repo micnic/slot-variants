@@ -3446,6 +3446,27 @@ t.test('cacheSize 0 still produces correct results', (t) => {
 	t.end();
 });
 
+t.test('slot results are readonly at the type level', (t) => {
+	const card = sv({
+		slots: { header: 'font-bold', body: 'p-4' },
+		multiSlots: ['body']
+	});
+
+	// Never called: a cached result is shared by every call with the same
+	// props, so writing to it is rejected by the type instead of at runtime.
+	const writeSlots = () => {
+		const result = card();
+
+		// @ts-expect-error - a slot class string is readonly
+		result.header = 'mutated';
+		// @ts-expect-error - a multi-slot function is readonly
+		result.body = () => 'mutated';
+	};
+
+	t.type(writeSlots, 'function', 'writes are only type-checked');
+	t.end();
+});
+
 t.test('cache works with slots', (t) => {
 	const card = sv('border', {
 		slots: {
