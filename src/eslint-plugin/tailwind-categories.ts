@@ -894,6 +894,98 @@ const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
 	})
 );
 
+// Tailwind's other hyphenated utility families, whose values aren't classified
+// per property: any two values of one family set the same property, so they're
+// grouped by dash count alone (`w-4`/`w-8`, `mt-2`/`mt-safe-bottom`). Any other
+// first segment names a project class (`btn-primary`, `card-body`), which says
+// nothing about the property it sets.
+const DASH_COUNT_PREFIXES: ReadonlySet<string> = new Set([
+	'animate',
+	'appearance',
+	'aspect',
+	'backface',
+	'basis',
+	'blur',
+	'bottom',
+	'box',
+	'brightness',
+	'caption',
+	'clear',
+	'columns',
+	'contrast',
+	'delay',
+	'diagonal',
+	'duration',
+	'end',
+	'field',
+	'filter',
+	'float',
+	'flow',
+	'forced',
+	'grayscale',
+	'grow',
+	'h',
+	'hue',
+	'hyphens',
+	'indent',
+	'invert',
+	'isolation',
+	'leading',
+	'left',
+	'lining',
+	'm',
+	'mb',
+	'mbe',
+	'mbs',
+	'me',
+	'ml',
+	'mr',
+	'ms',
+	'mt',
+	'mx',
+	'my',
+	'no',
+	'normal',
+	'not',
+	'oldstyle',
+	'opacity',
+	'order',
+	'p',
+	'pb',
+	'pbe',
+	'pbs',
+	'pe',
+	'pl',
+	'pointer',
+	'pr',
+	'proportional',
+	'ps',
+	'pt',
+	'px',
+	'py',
+	'resize',
+	'right',
+	'saturate',
+	'select',
+	'sepia',
+	'shrink',
+	'size',
+	'slashed',
+	'sr',
+	'stacked',
+	'start',
+	'subpixel',
+	'tab',
+	'tabular',
+	'top',
+	'tracking',
+	'underline',
+	'w',
+	'will',
+	'z',
+	'zoom'
+]);
+
 const COLOR_FUNCTIONS = [
 	'rgb',
 	'rgba',
@@ -1327,8 +1419,13 @@ const categorizeWithSpec = (
 	return category;
 };
 
+// Whether a hyphenated token's first segment names a Tailwind utility family
+// at all — the families `categorize` knows how to group.
+const isTailwindFamily = (firstSegment: string): boolean =>
+	PREFIX_SPECS.has(firstSegment) || DASH_COUNT_PREFIXES.has(firstSegment);
+
 // The property category for a token's value (the segments after the first),
-// or the dash count as a string for prefixes we don't classify.
+// or the dash count as a string for a Tailwind family we don't classify.
 const categorize = (
 	firstSegment: string,
 	value: ReadonlyArray<string>
@@ -2055,6 +2152,12 @@ export const getConflictKey = (
 
 	if (value.length === 0) {
 		return getBareUtilityKey(firstSegment, variantPrefix);
+	}
+
+	// A project class (`btn-primary`, `card-body`) shares a prefix with its
+	// siblings, but nothing says they set the same property.
+	if (!isTailwindFamily(firstSegment)) {
+		return null;
 	}
 
 	// Tokens collide when they share a first segment and resolve to the same

@@ -2564,6 +2564,10 @@ const NO_CONFLICTING_NS_VALID = [
 	// Tailwind families.
 	IMPORT +
 		"sv({ base: '__defineGetter__-2 toString constructor-4 hasOwnProperty' });",
+	// Project class names share a prefix but name no Tailwind utility, so
+	// nothing says they set the same property.
+	IMPORT_CN + "cn('btn-primary btn-lg');",
+	IMPORT + "sv({ base: 'card-body card-title card-header-actions' });",
 	// Single namespaced utility — nothing to conflict with.
 	IMPORT + "sv({ base: 'w-100' });",
 	// Single-word utilities have no namespace and are skipped.
