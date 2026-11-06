@@ -9,7 +9,7 @@ import type {
 } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { type CallMatch, isClassListMatch } from './call-matching.ts';
-import { resolveStaticValueFrom } from './const-bindings.ts';
+import { resolveContainer, resolveStaticValueFrom } from './const-bindings.ts';
 import {
 	collectSlotKeyedProperties,
 	getClassValue,
@@ -64,7 +64,8 @@ const EMPTY_GROUPS: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
 const NO_SKIP: ReadonlySet<string> = new Set();
 
 const readGroups = (
-	groups: ReadonlyMap<string, Node>
+	groups: ReadonlyMap<string, Node>,
+	sourceCode: SourceCode
 ): Pick<InternalStyles, 'groupSlots' | 'slotGroups'> => {
 	const groupSlots = new Map<string, string[]>();
 	const slotGroups = new Map<string, string[]>();
@@ -72,7 +73,7 @@ const readGroups = (
 	for (const [group, value] of groups) {
 		const slots: string[] = [];
 
-		forEachStringLiteralElement(value, (slot) => {
+		forEachStringLiteralElement(value, sourceCode, (slot) => {
 			slots.push(slot);
 			getOrCreate(slotGroups, slot, () => []).push(group);
 		});
@@ -89,18 +90,20 @@ const buildStyles = (
 	sourceCode: SourceCode
 ): InternalStyles => {
 	const config = getProperties(configNode);
-	const slotNames = getConfigSlotNames(config);
+	const slotNames = getConfigSlotNames(config, sourceCode);
+	const defaults = resolveContainer(
+		config.get('defaultVariants'),
+		sourceCode
+	);
+	const groups = resolveContainer(config.get('groups'), sourceCode);
 
 	return {
 		bySlot: indexEntriesBySlotAndToken(
 			collectConfigEntries(config, slotNames, args, sourceCode)
 		),
 		slotNames,
-		defaults: readMatchers(
-			getProperties(config.get('defaultVariants')),
-			NO_SKIP
-		),
-		...readGroups(getProperties(config.get('groups')))
+		defaults: readMatchers(getProperties(defaults), NO_SKIP),
+		...readGroups(getProperties(groups), sourceCode)
 	};
 };
 

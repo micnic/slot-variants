@@ -131,6 +131,20 @@ export const resolveStaticValue = (
 	return current;
 };
 
+// A config container (`variants`, a variant's value record, a compound array,
+// …) read through `const` bindings, like a class value is. Undefined stays
+// undefined, for a config key that isn't set.
+export const resolveContainer = (
+	node: Node | undefined,
+	sourceCode: SourceCode
+): Node | undefined => {
+	if (node === undefined) {
+		return undefined;
+	}
+
+	return resolveStaticValue(node, sourceCode);
+};
+
 // Resolves an identifier against a fixed scope instead of the one it sits in.
 // Vue template expressions live in a scope of their own that never reaches the
 // `<script>` bindings they name, so the script's module scope is passed in.

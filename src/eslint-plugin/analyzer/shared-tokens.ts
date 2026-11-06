@@ -1,5 +1,6 @@
 import type { Rule, SourceCode } from 'eslint';
 import type { Node, ObjectExpression } from 'estree';
+import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
 import { type ListItems, makeListFix } from './list-fix.ts';
 import {
 	canHoistAsLiteral,
@@ -200,6 +201,14 @@ type SharedTokensTarget = { node: Node } | { createBaseIn: ObjectExpression };
 type SharedTokensFixPlan = {
 	target: LiteralRewrite | BaseInsertion;
 	values: ReadonlyArray<LiteralRewrite>;
+};
+
+// Where a variant's shared tokens can be lifted to, and which nodes a fix may
+// rewrite at all: only those inside the config object, never a `const`
+// container declared beside it that other configs may share.
+type SharedTokensScope = {
+	getTarget: (slot: string) => SharedTokensTarget | null;
+	canEdit: (node: Node) => boolean;
 };
 
 // The text of a `base` property to create, laid out like the config's existing
@@ -433,6 +442,22 @@ const reportSharedTokenEntries = (
 	}
 };
 
+// Whether every node a lift rewrites may be edited. A created `base` is
+// inserted into the config object itself, so only an existing target is
+// checked.
+const isPlanEditable = (
+	plan: SharedTokensFixPlan,
+	canEdit: (node: Node) => boolean
+): boolean => {
+	const { target } = plan;
+
+	if ('node' in target && !canEdit(target.node)) {
+		return false;
+	}
+
+	return plan.values.every((value) => canEdit(value.node));
+};
+
 const reportSharedTokensBySlot = (
 	context: Rule.RuleContext,
 	sharedTokens: SharedEntries,
@@ -440,10 +465,10 @@ const reportSharedTokensBySlot = (
 	coverage: VariantCoverage,
 	valueEntries: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
-	getTarget: (slot: string) => SharedTokensTarget | null
+	scope: SharedTokensScope
 ) => {
 	for (const [slot, tokens] of sharedTokens) {
-		const target = getTarget(slot);
+		const target = scope.getTarget(slot);
 
 		// A slot with no target to lift into is reported without a fix.
 		let plan: SharedTokensFixPlan | null = null;
@@ -457,6 +482,10 @@ const reportSharedTokensBySlot = (
 				slotNames,
 				target
 			);
+		}
+
+		if (plan !== null && !isPlanEditable(plan, scope.canEdit)) {
+			plan = null;
 		}
 
 		const remedy = getSharedTokensRemedy(plan, coverage, variantKey, slot);
@@ -495,10 +524,16 @@ const isLiteralTrue = (node: Node): boolean =>
 // required counts as required (sv() rejects that config anyway).
 const collectVariantCoverage = (
 	config: ReadonlyMap<string, Node>,
-	variantsMap: ReadonlyMap<string, Node>
+	variantsMap: ReadonlyMap<string, Node>,
+	sourceCode: SourceCode
 ): Map<string, VariantCoverage> => {
-	const coverage = collectDefaultVariantKeys(config.get('defaultVariants'));
-	const requiredVariants = config.get('requiredVariants');
+	const coverage = collectDefaultVariantKeys(
+		resolveContainer(config.get('defaultVariants'), sourceCode)
+	);
+	const requiredVariants = resolveContainer(
+		config.get('requiredVariants'),
+		sourceCode
+	);
 
 	if (!requiredVariants) {
 		return coverage;
@@ -513,7 +548,7 @@ const collectVariantCoverage = (
 		return coverage;
 	}
 
-	forEachStringLiteralElement(requiredVariants, (value) => {
+	forEachStringLiteralElement(requiredVariants, sourceCode, (value) => {
 		coverage.set(value, 'required');
 	});
 
@@ -555,10 +590,12 @@ const analyzeVariantSharedTokens = (
 	context: Rule.RuleContext,
 	variantKey: string,
 	coverage: VariantCoverage,
-	variantValue: Node,
+	rawValue: Node,
 	slotNames: Set<string>,
-	getTarget: (slot: string) => SharedTokensTarget | null
+	scope: SharedTokensScope
 ) => {
+	const variantValue = resolveStaticValue(rawValue, context.sourceCode);
+
 	// Boolean shorthand has a single branch — no cross-value comparison.
 	if (isBooleanShorthandVariant(variantValue, slotNames)) {
 		return;
@@ -597,7 +634,7 @@ const analyzeVariantSharedTokens = (
 		coverage,
 		valueEntries,
 		slotNames,
-		getTarget
+		scope
 	);
 };
 
@@ -652,8 +689,13 @@ const planSingleKeyCompoundFix = (
 	element: ObjectExpression,
 	matcher: SingleMatcher,
 	variantValue: Node,
-	siblingElements: ListItems
+	siblingElements: ListItems,
+	canEdit: (node: Node) => boolean
 ): EntryListFixer | undefined => {
+	if (!canEdit(element)) {
+		return undefined;
+	}
+
 	// Raw tokens, like the other shared-tokens fixers: the rewrite diffs and
 	// re-emits source text, never cooked values.
 	const clsTokens = getRawLiteralTokens(context.sourceCode, matcher.cls);
@@ -679,7 +721,7 @@ const planSingleKeyCompoundFix = (
 	for (const value of matcherValues) {
 		const targetNode = valueEntries.get(value);
 
-		if (!targetNode) {
+		if (!targetNode || !canEdit(targetNode)) {
 			return undefined;
 		}
 
@@ -716,7 +758,8 @@ const checkCompoundEntryForSingleKey = (
 	kind: 'compoundVariants' | 'compoundSlots',
 	variantsMap: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
-	siblingElements: ListItems
+	siblingElements: ListItems,
+	canEdit: (node: Node) => boolean
 ) => {
 	const matcher = getSingleCompoundMatcher(element);
 
@@ -724,7 +767,10 @@ const checkCompoundEntryForSingleKey = (
 		return;
 	}
 
-	const variantValue = variantsMap.get(matcher.key);
+	const variantValue = resolveContainer(
+		variantsMap.get(matcher.key),
+		context.sourceCode
+	);
 
 	if (!variantValue) {
 		return;
@@ -745,7 +791,8 @@ const checkCompoundEntryForSingleKey = (
 			element,
 			matcher,
 			variantValue,
-			siblingElements
+			siblingElements,
+			canEdit
 		);
 	}
 
@@ -766,13 +813,18 @@ const checkCompoundsForSingleKey = (
 	compoundNode: Node | undefined,
 	kind: 'compoundVariants' | 'compoundSlots',
 	variantsMap: ReadonlyMap<string, Node>,
-	slotNames: Set<string>
+	slotNames: Set<string>,
+	canEdit: (node: Node) => boolean
 ) => {
-	if (!compoundNode || compoundNode.type !== 'ArrayExpression') {
+	const compounds = resolveContainer(compoundNode, context.sourceCode);
+
+	if (compounds === undefined || compounds.type !== 'ArrayExpression') {
 		return;
 	}
 
-	forEachStaticItem(compoundNode.elements, (element) => {
+	forEachStaticItem(compounds.elements, (item) => {
+		const element = resolveStaticValue(item, context.sourceCode);
+
 		if (element.type !== 'ObjectExpression') {
 			return;
 		}
@@ -783,7 +835,8 @@ const checkCompoundsForSingleKey = (
 			kind,
 			variantsMap,
 			slotNames,
-			compoundNode.elements
+			compounds.elements,
+			canEdit
 		);
 	});
 };
@@ -793,7 +846,7 @@ const analyzeExhaustiveVariants = (
 	variantsMap: ReadonlyMap<string, Node>,
 	coverageByVariant: ReadonlyMap<string, VariantCoverage>,
 	slotNames: Set<string>,
-	getTarget: (slot: string) => SharedTokensTarget | null
+	scope: SharedTokensScope
 ) => {
 	for (const [variantKey, variantValue] of variantsMap) {
 		const coverage = coverageByVariant.get(variantKey);
@@ -808,7 +861,7 @@ const analyzeExhaustiveVariants = (
 			coverage,
 			variantValue,
 			slotNames,
-			getTarget
+			scope
 		);
 	}
 };
@@ -817,23 +870,34 @@ export const analyzeSharedTokens = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
 ) => {
+	const { sourceCode } = context;
 	const config = getProperties(configNode);
-	const slotNames = getConfigSlotNames(config);
-	const variantsMap = getProperties(config.get('variants'));
+	const slotNames = getConfigSlotNames(config, sourceCode);
+	const variantsMap = getProperties(
+		resolveContainer(config.get('variants'), sourceCode)
+	);
+	const [configStart, configEnd] = sourceCode.getRange(configNode);
+	const canEdit = (node: Node) => {
+		const [start, end] = sourceCode.getRange(node);
+
+		return start >= configStart && end <= configEnd;
+	};
 
 	checkCompoundsForSingleKey(
 		context,
 		config.get('compoundVariants'),
 		'compoundVariants',
 		variantsMap,
-		slotNames
+		slotNames,
+		canEdit
 	);
 	checkCompoundsForSingleKey(
 		context,
 		config.get('compoundSlots'),
 		'compoundSlots',
 		variantsMap,
-		slotNames
+		slotNames,
+		canEdit
 	);
 
 	if (variantsMap.size === 0) {
@@ -841,7 +905,9 @@ export const analyzeSharedTokens = (
 	}
 
 	const baseNode = config.get('base');
-	const slotProperties = getProperties(config.get('slots'));
+	const slotProperties = getProperties(
+		resolveContainer(config.get('slots'), sourceCode)
+	);
 
 	const getTarget = (slot: string): SharedTokensTarget | null => {
 		if (slot !== 'base') {
@@ -868,8 +934,8 @@ export const analyzeSharedTokens = (
 	analyzeExhaustiveVariants(
 		context,
 		variantsMap,
-		collectVariantCoverage(config, variantsMap),
+		collectVariantCoverage(config, variantsMap, sourceCode),
 		slotNames,
-		getTarget
+		{ getTarget, canEdit }
 	);
 };

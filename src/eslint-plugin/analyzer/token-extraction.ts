@@ -10,7 +10,7 @@ import type {
 	TemplateLiteral
 } from 'estree';
 import { getKeyName } from './config-keys.ts';
-import { resolveStaticValue } from './const-bindings.ts';
+import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
 import { getInnerText, getStaticStringText, hasEscape } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
@@ -528,15 +528,20 @@ export const isBooleanShorthandVariant = (
 	collectSlotKeyedProperties(node, slotNames) !== null;
 
 export const forEachStringLiteralElement = (
-	node: Node,
+	node: Node | undefined,
+	sourceCode: SourceCode,
 	visit: (value: string) => void
 ) => {
-	if (node.type !== 'ArrayExpression') {
+	const list = resolveContainer(node, sourceCode);
+
+	if (list === undefined || list.type !== 'ArrayExpression') {
 		return;
 	}
 
-	forEachStaticItem(node.elements, (element) => {
-		const text = getStaticStringText(element);
+	forEachStaticItem(list.elements, (element) => {
+		const text = getStaticStringText(
+			resolveStaticValue(element, sourceCode)
+		);
 
 		if (text !== null) {
 			visit(text);
@@ -546,13 +551,18 @@ export const forEachStringLiteralElement = (
 
 export const forEachCompoundClass = (
 	node: Node | undefined,
+	sourceCode: SourceCode,
 	visit: (cls: Node, compound: ReadonlyMap<string, Node>) => void
 ) => {
-	if (!node || node.type !== 'ArrayExpression') {
+	const list = resolveContainer(node, sourceCode);
+
+	if (list === undefined || list.type !== 'ArrayExpression') {
 		return;
 	}
 
-	forEachStaticItem(node.elements, (element) => {
+	forEachStaticItem(list.elements, (item) => {
+		const element = resolveStaticValue(item, sourceCode);
+
 		if (element.type !== 'ObjectExpression') {
 			return;
 		}
@@ -569,9 +579,12 @@ export const forEachCompoundClass = (
 const extractVariantTokens = (
 	variantsMap: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
+	sourceCode: SourceCode,
 	extract: ExtractFn
 ) => {
-	for (const [variantKey, variantValue] of variantsMap.entries()) {
+	for (const [variantKey, rawValue] of variantsMap.entries()) {
+		const variantValue = resolveStaticValue(rawValue, sourceCode);
+
 		if (isBooleanShorthandVariant(variantValue, slotNames)) {
 			extract(variantValue, 'base', variantSource(variantKey, 'true'));
 			continue;
@@ -677,22 +690,23 @@ const getCompoundSource = (compound: ReadonlyMap<string, Node>): Source => {
 const extractCompoundTokens = (
 	compoundVariants: Node | undefined,
 	compoundSlots: Node | undefined,
+	sourceCode: SourceCode,
 	extract: ExtractFn
 ) => {
-	forEachCompoundClass(compoundVariants, (cls, compound) => {
+	forEachCompoundClass(compoundVariants, sourceCode, (cls, compound) => {
 		extract(cls, 'base', getCompoundSource(compound));
 	});
 
-	forEachCompoundClass(compoundSlots, (cls, compound) => {
-		const targetSlots = compound.get('slots');
+	forEachCompoundClass(compoundSlots, sourceCode, (cls, compound) => {
+		const source = getCompoundSource(compound);
 
-		if (targetSlots) {
-			const source = getCompoundSource(compound);
-
-			forEachStringLiteralElement(targetSlots, (slot) => {
+		forEachStringLiteralElement(
+			compound.get('slots'),
+			sourceCode,
+			(slot) => {
 				extract(cls, slot, source);
-			});
-		}
+			}
+		);
 	});
 };
 
@@ -711,7 +725,9 @@ export const collectConfigEntries = (
 		);
 	};
 
-	for (const [slotKey, slotValue] of getProperties(config.get('slots'))) {
+	const slots = resolveContainer(config.get('slots'), sourceCode);
+
+	for (const [slotKey, slotValue] of getProperties(slots)) {
 		extract(slotValue, slotKey, baseSource);
 	}
 
@@ -727,13 +743,15 @@ export const collectConfigEntries = (
 	}
 
 	extractVariantTokens(
-		getProperties(config.get('variants')),
+		getProperties(resolveContainer(config.get('variants'), sourceCode)),
 		slotNames,
+		sourceCode,
 		extract
 	);
 	extractCompoundTokens(
 		config.get('compoundVariants'),
 		config.get('compoundSlots'),
+		sourceCode,
 		extract
 	);
 

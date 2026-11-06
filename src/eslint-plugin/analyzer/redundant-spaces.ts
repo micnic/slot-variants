@@ -45,12 +45,15 @@ const reportRedundantSpaces = (
 	});
 };
 
-// Visits each value of an object; anything else has no values to visit.
+// Visits each value of an object, read through `const` bindings; anything else
+// has no values to visit.
 const visitObjectForRedundantSpaces = (
 	context: Rule.RuleContext,
 	node: Node
 ) => {
-	for (const value of getProperties(node).values()) {
+	const record = resolveStaticValue(node, context.sourceCode);
+
+	for (const value of getProperties(record).values()) {
 		visitForRedundantSpaces(context, value);
 	}
 };
@@ -102,7 +105,7 @@ const checkCompoundsForRedundantSpaces = (
 	context: Rule.RuleContext,
 	node: Node
 ) => {
-	forEachCompoundClass(node, (cls) => {
+	forEachCompoundClass(node, context.sourceCode, (cls) => {
 		visitForRedundantSpaces(context, cls);
 	});
 };

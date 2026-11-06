@@ -213,6 +213,17 @@ const NO_REDUNDANT_SPACES_VALID = [
 
 const NO_REDUNDANT_SPACES_INVALID = [
 	{
+		// Inside a hoisted record too: collapsing the whitespace changes no
+		// config's output, so the fix applies at the declaration.
+		code:
+			IMPORT +
+			"const sizes = { sm: 'p-1  p-2' };\nsv({ variants: { size: sizes } });",
+		output:
+			IMPORT +
+			"const sizes = { sm: 'p-1 p-2' };\nsv({ variants: { size: sizes } });",
+		errors: 1
+	},
+	{
 		// A namespace member call is analyzed like the named import.
 		code: IMPORT_NS + "SV.sv({ base: ' flex  ' });",
 		output: IMPORT_NS + "SV.sv({ base: 'flex' });",
@@ -546,6 +557,101 @@ t.test('TypeScript wrappers are read through to the value they wrap', (t) => {
 
 		t.not(expected.length, 0, `reports the plain form: ${plain}`);
 		t.strictSame(lint(wrapped, filename), expected, wrapped);
+	}
+
+	t.end();
+});
+
+t.test('const containers are read like inline ones', (t) => {
+	const linter = new Linter({ configType: 'flat' });
+	const config: Linter.Config[] = [
+		{
+			files: ['**/*.jsx'],
+			plugins: { 'slot-variants': plugin },
+			rules: Object.fromEntries(
+				Object.keys(rules).map((name) => [`slot-variants/${name}`, 2])
+			),
+			languageOptions: {
+				ecmaVersion: 'latest',
+				sourceType: 'module',
+				parserOptions: { ecmaFeatures: { jsx: true } }
+			}
+		}
+	];
+	// Sorted: a hoisted container sits above the call, so its findings come
+	// first in source order.
+	const lint = (code: string) =>
+		linter
+			.verify(`${IMPORT_SV_CN}${code}`, config, { filename: 'test.jsx' })
+			.map(({ ruleId, messageId }) => `${ruleId}:${messageId}`)
+			.sort();
+	const sizes = "{ sm: 'p-1 p-2', lg: 'p-1  p-3' }";
+	const cases = [
+		// A variant's value record.
+		[
+			`sv({ variants: { size: ${sizes} } });`,
+			`const sizes = ${sizes};\nsv({ variants: { size: sizes } });`
+		],
+		// The whole `variants` object.
+		[
+			`sv({ variants: { size: ${sizes} } });`,
+			`const variants = { size: ${sizes} };\nsv({ variants });`
+		],
+		// `slots`.
+		[
+			"sv({ slots: { header: 'p-1 p-2' } });",
+			"const slots = { header: 'p-1 p-2' };\nsv({ slots });"
+		],
+		// A slot-keyed variant value.
+		[
+			"sv({ slots: { icon: 'h-2' }, variants: { size: { sm: { base: 'p-1 p-2', icon: 'w-2' } } } });",
+			"const sm = { base: 'p-1 p-2', icon: 'w-2' };\nsv({ slots: { icon: 'h-2' }, variants: { size: { sm } } });"
+		],
+		// A `compoundVariants` array, and one entry of it.
+		[
+			"sv({ variants: { size: { sm: 'w-1' } }, compoundVariants: [{ size: 'sm', class: 'w-2' }] });",
+			"const compounds = [{ size: 'sm', class: 'w-2' }];\nsv({ variants: { size: { sm: 'w-1' } }, compoundVariants: compounds });"
+		],
+		[
+			"sv({ variants: { size: { sm: 'w-1' } }, compoundVariants: [{ size: 'sm', class: 'w-2' }] });",
+			"const entry = { size: 'sm', class: 'w-2' };\nsv({ variants: { size: { sm: 'w-1' } }, compoundVariants: [entry] });"
+		],
+		// A `compoundSlots` entry's `slots` array.
+		[
+			"sv({ slots: { icon: 'w-1' }, variants: { size: { sm: 'p-1' } }, compoundSlots: [{ slots: ['icon'], size: 'sm', class: 'w-2' }] });",
+			"const targets = ['icon'];\nsv({ slots: { icon: 'w-1' }, variants: { size: { sm: 'p-1' } }, compoundSlots: [{ slots: targets, size: 'sm', class: 'w-2' }] });"
+		],
+		// An empty class array inside a hoisted record.
+		[
+			'sv({ variants: { size: { sm: [] } } });',
+			'const sizes = { sm: [] };\nsv({ variants: { size: sizes } });'
+		],
+		// `defaultVariants` and `requiredVariants` make a variant exhaustive.
+		[
+			"sv({ variants: { size: { sm: 'rounded a', lg: 'rounded b' } }, defaultVariants: { size: 'sm' } });",
+			"const defaults = { size: 'sm' };\nsv({ variants: { size: { sm: 'rounded a', lg: 'rounded b' } }, defaultVariants: defaults });"
+		],
+		[
+			"sv({ variants: { size: { sm: 'rounded a', lg: 'rounded b' } }, requiredVariants: ['size'] });",
+			"const required = ['size'];\nsv({ variants: { size: { sm: 'rounded a', lg: 'rounded b' } }, requiredVariants: required });"
+		],
+		// A restyle of classes a hoisted `variants` applies.
+		[
+			"const button = sv({ variants: { size: { sm: 'p-2' } }, defaultVariants: { size: 'sm' } });\n<div className={button({ class: 'p-4' })} />;",
+			"const variants = { size: { sm: 'p-2' } };\nconst button = sv({ variants, defaultVariants: { size: 'sm' } });\n<div className={button({ class: 'p-4' })} />;"
+		],
+		// A dynamic value inside a hoisted record is still reported.
+		[
+			'sv({ variants: { size: { sm: dynamic } } });',
+			'const sizes = { sm: dynamic };\nsv({ variants: { size: sizes } });'
+		]
+	] as const;
+
+	for (const [inline, hoisted] of cases) {
+		const expected = lint(inline);
+
+		t.not(expected.length, 0, `reports the inline form: ${inline}`);
+		t.strictSame(lint(hoisted), expected, hoisted);
 	}
 
 	t.end();
@@ -4810,6 +4916,39 @@ const NO_SHARED_TOKENS_VALID = [
 
 const NO_SHARED_TOKENS_INVALID = [
 	{
+		// A hoisted variant record may be shared by other configs, so lifting
+		// its tokens into this config's `base` is left undone.
+		code:
+			IMPORT +
+			"const sizes = { sm: 'rounded text-sm', lg: 'rounded text-lg' };\nsv({ base: 'flex', variants: { size: sizes }, requiredVariants: ['size'] });",
+		output: null,
+		errors: repeat(shared('rounded', 'size'), 2)
+	},
+	{
+		// The same for a hoisted `slots` record the tokens would be lifted into.
+		code:
+			IMPORT +
+			"const slots = { root: 'flex', body: 'p-4' };\nsv({ slots, variants: { size: { sm: { root: 'rounded a' }, lg: { root: 'rounded b' } } }, requiredVariants: ['size'] });",
+		output: null,
+		errors: repeat(shared('rounded', 'size', 'root'), 2)
+	},
+	{
+		// A single-key compound's class isn't merged into a hoisted variant.
+		code:
+			IMPORT +
+			"const variants = { variant: { primary: 'a', link: 'underline' } };\nsv({ variants, compoundVariants: [{ variant: 'link', className: 'px-none' }] });",
+		output: null,
+		errors: [singleKeyCompound('compoundVariants', 'variant', "'link'")]
+	},
+	{
+		// Nor is a hoisted compound entry removed.
+		code:
+			IMPORT +
+			"const entry = { variant: 'link', className: 'px-none' };\nsv({ variants: { variant: { primary: 'a', link: 'underline' } }, compoundVariants: [entry, { variant: 'primary', size: 'sm', className: 'p-1' }] });",
+		output: null,
+		errors: [singleKeyCompound('compoundVariants', 'variant', "'link'")]
+	},
+	{
 		// A dynamic `base` can't be read, so there's nothing to
 		// append the lifted token to — reported without a fix.
 		code:
@@ -5803,6 +5942,19 @@ const SV_CONFIG_STYLE_BASE_VALID = [
 			"sv({ slots: { base: 'flex', icon: 'w-4' }, variants: {} });",
 		options: [{ baseStyle: 'slotsBase' }]
 	},
+	// The same with a hoisted `slots` record.
+	{
+		code:
+			IMPORT +
+			"const slots = { base: 'flex', icon: 'w-4' };\nsv({ slots, variants: {} });",
+		options: [{ baseStyle: 'slotsBase' }]
+	},
+	// A dynamic `slots` value has no record to hold a base, so slotsBase has
+	// nothing to require.
+	{
+		code: IMPORT + "sv('flex', { slots: getSlots(), variants: {} });",
+		options: [{ baseStyle: 'slotsBase' }]
+	},
 	// slotsBase configured but call has no slots at all: skipped entirely, so a
 	// plain `base` field isn't flagged either.
 	{
@@ -5823,6 +5975,40 @@ const SV_CONFIG_STYLE_BASE_VALID = [
 ];
 
 const SV_CONFIG_STYLE_BASE_INVALID = [
+	{
+		// A `base` entry in a hoisted `slots` record is detected, but not moved
+		// out: other configs may share that record.
+		code:
+			IMPORT +
+			"const slots = { base: 'flex', icon: 'w-4' };\nsv({ slots, variants: {} });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a "base" entry in "slots"'
+				}
+			}
+		],
+		output: null
+	},
+	{
+		// Nor is a base moved into a hoisted `slots` record.
+		code:
+			IMPORT +
+			"const slots = { icon: 'w-4' };\nsv('flex', { slots, variants: {} });",
+		options: [{ baseStyle: 'slotsBase' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" entry in "slots"',
+					found: 'a separate leading argument'
+				}
+			}
+		],
+		output: null
+	},
 	{
 		// separateArg present, default target is 'field': reports and fixes.
 		code: IMPORT + "sv('flex', { variants: {} });",

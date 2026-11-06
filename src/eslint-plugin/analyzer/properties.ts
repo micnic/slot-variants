@@ -1,6 +1,8 @@
+import type { SourceCode } from 'eslint';
 import type { Node, ObjectExpression } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { getKeyName } from './config-keys.ts';
+import { resolveContainer } from './const-bindings.ts';
 
 type KeyPredicate = (key: string) => boolean;
 
@@ -120,11 +122,14 @@ export const collectSlotKeyedProperties = (
 // group names that stand for them, mirroring how `sv()` reads those objects.
 // `base` is dropped since it is keyable without being declared.
 export const getConfigSlotNames = (
-	config: ReadonlyMap<string, Node>
+	config: ReadonlyMap<string, Node>,
+	sourceCode: SourceCode
 ): Set<string> => {
-	const slotNames = new Set(getProperties(config.get('slots')).keys());
+	const slots = resolveContainer(config.get('slots'), sourceCode);
+	const groups = resolveContainer(config.get('groups'), sourceCode);
+	const slotNames = new Set(getProperties(slots).keys());
 
-	for (const groupName of getProperties(config.get('groups')).keys()) {
+	for (const groupName of getProperties(groups).keys()) {
 		slotNames.add(groupName);
 	}
 

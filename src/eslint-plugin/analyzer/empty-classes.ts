@@ -169,8 +169,10 @@ const visitRecordForEmpty = (
 // into array elements.
 const visitVariantValueForEmpty = (
 	context: Rule.RuleContext,
-	variantValue: Node
+	rawValue: Node
 ) => {
+	const variantValue = resolveStaticValue(rawValue, context.sourceCode);
+
 	if (variantValue.type === 'ObjectExpression') {
 		visitRecordForEmpty(context, variantValue, undefined, (value) => {
 			visitVariantValueForEmpty(context, value);
@@ -207,7 +209,9 @@ const checkCompoundMatchersForEmpty = (
 	compoundEntries: ArrayExpression
 ) => {
 	forEachStaticItem(compoundEntries.elements, (element) => {
-		for (const [key, raw] of getProperties(element)) {
+		const entry = resolveStaticValue(element, context.sourceCode);
+
+		for (const [key, raw] of getProperties(entry)) {
 			if (COMPOUND_NON_MATCHER_KEYS.has(key)) {
 				continue;
 			}
@@ -241,7 +245,9 @@ const checkCompoundsForEmpty = (
 
 	checkCompoundMatchersForEmpty(context, value);
 
-	forEachCompoundClass(value, (cls) => {
+	forEachCompoundClass(value, context.sourceCode, (rawClass) => {
+		const cls = resolveStaticValue(rawClass, context.sourceCode);
+
 		if (cls.type === 'ObjectExpression') {
 			visitRecordForEmpty(context, cls, undefined, (slotClass) => {
 				visitForEmptyClasses(context, slotClass, false);
@@ -349,7 +355,7 @@ export const checkConfigForEmptyClasses = (
 		if (checker) {
 			checker(
 				context,
-				prop.value,
+				resolveStaticValue(prop.value, context.sourceCode),
 				makeListFix(context, prop, config.properties),
 				key
 			);

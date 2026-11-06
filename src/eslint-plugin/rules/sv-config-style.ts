@@ -12,6 +12,7 @@ import {
 	docsUrl,
 	getKeyName
 } from '../analyzer/config-keys.ts';
+import { resolveStaticValue } from '../analyzer/const-bindings.ts';
 import { removeFromList } from '../analyzer/list-fix.ts';
 import { isStaticStringNode } from '../analyzer/static-predicates.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
@@ -190,21 +191,56 @@ const findProperty = (obj: ObjectExpression, key: string): Property | null => {
 	return null;
 };
 
+// The `slots` record, read through a `const` binding like other containers.
 const getSlotsObject = (
-	configNode: ObjectExpression
+	configNode: ObjectExpression,
+	sourceCode: SourceCode
 ): ObjectExpression | null => {
 	const slotsProp = findProperty(configNode, 'slots');
 
-	if (slotsProp && slotsProp.value.type === 'ObjectExpression') {
-		return slotsProp.value;
+	if (!slotsProp) {
+		return null;
+	}
+
+	const slots = resolveStaticValue(slotsProp.value, sourceCode);
+
+	if (slots.type === 'ObjectExpression') {
+		return slots;
 	}
 
 	return null;
 };
 
+// Whether a base-style fix would edit a `slots` record declared outside the
+// config — one other configs may share.
+const touchesHoistedSlots = (
+	sourceCode: SourceCode,
+	configNode: ObjectExpression,
+	source: BaseSource,
+	insertInto: ObjectExpression | null
+): boolean => {
+	const [configStart, configEnd] = sourceCode.getRange(configNode);
+	const edited = [insertInto];
+
+	if ('container' in source) {
+		edited.push(source.container);
+	}
+
+	return edited.some((node) => {
+		if (node === null) {
+			return false;
+		}
+
+		const [start, end] = sourceCode.getRange(node);
+
+		return start < configStart || end > configEnd;
+	});
+};
+
 const detectBaseSources = (
 	configNode: ObjectExpression,
-	args: ReadonlyArray<Expression | SpreadElement>
+	args: ReadonlyArray<Expression | SpreadElement>,
+	sourceCode: SourceCode
 ): BaseSource[] => {
 	const sources: BaseSource[] = [];
 	const [arg] = args;
@@ -224,7 +260,7 @@ const detectBaseSources = (
 		});
 	}
 
-	const slotsObj = getSlotsObject(configNode);
+	const slotsObj = getSlotsObject(configNode, sourceCode);
 
 	if (slotsObj) {
 		const slotsBaseProp = findProperty(slotsObj, 'base');
@@ -404,7 +440,7 @@ const checkBaseStyle = (
 	}
 
 	if (baseStyle === 'slotsBase') {
-		const slotsObj = getSlotsObject(configNode);
+		const slotsObj = getSlotsObject(configNode, context.sourceCode);
 
 		if (!slotsObj) {
 			return;
@@ -419,7 +455,7 @@ const checkBaseStyle = (
 		return;
 	}
 
-	const sources = detectBaseSources(configNode, args);
+	const sources = detectBaseSources(configNode, args, context.sourceCode);
 	const mismatched = sources.filter((source) => source.style !== baseStyle);
 
 	if (mismatched.length === 0) {
@@ -432,7 +468,13 @@ const checkBaseStyle = (
 	if (
 		sources.length === 1 &&
 		onlySource &&
-		canFixBaseStyle(call, configNode, args, onlySource, baseStyle)
+		canFixBaseStyle(call, configNode, args, onlySource, baseStyle) &&
+		!touchesHoistedSlots(
+			context.sourceCode,
+			configNode,
+			onlySource,
+			insertInto
+		)
 	) {
 		fix = buildBaseStyleFix(
 			context.sourceCode,

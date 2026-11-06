@@ -273,7 +273,7 @@ export const analyzeConfigForRule = (
 	options: ConflictOptions
 ) => {
 	const config = getProperties(configNode);
-	const slotNames = getConfigSlotNames(config);
+	const slotNames = getConfigSlotNames(config, context.sourceCode);
 	const bySlot = indexEntriesBySlotAndToken(
 		collectConfigEntries(config, slotNames, baseArgs, context.sourceCode)
 	);

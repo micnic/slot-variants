@@ -180,7 +180,9 @@ const checkClassRecordKeys = (
 	forEachStaticProperty(context, node, () => {});
 };
 
-const checkClassValueRecord = (context: Rule.RuleContext, node: Node) => {
+const checkClassValueRecord = (context: Rule.RuleContext, raw: Node) => {
+	const node = resolveStaticValue(raw, context.sourceCode);
+
 	if (node.type !== 'ObjectExpression') {
 		reportDynamic(context, node);
 		return;
@@ -204,9 +206,10 @@ const checkSlotKeyedValues = (
 // class value.
 const checkVariantBranchValue = (
 	context: Rule.RuleContext,
-	node: Node,
+	raw: Node,
 	slotNames: Set<string>
 ) => {
+	const node = resolveStaticValue(raw, context.sourceCode);
 	const slotKeyed = collectSlotKeyedProperties(node, slotNames);
 
 	if (slotKeyed) {
@@ -229,9 +232,11 @@ const checkValueKeyedVariant = (
 
 const checkVariantDefinition = (
 	context: Rule.RuleContext,
-	node: Node,
+	raw: Node,
 	slotNames: Set<string>
 ) => {
+	const node = resolveStaticValue(raw, context.sourceCode);
+
 	// A boolean shorthand variant is a single branch value; any other record is
 	// keyed by variant value.
 	const slotKeyed = collectSlotKeyedProperties(node, slotNames);
@@ -251,9 +256,11 @@ const checkVariantDefinition = (
 
 const checkVariants = (
 	context: Rule.RuleContext,
-	node: Node,
+	raw: Node,
 	slotNames: Set<string>
 ) => {
+	const node = resolveStaticValue(raw, context.sourceCode);
+
 	if (node.type !== 'ObjectExpression') {
 		reportDynamic(context, node);
 		return;
@@ -264,13 +271,17 @@ const checkVariants = (
 	});
 };
 
-const checkCompoundSlotsArray = (context: Rule.RuleContext, value: Node) => {
+const checkCompoundSlotsArray = (context: Rule.RuleContext, raw: Node) => {
+	const value = resolveStaticValue(raw, context.sourceCode);
+
 	if (value.type !== 'ArrayExpression') {
 		reportDynamic(context, value);
 		return;
 	}
 
-	forEachItemReportingSpread(context, value.elements, (element) => {
+	forEachItemReportingSpread(context, value.elements, (item) => {
+		const element = resolveStaticValue(item, context.sourceCode);
+
 		if (!isStaticStringNode(element)) {
 			reportDynamic(context, element);
 		}
@@ -280,16 +291,20 @@ const checkCompoundSlotsArray = (context: Rule.RuleContext, value: Node) => {
 // Other keys on compound entries are runtime matchers and are not validated.
 const checkCompoundEntries = (
 	context: Rule.RuleContext,
-	node: Node,
+	raw: Node,
 	hasSlotsKey: boolean,
 	slotNames: Set<string>
 ) => {
+	const node = resolveStaticValue(raw, context.sourceCode);
+
 	if (node.type !== 'ArrayExpression') {
 		reportDynamic(context, node);
 		return;
 	}
 
-	forEachItemReportingSpread(context, node.elements, (element) => {
+	forEachItemReportingSpread(context, node.elements, (item) => {
+		const element = resolveStaticValue(item, context.sourceCode);
+
 		if (element.type !== 'ObjectExpression') {
 			reportDynamic(context, element);
 			return;
@@ -381,7 +396,10 @@ export const checkSvConfig = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
 ) => {
-	const slotNames = getConfigSlotNames(getProperties(configNode));
+	const slotNames = getConfigSlotNames(
+		getProperties(configNode),
+		context.sourceCode
+	);
 
 	forEachStaticProperty(context, configNode, (prop) => {
 		checkSvConfigProperty(context, prop, slotNames);
