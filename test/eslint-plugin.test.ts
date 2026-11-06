@@ -481,6 +481,76 @@ t.test('shared plugin run reuses cached property analysis', (t) => {
 	t.end();
 });
 
+t.test('TypeScript wrappers are read through to the value they wrap', (t) => {
+	const linter = new Linter({ configType: 'flat' });
+	const config: Linter.Config[] = [
+		{
+			files: ['**/*.ts', '**/*.tsx'],
+			plugins: { 'slot-variants': plugin },
+			rules: Object.fromEntries(
+				Object.keys(rules).map((name) => [`slot-variants/${name}`, 2])
+			),
+			languageOptions: {
+				parser: tsParser,
+				parserOptions: { ecmaFeatures: { jsx: true } }
+			}
+		}
+	];
+	const lint = (code: string, filename: string) =>
+		linter
+			.verify(`${IMPORT_SV_CN}${code}`, config, { filename })
+			.map(({ ruleId, messageId }) => `${ruleId}:${messageId}`);
+	const forwardRefButton = (cast: string) =>
+		`const button = sv({ base: 'p-2' });\nconst Button = forwardRef(({ className }, ref) => <button ref={ref} className={button({ class: className })} />)${cast};\n<Button className="p-4" />;`;
+	const cases = [
+		[
+			"sv({ base: 'p-2 p-4' });",
+			"sv({ base: 'p-2 p-4' } as const);",
+			'test.tsx'
+		],
+		[
+			"const base = 'p-2 p-4';\nsv({ base });",
+			"const base = 'p-2 p-4' as const;\nsv({ base });",
+			'test.tsx'
+		],
+		[
+			"const config = { base: 'p-2 p-4' };\nsv(config);",
+			"const config = { base: 'p-2 p-4' } satisfies Record<string, string>;\nsv(config);",
+			'test.tsx'
+		],
+		[
+			"const card = sv({ slots: { header: 'p-2' } });\nconst classes = card();\ncn(classes.header, 'p-4');",
+			"const card = sv({ slots: { header: 'p-2' } });\nconst classes = card();\ncn(classes?.header, 'p-4');",
+			'test.tsx'
+		],
+		[
+			"const button = sv({ base: 'p-2' });\ncn(button(), 'p-4');",
+			"const button = sv({ base: 'p-2' });\ncn(button()!, 'p-4');",
+			'test.tsx'
+		],
+		[
+			"const button = sv({ base: 'p-2' });\n<div className={button({ class: 'p-4' })} />;",
+			"const button = sv({ base: 'p-2' }) satisfies object;\n<div className={button({ class: 'p-4' })} />;",
+			'test.tsx'
+		],
+		[forwardRefButton(''), forwardRefButton(' as typeof Impl'), 'test.tsx'],
+		[
+			"sv({ base: 'p-2 p-4' });",
+			"sv({ base: <string>'p-2 p-4' });",
+			'test.ts'
+		]
+	] as const;
+
+	for (const [plain, wrapped, filename] of cases) {
+		const expected = lint(plain, filename);
+
+		t.not(expected.length, 0, `reports the plain form: ${plain}`);
+		t.strictSame(lint(wrapped, filename), expected, wrapped);
+	}
+
+	t.end();
+});
+
 t.test('call cycles through const bindings terminate', (t) => {
 	const linter = new Linter({ configType: 'flat' });
 	const config: Linter.Config[] = [
