@@ -30,7 +30,8 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  * exactly one variant key — it isn't combining variants, so it isn't really a
  * compound: its class belongs directly on that variant's value instead. Skipped
  * when the matcher's variant is boolean shorthand (a single-branch variant has
- * no "other" value to hold the class) or when the entry's matcher shape can't
+ * no "other" value to hold the class), when the entry names a `preset` (whose
+ * own variant values are matchers too), or when the entry's matcher shape can't
  * be counted reliably (a spread or computed key might hide a second matcher).
  * `compoundVariants` is auto-fixed when its class and the target variant
  * value(s) are all plain string/template literals; `compoundSlots` is always

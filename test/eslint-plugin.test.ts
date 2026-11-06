@@ -5046,6 +5046,19 @@ const NO_SHARED_TOKENS_VALID = [
 			variants: { variant: { primary: 'a', link: 'b' } },
 			compoundVariants: [{ variant: 'link', [k]: true, className: 'e' }]
 		});`,
+	// A `preset` matcher adds the preset's own variant values as matchers, so
+	// the entry is combining variants after all.
+	IMPORT +
+		`sv({
+			slots: { icon: 'w-4' },
+			variants: {
+				size: { sm: 'a', lg: 'b' },
+				tone: { y: 't', z: 'u' }
+			},
+			presets: { hero: { tone: 'y' } },
+			compoundVariants: [{ size: 'sm', preset: 'hero', class: 'q' }],
+			compoundSlots: [{ slots: ['icon'], size: 'sm', preset: 'hero', class: 'r' }]
+		});`,
 	// No matcher at all — this entry always applies, a different concern than
 	// this check.
 	IMPORT +

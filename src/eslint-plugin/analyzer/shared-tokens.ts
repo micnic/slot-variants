@@ -642,15 +642,18 @@ type SingleMatcher = { key: string; value: Node; cls: Node };
 
 // The one variant-key matcher on a compound entry, plus the class it applies,
 // or null when the entry has no class or doesn't have exactly one matcher: none
-// at all, two or more, or a shape that can't be counted reliably (a spread or
-// computed key might hide another matcher, so the whole entry is skipped rather
-// than risk under-reporting a hidden key as if it weren't there).
+// at all, two or more (a `preset` brings its own), or a shape that can't be
+// counted reliably (a spread or computed key might hide another matcher, so the
+// whole entry is skipped rather than risk under-reporting a hidden key as if it
+// weren't there).
 const getSingleCompoundMatcher = (
 	element: ObjectExpression
 ): SingleMatcher | null => {
 	const properties = getStrictProperties(element);
 
-	if (!properties) {
+	// A `preset` matcher adds that preset's variant values as matchers too, so
+	// the entry is combining variants through it.
+	if (!properties || properties.has('preset')) {
 		return null;
 	}
 
