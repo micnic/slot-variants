@@ -13,7 +13,7 @@ import {
 	getKeyName
 } from '../analyzer/config-keys.ts';
 import { resolveStaticValue } from '../analyzer/const-bindings.ts';
-import { removeFromList } from '../analyzer/list-fix.ts';
+import { hasCommentInRange, removeFromList } from '../analyzer/list-fix.ts';
 import { isStaticStringNode } from '../analyzer/static-predicates.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
@@ -293,20 +293,23 @@ const isStaticallyMovableValue = (node: Node): boolean => {
 	);
 };
 
+// Null when removing the property would delete a comment beside it.
 const removePropertyFix = (
 	fixer: Rule.RuleFixer,
 	sourceCode: SourceCode,
 	obj: ObjectExpression,
 	prop: Property
-): Rule.Fix => {
-	const fix = removeFromList(fixer, sourceCode, prop, obj.properties);
-
-	// The only property: no comma to take along, so remove just the property.
-	if (fix === null) {
-		return fixer.remove(prop);
+): Rule.Fix | null => {
+	if (obj.properties.length > 1) {
+		return removeFromList(fixer, sourceCode, prop, obj.properties);
 	}
 
-	return fix;
+	// The only property: no comma to take along, so remove just the property.
+	if (hasCommentInRange(sourceCode, sourceCode.getRange(prop))) {
+		return null;
+	}
+
+	return fixer.remove(prop);
 };
 
 const insertAsFirstPropertyFix = (
@@ -330,14 +333,19 @@ const insertAsFirstPropertyFix = (
 	return fixer.insertTextBefore(first, `${text}, `);
 };
 
+// Null when a comment sits between the argument and the config.
 const removeLeadingArgFix = (
 	fixer: Rule.RuleFixer,
 	sourceCode: SourceCode,
 	arg: Expression | SpreadElement,
 	configNode: ObjectExpression
-): Rule.Fix => {
+): Rule.Fix | null => {
 	const [argStart] = sourceCode.getRange(arg);
 	const [configStart] = sourceCode.getRange(configNode);
+
+	if (hasCommentInRange(sourceCode, [argStart, configStart])) {
+		return null;
+	}
 
 	return fixer.removeRange([argStart, configStart]);
 };
@@ -348,34 +356,46 @@ const insertLeadingArgFix = (
 	text: string
 ): Rule.Fix => fixer.insertTextBefore(configNode, `${text}, `);
 
+// The fix removing a base source from where it is now, or null when that
+// would delete a comment.
+const removeBaseSourceFix = (
+	fixer: Rule.RuleFixer,
+	sourceCode: SourceCode,
+	configNode: ObjectExpression,
+	source: BaseSource
+): Rule.Fix | null => {
+	if (source.style === 'separateArg') {
+		return removeLeadingArgFix(fixer, sourceCode, source.node, configNode);
+	}
+
+	return removePropertyFix(fixer, sourceCode, source.container, source.node);
+};
+
 // `insertInto` is the object that receives the `base` property, or null when
-// the classes become a leading argument instead.
+// the classes become a leading argument instead. No fix is made when moving
+// the base would delete a comment.
 const buildBaseStyleFix = (
 	sourceCode: SourceCode,
 	configNode: ObjectExpression,
 	source: BaseSource,
 	insertInto: ObjectExpression | null
-): ((fixer: Rule.RuleFixer) => Rule.Fix[]) => {
+): Rule.ReportFixer => {
 	const valueText = sourceCode.getText(source.value);
 	const propertyText = `base: ${valueText}`;
 
 	return (fixer) => {
-		const fixes: Rule.Fix[] = [];
+		const removal = removeBaseSourceFix(
+			fixer,
+			sourceCode,
+			configNode,
+			source
+		);
 
-		if (source.style === 'separateArg') {
-			fixes.push(
-				removeLeadingArgFix(fixer, sourceCode, source.node, configNode)
-			);
-		} else {
-			fixes.push(
-				removePropertyFix(
-					fixer,
-					sourceCode,
-					source.container,
-					source.node
-				)
-			);
+		if (removal === null) {
+			return null;
 		}
+
+		const fixes: Rule.Fix[] = [removal];
 
 		if (insertInto === null) {
 			fixes.push(insertLeadingArgFix(fixer, configNode, valueText));
@@ -462,7 +482,7 @@ const checkBaseStyle = (
 		return;
 	}
 
-	let fix: ((fixer: Rule.RuleFixer) => Rule.Fix[]) | undefined;
+	let fix: Rule.ReportFixer | undefined;
 	const [onlySource] = sources;
 
 	if (

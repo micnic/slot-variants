@@ -1,4 +1,4 @@
-import type { Rule, SourceCode } from 'eslint';
+import type { AST, Rule, SourceCode } from 'eslint';
 import type { Node } from 'estree';
 
 export type ListItems = ReadonlyArray<Node | null>;
@@ -37,11 +37,36 @@ const startOfOwnLine = (text: string, start: number): number | null => {
 	return null;
 };
 
+// Whether any comment lies within `[start, end]`, so removing that range would
+// silently delete it.
+export const hasCommentInRange = (
+	sourceCode: SourceCode,
+	[start, end]: AST.Range
+): boolean =>
+	sourceCode.getAllComments().some((comment) => {
+		const [commentStart, commentEnd] = sourceCode.getRange(comment);
+
+		return commentStart >= start && commentEnd <= end;
+	});
+
+// Removes `range` unless a comment would go with it.
+const removeRangeKeepingComments = (
+	fixer: Rule.RuleFixer,
+	sourceCode: SourceCode,
+	range: AST.Range
+): Rule.Fix | null => {
+	if (hasCommentInRange(sourceCode, range)) {
+		return null;
+	}
+
+	return fixer.removeRange(range);
+};
+
 // Removes `node` along with one adjacent comma so the surrounding call/array
 // literal stays syntactically valid, and with the separating whitespace
 // on that same side so no double space or dangling indent is left behind.
 // Returns null when removal would empty the list — that's reported
-// separately, so we leave it for the developer.
+// separately, so we leave it for the developer — or would delete a comment.
 export const removeFromList = (
 	fixer: Rule.RuleFixer,
 	sourceCode: SourceCode,
@@ -70,10 +95,13 @@ export const removeFromList = (
 		// An own-line element takes the line break and indentation that
 		// introduce it, so the elements after it keep theirs.
 		if (ownLine !== null) {
-			return fixer.removeRange([ownLine, after.range[1]]);
+			return removeRangeKeepingComments(fixer, sourceCode, [
+				ownLine,
+				after.range[1]
+			]);
 		}
 
-		return fixer.removeRange([
+		return removeRangeKeepingComments(fixer, sourceCode, [
 			start,
 			skipSpacesAndTabs(source, after.range[1])
 		]);
@@ -88,7 +116,10 @@ export const removeFromList = (
 
 	// The last element: its own comma is the one before it, and the whitespace
 	// after that comma separates the two.
-	return fixer.removeRange([before.range[0], end]);
+	return removeRangeKeepingComments(fixer, sourceCode, [
+		before.range[0],
+		end
+	]);
 };
 
 // Built by `makeListFix` for a call/array list element, or supplied directly

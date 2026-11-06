@@ -11,7 +11,12 @@ import type {
 } from 'estree';
 import { getKeyName } from './config-keys.ts';
 import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
-import { getInnerText, getStaticStringText, hasEscape } from './literals.ts';
+import {
+	CLASS_TOKEN,
+	getInnerText,
+	getStaticStringText,
+	hasEscape
+} from './literals.ts';
 import {
 	collectSlotKeyedProperties,
 	getClassValue,
@@ -70,7 +75,7 @@ const pushTokensFromText = (
 	source: Source,
 	entries: Entry[]
 ) => {
-	for (const match of text.matchAll(/\S+/g)) {
+	for (const match of text.matchAll(CLASS_TOKEN)) {
 		const token = match[0];
 		const start = base + match.index;
 		const end = start + token.length;
@@ -102,7 +107,7 @@ const pushCookedTokens = (
 	source: Source,
 	entries: Entry[]
 ) => {
-	for (const match of cooked.matchAll(/\S+/g)) {
+	for (const match of cooked.matchAll(CLASS_TOKEN)) {
 		entries.push({
 			source,
 			slot,

@@ -102,6 +102,8 @@ const restyle = (token: string, internal: string, slot = 'base') =>
 const conflictCn = (tokens: string) => err('conflictCn', { tokens });
 
 const NO_REDUNDANT_SPACES_VALID = [
+	// A non-breaking space is no class separator — the browser reads one class.
+	IMPORT_CN + "cn('p-2\u00a0p-4');",
 	// Keys named like `Object.prototype` members are no config keys.
 	IMPORT_CREATE_SV + "createSV({ toString: 'x', __defineGetter__: 'y' });",
 	// Single token, no whitespace.
@@ -1183,6 +1185,12 @@ const NO_DYNAMIC_CLASSES_VALID = [
 
 const NO_DYNAMIC_CLASSES_INVALID = [
 	{
+		// A non-breaking space doesn't separate the substitution from the text
+		// beside it, so the branch is glued onto `a` as one dynamic class.
+		code: IMPORT_CN + "cn(`a\u00a0${cond ? 'b' : 'c'}`);",
+		errors: 1
+	},
+	{
 		// A namespace member call is analyzed like the named import.
 		code: IMPORT_NS + 'SV.sv(dynamic);',
 		errors: [{ messageId: 'dynamic' }]
@@ -1900,6 +1908,17 @@ const NO_EMPTY_CLASSES_VALID = [
 ];
 
 const NO_EMPTY_CLASSES_INVALID = [
+	{
+		// A comment in the removed range would be lost, so there's no fix.
+		code: IMPORT_CN + "cn('flex', '' /* keep */, 'block');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', /* keep */ '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
 	{
 		// The allowance covers empty strings only — an empty array still
 		// contributes nothing while looking like a class list.
@@ -2814,6 +2833,8 @@ t.test('no-conflicting-classes (duplicate detection)', (t) => {
 });
 
 const NO_CONFLICTING_NS_VALID = [
+	// Joined by a non-breaking space, `p-2` and `p-4` are one class.
+	IMPORT_CN + "cn('p-2\u00a0p-4');",
 	// Class prefixes named like `Object.prototype` members are no known
 	// Tailwind families.
 	IMPORT +
@@ -6136,6 +6157,51 @@ const SV_CONFIG_STYLE_BASE_VALID = [
 ];
 
 const SV_CONFIG_STYLE_BASE_INVALID = [
+	{
+		// A comment beside the base being moved would be lost, so there's no
+		// fix — whether it trails a leading argument or a `base` property.
+		code: IMPORT + "sv('flex' /* primary */, { variants: {} });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a separate leading argument'
+				}
+			}
+		],
+		output: null
+	},
+	{
+		// The same for a `slots` base that's the only property there.
+		code:
+			IMPORT +
+			"sv({ slots: { base: /* primary */ 'flex' }, variants: {} });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a "base" entry in "slots"'
+				}
+			}
+		],
+		output: null
+	},
+	{
+		code: IMPORT + "sv({ base: 'flex' /* primary */, variants: {} });",
+		options: [{ baseStyle: 'separateArg' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a separate leading argument',
+					found: 'a "base" field in the config'
+				}
+			}
+		],
+		output: null
+	},
 	{
 		// A `base` entry in a hoisted `slots` record is detected, but not moved
 		// out: other configs may share that record.

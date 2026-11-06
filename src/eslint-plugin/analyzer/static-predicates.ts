@@ -1,5 +1,9 @@
 import type { Node, TemplateElement, TemplateLiteral } from 'estree';
-import { getStaticStringText } from './literals.ts';
+import {
+	getStaticStringText,
+	LEADING_SEPARATOR,
+	TRAILING_SEPARATOR
+} from './literals.ts';
 
 export const isStaticStringNode = (node: Node): boolean =>
 	getStaticStringText(node) !== null;
@@ -34,11 +38,11 @@ const quasiIsolatesExpression = (
 		return !hasLeftExpression || !hasRightExpression;
 	}
 
-	if (hasLeftExpression && !/^\s/.test(raw)) {
+	if (hasLeftExpression && !LEADING_SEPARATOR.test(raw)) {
 		return false;
 	}
 
-	if (hasRightExpression && !/\s$/.test(raw)) {
+	if (hasRightExpression && !TRAILING_SEPARATOR.test(raw)) {
 		return false;
 	}
 

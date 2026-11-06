@@ -1,6 +1,18 @@
 import type { SourceCode } from 'eslint';
 import type { Node } from 'estree';
 
+// HTML splits a class attribute on ASCII whitespace only — space, tab, line
+// feed, form feed and carriage return. Any other space, like a non-breaking
+// one, is part of a class name, unlike in JavaScript's `\s`.
+export const CLASS_SEPARATOR = /[\t\n\f\r ]+/;
+
+// A run of non-separator characters: one class name.
+export const CLASS_TOKEN = /[^\t\n\f\r ]+/g;
+
+// A separator at the very start or end of a text.
+export const LEADING_SEPARATOR = /^[\t\n\f\r ]/;
+export const TRAILING_SEPARATOR = /[\t\n\f\r ]$/;
+
 // Token identity follows the value the browser sees, so a class string
 // with an escape has to be split on its cooked value: `'w-1 w-2'` is two
 // classes even though its source holds no whitespace to split on, and
@@ -26,7 +38,7 @@ export const getInnerText = (sourceCode: SourceCode, node: Node): string =>
 // diffing against the cooked value would miscompare whenever a token contains
 // an escape sequence.
 export const splitClassTokens = (text: string): string[] =>
-	text.split(/\s+/).filter(Boolean);
+	text.split(CLASS_SEPARATOR).filter(Boolean);
 
 // A string/template literal's opening delimiter, read from its source text.
 export const getQuoteChar = (sourceCode: SourceCode, node: Node): string => {
