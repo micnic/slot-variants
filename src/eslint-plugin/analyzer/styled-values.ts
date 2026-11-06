@@ -67,7 +67,7 @@ const EMPTY_GROUPS: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
 
 const NO_SKIP: ReadonlySet<string> = new Set();
 
-const readGroups = (
+export const readGroups = (
 	groups: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
 ): Pick<InternalStyles, 'groupSlots' | 'slotGroups'> => {

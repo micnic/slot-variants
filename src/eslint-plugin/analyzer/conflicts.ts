@@ -6,12 +6,15 @@ import {
 	getConflictKey,
 	overlapNeighbors
 } from '../tailwind-categories.ts';
+import { resolveContainer } from './const-bindings.ts';
 import { getConfigSlotNames, getProperties } from './properties.ts';
+import { readGroups } from './styled-values.ts';
 import { collectCnEntries, collectConfigEntries } from './token-extraction.ts';
 import {
 	areExclusiveMatchers,
 	arePairwiseExclusive,
 	type Entry,
+	type EntryListFilter,
 	getEntriesMatchers,
 	indexEntriesBySlotAndToken,
 	reportDuplicateTokens,
@@ -251,12 +254,17 @@ const reportConflicts = (
 	tokenMap: Map<string, Entry[]>,
 	messageId: string,
 	data: Record<string, string>,
-	options: ConflictOptions
+	options: ConflictOptions,
+	isReported: EntryListFilter
 ) => {
 	const groups = groupEntriesByConflictKey(tokenMap, options);
 
 	for (const group of mergeOverlappingGroups(groups)) {
-		if (group.tokens.size < 2 || group.exclusive) {
+		if (
+			group.tokens.size < 2 ||
+			group.exclusive ||
+			!isReported(group.entries)
+		) {
 			continue;
 		}
 
@@ -266,21 +274,95 @@ const reportConflicts = (
 	}
 };
 
+const REPORT_ALL: EntryListFilter = () => true;
+
+// The token entries of several slot buckets, as one.
+const mergeTokenMaps = (
+	tokenMaps: ReadonlyArray<ReadonlyMap<string, Entry[]> | undefined>
+): Map<string, Entry[]> => {
+	const merged = new Map<string, Entry[]>();
+
+	for (const tokenMap of tokenMaps) {
+		for (const [token, entries] of tokenMap ?? []) {
+			getOrCreate(merged, token, () => []).push(...entries);
+		}
+	}
+
+	return merged;
+};
+
 export const analyzeConfigForRule = (
 	context: Rule.RuleContext,
 	configNode: Node,
 	baseArgs: ReadonlyArray<Expression | SpreadElement>,
 	options: ConflictOptions
 ) => {
+	const { sourceCode } = context;
 	const config = getProperties(configNode);
-	const slotNames = getConfigSlotNames(config, context.sourceCode);
+	const slotNames = getConfigSlotNames(config, sourceCode);
 	const bySlot = indexEntriesBySlotAndToken(
-		collectConfigEntries(config, slotNames, baseArgs, context.sourceCode)
+		collectConfigEntries(config, slotNames, baseArgs, sourceCode)
 	);
+	const { groupSlots, slotGroups } = readGroups(
+		getProperties(resolveContainer(config.get('groups'), sourceCode)),
+		sourceCode
+	);
+	const report = (
+		tokenMap: Map<string, Entry[]>,
+		slot: string,
+		isReported: EntryListFilter
+	) => {
+		reportDuplicateTokens(
+			context,
+			tokenMap,
+			'duplicate',
+			{ slot },
+			isReported
+		);
+		reportConflicts(
+			context,
+			tokenMap,
+			'conflict',
+			{ slot },
+			options,
+			isReported
+		);
+	};
+	// A finding inside one group's own classes is the group's to report, not
+	// each of its member slots'.
+	const isConfinedToGroup: EntryListFilter = (entries) => {
+		const buckets = new Set(entries.map((entry) => entry.slot));
 
-	for (const [slot, tokenMap] of bySlot) {
-		reportDuplicateTokens(context, tokenMap, 'duplicate', { slot });
-		reportConflicts(context, tokenMap, 'conflict', { slot }, options);
+		return (
+			buckets.size === 1 &&
+			[...buckets].every((bucket) => groupSlots.has(bucket))
+		);
+	};
+	const slots = new Set<string>();
+
+	for (const [bucket, tokenMap] of bySlot) {
+		if (groupSlots.has(bucket)) {
+			report(tokenMap, bucket, REPORT_ALL);
+		} else {
+			slots.add(bucket);
+		}
+	}
+
+	for (const members of groupSlots.values()) {
+		for (const member of members) {
+			slots.add(member);
+		}
+	}
+
+	// A slot's classes are its own plus those of every group naming it.
+	for (const slot of slots) {
+		const buckets = [slot, ...(slotGroups.get(slot) ?? [])];
+
+		report(
+			mergeTokenMaps(buckets.map((bucket) => bySlot.get(bucket))),
+			slot,
+			(entries) => !isConfinedToGroup(entries)
+		);
 	}
 };
 
@@ -294,7 +376,14 @@ export const analyzeCnForRule = (
 	).get('base');
 
 	if (tokenMap) {
-		reportDuplicateTokens(context, tokenMap, 'duplicateCn', {});
-		reportConflicts(context, tokenMap, 'conflictCn', {}, options);
+		reportDuplicateTokens(context, tokenMap, 'duplicateCn', {}, REPORT_ALL);
+		reportConflicts(
+			context,
+			tokenMap,
+			'conflictCn',
+			{},
+			options,
+			REPORT_ALL
+		);
 	}
 };

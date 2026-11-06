@@ -2821,6 +2821,9 @@ const NO_CONFLICTING_NS_VALID = [
 	// Project class names share a prefix but name no Tailwind utility, so
 	// nothing says they set the same property.
 	IMPORT_CN + "cn('btn-primary btn-lg');",
+	// A group's classes don't reach a slot outside it.
+	IMPORT +
+		"sv({ slots: { icon: 'w-4', label: 'text-sm' }, groups: { controls: ['label'] }, variants: { size: { sm: { controls: 'w-2' } } } });",
 	// An untyped CSS variable on a shadow utility is the shadow itself, and on
 	// `font` a weight — neither collides with a color or a family.
 	IMPORT_CN + "cn('shadow-(--x) shadow-red-500');",
@@ -3292,6 +3295,42 @@ const NO_CONFLICTING_NS_VALID = [
 ];
 
 const NO_CONFLICTING_NS_INVALID = [
+	{
+		// Classes written for a group land on each of its member slots.
+		code:
+			IMPORT +
+			"sv({ slots: { icon: 'w-4', label: 'text-sm' }, groups: { controls: ['icon', 'label'] }, variants: { size: { sm: { controls: 'w-2' } } } });",
+		errors: repeat(conflict('w-2, w-4', 'icon'), 2)
+	},
+	{
+		// The same through a `compoundSlots` entry naming the group.
+		code:
+			IMPORT +
+			"sv({ slots: { icon: 'w-4', label: 'p-1' }, groups: { controls: ['icon', 'label'] }, variants: { size: { sm: '', lg: '' } }, compoundSlots: [{ slots: ['controls'], size: 'sm', class: 'w-2' }] });",
+		errors: repeat(conflict('w-2, w-4', 'icon'), 2)
+	},
+	{
+		// Two groups naming one slot meet in it.
+		code:
+			IMPORT +
+			"sv({ slots: { icon: '' }, groups: { a: ['icon'], b: ['icon'] }, variants: { size: { sm: { a: 'w-2' } }, tone: { x: { b: 'w-4' } } } });",
+		errors: repeat(conflict('w-2, w-4', 'icon'), 2)
+	},
+	{
+		// A group's class duplicating a member slot's own.
+		code:
+			IMPORT +
+			"sv({ slots: { icon: 'rounded' }, groups: { all: ['icon'] }, variants: { size: { sm: { all: 'rounded' } } } });",
+		errors: repeat(dup('rounded', 'icon'), 2)
+	},
+	{
+		// A conflict within one group's own classes is reported once, for the
+		// group, rather than once per member slot.
+		code:
+			IMPORT +
+			"sv({ slots: { icon: '', label: '' }, groups: { controls: ['icon', 'label'] }, variants: { size: { sm: { controls: 'w-2 w-4' } } } });",
+		errors: repeat(conflict('w-2, w-4', 'controls'), 2)
+	},
 	{
 		// An untyped CSS variable on a shadow utility collides with a preset
 		// size, on `font` with a weight; a `color:` hint stays a color.

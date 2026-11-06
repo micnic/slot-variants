@@ -158,6 +158,9 @@ export const indexEntriesBySlotAndToken = (
 	return bySlot;
 };
 
+// Whether a finding over these entries is reported by the current pass.
+export type EntryListFilter = (entries: ReadonlyArray<Entry>) => boolean;
+
 export type EntryListFixer = (fixer: Rule.RuleFixer) => Rule.Fix[] | null;
 
 /** How a finding can be resolved: an autofix, editor suggestions, or neither. */
@@ -191,10 +194,15 @@ export const reportDuplicateTokens = (
 	context: Rule.RuleContext,
 	tokenMap: Map<string, Entry[]>,
 	messageId: string,
-	data: Record<string, string>
+	data: Record<string, string>,
+	isReported: EntryListFilter
 ) => {
 	for (const [token, list] of tokenMap.entries()) {
-		if (list.length < 2 || isMutuallyExclusiveVariants(list)) {
+		if (
+			list.length < 2 ||
+			isMutuallyExclusiveVariants(list) ||
+			!isReported(list)
+		) {
 			continue;
 		}
 
