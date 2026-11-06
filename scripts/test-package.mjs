@@ -29,9 +29,11 @@ try {
 		'README.md',
 		'SKILL.md',
 		'dist/eslint-plugin.cjs',
+		'dist/eslint-plugin.d.cts',
 		'dist/eslint-plugin.d.ts',
 		'dist/eslint-plugin.js',
 		'dist/index.cjs',
+		'dist/index.d.cts',
 		'dist/index.d.ts',
 		'dist/index.js',
 		'logo.svg',
@@ -76,6 +78,12 @@ try {
 		join(consumerDirectory, 'consumer.ts'),
 		"import { sv, type VariantProps } from 'slot-variants';\nimport plugin from 'slot-variants/eslint-plugin';\nconst button = sv({ slots: { icon: 'icon' }, variants: { size: { sm: 'sm', lg: 'lg' } } });\ntype Props = VariantProps<typeof button>;\nconst props: Props = { size: 'sm' };\nconst result = button(props);\n// @ts-expect-error slot results are readonly\nresult.icon = 'changed';\nvoid plugin.rules;\n"
 	);
+	// A CommonJS module resolves both entry points through `require`, so it
+	// needs CommonJS declarations rather than the ESM ones.
+	writeFileSync(
+		join(consumerDirectory, 'consumer-commonjs.cts'),
+		"import { sv, type VariantProps } from 'slot-variants';\nimport { rules } from 'slot-variants/eslint-plugin';\nconst button = sv({ variants: { size: { sm: 'sm', lg: 'lg' } } });\nconst props: VariantProps<typeof button> = { size: 'sm' };\nvoid button(props);\nvoid rules['no-conflicting-classes'];\n"
+	);
 
 	run('node', ['esm.mjs'], consumerDirectory);
 	run('node', ['commonjs.cjs'], consumerDirectory);
@@ -92,6 +100,22 @@ try {
 			'--moduleResolution',
 			'NodeNext',
 			'consumer.ts'
+		],
+		consumerDirectory
+	);
+	run(
+		join(root, 'node_modules', '.bin', 'tsc'),
+		[
+			'--noEmit',
+			'--strict',
+			'--skipLibCheck',
+			'--target',
+			'ES2022',
+			'--module',
+			'Node16',
+			'--moduleResolution',
+			'Node16',
+			'consumer-commonjs.cts'
 		],
 		consumerDirectory
 	);
