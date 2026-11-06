@@ -469,6 +469,44 @@ t.test('shared plugin run reuses cached property analysis', (t) => {
 	t.end();
 });
 
+t.test('call cycles through const bindings terminate', (t) => {
+	const linter = new Linter({ configType: 'flat' });
+	const config: Linter.Config[] = [
+		{
+			files: ['**/*.jsx'],
+			plugins: { 'slot-variants': plugin },
+			rules: Object.fromEntries(
+				Object.keys(rules).map((name) => [`slot-variants/${name}`, 2])
+			),
+			languageOptions: {
+				ecmaVersion: 'latest',
+				sourceType: 'module',
+				parserOptions: { ecmaFeatures: { jsx: true } }
+			}
+		}
+	];
+	const cases = [
+		// A callee bound to its own call, as when typing `const f = f(…)`.
+		'const f = f();',
+		// Two callees bound to each other's calls.
+		'const a = b();\nconst b = a();',
+		// A slot read off its own call result, in a cn() list and in markup.
+		"const x = x.item();\ncn(x, 'p-2');\n<div className={x.item()} />;"
+	];
+
+	for (const code of cases) {
+		t.doesNotThrow(
+			() =>
+				linter.verify(`${IMPORT_CN}${IMPORT}${code}`, config, {
+					filename: 'test.jsx'
+				}),
+			code
+		);
+	}
+
+	t.end();
+});
+
 t.test('plugin shape (ESLint + oxlint compat)', (t) => {
 	t.ok(plugin.meta, 'meta is present');
 	t.equal(plugin.meta.name, 'slot-variants', 'meta.name is set');

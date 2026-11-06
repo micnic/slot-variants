@@ -132,10 +132,19 @@ const resolveIdentifierExportName = (
 // a named import read via same-file `const` aliases (`const cx = cn; cx(…)`).
 // A callee bound to a `createSV(...)` call is a pre-configured `sv()`, so it
 // names `sv` and its call sites are analyzed exactly like `sv()` calls.
+// `visited` holds the calls already on the path, so a callee bound back to one
+// of them (`const f = f()`) names nothing instead of recursing forever.
 const resolveExportName = (
 	match: MatchContext,
-	node: CallExpression
+	node: CallExpression,
+	visited: Set<CallExpression> = new Set()
 ): string | null => {
+	if (visited.has(node)) {
+		return null;
+	}
+
+	visited.add(node);
+
 	const namespaceExport = resolveNamespaceExportName(match, node);
 
 	if (namespaceExport !== null) {
@@ -154,7 +163,7 @@ const resolveExportName = (
 
 	if (
 		resolved.type === 'CallExpression' &&
-		resolveExportName(match, resolved) === 'createSV'
+		resolveExportName(match, resolved, visited) === 'createSV'
 	) {
 		return 'sv';
 	}

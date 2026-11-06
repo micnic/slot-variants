@@ -216,16 +216,25 @@ const resolveVariantFnStyles = (
 /**
  * Classifies `node` as a call of a compiled variant function, directly
  * (`button(props)`) or through a multi-slot slot function
- * (`classes.item(props)`).
+ * (`classes.item(props)`). `visited` holds the calls already on the path, so a
+ * slot read off its own call (`const x = x.item()`) yields null instead of
+ * recursing forever.
  */
 export const resolveInvocation = (
 	node: CallExpression,
-	ctx: StyledContext
+	ctx: StyledContext,
+	visited: Set<CallExpression> = new Set()
 ): Invocation | null => {
+	if (visited.has(node)) {
+		return null;
+	}
+
+	visited.add(node);
+
 	const { callee } = node;
 
 	if (callee.type === 'MemberExpression') {
-		const slotFn = resolveStyledMember(callee, ctx);
+		const slotFn = resolveStyledMember(callee, ctx, visited);
 
 		if (slotFn === null) {
 			return null;
@@ -278,7 +287,8 @@ const mergeMatchers = (
 // `classes.header` — a slot read off a variant function's result.
 const resolveStyledMember = (
 	node: MemberExpression,
-	ctx: StyledContext
+	ctx: StyledContext,
+	visited: Set<CallExpression> = new Set()
 ): StyledClasses | null => {
 	if (node.computed || node.property.type !== 'Identifier') {
 		return null;
@@ -290,7 +300,7 @@ const resolveStyledMember = (
 		return null;
 	}
 
-	const invocation = resolveInvocation(object, ctx);
+	const invocation = resolveInvocation(object, ctx, visited);
 
 	if (invocation === null || invocation.slot !== null) {
 		return null;
