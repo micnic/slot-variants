@@ -5107,7 +5107,7 @@ const NO_SHARED_TOKENS_INVALID = [
 		errors: repeat(shared('rounded', 'size'), 2)
 	},
 	{
-		// The same for a hoisted `slots` record the tokens would be lifted into.
+		// The same for a hoisted `slots` record the tokens would go into.
 		code:
 			IMPORT +
 			"const slots = { root: 'flex', body: 'p-4' };\nsv({ slots, variants: { size: { sm: { root: 'rounded a' }, lg: { root: 'rounded b' } } }, requiredVariants: ['size'] });",

@@ -3706,26 +3706,26 @@ t.test('variants named after object members resolve like any other', (t) => {
 			variants,
 			presets: {
 				named: { toString: 'b' },
-				// @ts-expect-error - the literal's inherited `toString` is checked
+				// @ts-expect-error - the inherited `toString` is checked
 				sized: { size: 'lg' }
 			}
 		});
 
 		t.equal(
-			// @ts-expect-error - the literal's inherited `toString` is checked
+			// @ts-expect-error - the inherited `toString` is checked
 			preset({ preset: 'named' }),
 			'btn ts-b',
 			`${mode}: a preset value applies`
 		);
 		t.equal(
-			// @ts-expect-error - the literal's inherited `toString` is checked
+			// @ts-expect-error - the inherited `toString` is checked
 			preset({ preset: 'sized' }),
 			'btn lg',
 			`${mode}: a preset that skips the variant leaves it unset`
 		);
 
 		t.throws(
-			// @ts-expect-error - omitting a required variant for the runtime check
+			// @ts-expect-error - omitting a required variant
 			() => sv('btn', { variants, requiredVariants: ['toString'] })({}),
 			{ message: 'Missing required variant: "toString"' },
 			`${mode}: a required variant is reported missing`
@@ -3742,7 +3742,7 @@ t.test('variants named after object members resolve like any other', (t) => {
 			`${mode}: a compound matching it applies`
 		);
 		t.equal(
-			// @ts-expect-error - the literal's inherited `toString` is checked
+			// @ts-expect-error - the inherited `toString` is checked
 			compound({ size: 'sm' }),
 			'btn sm',
 			`${mode}: a compound matching it is skipped when unset`
@@ -6581,6 +6581,50 @@ t.test('multiSlots throws for an unknown slot', (t) => {
 
 	t.end();
 });
+
+t.test(
+	'introspected multiSlots and requiredVariants are typed as resolved',
+	(t) => {
+		const card = sv({
+			slots: { header: 'h', icon: 'i' },
+			groups: { controls: ['header', 'icon'] },
+			variants: { size: { sm: 'a' } },
+			multiSlots: ['controls'],
+			requiredVariants: true,
+			introspection: true
+		});
+		const multiSlots: ('header' | 'icon')[] = card.multiSlots;
+		const required: 'size'[] = card.requiredVariants;
+
+		t.same(
+			multiSlots,
+			['header', 'icon'],
+			'a group is expanded to its slots'
+		);
+		t.same(
+			required,
+			['size'],
+			'requiredVariants: true lists every variant'
+		);
+
+		// @ts-expect-error - the group name itself is not a multi-slot key
+		const groupNames: 'controls'[] = card.multiSlots;
+
+		t.same(groupNames, ['header', 'icon'], 'only slots are listed');
+
+		const plain = sv({
+			variants: { size: { sm: 'a' } },
+			introspection: true
+		});
+		const noMultiSlots: string[] = plain.multiSlots;
+		const noRequired: string[] = plain.requiredVariants;
+
+		t.same(noMultiSlots, [], 'unset multiSlots is an empty list');
+		t.same(noRequired, [], 'unset requiredVariants is an empty list');
+
+		t.end();
+	}
+);
 
 t.test('multiSlots is exposed via introspection', (t) => {
 	const card = sv('border', {

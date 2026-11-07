@@ -67,8 +67,8 @@ type BooleanShorthandKeys<
 > = S extends Slots ? SlotTarget<S, G> : never;
 
 // A record keyed only by slots is a boolean shorthand, and one keyed only by
-// `true`/`false` is a boolean whichever keys it has. Any other record's keys are
-// its values — a `true` key among them takes `true` alone, not `false`.
+// `true`/`false` is a boolean whichever keys it has. Any other record's keys
+// are its values — a `true` key among them takes `true` alone, not `false`.
 type VariantPropType<S extends MaybeSlots, G extends MaybeGroups<S>, T> =
 	T extends Record<string | number, unknown>
 		? [Extract<keyof T, number>] extends [never]
@@ -455,9 +455,9 @@ type IntrospectionValues<
 	/** The `defaultVariants` config passed in, as-is. */
 	defaultVariants: DefaultVariants<S, G, V, R>;
 	/** Names of the variants the caller must always provide. */
-	requiredVariants: R extends true ? StringKeyof<V>[] : R;
-	/** The `multiSlots` config passed in, as-is. */
-	multiSlots: M extends true ? SlotKey<S>[] : M;
+	requiredVariants: RequiredVariantKeys<V, R>[];
+	/** Slots exposed as functions, with groups expanded to their slots. */
+	multiSlots: MultiSlotKeys<S, G, M>[];
 	/** The `presets` config passed in, as-is. */
 	presets: P extends undefined ? Record<string, never> : P;
 	/** Names of all declared presets. */

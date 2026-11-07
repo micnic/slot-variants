@@ -163,7 +163,7 @@ export type EntryListFilter = (entries: ReadonlyArray<Entry>) => boolean;
 
 export type EntryListFixer = (fixer: Rule.RuleFixer) => Rule.Fix[] | null;
 
-/** How a finding can be resolved: an autofix, editor suggestions, or neither. */
+/** How a finding can be resolved: an autofix, suggestions, or neither. */
 export type EntryRemedy = Pick<Rule.ReportDescriptorOptions, 'fix' | 'suggest'>;
 
 export const reportEntryList = (

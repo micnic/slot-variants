@@ -38,10 +38,11 @@ import {
 type SharedEntries = Map<string, Map<string, Entry[][]>>;
 
 // How a variant is known to apply one of its values. `required` (listed in
-// requiredVariants, or `requiredVariants: true`) always does — leaving it out or
-// passing `null` throws. `default` (a defaultVariants entry) does unless a call
-// passes `null`, which skips the default. Without either, the prop can be
-// undefined at runtime, so a shared token isn't guaranteed to render.
+// requiredVariants, or `requiredVariants: true`) always does — leaving it
+// out or passing `null` throws. `default` (a defaultVariants entry) does
+// unless a call passes `null`, which skips the default. Without either, the
+// prop can be undefined at runtime, so a shared token isn't guaranteed to
+// render.
 type VariantCoverage = 'required' | 'default';
 
 const intersectSharedTokensStep = (
