@@ -1006,8 +1006,8 @@ When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{
 
 ### Return Type
 
-- **Without slots** - the function returns a `string`
-- **With slots** - the function returns a `Record` with `base` and each slot name as keys, all typed as `string`
+- **Without slots** - the function returns a `string`, unless [`multiSlots`](#multi-slots) is `true` or lists `base` — then it returns `{ base }`, with `base` a slot function
+- **With slots** - the function returns a `Record` with `base` and each slot name as keys, each typed as `string` — or, for a slot listed in [`multiSlots`](#multi-slots), as a slot function that returns a `string`
 
 ## Config Reference
 
@@ -1193,7 +1193,7 @@ const classes = computed(() => list());
 
 ## ESLint / oxlint Plugin
 
-`slot-variants` ships an ESLint-compatible plugin at the `slot-variants/eslint-plugin` subpath. It runs under ESLint v9+ (flat config) and under [oxlint](https://oxc.rs/docs/guide/usage/linter/js-plugins) via its `jsPlugins` API. The plugin is a separate entry point with no runtime imports — consuming it doesn't pull any library code into your bundle.
+`slot-variants` ships an ESLint-compatible plugin at the `slot-variants/eslint-plugin` subpath. It runs under ESLint v9+ (flat config) and under [oxlint](https://oxc.rs/docs/guide/usage/linter/js-plugins) via its `jsPlugins` API. The plugin is a separate entry point that the main `slot-variants` entry never loads, so using `sv()` and `cn()` doesn't pull any lint code into your bundle.
 
 ### Rules
 
@@ -1484,6 +1484,14 @@ export default [
     }
   }
 ];
+```
+
+In a CommonJS config (`eslint.config.cjs`), the plugin is the module's `default` export:
+
+```js
+const svPlugin = require('slot-variants/eslint-plugin').default;
+
+module.exports = [svPlugin.configs.recommended];
 ```
 
 ### oxlint

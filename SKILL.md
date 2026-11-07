@@ -10,7 +10,7 @@ import { cn, createSV, sv, type VariantProps } from 'slot-variants';
 
 `sv()` is a drop-in replacement for CVA (`cva` → `sv`) and covers the core feature set of tailwind-variants (`tv`) with a simpler API. Slots return strings directly by default, or reconfigurable functions (like in `tv`) when listed in `multiSlots`. Features not in CVA/TV: `requiredVariants`, `presets`, `groups`, `cacheSize`, `introspection`, `postProcess`, function-based `defaultVariants`, variadic base args, and `null`-to-unset variant props. `tailwind-merge` is opt-in via `postProcess` rather than always on, and `extend`-style config composition is not supported.
 
-Without `slots`, the returned function returns a `string`. With `slots`, it returns a `Record<string, string>` keyed by `base` plus each slot name (or a function for slots in `multiSlots`).
+Without `slots`, the returned function returns a `string` (or `{ base }` with a `base` function when `multiSlots` is `true` or lists `base`). With `slots`, it returns a `Record<string, string>` keyed by `base` plus each slot name (or a function for slots in `multiSlots`).
 
 ## Calling Conventions
 
