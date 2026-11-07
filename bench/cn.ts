@@ -1,7 +1,9 @@
 import { Bench } from 'tinybench';
 import classnames from 'classnames';
 import { clsx } from 'clsx';
-import { cn as tvCn } from 'tailwind-variants';
+// tailwind-variants' `cx` is its plain class joiner, like the others here;
+// its `cn` also runs tailwind-merge, which isn't what this bench compares.
+import { cx as tvCx } from 'tailwind-variants';
 import { cn } from '../src/index.ts';
 import { addComparison } from './compare.ts';
 import { printBenchResults } from './report.ts';
@@ -13,7 +15,7 @@ addComparison(bench, 'strings', {
 	cn: () => cn('foo', 'bar', 'baz'),
 	classnames: () => classnames('foo', 'bar', 'baz'),
 	clsx: () => clsx('foo', 'bar', 'baz'),
-	'tv cn': () => tvCn('foo', 'bar', 'baz')
+	'tv cx': () => tvCx('foo', 'bar', 'baz')
 });
 
 // Mixed strings and falsy values
@@ -21,7 +23,7 @@ addComparison(bench, 'strings with falsy', {
 	cn: () => cn('foo', false, 'bar', null, undefined, 'baz'),
 	classnames: () => classnames('foo', false, 'bar', null, undefined, 'baz'),
 	clsx: () => clsx('foo', false, 'bar', null, undefined, 'baz'),
-	'tv cn': () => tvCn('foo', false, 'bar', null, undefined, 'baz')
+	'tv cx': () => tvCx('foo', false, 'bar', null, undefined, 'baz')
 });
 
 // Object records
@@ -30,7 +32,7 @@ addComparison(bench, 'object', {
 	classnames: () =>
 		classnames({ foo: true, bar: false, baz: true, qux: true }),
 	clsx: () => clsx({ foo: true, bar: false, baz: true, qux: true }),
-	'tv cn': () => tvCn({ foo: true, bar: false, baz: true, qux: true })
+	'tv cx': () => tvCx({ foo: true, bar: false, baz: true, qux: true })
 });
 
 // Mixed strings and objects
@@ -38,7 +40,7 @@ addComparison(bench, 'mixed', {
 	cn: () => cn('foo', { bar: true, baz: false }, 'qux'),
 	classnames: () => classnames('foo', { bar: true, baz: false }, 'qux'),
 	clsx: () => clsx('foo', { bar: true, baz: false }, 'qux'),
-	'tv cn': () => tvCn('foo', { bar: true, baz: false }, 'qux')
+	'tv cx': () => tvCx('foo', { bar: true, baz: false }, 'qux')
 });
 
 // Nested arrays
@@ -46,7 +48,7 @@ addComparison(bench, 'nested arrays', {
 	cn: () => cn('foo', ['bar', ['baz', 'qux']]),
 	classnames: () => classnames('foo', ['bar', ['baz', 'qux']]),
 	clsx: () => clsx('foo', ['bar', ['baz', 'qux']]),
-	'tv cn': () => tvCn('foo', ['bar', ['baz', 'qux']])
+	'tv cx': () => tvCx('foo', ['bar', ['baz', 'qux']])
 });
 
 // Complex mixed
@@ -72,8 +74,8 @@ addComparison(bench, 'complex', {
 			{ disabled: false },
 			'mx-2'
 		),
-	'tv cn': () =>
-		tvCn(
+	'tv cx': () =>
+		tvCx(
 			'btn',
 			['btn-primary', { 'btn-lg': true }],
 			{ disabled: false },

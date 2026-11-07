@@ -2896,6 +2896,7 @@ t.test('required variant throws when it has a default', (t) => {
 					}
 				},
 				defaultVariants: {
+					// @ts-expect-error - a required variant has no default
 					size: 'sm'
 				},
 				requiredVariants: ['size']
