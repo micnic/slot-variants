@@ -341,6 +341,17 @@ type DefaultVariants<
 	]?: DefaultVariantValue<S, G, V, K>;
 };
 
+// A default for a required variant, typed as the reason it's rejected: while
+// the config is still being inferred, an excess key alone isn't reported.
+type RequiredDefaultCollision<
+	V extends AnyVariants,
+	R extends RequiredVariants<V>
+> = {
+	[
+		K in RequiredVariantKeys<V, R>
+	]?: 'Required variant must not have a default';
+};
+
 type VariantPropsWithRequired<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
@@ -394,7 +405,9 @@ export type Config<
 	/** Per-slot classes for a variant combination, also matched by `preset`. */
 	compoundSlots?: CompoundSlots<S, G, V, P> | undefined;
 	/** Variant values used when the caller doesn't pass one. */
-	defaultVariants?: DefaultVariants<S, G, V, R> | undefined;
+	defaultVariants?:
+		| (DefaultVariants<S, G, V, R> & RequiredDefaultCollision<V, R>)
+		| undefined;
 	/** Variants the caller must always pass, so their props lose the `?`. */
 	requiredVariants?: R | undefined;
 	/** Slots whose class function takes variant props, for repeated slots. */

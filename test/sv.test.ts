@@ -2903,6 +2903,29 @@ t.test('required variant throws when it has a default', (t) => {
 		{ message: 'Required variant "size" cannot have a default value' },
 		'throws at config time for variant with default'
 	);
+	t.throws(
+		() =>
+			sv('rounded-lg', {
+				variants: { size: { sm: 'text-sm' } },
+				// @ts-expect-error - every variant is required
+				defaultVariants: { size: 'sm' },
+				requiredVariants: true
+			}),
+		{ message: 'Required variant "size" cannot have a default value' },
+		'throws for requiredVariants: true too'
+	);
+
+	const button = sv('rounded-lg', {
+		variants: { size: { sm: 'text-sm' }, tone: { dark: 'bg-black' } },
+		defaultVariants: { tone: 'dark' },
+		requiredVariants: ['size']
+	});
+
+	t.equal(
+		button({ size: 'sm' }),
+		'rounded-lg text-sm bg-black',
+		'a variant that is not required keeps its default'
+	);
 
 	t.end();
 });
