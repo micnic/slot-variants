@@ -790,7 +790,7 @@ export const compileConfig = (
 	);
 
 	const compiledCompoundSlots = compoundSlots.map((compound) => {
-		if (compound.slots.length === 0) {
+		if (!isArray(compound.slots) || compound.slots.length === 0) {
 			throw new Error('Compound slot must define at least one slot');
 		}
 

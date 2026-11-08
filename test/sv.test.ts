@@ -6156,6 +6156,31 @@ t.test('compound slot with empty slots array throws', (t) => {
 	t.end();
 });
 
+t.test('compound slot without a slots array throws', (t) => {
+	t.throws(
+		() =>
+			sv('border', {
+				slots: { header: 'font-bold' },
+				// @ts-expect-error missing slots property
+				compoundSlots: [{ class: 'ignored' }]
+			}),
+		{ message: 'Compound slot must define at least one slot' },
+		'missing slots'
+	);
+	t.throws(
+		() =>
+			sv('border', {
+				slots: { header: 'font-bold' },
+				// @ts-expect-error slots must be an array
+				compoundSlots: [{ slots: 'header', class: 'ignored' }]
+			}),
+		{ message: 'Compound slot must define at least one slot' },
+		'slots given as a string'
+	);
+
+	t.end();
+});
+
 t.test('compound slot with unknown slot throws', (t) => {
 	t.throws(
 		() =>
