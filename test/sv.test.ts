@@ -6526,6 +6526,41 @@ t.test('multiSlots slot function merges outer slot-object class', (t) => {
 	t.end();
 });
 
+t.test('multiSlots slot function keeps outer class on undefined', (t) => {
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold'
+		},
+		multiSlots: ['header']
+	});
+
+	const outerClass = card({ class: { header: 'ring' } });
+	const outerClassName = card({ className: { header: 'ring' } });
+
+	t.equal(
+		outerClass.header({ class: undefined }),
+		'font-bold ring',
+		'inner class undefined keeps the outer class'
+	);
+	t.equal(
+		outerClass.header({ className: undefined }),
+		'font-bold ring',
+		'inner className undefined keeps the outer class'
+	);
+	t.equal(
+		outerClassName.header({ class: undefined }),
+		'font-bold ring',
+		'inner class undefined keeps the outer className'
+	);
+	t.equal(
+		outerClassName.header({ className: undefined }),
+		'font-bold ring',
+		'inner className undefined keeps the outer className'
+	);
+
+	t.end();
+});
+
 t.test('multiSlots slot function merges outer string class', (t) => {
 	const card = sv('border', {
 		slots: {

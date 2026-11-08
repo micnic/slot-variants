@@ -103,7 +103,10 @@ const buildSlotFn =
 
 		const mergedProps: RuntimeProps = { ...outerProps, ...innerProps };
 
-		if (innerClass !== undefined) {
+		// An inner `class: undefined` would otherwise erase the outer class
+		if (innerClass === undefined) {
+			mergedProps.class = outerClass;
+		} else {
 			mergedProps.class = mergeMultiSlotClass(
 				config,
 				outerClass,
