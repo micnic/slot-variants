@@ -6526,6 +6526,52 @@ t.test('multiSlots slot function merges outer slot-object class', (t) => {
 	t.end();
 });
 
+t.test('multiSlots slot function keeps outer props on undefined', (t) => {
+	const card = sv({
+		slots: {
+			header: 'font-bold'
+		},
+		variants: {
+			size: {
+				sm: { header: 'text-sm' },
+				lg: { header: 'text-lg' }
+			},
+			tone: {
+				neutral: { header: 'text-gray-900' },
+				danger: { header: 'text-red-600' }
+			}
+		},
+		presets: {
+			alert: { tone: 'danger' }
+		},
+		defaultVariants: {
+			size: 'sm'
+		},
+		multiSlots: ['header']
+	});
+
+	const sized = card({ size: 'lg' });
+	const alert = card({ preset: 'alert' });
+
+	t.equal(
+		sized.header({ size: undefined }),
+		'font-bold text-lg',
+		'inner variant undefined keeps the outer value'
+	);
+	t.equal(
+		sized.header({ size: null }),
+		'font-bold',
+		'inner variant null still unsets the outer value'
+	);
+	t.equal(
+		alert.header({ preset: undefined }),
+		'font-bold text-sm text-red-600',
+		'inner preset undefined keeps the outer preset'
+	);
+
+	t.end();
+});
+
 t.test('multiSlots slot function keeps outer class on undefined', (t) => {
 	const card = sv('border', {
 		slots: {

@@ -90,6 +90,27 @@ const mergeMultiSlotClass = (
 	return merged;
 };
 
+/**
+ * Overrides the outer variant props with the slot function's own, skipping
+ * the ones left `undefined` so they keep the outer value, like an omitted
+ * prop. The class props are merged separately.
+ */
+const mergeSlotFnProps = (
+	outerProps: RuntimeProps,
+	innerProps: RuntimeProps
+): RuntimeProps => {
+	const { class: _class, className: _className, ...innerState } = innerProps;
+	const mergedProps: RuntimeProps = { ...outerProps };
+
+	for (const [key, value] of entries(innerState)) {
+		if (value !== undefined) {
+			mergedProps[key] = value;
+		}
+	}
+
+	return mergedProps;
+};
+
 const buildSlotFn =
 	(
 		config: CompiledConfig,
@@ -101,12 +122,9 @@ const buildSlotFn =
 		const outerClass = outerProps.class ?? outerProps.className;
 		const innerClass = innerProps.class ?? innerProps.className;
 
-		const mergedProps: RuntimeProps = { ...outerProps, ...innerProps };
+		const mergedProps = mergeSlotFnProps(outerProps, innerProps);
 
-		// An inner `class: undefined` would otherwise erase the outer class
-		if (innerClass === undefined) {
-			mergedProps.class = outerClass;
-		} else {
+		if (innerClass !== undefined) {
 			mergedProps.class = mergeMultiSlotClass(
 				config,
 				outerClass,
