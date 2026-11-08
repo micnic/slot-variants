@@ -383,6 +383,16 @@ type Props<
 	R extends RequiredVariants<V>
 > = VariantArgs<S, G, V, P, R> & ClassProp<S, G, ClassValue>;
 
+// The `introspection` value as written, `undefined` included, so an explicit
+// `undefined` is inferred as such instead of widening to `boolean`.
+export type MaybeIntrospection = boolean | undefined;
+
+/** The introspection a config gets: its own, or the default `D` if unset. */
+export type ResolvedIntrospection<
+	I extends MaybeIntrospection,
+	D extends boolean
+> = [I] extends [undefined] ? D : Exclude<I, undefined>;
+
 export type Config<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
@@ -390,7 +400,7 @@ export type Config<
 	P extends MaybePresets<S, G, V>,
 	M extends MultiSlots<S, G>,
 	R extends RequiredVariants<V>,
-	I extends boolean = false
+	I extends MaybeIntrospection = false
 > = {
 	/** Classes always applied, alongside matched variant/compound classes. */
 	base?: ConfigClassValue;
@@ -417,7 +427,7 @@ export type Config<
 	/** How many prop combinations' classes are cached. Defaults to 256. */
 	cacheSize?: number | undefined;
 	/** Exposes variant metadata and cache controls on the returned function. */
-	introspection?: I | undefined;
+	introspection?: I;
 	/** Transforms the final class string (or each slot's) before returning. */
 	postProcess?: ((className: string) => string) | undefined;
 };
@@ -523,7 +533,7 @@ export type RawConfig = Config<
 	>,
 	MultiSlots<MaybeSlots, MaybeGroups<MaybeSlots>>,
 	RequiredVariants<AnyVariants>,
-	boolean
+	MaybeIntrospection
 >;
 
 /**
@@ -536,10 +546,10 @@ type ConfigCall<B extends boolean, C extends ClassValue[]> = <
 	P extends MaybePresets<S, G, V> = undefined,
 	M extends MultiSlots<S, G> = false,
 	R extends RequiredVariants<V> = false,
-	I extends boolean = B
+	I extends MaybeIntrospection = undefined
 >(
 	...args: [...C, Config<S, G, V, P, M, R, I>]
-) => VariantFn<S, G, V, P, M, R, I>;
+) => VariantFn<S, G, V, P, M, R, ResolvedIntrospection<I, B>>;
 
 type ClassCall = <const T extends ClassValue[]>(
 	...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }

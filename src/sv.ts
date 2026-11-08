@@ -15,6 +15,7 @@ import {
 	type CompiledGroups,
 	type Config,
 	type MaybeGroups,
+	type MaybeIntrospection,
 	type MaybePresets,
 	type MaybeSlots,
 	type MaybeVariants,
@@ -23,6 +24,7 @@ import {
 	type NormalizedVariants,
 	type RawConfig,
 	type RequiredVariants,
+	type ResolvedIntrospection,
 	type RunFn,
 	type RuntimeClassValue,
 	type RuntimeProps,
@@ -265,6 +267,31 @@ const createVariantFn = (config: CompiledConfig) => {
 };
 
 /**
+ * Copies the source's own values onto the target, except `undefined` ones.
+ */
+const assignDefinedValues = <T extends object>(target: T, source: T) => {
+	for (const key in source) {
+		const value = source[key];
+
+		if (value !== undefined) {
+			target[key] = value;
+		}
+	}
+};
+
+/**
+ * Applies a per-call config over the factory defaults. An option left
+ * `undefined` keeps its default, like an omitted one.
+ */
+const mergeConfig = (defaults: RawConfig | undefined, config: RawConfig) => {
+	const merged: RawConfig = { ...defaults };
+
+	assignDefinedValues(merged, config);
+
+	return merged;
+};
+
+/**
  * Builds a pre-configured `sv()` function whose `defaults` are applied to every
  * config-based call. The defaults accept any config option and are shallow
  * merged so a per-call value always wins; calls with no config are forwarded
@@ -294,10 +321,10 @@ export const createSV = <I extends boolean = false>(
 		P extends MaybePresets<S, G, V> = undefined,
 		M extends MultiSlots<S, G> = false,
 		R extends RequiredVariants<V> = false,
-		J extends boolean = I
+		J extends MaybeIntrospection = undefined
 	>(
 		...args: [...ClassValue[], Config<S, G, V, P, M, R, J>]
-	): VariantFn<S, G, V, P, M, R, J>;
+	): VariantFn<S, G, V, P, M, R, ResolvedIntrospection<J, I>>;
 	function customSV<const T extends ClassValue[]>(
 		...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
 	): string;
@@ -311,7 +338,7 @@ export const createSV = <I extends boolean = false>(
 		}
 
 		return createVariantFn(
-			compileConfig(args.slice(0, -1), { ...defaults, ...last })
+			compileConfig(args.slice(0, -1), mergeConfig(defaults, last))
 		);
 	}
 

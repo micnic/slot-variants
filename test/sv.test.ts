@@ -6826,6 +6826,43 @@ t.test('per-call config overrides a factory default', (t) => {
 	t.end();
 });
 
+t.test('per-call undefined option keeps the factory default', (t) => {
+	const factorySv = createSV({
+		cacheSize: 1,
+		introspection: true,
+		postProcess: (className) => className.toUpperCase()
+	});
+
+	const button = factorySv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			}
+		},
+		cacheSize: undefined,
+		introspection: undefined,
+		postProcess: undefined
+	});
+
+	button({ size: 'sm' });
+
+	t.equal(button({ size: 'lg' }), 'BTN TEXT-LG', 'default postProcess runs');
+	t.equal(button.getCacheSize(), 1, 'default cacheSize bounds the cache');
+
+	const plain = sv('btn', { introspection: undefined });
+	const plainString: string = plain();
+
+	t.equal(plainString, 'btn', 'sv keeps returning the class string');
+	t.equal(
+		'variantKeys' in plain,
+		false,
+		'sv keeps introspection off by default'
+	);
+
+	t.end();
+});
+
 t.test('createSV forwards no-config calls to class merging', (t) => {
 	const factorySv = createSV({
 		postProcess: (className) => className.toUpperCase()
