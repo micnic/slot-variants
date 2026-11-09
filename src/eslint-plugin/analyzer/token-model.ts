@@ -114,7 +114,7 @@ export const getEntriesMatchers = (
 
 // True when every pair of matchers disagrees on at least one shared key. Null
 // (some entry has no readable matchers) is never exclusive.
-export const arePairwiseExclusive = (
+const arePairwiseExclusive = (
 	matchers: ReadonlyArray<VariantMatchers> | null
 ): boolean => {
 	if (matchers === null) {
@@ -124,6 +124,37 @@ export const arePairwiseExclusive = (
 	for (const [index, current] of matchers.entries()) {
 		for (const other of matchers.slice(index + 1)) {
 			if (!areExclusiveMatchers(current, other)) {
+				return false;
+			}
+		}
+	}
+
+	return true;
+};
+
+const areEntriesExclusive = (a: Entry, b: Entry): boolean => {
+	const matchersA = getEntryMatchers(a);
+	const matchersB = getEntryMatchers(b);
+
+	if (matchersA === null || matchersB === null) {
+		return false;
+	}
+
+	return areExclusiveMatchers(matchersA, matchersB);
+};
+
+// True when no two entries of different tokens can render together. Entries
+// of one token aren't compared: a repeat is a duplicate, reported on its own,
+// and doesn't make the tokens it never renders with conflict.
+export const areDistinctTokensExclusive = (
+	entries: ReadonlyArray<Entry>
+): boolean => {
+	for (const [index, current] of entries.entries()) {
+		for (const other of entries.slice(index + 1)) {
+			if (
+				current.token !== other.token &&
+				!areEntriesExclusive(current, other)
+			) {
 				return false;
 			}
 		}

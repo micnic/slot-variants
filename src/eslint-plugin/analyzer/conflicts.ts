@@ -11,8 +11,8 @@ import { getConfigSlotNames, getProperties } from './properties.ts';
 import { readGroups } from './styled-values.ts';
 import { collectCnEntries, collectConfigEntries } from './token-extraction.ts';
 import {
+	areDistinctTokensExclusive,
 	areExclusiveMatchers,
-	arePairwiseExclusive,
 	type Entry,
 	type EntryListFilter,
 	getEntriesMatchers,
@@ -48,12 +48,11 @@ const absorbGroup = (target: GroupMembers, source: GroupMembers) => {
 	target.entries.push(...source.entries);
 };
 
-// Derives `matchers` and `exclusive` from the group's entries in one walk.
+// Derives `matchers`, for comparing neighbor groups, and `exclusive` from the
+// group's entries.
 const updateGroupExclusivity = (group: ConflictGroup) => {
-	const matchers = getEntriesMatchers(group.entries);
-
-	group.matchers = matchers;
-	group.exclusive = arePairwiseExclusive(matchers);
+	group.matchers = getEntriesMatchers(group.entries);
+	group.exclusive = areDistinctTokensExclusive(group.entries);
 };
 
 const groupEntriesByConflictKey = (
@@ -89,7 +88,7 @@ const groupEntriesByConflictKey = (
 	return groups;
 };
 
-// The real-edge counterpart to arePairwiseExclusive: true when every
+// The real-edge counterpart to areDistinctTokensExclusive: true when every
 // matcher of `a` is exclusive with every matcher of `b`. Used to check two
 // distinct covers-adjacent nodes (`p` vs `px`) against each other directly,
 // instead of flattening a whole connected component into one all-pairs check
@@ -154,8 +153,8 @@ const collectOverlapComponent = (
 // are never compared.
 const isOverlapComponentExclusive = (component: OverlapComponent): boolean => {
 	for (const [node, group] of component) {
-		// `exclusive` true guarantees non-null `matchers`; the second test
-		// only narrows the type.
+		// Null `matchers` means an entry, like a base one, renders with
+		// anything a neighbor holds.
 		if (!group.exclusive || group.matchers === null) {
 			return false;
 		}

@@ -3317,6 +3317,33 @@ const NO_CONFLICTING_NS_VALID = [
 
 const NO_CONFLICTING_NS_INVALID = [
 	{
+		// Only tokens that differ are checked for co-occurring: `p-4` never
+		// renders with either `p-2`, which repeat each other — reported as a
+		// duplicate alone.
+		code:
+			IMPORT +
+			"sv({ variants: { size: { sm: 'p-2', md: 'p-4' }, color: { red: 'a', blue: 'b' } }, compoundVariants: [{ size: 'sm', color: 'red', class: 'p-2' }] });",
+		errors: repeat(dup('p-2'), 2)
+	},
+	{
+		// The same in a cn() call.
+		code: IMPORT_CN + "cn(c ? 'p-2' : 'p-4', c && 'p-2');",
+		errors: repeat(dupCn('p-2'), 2)
+	},
+	{
+		// A base token still conflicts with every other token it renders with.
+		code:
+			IMPORT +
+			"sv({ base: 'p-2', variants: { size: { sm: 'p-2', md: 'p-4' } } });",
+		errors: [
+			dup('p-2'),
+			conflict('p-2, p-4'),
+			dup('p-2'),
+			conflict('p-2, p-4'),
+			conflict('p-2, p-4')
+		]
+	},
+	{
 		// Classes written for a group land on each of its member slots.
 		code:
 			IMPORT +
