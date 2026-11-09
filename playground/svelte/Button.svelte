@@ -1,4 +1,4 @@
-<script>
+<script module>
 	import { sv } from 'slot-variants';
 
 	const button = sv('inline-flex items-center rounded-lg font-medium', {
@@ -22,7 +22,9 @@
 			size: 'md'
 		}
 	});
+</script>
 
+<script>
 	let { tone, size, class: className, children } = $props();
 
 	const classes = $derived(button({ tone, size, class: className }));

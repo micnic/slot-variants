@@ -689,6 +689,9 @@ t.test('Svelte and Vue templates are checked like script code', (t) => {
 			.sort();
 	const script = (body: string) =>
 		`<script setup>\nimport { cn, sv } from 'slot-variants';\n${body}\n</script>\n`;
+	// A config compiled once in a plain `<script>`, read by `<script setup>`.
+	const scripts = (body: string) =>
+		`<script>\nimport { cn, sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\n</script>\n<script setup>\n${body}\n</script>\n`;
 	const cases = [
 		[
 			'Svelte markup written before its <script>',
@@ -710,13 +713,13 @@ t.test('Svelte and Vue templates are checked like script code', (t) => {
 		],
 		[
 			'a v-for local is no <script> binding, and no static value',
-			`${script("const card = sv({ base: 'p-2' });\nconst cls = card();")}<template><div v-for="cls in list" :class="cn(cls, 'p-4')" /></template>`,
+			`${scripts('const cls = card();')}<template><div v-for="cls in list" :class="cn(cls, 'p-4')" /></template>`,
 			'a.vue',
 			['slot-variants/no-dynamic-classes:dynamic']
 		],
 		[
 			'a v-slot local is no <script> binding either',
-			`${script("const card = sv({ base: 'p-2' });\nconst cls = card();")}<template><Comp v-slot="{ cls }"><div :class="[cls, 'p-4']" /></Comp></template>`,
+			`${scripts('const cls = card();')}<template><Comp v-slot="{ cls }"><div :class="[cls, 'p-4']" /></Comp></template>`,
 			'a.vue',
 			[]
 		],
@@ -6160,11 +6163,28 @@ t.test('require-top-level-config', (t) => {
 const SVELTE_SCRIPT = "<script>import { sv } from 'slot-variants';</script>\n";
 
 const REQUIRE_TOP_LEVEL_CONFIG_SVELTE_VALID = [
-	// A config call in the script, read from the markup.
-	"<script>import { sv } from 'slot-variants';\nconst b = sv({ base: 'p-2' });</script>\n<b class={b()} />"
+	// A module script runs once, however many instances the component has.
+	"<script module>import { sv } from 'slot-variants';\nconst b = sv({ base: 'p-2' });</script>\n<b class={b()} />",
+	// The same in Svelte 4's spelling.
+	"<script context=\"module\">import { sv } from 'slot-variants';\nconst b = sv({ base: 'p-2' });</script>\n<b class={b()} />"
 ];
 
 const REQUIRE_TOP_LEVEL_CONFIG_SVELTE_INVALID = [
+	{
+		// The instance script runs again for every component instance.
+		code: "<script>import { sv } from 'slot-variants';\nconst b = sv({ base: 'p-2' });</script>\n<b class={b()} />",
+		errors: [{ messageId: 'instance' }]
+	},
+	{
+		// Another attribute doesn't make it a module script.
+		code: "<script lang=\"ts\">import { sv } from 'slot-variants';\nconst b = sv({ base: 'p-2' });</script>",
+		errors: [{ messageId: 'instance' }]
+	},
+	{
+		// The innermost reason wins, here a function in the instance script.
+		code: "<script>import { sv } from 'slot-variants';\nconst make = () => sv({ base: 'p-2' });</script>",
+		errors: [{ messageId: 'nested' }]
+	},
 	{
 		// A markup expression is evaluated again on every render.
 		code: SVELTE_SCRIPT + "<b class={sv({ base: 'p-2' })()} />",
@@ -6185,11 +6205,21 @@ const VUE_SCRIPT =
 	"<script setup>import { sv } from 'slot-variants';</script>\n";
 
 const REQUIRE_TOP_LEVEL_CONFIG_VUE_VALID = [
-	// A config call in the script, read from the template.
-	"<script setup>import { sv } from 'slot-variants';\nconst b = sv({ base: 'p-2' });</script>\n<template><b :class=\"b()\" /></template>"
+	// A plain script runs once, however many instances the component has.
+	"<script>import { sv } from 'slot-variants';\nconst b = sv({ base: 'p-2' });</script>\n<script setup>const c = b();</script>\n<template><b :class=\"c\" /></template>",
+	{
+		// A script file has no `<script setup>` to be in.
+		code: "import { sv } from 'slot-variants';\nconst b = sv({ base: 'p-2' });",
+		filename: 'button.js'
+	}
 ];
 
 const REQUIRE_TOP_LEVEL_CONFIG_VUE_INVALID = [
+	{
+		// `<script setup>` runs again for every component instance.
+		code: "<script setup>import { sv } from 'slot-variants';\nconst b = sv({ base: 'p-2' });</script>\n<template><b :class=\"b()\" /></template>",
+		errors: [{ messageId: 'instance' }]
+	},
 	{
 		// A template expression is evaluated again on every render.
 		code:

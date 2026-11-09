@@ -1,5 +1,4 @@
-<script setup>
-import { computed } from 'vue';
+<script>
 import { sv } from 'slot-variants';
 
 const card = sv('overflow-hidden rounded-xl border bg-white', {
@@ -28,6 +27,10 @@ const card = sv('overflow-hidden rounded-xl border bg-white', {
 		tone: 'neutral'
 	}
 });
+</script>
+
+<script setup>
+import { computed } from 'vue';
 
 const props = defineProps({
 	tone: { type: String, default: undefined },

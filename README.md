@@ -1422,7 +1422,7 @@ This entry only matches `variant: 'link'` — merge `hover:underline` into `vari
 
 #### `slot-variants/require-top-level-config`
 
-Flags `sv()` calls with a config object that aren't at module top level (e.g. inside a function body, a non-static class field, or a Svelte/Vue template expression), since the config form does its setup work once per call and starts with an empty cache — re-entering the call repeats that work and discards everything cached so far.
+Flags `sv()` calls with a config object that aren't at module top level (e.g. inside a function body, a non-static class field, a Svelte/Vue template expression, or a component's instance script — Svelte's `<script>` or Vue's `<script setup>` — which runs for every component instance), since the config form does its setup work once per call and starts with an empty cache — re-entering the call repeats that work and discards everything cached so far.
 
 ```typescript
 function createButton() {

@@ -1,5 +1,4 @@
-<script setup>
-import { computed } from 'vue';
+<script>
 import { sv } from 'slot-variants';
 
 const button = sv('inline-flex items-center rounded-lg font-medium', {
@@ -23,6 +22,10 @@ const button = sv('inline-flex items-center rounded-lg font-medium', {
 		size: 'md'
 	}
 });
+</script>
+
+<script setup>
+import { computed } from 'vue';
 
 const props = defineProps({
 	tone: { type: String, default: undefined },

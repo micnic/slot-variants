@@ -1,4 +1,4 @@
-<script>
+<script module>
 	import { sv } from 'slot-variants';
 
 	const card = sv('overflow-hidden rounded-xl border bg-white', {
@@ -27,7 +27,9 @@
 			tone: 'neutral'
 		}
 	});
+</script>
 
+<script>
 	let { tone, title, class: className, footer, children } = $props();
 
 	const classes = $derived(card({ tone, class: className }));
