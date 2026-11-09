@@ -50,5 +50,13 @@ export const matchSvCall = (
 	return { config: null, args, isFactoryConfig: false };
 };
 
+// An empty object is a config too, as `sv()` reads it at runtime: a variant
+// function with nothing configured.
+const isEmptyObject = (node: Node | undefined): node is ObjectExpression =>
+	node !== undefined &&
+	node.type === 'ObjectExpression' &&
+	node.properties.length === 0;
+
 const isConfigLike = (node: Node | undefined): node is ObjectExpression =>
+	isEmptyObject(node) ||
 	getStrictPropertiesWithKeys(node, (key) => CONFIG_KEYS.has(key)) !== null;

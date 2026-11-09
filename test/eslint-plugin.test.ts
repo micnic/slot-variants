@@ -1723,6 +1723,10 @@ t.test('no-dynamic-classes', (t) => {
 });
 
 const NO_EMPTY_CLASSES_VALID = [
+	// An empty object is an empty config, as `sv()` reads it at runtime, not
+	// an empty class record.
+	IMPORT + 'sv({});',
+	IMPORT + "sv('flex', {});",
 	// Non-empty cn-style call.
 	IMPORT + "sv('flex', 'items-center');",
 	// Non-empty config.
@@ -1983,11 +1987,6 @@ const NO_EMPTY_CLASSES_INVALID = [
 		// Empty array as cn-style sv argument.
 		code: IMPORT + 'sv([]);',
 		errors: [{ messageId: 'emptyArray' }]
-	},
-	{
-		// Empty object as cn-style sv argument.
-		code: IMPORT + 'sv({});',
-		errors: [{ messageId: 'emptyObject' }]
 	},
 	{
 		// Empty template literal as cn-style sv argument.
@@ -6049,6 +6048,15 @@ const REQUIRE_TOP_LEVEL_CONFIG_VALID = [
 ];
 
 const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
+	{
+		// An empty object is a config too, as `sv()` reads it at runtime.
+		code: IMPORT + "function f() { return sv('flex', {}); }",
+		errors: [{ messageId: 'nested' }]
+	},
+	{
+		code: IMPORT + 'const make = () => sv({});',
+		errors: [{ messageId: 'nested' }]
+	},
 	{
 		// Config call inside a function declaration.
 		code: IMPORT + "function f() { return sv({ base: 'flex' }); }",
