@@ -6173,6 +6173,20 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 		output: null
 	},
 	{
+		// A comment inside a leading array argument moves along with it.
+		code: IMPORT + "sv(['flex' /* primary */], { variants: {} });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a separate leading argument'
+				}
+			}
+		],
+		output: IMPORT + "sv({ base: ['flex' /* primary */], variants: {} });"
+	},
+	{
 		// The same for a `slots` base that's the only property there.
 		code:
 			IMPORT +
@@ -6582,6 +6596,42 @@ t.test('sv-config-style (base style)', (t) => {
 			invalid: SV_CONFIG_STYLE_BASE_INVALID
 		});
 	}, 'rule tester passes');
+	t.end();
+});
+
+// ESLint discards a fix whose output fails to parse, which would hide a broken
+// fix from the rule tester, so the raw fixes are inspected instead.
+t.test('sv-config-style offers no base fix around parentheses', (t) => {
+	const linter = new Linter({ configType: 'flat' });
+	const config: Linter.Config[] = [
+		{
+			plugins: { 'slot-variants': plugin },
+			rules: { 'slot-variants/sv-config-style': 'error' }
+		}
+	];
+	const cases = [
+		{
+			code: "sv(('flex'), { variants: {} });",
+			label: 'parenthesized leading argument'
+		},
+		{
+			code: "sv('flex', ({ variants: {} }));",
+			label: 'parenthesized config'
+		}
+	];
+
+	for (const { code, label } of cases) {
+		const messages = linter.verify(`${IMPORT}${code}`, config, {
+			filename: 'test.js'
+		});
+
+		t.same(
+			messages.map(({ messageId, fix }) => ({ messageId, fix })),
+			[{ messageId: 'wrongBaseStyle', fix: undefined }],
+			label
+		);
+	}
+
 	t.end();
 });
 

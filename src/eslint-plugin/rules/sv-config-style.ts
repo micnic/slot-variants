@@ -49,6 +49,9 @@ const ORDER_INDEX = new Map(CONFIG_KEY_ORDER.map((key, index) => [key, index]));
 // possibly after a trailing comma.
 const CALL_END_PATTERN = /^\s*,?\s*\)$/;
 
+// What may separate a bare leading argument from the config: a single comma.
+const ARGUMENT_SEPARATOR_PATTERN = /^\s*,\s*$/;
+
 const BASE_STYLE_LABELS: Record<BaseStyle, string> = {
 	field: 'a "base" field in the config',
 	separateArg: 'a separate leading argument',
@@ -337,19 +340,16 @@ const insertAsFirstPropertyFix = (
 	return fixer.insertTextBefore(first, `${text}, `);
 };
 
-// Null when a comment sits between the argument and the config.
+// Only made once `isBareLeadingArgument` holds, so nothing but the argument,
+// moved along whole, and its comma is removed.
 const removeLeadingArgFix = (
 	fixer: Rule.RuleFixer,
 	sourceCode: SourceCode,
 	arg: Expression | SpreadElement,
 	configNode: ObjectExpression
-): Rule.Fix | null => {
+): Rule.Fix => {
 	const [argStart] = sourceCode.getRange(arg);
 	const [configStart] = sourceCode.getRange(configNode);
-
-	if (hasCommentInRange(sourceCode, [argStart, configStart])) {
-		return null;
-	}
 
 	return fixer.removeRange([argStart, configStart]);
 };
@@ -437,6 +437,22 @@ const isBareLastArgument = (
 	return CALL_END_PATTERN.test(sourceCode.text.slice(configEnd, callEnd));
 };
 
+// Whether the leading argument is followed directly by the config, not
+// wrapped in parentheses: removing it up to the config would otherwise leave
+// its opening parenthesis behind.
+const isBareLeadingArgument = (
+	sourceCode: SourceCode,
+	arg: Expression | SpreadElement,
+	configNode: ObjectExpression
+): boolean => {
+	const [, argEnd] = sourceCode.getRange(arg);
+	const [configStart] = sourceCode.getRange(configNode);
+
+	return ARGUMENT_SEPARATOR_PATTERN.test(
+		sourceCode.text.slice(argEnd, configStart)
+	);
+};
+
 // Whether the single detected base source can be rewritten into `target`
 // without risking a silent loss of classes or an edit at the wrong place.
 const canFixBaseStyle = (
@@ -465,7 +481,15 @@ const canFixBaseStyle = (
 	// which is only safe when the config literal really is that last argument —
 	// it can also be a hoisted `const` declared elsewhere in the file, in which
 	// case those ranges would rewrite unrelated code.
-	return isBareLastArgument(sourceCode, call, configNode);
+	if (!isBareLastArgument(sourceCode, call, configNode)) {
+		return false;
+	}
+
+	if (source.style === 'separateArg') {
+		return isBareLeadingArgument(sourceCode, source.node, configNode);
+	}
+
+	return true;
 };
 
 const checkBaseStyle = (
