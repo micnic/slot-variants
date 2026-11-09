@@ -6266,6 +6266,55 @@ const SV_CONFIG_STYLE_BASE_INVALID = [
 		output: IMPORT + "sv('flex', { variants: {} });"
 	},
 	{
+		// field present, target separateArg, config followed by a trailing
+		// comma: still the call's own last argument, so fixed.
+		code: IMPORT + "sv({ base: 'flex', variants: {} },);",
+		options: [{ baseStyle: 'separateArg' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a separate leading argument',
+					found: 'a "base" field in the config'
+				}
+			}
+		],
+		output: IMPORT + "sv('flex', { variants: {} },);"
+	},
+	{
+		// field present, target separateArg, config wrapped in parentheses:
+		// a leading argument inserted inside them would form a comma
+		// expression and drop the classes, so reported but not fixed.
+		code: IMPORT + "sv(({ base: 'flex', variants: {} }));",
+		options: [{ baseStyle: 'separateArg' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a separate leading argument',
+					found: 'a "base" field in the config'
+				}
+			}
+		],
+		output: null
+	},
+	{
+		// separateArg present, config wrapped in parentheses: removing the
+		// leading argument up to the config would split the parentheses, so
+		// reported but not fixed.
+		code: IMPORT + "sv('flex', ({ variants: {} }));",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a separate leading argument'
+				}
+			}
+		],
+		output: null
+	},
+	{
 		// field present, target configured as slotsBase, slots already exists:
 		// reports and fixes, moving base into slots.
 		code:

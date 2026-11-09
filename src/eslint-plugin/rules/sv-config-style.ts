@@ -45,6 +45,10 @@ type BaseSource =
 
 const ORDER_INDEX = new Map(CONFIG_KEY_ORDER.map((key, index) => [key, index]));
 
+// What may follow a bare last argument: the call's closing parenthesis,
+// possibly after a trailing comma.
+const CALL_END_PATTERN = /^\s*,?\s*\)$/;
+
 const BASE_STYLE_LABELS: Record<BaseStyle, string> = {
 	field: 'a "base" field in the config',
 	separateArg: 'a separate leading argument',
@@ -415,9 +419,28 @@ const buildBaseStyleFix = (
 	};
 };
 
+// Whether the config is written as the call's last argument itself, not
+// wrapped in parentheses: an argument list edit next to a wrapped config
+// lands inside them, forming a comma expression or splitting the pair.
+const isBareLastArgument = (
+	sourceCode: SourceCode,
+	call: CallExpression,
+	configNode: ObjectExpression
+): boolean => {
+	if (call.arguments[call.arguments.length - 1] !== configNode) {
+		return false;
+	}
+
+	const [, configEnd] = sourceCode.getRange(configNode);
+	const [, callEnd] = sourceCode.getRange(call);
+
+	return CALL_END_PATTERN.test(sourceCode.text.slice(configEnd, callEnd));
+};
+
 // Whether the single detected base source can be rewritten into `target`
 // without risking a silent loss of classes or an edit at the wrong place.
 const canFixBaseStyle = (
+	sourceCode: SourceCode,
 	call: CallExpression,
 	configNode: ObjectExpression,
 	args: ReadonlyArray<Expression | SpreadElement>,
@@ -442,7 +465,7 @@ const canFixBaseStyle = (
 	// which is only safe when the config literal really is that last argument —
 	// it can also be a hoisted `const` declared elsewhere in the file, in which
 	// case those ranges would rewrite unrelated code.
-	return call.arguments[call.arguments.length - 1] === configNode;
+	return isBareLastArgument(sourceCode, call, configNode);
 };
 
 const checkBaseStyle = (
@@ -488,7 +511,14 @@ const checkBaseStyle = (
 	if (
 		sources.length === 1 &&
 		onlySource &&
-		canFixBaseStyle(call, configNode, args, onlySource, baseStyle) &&
+		canFixBaseStyle(
+			context.sourceCode,
+			call,
+			configNode,
+			args,
+			onlySource,
+			baseStyle
+		) &&
 		!touchesHoistedSlots(
 			context.sourceCode,
 			configNode,
