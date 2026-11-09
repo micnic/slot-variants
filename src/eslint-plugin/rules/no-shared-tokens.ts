@@ -1,8 +1,12 @@
 import type { Rule } from 'eslint';
-import type { CallExpression } from 'estree';
+import type { CallExpression, ObjectExpression } from 'estree';
+import type { CallMatch } from '../analyzer/call-matching.ts';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import { getStrictProperties } from '../analyzer/properties.ts';
-import { analyzeSharedTokens } from '../analyzer/shared-tokens.ts';
+import {
+	analyzeSharedTokens,
+	type SharedTokensCall
+} from '../analyzer/shared-tokens.ts';
 import type { StyledContext } from '../analyzer/styled-values.ts';
 import {
 	createTrackedCallListeners,
@@ -30,6 +34,25 @@ const canCreateBase = (ctx: StyledContext, node: CallExpression): boolean => {
 	return properties !== null && !properties.has('base');
 };
 
+// Only a config written as the call's own last argument shares its base with
+// that call's leading arguments; a hoisted one may be passed to other calls.
+const getLeadingArg = (
+	node: CallExpression,
+	call: CallMatch,
+	config: ObjectExpression
+): SharedTokensCall['leadingArg'] => {
+	const lastLeadingArg = call.args[call.args.length - 1];
+
+	if (
+		lastLeadingArg === undefined ||
+		node.arguments[node.arguments.length - 1] !== config
+	) {
+		return null;
+	}
+
+	return lastLeadingArg;
+};
+
 /**
  * Flags class name tokens that appear in every value of an exhaustively-covered
  * variant — the token is constant in the rendered output and belongs in `base`
@@ -48,9 +71,11 @@ const canCreateBase = (ctx: StyledContext, node: CallExpression): boolean => {
  * directly-authored string or template literal — an array, a value nested
  * inside further structure, or one read through a hoisted `const` binding
  * leaves the finding reported without a fix, rather than partially rewritten.
- * A config with no `base` property yet is still fixable: the property is
- * created, borrowing the variant values' own quote style and the layout of the
- * config's first property — except in a call through a `createSV()`-derived
+ * A config with no `base` property lifts into where its base classes already
+ * are instead: a plain-literal `slots.base`, or else the call's last leading
+ * argument when the config is written in the call. With neither, the property
+ * is created, borrowing the variant values' own quote style and the layout of
+ * the config's first property — except in a call through a `createSV()`-derived
  * function whose defaults may hold a `base`, which the created one would
  * replace. A config with a spread or computed key is never fixed, since it may
  * override what the fix edits. A value left with no tokens at all is not
@@ -95,7 +120,10 @@ export const noSharedTokens: Rule.RuleModule = {
 				return;
 			}
 
-			analyzeSharedTokens(context, call.config, canCreateBase(ctx, node));
+			analyzeSharedTokens(context, call.config, {
+				canCreateBase: canCreateBase(ctx, node),
+				leadingArg: getLeadingArg(node, call, call.config)
+			});
 		});
 	}
 };

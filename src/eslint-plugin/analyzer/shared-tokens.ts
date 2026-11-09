@@ -45,6 +45,16 @@ type SharedEntries = Map<string, Map<string, Entry[][]>>;
 // render.
 type VariantCoverage = 'required' | 'default';
 
+/** Where else a call's base classes are, besides its config's `base` field. */
+export type SharedTokensCall = {
+	// False where a `base` created in the config would replace another one,
+	// like a `createSV()`-derived function's own default.
+	canCreateBase: boolean;
+	// The last leading class argument, when the config is the call's own
+	// argument rather than a hoisted one other calls share.
+	leadingArg: Node | null;
+};
+
 const intersectSharedTokensStep = (
 	sharedTokens: SharedEntries,
 	valueMap: TokenEntriesBySlot
@@ -873,12 +883,10 @@ const analyzeExhaustiveVariants = (
 	}
 };
 
-// `canCreateBase` is false where a `base` created in the config would replace
-// another one, like a `createSV()`-derived function's own default.
 export const analyzeSharedTokens = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression,
-	canCreateBase: boolean
+	{ canCreateBase, leadingArg }: SharedTokensCall
 ) => {
 	const { sourceCode } = context;
 	const config = getProperties(configNode);
@@ -893,6 +901,10 @@ export const analyzeSharedTokens = (
 	const canEdit = (node: Node) => {
 		if (!isStrictConfig) {
 			return false;
+		}
+
+		if (node === leadingArg) {
+			return true;
 		}
 
 		const [start, end] = sourceCode.getRange(node);
@@ -926,6 +938,11 @@ export const analyzeSharedTokens = (
 		resolveContainer(config.get('slots'), sourceCode)
 	);
 
+	// A candidate other than the `base` field is passed over unless the tokens
+	// can go into it, leaving the next one, or a created `base`, to take them.
+	const canLiftInto = (node: Node) =>
+		canEdit(node) && getRawLiteralTokens(sourceCode, node) !== null;
+
 	const getTarget = (slot: string): SharedTokensTarget | null => {
 		if (slot !== 'base') {
 			const slotNode = slotProperties.get(slot);
@@ -941,6 +958,18 @@ export const analyzeSharedTokens = (
 
 		if (baseNode) {
 			return { node: baseNode };
+		}
+
+		// Without a `base` field, the tokens join base classes written
+		// elsewhere, so the call keeps a single style for them
+		const slotsBase = slotProperties.get('base');
+
+		if (slotsBase && canLiftInto(slotsBase)) {
+			return { node: slotsBase };
+		}
+
+		if (leadingArg && canLiftInto(leadingArg)) {
+			return { node: leadingArg };
 		}
 
 		// Created inside the config, so not checked by `canEdit` later.

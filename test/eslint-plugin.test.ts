@@ -5154,6 +5154,81 @@ const NO_SHARED_TOKENS_INVALID = [
 		errors: repeat(shared('p-2', 'size'), 2)
 	},
 	{
+		// With no `base` field, the tokens go where the base classes already
+		// are: a leading argument.
+		code:
+			IMPORT +
+			"sv('flex', { variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: true });",
+		output:
+			IMPORT +
+			"sv('flex p-2', { variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: true });",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
+		// The last one of several leading arguments, so the classes keep
+		// coming after the others.
+		code:
+			IMPORT +
+			"sv('flex', 'gap-2', { variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: true });",
+		output:
+			IMPORT +
+			"sv('flex', 'gap-2 p-2', { variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: true });",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
+		// Or a `slots.base` entry.
+		code:
+			IMPORT +
+			"sv({ slots: { base: 'flex', icon: 'w-4' }, variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: true });",
+		output:
+			IMPORT +
+			"sv({ slots: { base: 'flex p-2', icon: 'w-4' }, variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: true });",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
+		// A `slots.base` that can't be rewritten passes on to the next
+		// candidate: here the leading argument.
+		code:
+			IMPORT +
+			"sv('box', { slots: { base: ['flex'], icon: 'w-4' }, variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: true });",
+		output:
+			IMPORT +
+			"sv('box p-2', { slots: { base: ['flex'], icon: 'w-4' }, variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: true });",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
+		// A hoisted `slots` record may be shared by other configs, so its
+		// `base` is passed on too, and the `base` field is created.
+		code:
+			IMPORT +
+			"const slots = { base: 'flex', icon: 'w-4' };\nsv({ slots, variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: true });",
+		output:
+			IMPORT +
+			"const slots = { base: 'flex', icon: 'w-4' };\nsv({ base: 'p-2', slots, variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: true });",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
+		// The same for a leading argument that isn't a plain literal.
+		code:
+			IMPORT +
+			"sv(['flex'], { variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: true });",
+		output:
+			IMPORT +
+			"sv(['flex'], { base: 'p-2', variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: true });",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
+		// A hoisted config's tokens never go into one call's leading
+		// argument, since the config's other calls would lose them.
+		code:
+			IMPORT +
+			"const config = { variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: true };\nsv('flex', config);",
+		output:
+			IMPORT +
+			"const config = { base: 'p-2', variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: true };\nsv('flex', config);",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
 		// A comment before the config's first property stays where it is: the
 		// created `base` only repeats the whitespace leading to that property.
 		code:
