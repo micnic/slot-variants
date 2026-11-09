@@ -15,9 +15,8 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  * string is still allowed at a direct `slots[key]` or `variants` value
  * position, since declaring a slot or a variant value with no classes of its
  * own is a meaningful use case. Also flags an empty
- * array (`[]`) as a `compoundVariants`/`compoundSlots` matcher value — since
- * `matchesCompound` in `sv.ts` tests it with `.some()`, an empty array can
- * never match, so the whole compound entry is permanently unreachable.
+ * array (`[]`) as a `compoundVariants`/`compoundSlots` matcher value — a
+ * matcher must list at least one value, so `sv()` throws for the config.
  *
  * The config containers that carry no class values of their own —
  * `defaultVariants`, `requiredVariants`, `multiSlots`, `presets` — are reported
@@ -42,8 +41,8 @@ export const noEmptyClasses: Rule.RuleModule = {
 			emptyCall: 'Empty sv()/cn() call is not allowed.',
 			emptyConfig:
 				'Empty "{{key}}" has no effect — remove it or fill it in.',
-			unreachableMatcher:
-				'Empty array matcher for "{{key}}" can never match — this compound entry is unreachable.'
+			emptyMatcher:
+				'Empty array matcher for "{{key}}" makes sv() throw — a compound matcher must list at least one value.'
 		}
 	},
 	create(context) {

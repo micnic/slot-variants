@@ -2195,15 +2195,15 @@ const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
-		// Empty array matcher on a compoundVariants entry can never match —
-		// the whole entry is unreachable.
+		// Empty array matcher on a compoundVariants entry could never match,
+		// so sv() throws for the config.
 		code:
 			IMPORT +
 			`sv({
 				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
 				compoundVariants: [{ size: [], class: 'font-bold' }]
 			});`,
-		errors: [{ messageId: 'unreachableMatcher' }]
+		errors: [{ messageId: 'emptyMatcher' }]
 	},
 	{
 		// Empty array matcher on a compoundSlots entry.
@@ -2214,7 +2214,7 @@ const NO_EMPTY_CLASSES_INVALID = [
 				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
 				compoundSlots: [{ slots: ['body'], size: [], class: 'font-bold' }]
 			});`,
-		errors: [{ messageId: 'unreachableMatcher' }]
+		errors: [{ messageId: 'emptyMatcher' }]
 	},
 	{
 		// A hoisted `const` empty array read through as a matcher value.
@@ -2225,7 +2225,7 @@ const NO_EMPTY_CLASSES_INVALID = [
 				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
 				compoundVariants: [{ size: noSizes, class: 'font-bold' }]
 			});`,
-		errors: [{ messageId: 'unreachableMatcher' }]
+		errors: [{ messageId: 'emptyMatcher' }]
 	},
 	{
 		// cn() with empty string.

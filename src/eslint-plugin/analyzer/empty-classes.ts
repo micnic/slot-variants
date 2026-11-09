@@ -201,9 +201,8 @@ const isEmptyArrayLiteral = (node: Node): boolean =>
 	node.type === 'ArrayExpression' && node.elements.length === 0;
 
 // A compound matcher (any entry key other than `class`/`className`/`slots`)
-// whose value is a literal empty array can never match: `matchesCompound` in
-// sv.ts calls `.some()` over it, which is always false for an empty array —
-// so the whole entry is permanently unreachable, regardless of props.
+// whose value is a literal empty array could never match, so `sv()` rejects
+// it: the config throws when it's compiled.
 const checkCompoundMatchersForEmpty = (
 	context: Rule.RuleContext,
 	compoundEntries: ArrayExpression
@@ -221,7 +220,7 @@ const checkCompoundMatchersForEmpty = (
 			if (isEmptyArrayLiteral(value)) {
 				context.report({
 					node: value,
-					messageId: 'unreachableMatcher',
+					messageId: 'emptyMatcher',
 					data: { key }
 				});
 			}
