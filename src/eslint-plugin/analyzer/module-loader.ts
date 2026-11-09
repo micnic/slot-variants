@@ -25,13 +25,16 @@ type LinterConstructor = new (options: { cwd: string }) => Linter;
 // lint run is visible to the caller's control flow.
 type Collected = { analysis: ModuleAnalysis | null };
 
-// A module is parsed with its importer's parser, or as a plain script where
-// that fails, so the parser is part of what makes an entry valid: one that
-// can't read the module (a JSX page importing a `.vue` file) must not hand its
-// failure to one that can.
+// A module is parsed with its importer's language options, or as a plain
+// script where that fails, so those options are part of what makes an entry
+// valid: ones that can't read the module (a JSX page importing a `.vue` file,
+// or a Vue page with no TypeScript parser importing a `lang="ts"` one) must
+// not hand their failure to ones that can. ESLint shares one options object
+// between the files a config's blocks match alike, so its identity tells them
+// apart.
 type CacheEntry = {
 	mtimeMs: number;
-	parser: Linter.LanguageOptions['parser'];
+	languageOptions: Linter.LanguageOptions;
 	analysis: ModuleAnalysis | null;
 };
 
@@ -269,9 +272,12 @@ const loadModule = (
 	}
 
 	const cached = moduleCache.get(path);
-	const { parser } = languageOptions;
 
-	if (cached && cached.mtimeMs === mtimeMs && cached.parser === parser) {
+	if (
+		cached &&
+		cached.mtimeMs === mtimeMs &&
+		cached.languageOptions === languageOptions
+	) {
 		return cached.analysis;
 	}
 
@@ -286,7 +292,7 @@ const loadModule = (
 		}
 	}
 
-	moduleCache.set(path, { mtimeMs, parser, analysis });
+	moduleCache.set(path, { mtimeMs, languageOptions, analysis });
 
 	return analysis;
 };

@@ -8237,6 +8237,45 @@ t.test('no-restyle reparses a module for a different parser', (t) => {
 	t.end();
 });
 
+// The same parser reads a module differently under other parser options, so a
+// failure cached under one set of them isn't handed to another.
+t.test('no-restyle reparses a module for other parser options', (t) => {
+	writeFixture(
+		'ui/Typed.vue',
+		`<script setup lang="ts">
+		${IMPORT}const typed = sv({ base: 'p-2' });
+		const props: { class?: string } = defineProps({ class: String });
+		</script>
+		<template><b :class="typed({ class: props.class })">x</b></template>`
+	);
+
+	const linter = new Linter({ cwd: fixtureDir });
+	const page = `<script setup>import Typed from './ui/Typed.vue';</script>\n<template><Typed class="p-4" /></template>`;
+	const lintPage = (languageOptions: Linter.LanguageOptions) =>
+		linter.verify(
+			page,
+			{
+				files: ['**/*.vue'],
+				plugins: { 'slot-variants': plugin },
+				rules: { 'slot-variants/no-restyle': 2 },
+				languageOptions
+			},
+			{ filename: join(fixtureDir, 'page.vue') }
+		);
+
+	t.same(
+		lintPage({ parser: vueParser }),
+		[],
+		'without a TypeScript parser the module cannot be read'
+	);
+	t.match(
+		lintPage({ parser: vueParser, parserOptions: { parser: tsParser } }),
+		[{ ruleId: 'slot-variants/no-restyle', messageId: 'conflict' }],
+		'with one it is read'
+	);
+	t.end();
+});
+
 // An imported module is only read for its syntax, so a type-aware parser
 // setup on the importer must not stop it from parsing: here the module is
 // reached through an alias the tsconfig doesn't know, which leaves it outside
