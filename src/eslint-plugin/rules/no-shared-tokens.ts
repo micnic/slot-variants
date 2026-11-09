@@ -1,5 +1,5 @@
 import type { Rule } from 'eslint';
-import type { CallExpression, ObjectExpression } from 'estree';
+import type { CallExpression, Node, ObjectExpression } from 'estree';
 import type { CallMatch } from '../analyzer/call-matching.ts';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import { getStrictProperties } from '../analyzer/properties.ts';
@@ -13,25 +13,46 @@ import {
 	getFactoryCall
 } from '../analyzer/tracked-calls.ts';
 
-// A call through a `createSV()`-derived function takes the factory's `base`
-// unless it passes its own, so one is only created where the factory's
-// defaults are known to have none.
-const canCreateBase = (ctx: StyledContext, node: CallExpression): boolean => {
+const NO_DEFAULTS: ReadonlyMap<string, Node> = new Map();
+
+// The defaults a call inherits from the `createSV()` factory its callee comes
+// from — none for `sv()` itself — or null when they can't be read.
+const getInheritedDefaults = (
+	ctx: StyledContext,
+	node: CallExpression
+): ReadonlyMap<string, Node> | null => {
 	const factory = getFactoryCall(ctx, node);
 
 	if (factory === null) {
-		return true;
+		return NO_DEFAULTS;
 	}
 
 	const [defaults] = factory.arguments;
 
 	if (defaults === undefined) {
-		return true;
+		return NO_DEFAULTS;
 	}
 
-	const properties = getStrictProperties(ctx.resolve(defaults));
+	return getStrictProperties(ctx.resolve(defaults));
+};
 
-	return properties !== null && !properties.has('base');
+// A call through a `createSV()`-derived function takes the factory's `base`
+// unless it passes its own, so one is only created where the factory's
+// defaults are known to have none; any other default may hold a `postProcess`.
+const getInheritedCall = (
+	ctx: StyledContext,
+	node: CallExpression
+): Pick<SharedTokensCall, 'canCreateBase' | 'inheritsPostProcess'> => {
+	const defaults = getInheritedDefaults(ctx, node);
+
+	if (defaults === null) {
+		return { canCreateBase: false, inheritsPostProcess: true };
+	}
+
+	return {
+		canCreateBase: !defaults.has('base'),
+		inheritsPostProcess: defaults.has('postProcess')
+	};
 };
 
 // Only a config written as the call's own last argument shares its base with
@@ -64,7 +85,11 @@ const getLeadingArg = (
  *
  * The lift is an autofix for a required variant only. Passing `null` skips a
  * default, so for a defaulted variant lifting the token would also apply it to
- * those calls — there the lift is offered as a suggestion instead.
+ * those calls — there the lift is offered as a suggestion instead. So it is
+ * under a `postProcess` of the config's own or its `createSV()` factory's: one
+ * merging classes keeps the last of two conflicting ones, and the lift moves
+ * classes ahead of later variants' ones. The same goes for the single-key
+ * compound fix below.
  *
  * Fixable when the fix is unambiguous: the `base`/`slots[slot]` target and
  * every variant value's contribution to that slot must each be a plain,
@@ -108,6 +133,10 @@ export const noSharedTokens: Rule.RuleModule = {
 		schema: [],
 		messages: {
 			shared: 'Class "{{token}}" appears in every value of variant "{{variant}}" for slot "{{slot}}" — lift it out of the variant.',
+			liftSharedOrder:
+				'Lift the classes every value of variant "{{variant}}" shares into slot "{{slot}}" (with a merging postProcess, they then come before the classes of the variants after it, which may change which conflicting class wins).',
+			moveCompoundClass:
+				'Move this entry\'s class onto variant "{{key}}"\'s value (with a merging postProcess, it then comes before the classes of the variants after it, which may change which conflicting class wins).',
 			liftShared:
 				'Lift the classes every value of variant "{{variant}}" shares into slot "{{slot}}" (they then also apply when "{{variant}}" is passed as null).',
 			singleKeyCompound:
@@ -121,7 +150,7 @@ export const noSharedTokens: Rule.RuleModule = {
 			}
 
 			analyzeSharedTokens(context, call.config, {
-				canCreateBase: canCreateBase(ctx, node),
+				...getInheritedCall(ctx, node),
 				leadingArg: getLeadingArg(node, call, call.config)
 			});
 		});

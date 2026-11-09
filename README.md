@@ -1389,7 +1389,7 @@ Either drop the overriding class, or — if the override is deliberate — move 
 
 #### `slot-variants/no-shared-tokens`
 
-Flags class tokens repeated in every value of a variant that's always applied (has a static default, or is required), since those tokens are constant in the output and belong in `base` (or the corresponding slot) instead. Where it's straightforward to do automatically, it offers to lift the token into `base`/`slots[slot]`: as an autofix for a required variant, and as an editor suggestion for a defaulted one, since passing `null` skips the default and the lifted token would then apply to that call too. A variant whose only value is keyed `true` (or `false`) isn't flagged, since passing the other boolean applies none of its classes.
+Flags class tokens repeated in every value of a variant that's always applied (has a static default, or is required), since those tokens are constant in the output and belong in `base` (or the corresponding slot) instead. Where it's straightforward to do automatically, it offers to lift the token into `base`/`slots[slot]`: as an autofix for a required variant, and as an editor suggestion for a defaulted one, since passing `null` skips the default and the lifted token would then apply to that call too. With a `postProcess` (set in the config or through [`createSV()`](#shared-defaults-with-createsv)), the lift is a suggestion either way: a merging `postProcess` like `twMerge` keeps the last of two conflicting classes, and lifting moves classes ahead of later variants' ones. A variant whose only value is keyed `true` (or `false`) isn't flagged, since passing the other boolean applies none of its classes.
 
 ```typescript
 const button = sv({
@@ -1405,7 +1405,7 @@ const button = sv({
 
 `rounded` is present in every value of an exhaustive variant. Lift it into `base` (or the corresponding slot for slot-based variants) so each variant value contains only the classes that actually vary.
 
-The same rule also flags a `compoundVariants`/`compoundSlots` entry whose matcher covers exactly one variant key — it isn't combining variants, so it isn't really a compound; its class belongs directly on that variant's value instead. `compoundVariants` is auto-fixed when its class and the target variant value are plain string/template literals; `compoundSlots` is always reported without a fix, since its class targets a specific slot rather than the whole variant value.
+The same rule also flags a `compoundVariants`/`compoundSlots` entry whose matcher covers exactly one variant key — it isn't combining variants, so it isn't really a compound; its class belongs directly on that variant's value instead. `compoundVariants` is auto-fixed when its class and the target variant value are plain string/template literals (offered as a suggestion with a `postProcess`, for the same reason as above); `compoundSlots` is always reported without a fix, since its class targets a specific slot rather than the whole variant value.
 
 ```typescript
 const button = sv({

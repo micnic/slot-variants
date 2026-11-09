@@ -53,6 +53,9 @@ export type SharedTokensCall = {
 	// The last leading class argument, when the config is the call's own
 	// argument rather than a hoisted one other calls share.
 	leadingArg: Node | null;
+	// True where a `postProcess` inherited from a `createSV()` factory may
+	// merge classes; the config's own one is read here.
+	inheritsPostProcess: boolean;
 };
 
 const intersectSharedTokensStep = (
@@ -209,6 +212,9 @@ type BaseInsertion = { insertBefore: Node; text: string };
 // has, or the config object a `base` property has to be created in.
 type SharedTokensTarget = { node: Node } | { createBaseIn: ObjectExpression };
 
+// What a single-key compound fix needs from the config's scope.
+type CompoundScope = Pick<SharedTokensScope, 'canEdit' | 'suggestOnly'>;
+
 type SharedTokensFixPlan = {
 	target: LiteralRewrite | BaseInsertion;
 	values: ReadonlyArray<LiteralRewrite>;
@@ -220,6 +226,10 @@ type SharedTokensFixPlan = {
 type SharedTokensScope = {
 	getTarget: (slot: string) => SharedTokensTarget | null;
 	canEdit: (node: Node) => boolean;
+	// A merging `postProcess` keeps the last of two conflicting classes, so
+	// moving classes earlier may change which one wins: the fixes that do
+	// are then offered as suggestions only.
+	suggestOnly: boolean;
 };
 
 // The text of a `base` property to create, laid out like the config's existing
@@ -413,7 +423,8 @@ const getSharedTokensRemedy = (
 	plan: SharedTokensFixPlan | null,
 	coverage: VariantCoverage,
 	variantKey: string,
-	slot: string
+	slot: string,
+	suggestOnly: boolean
 ): EntryRemedy => {
 	if (plan === null) {
 		return {};
@@ -421,20 +432,17 @@ const getSharedTokensRemedy = (
 
 	const fix: EntryListFixer = (fixer) =>
 		applySharedTokensFixPlan(fixer, plan);
+	const data = { variant: variantKey, slot };
 
-	if (coverage === 'required') {
-		return { fix };
+	if (coverage === 'default') {
+		return { suggest: [{ messageId: 'liftShared', data, fix }] };
 	}
 
-	return {
-		suggest: [
-			{
-				messageId: 'liftShared',
-				data: { variant: variantKey, slot },
-				fix
-			}
-		]
-	};
+	if (suggestOnly) {
+		return { suggest: [{ messageId: 'liftSharedOrder', data, fix }] };
+	}
+
+	return { fix };
 };
 
 const reportSharedTokenEntries = (
@@ -502,7 +510,13 @@ const reportSharedTokensBySlot = (
 			plan = null;
 		}
 
-		const remedy = getSharedTokensRemedy(plan, coverage, variantKey, slot);
+		const remedy = getSharedTokensRemedy(
+			plan,
+			coverage,
+			variantKey,
+			slot,
+			scope.suggestOnly
+		);
 
 		for (const [token, entryLists] of tokens) {
 			reportSharedTokenEntries(
@@ -769,6 +783,23 @@ const planSingleKeyCompoundFix = (
 	};
 };
 
+// A single-key compound's class moves into its variant's value, ahead of every
+// later variant's classes — so only a suggestion under a merging
+// `postProcess`.
+const getSingleKeyCompoundRemedy = (
+	fix: EntryListFixer | undefined,
+	key: string,
+	suggestOnly: boolean
+): EntryRemedy => {
+	if (fix === undefined || !suggestOnly) {
+		return { fix };
+	}
+
+	return {
+		suggest: [{ messageId: 'moveCompoundClass', data: { key }, fix }]
+	};
+};
+
 const checkCompoundEntryForSingleKey = (
 	context: Rule.RuleContext,
 	element: ObjectExpression,
@@ -776,7 +807,7 @@ const checkCompoundEntryForSingleKey = (
 	variantsMap: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
 	siblingElements: ListItems,
-	canEdit: (node: Node) => boolean
+	scope: CompoundScope
 ) => {
 	const matcher = getSingleCompoundMatcher(element);
 
@@ -809,7 +840,7 @@ const checkCompoundEntryForSingleKey = (
 			matcher,
 			variantValue,
 			siblingElements,
-			canEdit
+			scope.canEdit
 		);
 	}
 
@@ -821,7 +852,7 @@ const checkCompoundEntryForSingleKey = (
 			key: matcher.key,
 			value: context.sourceCode.getText(matcher.value)
 		},
-		fix
+		...getSingleKeyCompoundRemedy(fix, matcher.key, scope.suggestOnly)
 	});
 };
 
@@ -831,7 +862,7 @@ const checkCompoundsForSingleKey = (
 	kind: 'compoundVariants' | 'compoundSlots',
 	variantsMap: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
-	canEdit: (node: Node) => boolean
+	scope: CompoundScope
 ) => {
 	const compounds = resolveContainer(compoundNode, context.sourceCode);
 
@@ -853,7 +884,7 @@ const checkCompoundsForSingleKey = (
 			variantsMap,
 			slotNames,
 			compounds.elements,
-			canEdit
+			scope
 		);
 	});
 };
@@ -886,7 +917,7 @@ const analyzeExhaustiveVariants = (
 export const analyzeSharedTokens = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression,
-	{ canCreateBase, leadingArg }: SharedTokensCall
+	{ canCreateBase, leadingArg, inheritsPostProcess }: SharedTokensCall
 ) => {
 	const { sourceCode } = context;
 	const config = getProperties(configNode);
@@ -912,13 +943,15 @@ export const analyzeSharedTokens = (
 		return start >= configStart && end <= configEnd;
 	};
 
+	const suggestOnly = inheritsPostProcess || config.has('postProcess');
+
 	checkCompoundsForSingleKey(
 		context,
 		config.get('compoundVariants'),
 		'compoundVariants',
 		variantsMap,
 		slotNames,
-		canEdit
+		{ canEdit, suggestOnly }
 	);
 	checkCompoundsForSingleKey(
 		context,
@@ -926,7 +959,7 @@ export const analyzeSharedTokens = (
 		'compoundSlots',
 		variantsMap,
 		slotNames,
-		canEdit
+		{ canEdit, suggestOnly }
 	);
 
 	if (variantsMap.size === 0) {
@@ -987,6 +1020,6 @@ export const analyzeSharedTokens = (
 		variantsMap,
 		collectVariantCoverage(config, variantsMap, sourceCode),
 		slotNames,
-		{ getTarget, canEdit }
+		{ getTarget, canEdit, suggestOnly }
 	);
 };

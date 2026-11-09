@@ -5164,6 +5164,96 @@ const NO_SHARED_TOKENS_VALID = [
 
 const NO_SHARED_TOKENS_INVALID = [
 	{
+		// With a merging `postProcess`, the last of two conflicting classes
+		// wins, so lifting `p-2` ahead of the later variant's `p-4` would
+		// change the output: offered as a suggestion only.
+		code:
+			IMPORT +
+			"sv({ base: 'flex', variants: { pad: { x: 'p-4', y: 'm-1' }, size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: true, postProcess: twMerge });",
+		output: null,
+		errors: repeat(
+			{
+				...shared('p-2', 'size'),
+				suggestions: [
+					{
+						messageId: 'liftSharedOrder',
+						data: { variant: 'size', slot: 'base' },
+						output:
+							IMPORT +
+							"sv({ base: 'flex p-2', variants: { pad: { x: 'p-4', y: 'm-1' }, size: { sm: 'a', md: 'b' } }, requiredVariants: true, postProcess: twMerge });"
+					}
+				]
+			},
+			2
+		)
+	},
+	{
+		// The same for a `postProcess` inherited from a `createSV()` factory.
+		code:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV({ postProcess: twMerge });\ncustomSV({ base: 'flex', variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: true });",
+		output: null,
+		errors: repeat(
+			{
+				...shared('p-2', 'size'),
+				suggestions: [
+					{
+						messageId: 'liftSharedOrder',
+						data: { variant: 'size', slot: 'base' },
+						output:
+							IMPORT_CREATE_SV +
+							"const customSV = createSV({ postProcess: twMerge });\ncustomSV({ base: 'flex p-2', variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: true });"
+					}
+				]
+			},
+			2
+		)
+	},
+	{
+		// And for factory defaults that can't be read, which may hold one.
+		code:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV(defaults);\ncustomSV({ base: 'flex', variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: true });",
+		output: null,
+		errors: repeat(
+			{
+				...shared('p-2', 'size'),
+				suggestions: [
+					{
+						messageId: 'liftSharedOrder',
+						data: { variant: 'size', slot: 'base' },
+						output:
+							IMPORT_CREATE_SV +
+							"const customSV = createSV(defaults);\ncustomSV({ base: 'flex p-2', variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: true });"
+					}
+				]
+			},
+			2
+		)
+	},
+	{
+		// A single-key compound's class would move ahead of the later
+		// variant's `p-4` too.
+		code:
+			IMPORT +
+			"sv({ variants: { size: { sm: 'a', md: 'b' }, pad: { x: 'p-4' } }, compoundVariants: [{ size: 'sm', class: 'p-2' }, { size: 'md', pad: 'x', class: 'c' }], postProcess: twMerge });",
+		output: null,
+		errors: [
+			{
+				...singleKeyCompound('compoundVariants', 'size', "'sm'"),
+				suggestions: [
+					{
+						messageId: 'moveCompoundClass',
+						data: { key: 'size' },
+						output:
+							IMPORT +
+							"sv({ variants: { size: { sm: 'a p-2', md: 'b' }, pad: { x: 'p-4' } }, compoundVariants: [{ size: 'md', pad: 'x', class: 'c' }], postProcess: twMerge });"
+					}
+				]
+			}
+		]
+	},
+	{
 		// A spread may override whatever a fix edits or creates — here a
 		// `base` created before it — so a factory config with one is left
 		// unfixed.
