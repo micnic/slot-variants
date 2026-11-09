@@ -7762,6 +7762,28 @@ writeFixture(
 	'<script>let { id } = $props();</script>\n<i {id}></i>'
 );
 
+// TypeScript syntax, which the default parser can't read.
+writeFixture(
+	'ui/typed.ts',
+	`${IMPORT}const typed = sv({ base: 'p-2' });
+
+	export const Typed = ({ className }: { className: string }) =>
+		typed({ class: className });
+	`
+);
+
+// Barrels of single-file components: plain script modules, which the Svelte
+// parser can't read.
+writeFixture(
+	'ui/svelte-barrel.js',
+	"export { default as Button } from './Button.svelte';\n"
+);
+
+writeFixture(
+	'ui/svelte-barrel.ts',
+	"export type Size = 'sm' | 'lg';\nexport { default as Chip } from './Chip.svelte';\n"
+);
+
 writeFixture(
 	'ui/Button.vue',
 	`<script setup>
@@ -7846,6 +7868,12 @@ for (let index = 0; index < CACHED_MODULE_COUNT; index++) {
 }
 
 const CROSS_FILE_VALID = [
+	{
+		// A module the default parser can't read has no other parser to be
+		// read with, so its component stays unknown.
+		code: `import { Typed } from './ui/typed.ts';\n<Typed className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
 	{
 		// The chain runs past the hop limit, so the component at its end is
 		// never reached.
@@ -8086,6 +8114,23 @@ const SVELTE_CROSS_FILE_VALID = [
 ];
 
 const SVELTE_CROSS_FILE_INVALID = [
+	{
+		// A barrel isn't Svelte markup, so it's read as a plain script: with
+		// the default parser when the config names no script parser…
+		code: `<script>import { Button } from './ui/svelte-barrel.js';</script>\n<Button class="p-4" />`,
+		filename: join(fixtureDir, 'page.svelte'),
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		// …and with the configured one otherwise, here for TypeScript.
+		code: `<script lang="ts">import { Chip } from './ui/svelte-barrel.ts';</script>\n<Chip class="px-4" />`,
+		filename: join(fixtureDir, 'page.svelte'),
+		languageOptions: {
+			parser: svelteParser,
+			parserOptions: { parser: tsParser }
+		},
+		errors: [restyle('px-4', 'px-1')]
+	},
 	{
 		code: `<script>import Button from './ui/Button.svelte';\nimport Chip from './ui/Chip.svelte';</script>\n<Button class="p-4 rounded" /><Chip class="px-4" />`,
 		filename: join(fixtureDir, 'page.svelte'),

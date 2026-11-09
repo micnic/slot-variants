@@ -878,8 +878,10 @@ const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
 		},
 		break: {
 			keywords: categoryMap([
-				// `break-normal`/`-words`/`-all`/`-keep` are all `word-break`
-				// values, so they share one category.
+				// `break-words` sets `overflow-wrap` while `-all`/`-keep` set
+				// `word-break` and `-normal` both, but they share one category
+				// as tailwind-merge's `break` group does, so a merge keeping
+				// only the last one is reported.
 				['word', ['normal', 'words', 'all', 'keep']],
 				['before', ['before']],
 				['after', ['after']],

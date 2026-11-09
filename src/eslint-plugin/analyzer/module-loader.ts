@@ -25,9 +25,10 @@ type LinterConstructor = new (options: { cwd: string }) => Linter;
 // lint run is visible to the caller's control flow.
 type Collected = { analysis: ModuleAnalysis | null };
 
-// A module is parsed with its importer's parser, so the parser is part of what
-// makes an entry valid: one that can't read the module (a JSX page importing a
-// `.vue` file) must not hand its failure to one that can.
+// A module is parsed with its importer's parser, or as a plain script where
+// that fails, so the parser is part of what makes an entry valid: one that
+// can't read the module (a JSX page importing a `.vue` file) must not hand its
+// failure to one that can.
 type CacheEntry = {
 	mtimeMs: number;
 	parser: Linter.LanguageOptions['parser'];
@@ -152,6 +153,66 @@ const toSyntaxOnly = (
 	return { ...languageOptions, parserOptions };
 };
 
+const isParser = (
+	value: Linter.ParserOptions[string]
+): value is Linter.Parser =>
+	typeof value === 'object' &&
+	value !== null &&
+	(typeof value.parse === 'function' ||
+		typeof value.parseForESLint === 'function');
+
+/**
+ * The options a module is read with as a plain script, for one its importer's
+ * parser can't read — a `.ts` barrel imported from a Svelte component. A
+ * single-file-component parser takes its script parser as
+ * `parserOptions.parser`; without one (or with a per-language map of them),
+ * ESLint's default parser is used — the importer's own one may be that
+ * already, in which case the module fails once more, and the cached result
+ * keeps it from being read again.
+ */
+const toScriptOptions = (
+	languageOptions: Linter.LanguageOptions
+): Linter.LanguageOptions => {
+	const { parser: scriptParser, ...parserOptions } = {
+		...languageOptions.parserOptions
+	};
+	const { parser: _parser, ...rest } = languageOptions;
+
+	if (isParser(scriptParser)) {
+		return { ...rest, parser: scriptParser, parserOptions };
+	}
+
+	return { ...rest, parserOptions };
+};
+
+const collectModule = (
+	LinterClass: LinterConstructor,
+	path: string,
+	text: string,
+	languageOptions: Linter.LanguageOptions
+): ModuleAnalysis | null => {
+	const collected: Collected = { analysis: null };
+
+	new LinterClass({ cwd: dirname(path) }).verify(
+		text,
+		[
+			{
+				files: FILE_PATTERN,
+				languageOptions: toSyntaxOnly(languageOptions),
+				plugins: {
+					'slot-variants-internal': {
+						rules: { collect: createCollector(collected) }
+					}
+				},
+				rules: { 'slot-variants-internal/collect': 'error' }
+			}
+		],
+		path
+	);
+
+	return collected.analysis;
+};
+
 const analyzeModule = (
 	path: string,
 	cwd: string,
@@ -164,26 +225,26 @@ const analyzeModule = (
 		return null;
 	}
 
-	const collected: Collected = { analysis: null };
-
 	try {
 		const text = readFileSync(path, 'utf8');
-
-		new LinterClass({ cwd: dirname(path) }).verify(
+		const analysis = collectModule(
+			LinterClass,
+			path,
 			text,
-			[
-				{
-					files: FILE_PATTERN,
-					languageOptions: toSyntaxOnly(languageOptions),
-					plugins: {
-						'slot-variants-internal': {
-							rules: { collect: createCollector(collected) }
-						}
-					},
-					rules: { 'slot-variants-internal/collect': 'error' }
-				}
-			],
-			path
+			languageOptions
+		);
+
+		if (analysis !== null) {
+			return analysis;
+		}
+
+		// A parse failure leaves nothing collected: the module may be a
+		// plain script the importer's parser doesn't read
+		return collectModule(
+			LinterClass,
+			path,
+			text,
+			toScriptOptions(languageOptions)
 		);
 		/* c8 ignore next 6 -- a parse failure is reported, not thrown; this
 		   catches an I/O race (the file vanishing between stat and read) and a
@@ -191,8 +252,6 @@ const analyzeModule = (
 	} catch {
 		return null;
 	}
-
-	return collected.analysis;
 };
 
 const loadModule = (
