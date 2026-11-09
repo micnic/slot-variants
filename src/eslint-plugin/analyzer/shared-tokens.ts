@@ -213,8 +213,9 @@ type SharedTokensScope = {
 };
 
 // The text of a `base` property to create, laid out like the config's existing
-// first property so the insertion keeps the surrounding formatting: the same
-// whitespace that separates `{` from that property is repeated after the comma.
+// first property so the insertion keeps the surrounding formatting: the
+// whitespace leading to that property, after `{` and any comment there, is
+// repeated after the comma.
 const planBaseCreation = (
 	context: Rule.RuleContext,
 	config: ObjectExpression,
@@ -236,12 +237,14 @@ const planBaseCreation = (
 	}
 
 	const { sourceCode } = context;
-	const gap = sourceCode
+	const leadingText = sourceCode
 		.getText()
 		.slice(
 			sourceCode.getRange(config)[0] + 1,
 			sourceCode.getRange(firstProperty)[0]
 		);
+	// Only the whitespace after any comment there, so the comment isn't copied
+	const gap = leadingText.slice(leadingText.trimEnd().length);
 
 	return {
 		insertBefore: firstProperty,

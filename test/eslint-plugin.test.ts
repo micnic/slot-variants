@@ -5154,6 +5154,27 @@ const NO_SHARED_TOKENS_INVALID = [
 		errors: repeat(shared('p-2', 'size'), 2)
 	},
 	{
+		// A comment before the config's first property stays where it is: the
+		// created `base` only repeats the whitespace leading to that property.
+		code:
+			IMPORT +
+			"sv({ // button styles\n  variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: true });",
+		output:
+			IMPORT +
+			"sv({ // button styles\n  base: 'p-2',\n  variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: true });",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
+		// The same for a block comment on the same line.
+		code:
+			IMPORT +
+			"sv({ /* button */ variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: true });",
+		output:
+			IMPORT +
+			"sv({ /* button */ base: 'p-2', variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: true });",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
 		// A call that already has its own `base` replaced the factory's one
 		// already, so lifting into it changes nothing more.
 		code:
