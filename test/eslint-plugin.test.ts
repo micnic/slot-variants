@@ -5098,6 +5098,73 @@ const NO_SHARED_TOKENS_VALID = [
 
 const NO_SHARED_TOKENS_INVALID = [
 	{
+		// A spread may override whatever a fix edits or creates — here a
+		// `base` created before it — so a factory config with one is left
+		// unfixed.
+		code:
+			IMPORT_CREATE_SV +
+			"const shared = { base: 'x' };\ncreateSV({ ...shared, variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: ['size'] });",
+		output: null,
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
+		// The same for a single-key compound merged into a variant a later
+		// spread may replace.
+		code:
+			IMPORT_CREATE_SV +
+			"createSV({ variants: { variant: { primary: 'a', link: 'underline' } }, compoundVariants: [{ variant: 'link', className: 'px-none' }], ...shared });",
+		output: null,
+		errors: [singleKeyCompound('compoundVariants', 'variant', "'link'")]
+	},
+	{
+		// A `base` created in a call through a `createSV()`-derived function
+		// would replace the factory's own `base`, so it's left uncreated.
+		code:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV({ base: 'box' });\ncustomSV({ variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: ['size'] });",
+		output: null,
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
+		// The same when the factory's defaults can't be read.
+		code:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV(defaults);\ncustomSV({ variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: ['size'] });",
+		output: null,
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
+		// A factory without a `base` default leaves nothing to replace.
+		code:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV({ cacheSize: 512 });\ncustomSV({ variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: ['size'] });",
+		output:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV({ cacheSize: 512 });\ncustomSV({ base: 'p-2', variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: ['size'] });",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
+		// The same for a factory with no defaults at all.
+		code:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV();\ncustomSV({ variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: ['size'] });",
+		output:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV();\ncustomSV({ base: 'p-2', variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: ['size'] });",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
+		// A call that already has its own `base` replaced the factory's one
+		// already, so lifting into it changes nothing more.
+		code:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV({ base: 'box' });\ncustomSV({ base: 'flex', variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: ['size'] });",
+		output:
+			IMPORT_CREATE_SV +
+			"const customSV = createSV({ base: 'box' });\ncustomSV({ base: 'flex p-2', variants: { size: { sm: 'a', md: 'b' } }, requiredVariants: ['size'] });",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
+	{
 		// A hoisted variant record may be shared by other configs, so lifting
 		// its tokens into this config's `base` is left undone.
 		code:

@@ -870,9 +870,12 @@ const analyzeExhaustiveVariants = (
 	}
 };
 
+// `canCreateBase` is false where a `base` created in the config would replace
+// another one, like a `createSV()`-derived function's own default.
 export const analyzeSharedTokens = (
 	context: Rule.RuleContext,
-	configNode: ObjectExpression
+	configNode: ObjectExpression,
+	canCreateBase: boolean
 ) => {
 	const { sourceCode } = context;
 	const config = getProperties(configNode);
@@ -881,7 +884,14 @@ export const analyzeSharedTokens = (
 		resolveContainer(config.get('variants'), sourceCode)
 	);
 	const [configStart, configEnd] = sourceCode.getRange(configNode);
+	// A spread or computed key may override whatever a fix would edit or
+	// create, so such a config's findings are reported without a fix.
+	const isStrictConfig = getStrictProperties(configNode) !== null;
 	const canEdit = (node: Node) => {
+		if (!isStrictConfig) {
+			return false;
+		}
+
 		const [start, end] = sourceCode.getRange(node);
 
 		return start >= configStart && end <= configEnd;
@@ -928,6 +938,11 @@ export const analyzeSharedTokens = (
 
 		if (baseNode) {
 			return { node: baseNode };
+		}
+
+		// Created inside the config, so not checked by `canEdit` later.
+		if (!isStrictConfig || !canCreateBase) {
+			return null;
 		}
 
 		// A config with no `base` yet: the tokens still belong there, so the

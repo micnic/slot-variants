@@ -1,7 +1,34 @@
 import type { Rule } from 'eslint';
+import type { CallExpression } from 'estree';
 import { docsUrl } from '../analyzer/config-keys.ts';
+import { getStrictProperties } from '../analyzer/properties.ts';
 import { analyzeSharedTokens } from '../analyzer/shared-tokens.ts';
-import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
+import type { StyledContext } from '../analyzer/styled-values.ts';
+import {
+	createTrackedCallListeners,
+	getFactoryCall
+} from '../analyzer/tracked-calls.ts';
+
+// A call through a `createSV()`-derived function takes the factory's `base`
+// unless it passes its own, so one is only created where the factory's
+// defaults are known to have none.
+const canCreateBase = (ctx: StyledContext, node: CallExpression): boolean => {
+	const factory = getFactoryCall(ctx, node);
+
+	if (factory === null) {
+		return true;
+	}
+
+	const [defaults] = factory.arguments;
+
+	if (defaults === undefined) {
+		return true;
+	}
+
+	const properties = getStrictProperties(ctx.resolve(defaults));
+
+	return properties !== null && !properties.has('base');
+};
 
 /**
  * Flags class name tokens that appear in every value of an exhaustively-covered
@@ -23,8 +50,12 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  * leaves the finding reported without a fix, rather than partially rewritten.
  * A config with no `base` property yet is still fixable: the property is
  * created, borrowing the variant values' own quote style and the layout of the
- * config's first property. A value left with no tokens at all is not, since
- * that would trade this finding for an empty class string.
+ * config's first property — except in a call through a `createSV()`-derived
+ * function whose defaults may hold a `base`, which the created one would
+ * replace. A config with a spread or computed key is never fixed, since it may
+ * override what the fix edits. A value left with no tokens at all is not
+ * fixable either, since that would trade this finding for an empty class
+ * string.
  *
  * Also flags a `compoundVariants`/`compoundSlots` entry whose matcher covers
  * exactly one variant key — it isn't combining variants, so it isn't really a
@@ -59,12 +90,12 @@ export const noSharedTokens: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		return createTrackedCallListeners(context, (_node, call) => {
+		return createTrackedCallListeners(context, (node, call, ctx) => {
 			if (!call.config) {
 				return;
 			}
 
-			analyzeSharedTokens(context, call.config);
+			analyzeSharedTokens(context, call.config, canCreateBase(ctx, node));
 		});
 	}
 };

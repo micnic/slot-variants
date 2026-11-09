@@ -241,6 +241,27 @@ const matchTrackedCall = (
 	return matchExportCall(match, node, exportName);
 };
 
+/**
+ * The `createSV(...)` call a tracked `sv()` call's callee is bound to, or null
+ * when the callee names `sv` itself.
+ */
+export const getFactoryCall = (
+	ctx: StyledContext,
+	node: CallExpression
+): CallExpression | null => {
+	if (node.callee.type !== 'Identifier') {
+		return null;
+	}
+
+	const resolved = ctx.resolve(node.callee);
+
+	if (resolved.type !== 'CallExpression') {
+		return null;
+	}
+
+	return resolved;
+};
+
 // Every import of the file, read up front rather than as the traversal meets
 // them: a Svelte component's markup may come before its `<script>`, whose
 // statements sit in a body of the script element's own.
