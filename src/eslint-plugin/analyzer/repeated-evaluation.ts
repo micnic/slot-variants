@@ -113,8 +113,9 @@ const isInVueScriptSetup = (
 // instance too: Svelte's `<script>` (unlike its module script) and Vue's
 // `<script setup>` (unlike a plain `<script>`).
 // A `static` field and a static block both run once with the class definition,
-// so they're fine on their own — but the class may itself sit inside a
-// function, which is why the walk doesn't stop at them. The innermost reason
+// and so does any field's computed key, so they're fine on their own — but the
+// class may itself sit inside a function, which is why the walk doesn't stop
+// at them. The innermost reason
 // wins, so the report names what the author can see around the call.
 export const findRepeatedEvaluation = (
 	context: Rule.RuleContext,
@@ -127,7 +128,11 @@ export const findRepeatedEvaluation = (
 		reason = 'instance';
 	}
 
-	for (const ancestor of sourceCode.getAncestors(node)) {
+	const ancestors = sourceCode.getAncestors(node);
+	// The node below each ancestor on the way down to the call.
+	const path = [...ancestors, node];
+
+	for (const [index, ancestor] of ancestors.entries()) {
 		if (isSvelteScriptElement(ancestor)) {
 			if (!isSvelteModuleScript(ancestor)) {
 				reason = 'instance';
@@ -136,7 +141,8 @@ export const findRepeatedEvaluation = (
 			reason = 'nested';
 		} else if (
 			ancestor.type === 'PropertyDefinition' &&
-			ancestor.static === false
+			ancestor.static === false &&
+			ancestor.value === path[index + 1]
 		) {
 			reason = 'field';
 		} else if (isTemplateNode(ancestor)) {

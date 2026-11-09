@@ -6059,6 +6059,8 @@ const REQUIRE_TOP_LEVEL_CONFIG_VALID = [
 	IMPORT + "class A { static button = sv({ base: 'flex' }); }",
 	// So does a static block.
 	IMPORT + "class A { static { sv({ base: 'flex' }); } }",
+	// And an instance field's computed key: only its value runs per `new`.
+	IMPORT + "class A { [sv({ base: 'flex' })] = 1; }",
 	// cn-style sv() in an instance field carries no config to compile.
 	IMPORT + "class A { c = sv('flex', 'items-center'); }",
 	// Nor does a cn() call.
@@ -6162,6 +6164,14 @@ const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
 			IMPORT +
 			"function f() { return class { button = sv({ base: 'flex' }); }; }",
 		errors: [{ messageId: 'field' }]
+	},
+	{
+		// A computed key isn't the field's initializer, so the function around
+		// the class is the reason.
+		code:
+			IMPORT +
+			"function f() { return class { [sv({ base: 'flex' })] = 1; }; }",
+		errors: [{ messageId: 'nested' }]
 	}
 ];
 
