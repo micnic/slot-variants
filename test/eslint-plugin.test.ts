@@ -6157,6 +6157,72 @@ t.test('require-top-level-config', (t) => {
 	t.end();
 });
 
+const SVELTE_SCRIPT = "<script>import { sv } from 'slot-variants';</script>\n";
+
+const REQUIRE_TOP_LEVEL_CONFIG_SVELTE_VALID = [
+	// A config call in the script, read from the markup.
+	"<script>import { sv } from 'slot-variants';\nconst b = sv({ base: 'p-2' });</script>\n<b class={b()} />"
+];
+
+const REQUIRE_TOP_LEVEL_CONFIG_SVELTE_INVALID = [
+	{
+		// A markup expression is evaluated again on every render.
+		code: SVELTE_SCRIPT + "<b class={sv({ base: 'p-2' })()} />",
+		errors: [{ messageId: 'template' }]
+	},
+	{
+		code: SVELTE_SCRIPT + "{#if ok}<b>{sv({ base: 'p-2' })()}</b>{/if}",
+		errors: [{ messageId: 'template' }]
+	},
+	{
+		// The innermost reason wins: a handler re-runs per call.
+		code: SVELTE_SCRIPT + "<b onclick={() => sv({ base: 'p-2' })} />",
+		errors: [{ messageId: 'nested' }]
+	}
+];
+
+const VUE_SCRIPT =
+	"<script setup>import { sv } from 'slot-variants';</script>\n";
+
+const REQUIRE_TOP_LEVEL_CONFIG_VUE_VALID = [
+	// A config call in the script, read from the template.
+	"<script setup>import { sv } from 'slot-variants';\nconst b = sv({ base: 'p-2' });</script>\n<template><b :class=\"b()\" /></template>"
+];
+
+const REQUIRE_TOP_LEVEL_CONFIG_VUE_INVALID = [
+	{
+		// A template expression is evaluated again on every render.
+		code:
+			VUE_SCRIPT +
+			'<template><b :class="sv({ base: \'p-2\' })()" /></template>',
+		errors: [{ messageId: 'template' }]
+	},
+	{
+		code:
+			VUE_SCRIPT +
+			"<template><b>{{ sv({ base: 'p-2' })() }}</b></template>",
+		errors: [{ messageId: 'template' }]
+	}
+];
+
+t.test('require-top-level-config (svelte, vue)', (t) => {
+	const topLevelRule = rules['require-top-level-config'];
+
+	t.doesNotThrow(() => {
+		svelteTester.run('require-top-level-config', topLevelRule, {
+			valid: REQUIRE_TOP_LEVEL_CONFIG_SVELTE_VALID,
+			invalid: REQUIRE_TOP_LEVEL_CONFIG_SVELTE_INVALID
+		});
+	}, 'svelte rule tester passes');
+	t.doesNotThrow(() => {
+		vueTester.run('require-top-level-config', topLevelRule, {
+			valid: REQUIRE_TOP_LEVEL_CONFIG_VUE_VALID,
+			invalid: REQUIRE_TOP_LEVEL_CONFIG_VUE_INVALID
+		});
+	}, 'vue rule tester passes');
+	t.end();
+});
+
 const SV_CONFIG_STYLE_ORDER_VALID = [
 	{
 		code:
