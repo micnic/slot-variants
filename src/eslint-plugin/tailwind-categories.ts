@@ -176,6 +176,25 @@ const categoryMap = (
 const selfMap = (tokens: ReadonlyArray<string>): ReadonlyMap<string, string> =>
 	categoryMap(tokens.map((token) => [token, [token]] as const));
 
+// Variants that pick another element than the one before them: their place
+// in a stack decides what's styled (`hover:*:` vs `*:hover:`), so they aren't
+// reordered. Any arbitrary `[...]` variant counts too. Mirrors tailwind-merge's
+// default `orderSensitiveModifiers`.
+const ORDER_SENSITIVE_VARIANTS: ReadonlySet<string> = new Set([
+	'*',
+	'**',
+	'after',
+	'backdrop',
+	'before',
+	'details-content',
+	'file',
+	'first-letter',
+	'first-line',
+	'marker',
+	'placeholder',
+	'selection'
+]);
+
 const COLOR_KEYWORDS = ['inherit', 'current', 'transparent', 'black', 'white'];
 // The one-word named sizes; the digit-led ones (`2xl`, `2xs`) aren't words, so
 // they never read as a named color and reach the `short` bucket on their own.
@@ -1957,10 +1976,33 @@ const splitOutsideBrackets = (text: string, separator: string): Segments => {
 	return segments;
 };
 
+const isOrderSensitiveVariant = (variant: string): boolean =>
+	variant.startsWith('[') || ORDER_SENSITIVE_VARIANTS.has(variant);
+
+// Sorts each run of variants between order-sensitive ones, which stay in place.
+const sortVariants = (variants: ReadonlyArray<string>): string[] => {
+	const sorted: string[] = [];
+	let run: string[] = [];
+
+	for (const variant of variants) {
+		if (isOrderSensitiveVariant(variant)) {
+			sorted.push(...run.sort(), variant);
+			run = [];
+		} else {
+			run.push(variant);
+		}
+	}
+
+	sorted.push(...run.sort());
+
+	return sorted;
+};
+
 // Splits a token into its variant prefix and utility on the top-level colons.
 // Variant segments are sorted so stacked variants in any order
-// (`hover:focus:w-2` vs `focus:hover:w-2`) share one canonical prefix — the
-// prefix only ever feeds the conflict key, never a report message.
+// (`hover:focus:w-2` vs `focus:hover:w-2`) share one canonical prefix, except
+// around order-sensitive ones — the prefix only ever feeds the conflict key,
+// never a report message.
 const splitVariantPrefix = (
 	token: string
 ): { variantPrefix: string; utility: string } => {
@@ -1972,7 +2014,7 @@ const splitVariantPrefix = (
 		return { variantPrefix: '', utility: first };
 	}
 
-	return { variantPrefix: [first, ...rest].sort().join(':'), utility };
+	return { variantPrefix: sortVariants([first, ...rest]).join(':'), utility };
 };
 
 const CONTAINER_TYPE_PREFIX = '@container';

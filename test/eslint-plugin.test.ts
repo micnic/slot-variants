@@ -2833,6 +2833,13 @@ t.test('no-conflicting-classes (duplicate detection)', (t) => {
 });
 
 const NO_CONFLICTING_NS_VALID = [
+	// Variants that pick another element keep their place in the stack:
+	// `hover:*:` styles children of a hovered element, `*:hover:` hovered
+	// children, so the two never target the same element.
+	IMPORT_CN + "cn('hover:*:p-2', '*:hover:p-4');",
+	IMPORT_CN + "cn('hover:before:p-2', 'before:hover:p-4');",
+	// The same for any arbitrary variant.
+	IMPORT_CN + "cn('[&>p]:hover:p-2', 'hover:[&>p]:p-4');",
 	// Joined by a non-breaking space, `p-2` and `p-4` are one class.
 	IMPORT_CN + "cn('p-2\u00a0p-4');",
 	// Class prefixes named like `Object.prototype` members are no known
@@ -4001,6 +4008,19 @@ const NO_CONFLICTING_NS_INVALID = [
 		// canonical prefix.
 		code: IMPORT_CN + "cn('hover:focus:w-4', 'focus:hover:w-8');",
 		errors: repeat(conflictCn('focus:hover:w-8, hover:focus:w-4'), 2)
+	},
+	{
+		// Including on either side of a variant that keeps its place.
+		code: IMPORT_CN + "cn('hover:focus:*:w-4', 'focus:hover:*:w-8');",
+		errors: repeat(conflictCn('focus:hover:*:w-8, hover:focus:*:w-4'), 2)
+	},
+	{
+		code:
+			IMPORT_CN + "cn('[&>p]:hover:focus:w-4', '[&>p]:focus:hover:w-8');",
+		errors: repeat(
+			conflictCn('[&>p]:focus:hover:w-8, [&>p]:hover:focus:w-4'),
+			2
+		)
 	},
 	{
 		code: IMPORT + "sv({ base: 'md:hover:w-4 hover:md:w-8' });",
