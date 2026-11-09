@@ -215,6 +215,12 @@ const NO_REDUNDANT_SPACES_VALID = [
 
 const NO_REDUNDANT_SPACES_INVALID = [
 	{
+		// A hoisted value shared by several calls is reported once.
+		code: IMPORT_CN + "const X = 'a  b';\ncn(X, 'c');\ncn(X, 'd');",
+		output: IMPORT_CN + "const X = 'a b';\ncn(X, 'c');\ncn(X, 'd');",
+		errors: 1
+	},
+	{
 		// Inside a hoisted record too: collapsing the whitespace changes no
 		// config's output, so the fix applies at the declaration.
 		code:
@@ -1187,6 +1193,14 @@ const NO_DYNAMIC_CLASSES_VALID = [
 ];
 
 const NO_DYNAMIC_CLASSES_INVALID = [
+	{
+		// A hoisted value shared by several positions and calls is reported
+		// once.
+		code:
+			IMPORT +
+			'const cls = foo();\nsv({ base: cls, variants: { v: { x: cls } } });\nsv({ base: cls });',
+		errors: [{ messageId: 'dynamic', line: 2 }]
+	},
 	{
 		// A non-breaking space doesn't separate the substitution from the text
 		// beside it, so the branch is glued onto `a` as one dynamic class.
@@ -2537,9 +2551,11 @@ const NO_CONFLICTING_DUP_VALID = [
 const NO_CONFLICTING_DUP_INVALID = [
 	{
 		// A separator written as an escape yields two tokens, so the repeat is
-		// visible as a duplicate.
+		// visible as a duplicate. Neither token's own position is known inside
+		// an escaped literal, so both are reported at the whole literal — as
+		// one report, the same for both.
 		code: IMPORT_CN + "cn('flex\\u0020flex');",
-		errors: repeat(dupCn('flex'), 2)
+		errors: [dupCn('flex')]
 	},
 	{
 		code:
@@ -4739,17 +4755,18 @@ const NO_CONFLICTING_NS_INVALID = [
 	{
 		// A separator written as an escape still separates two classes — the
 		// cooked value is what the browser sees, so that's what gets tokenized.
+		// Both tokens are reported at the whole literal, as one report.
 		code: IMPORT_CN + "cn('w-1\\u0020w-2');",
-		errors: repeat(conflictCn('w-1, w-2'), 2)
+		errors: [conflictCn('w-1, w-2')]
 	},
 	{
 		code: IMPORT_CN + "cn('w-1\\x20w-2');",
-		errors: repeat(conflictCn('w-1, w-2'), 2)
+		errors: [conflictCn('w-1, w-2')]
 	},
 	{
 		// An escaped separator inside a template literal behaves the same.
 		code: IMPORT_CN + 'cn(`w-1\\u0020w-2`);',
-		errors: repeat(conflictCn('w-1, w-2'), 2)
+		errors: [conflictCn('w-1, w-2')]
 	},
 	{
 		// An escape inside the token itself is decoded for
@@ -4770,7 +4787,7 @@ const NO_CONFLICTING_NS_INVALID = [
 		// way.
 		code:
 			IMPORT_CN + "cn(`w-1\\u0020w-2 ${col ? 'flex-col' : 'flex-row'}`);",
-		errors: repeat(conflictCn('w-1, w-2'), 2)
+		errors: [conflictCn('w-1, w-2')]
 	},
 	{
 		// A namespace member call is analyzed like the named import.
@@ -6277,6 +6294,18 @@ const SV_CONFIG_STYLE_ORDER_VALID = [
 ];
 
 const SV_CONFIG_STYLE_ORDER_INVALID = [
+	{
+		// A hoisted config shared by several calls is reported once.
+		code: IMPORT + "const c = { variants: {}, base: 'x' };\nsv(c);\nsv(c);",
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		],
+		output:
+			IMPORT + "const c = { base: 'x', variants: {} };\nsv(c);\nsv(c);"
+	},
 	{
 		code:
 			IMPORT +
