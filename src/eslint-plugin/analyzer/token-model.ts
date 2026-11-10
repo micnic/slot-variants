@@ -122,8 +122,12 @@ const arePairwiseExclusive = (
 	}
 
 	for (const [index, current] of matchers.entries()) {
-		for (const other of matchers.slice(index + 1)) {
-			if (!areExclusiveMatchers(current, other)) {
+		// Indexed rather than sliced: this runs for every candidate pair of
+		// tokens, so it shouldn't copy the rest of the list on each step.
+		for (let next = index + 1; next < matchers.length; next += 1) {
+			const other = matchers[next];
+
+			if (other !== undefined && !areExclusiveMatchers(current, other)) {
 				return false;
 			}
 		}
