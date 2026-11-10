@@ -595,7 +595,7 @@ export type SV<D extends boolean = false> = ConfigCall<D, ClassValue[]> &
  * });
  *
  * type ButtonProps = VariantProps<typeof button>;
- * // { size?: 'sm' | 'lg' | undefined; intent: 'primary' | 'danger' }
+ * // { size?: 'sm' | 'lg' | null | undefined; intent: 'primary' | 'danger' }
  * ```
  */
 export type VariantProps<T extends AnyFn, E extends string = never> = Prettify<

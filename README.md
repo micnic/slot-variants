@@ -942,7 +942,7 @@ const button = sv('btn', {
 
 // Extract the variant props type (excludes class, className, and preset)
 type ButtonProps = VariantProps<typeof button>;
-// { size?: 'sm' | 'lg' | undefined; intent: 'primary' | 'danger' }
+// { size?: 'sm' | 'lg' | null | undefined; intent: 'primary' | 'danger' }
 ```
 
 `VariantProps` accepts an optional second type parameter to exclude specific variants — useful when some variants are controlled internally by a component and shouldn't be exposed to consumers:
