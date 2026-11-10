@@ -280,11 +280,7 @@ const isEmptyContainer = (value: Node): boolean => {
 		return value.properties.length === 0;
 	}
 
-	if (value.type === 'ArrayExpression') {
-		return value.elements.length === 0;
-	}
-
-	return false;
+	return isEmptyArrayLiteral(value);
 };
 
 // The config containers that hold no class values of their own — variant
