@@ -2043,6 +2043,26 @@ const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
+		// The last element of a line takes the whitespace before it instead,
+		// so no trailing whitespace is left behind.
+		code: IMPORT_CN + "cn('a', '',\n\t'b');",
+		output: IMPORT_CN + "cn('a',\n\t'b');",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// The same before a CRLF line break.
+		code: IMPORT_CN + "cn('a', '',\r\n\t'b');",
+		output: IMPORT_CN + "cn('a',\r\n\t'b');",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// A comment after the comma keeps the element's line going, so only
+		// the element and its comma go.
+		code: IMPORT_CN + "cn('a', '', /* c */\n\t'b');",
+		output: IMPORT_CN + "cn('a', /* c */\n\t'b');",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
 		// Nested empty array.
 		code: IMPORT + 'sv([[]]);',
 		errors: [{ messageId: 'emptyArray' }]

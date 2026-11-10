@@ -20,21 +20,35 @@ const skipSpacesAndTabs = (text: string, from: number): number => {
 	return index;
 };
 
-// The offset of the line break introducing the element at `start`, when the
-// element sits on its own line and so owns the indentation before it. Null when
-// it shares a line with whatever precedes it.
-const startOfOwnLine = (text: string, start: number): number | null => {
-	let index = start;
+// The start of the run of horizontal whitespace ending at `to`.
+const skipSpacesAndTabsBack = (text: string, to: number): number => {
+	let index = to;
 
 	while (isSpaceOrTab(text.charAt(index - 1))) {
 		index -= 1;
 	}
+
+	return index;
+};
+
+// The offset of the line break introducing the element at `start`, when the
+// element sits on its own line and so owns the indentation before it. Null when
+// it shares a line with whatever precedes it.
+const startOfOwnLine = (text: string, start: number): number | null => {
+	const index = skipSpacesAndTabsBack(text, start);
 
 	if (text.charAt(index - 1) === '\n') {
 		return index - 1;
 	}
 
 	return null;
+};
+
+// Whether `index` is where a line ends, at a `\n` or the `\r` of a `\r\n`.
+const isLineEnd = (text: string, index: number): boolean => {
+	const char = text.charAt(index);
+
+	return char === '\n' || char === '\r';
 };
 
 // Whether any comment lies within `[start, end]`, so removing that range would
@@ -101,9 +115,20 @@ export const removeFromList = (
 			]);
 		}
 
+		const spacesEnd = skipSpacesAndTabs(source, after.range[1]);
+
+		// The last element of its line takes the whitespace before it
+		// instead of after it, so the line doesn't end in a trailing space.
+		if (isLineEnd(source, spacesEnd)) {
+			return removeRangeKeepingComments(fixer, sourceCode, [
+				skipSpacesAndTabsBack(source, start),
+				after.range[1]
+			]);
+		}
+
 		return removeRangeKeepingComments(fixer, sourceCode, [
 			start,
-			skipSpacesAndTabs(source, after.range[1])
+			spacesEnd
 		]);
 	}
 
