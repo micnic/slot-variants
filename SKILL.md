@@ -104,7 +104,7 @@ A slot function also accepts `preset` when the config declares `presets`. It inh
 
 ### 7. Use the Runtime `class` Prop for Call-Site Overrides
 
-Append call-site classes with `class` (or `className`; `class` wins when both are passed). This is the only place dynamic class values — objects, booleans, nested arrays — are accepted:
+Append call-site classes with `class` (or `className` — one or the other: passing both is a type error). This is the only place dynamic class values — objects, booleans, nested arrays — are accepted:
 
 ```typescript
 button({ size: 'sm', class: 'mt-4' });
@@ -191,7 +191,7 @@ The library caches results automatically (default 256 entries). Each cache entry
 maxEntries = factor₁ × factor₂ × ... × factorₙ
 ```
 
-A variant's factor is its value count `+ 1` (the `+ 1` counts the variant being left unset). The `+ 1` is dropped — factor is just the value count — only when the variant is required, since it can never be unset. Defaults keep the `+ 1`: passing `null` skips a default, and a function default may return `undefined`. Raise `cacheSize` only when `maxEntries` exceeds 256 — below that the cache never evicts. With `introspection: true`, `getMaxEntries()` returns this exact number, and `getCacheSize()`/`clearCache()` inspect the live cache.
+A variant's factor is its value count `+ 1` (the `+ 1` counts the variant being left unset). A boolean variant — shorthand (`loading: 'opacity-50'`) or a record keyed only by `true`/`false` — always has both values, even when only one is written, so its factor is `3`. The `+ 1` is dropped — factor is just the value count — only when the variant is required, since it can never be unset. Defaults keep the `+ 1`: passing `null` skips a default, and a function default may return `undefined`. Raise `cacheSize` only when `maxEntries` exceeds 256 — below that the cache never evicts. With `introspection: true`, `getMaxEntries()` returns this exact number, and `getCacheSize()`/`clearCache()` inspect the live cache.
 
 ### 13. Use Presets for Reusable Variant Combinations
 

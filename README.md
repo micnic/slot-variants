@@ -755,7 +755,7 @@ card({ class: { base: 'shadow-xl', header: 'text-blue-700', body: 'min-h-24' } }
 
 A key of that object can also be a [group name](#slot-groups), targeting every slot of the group at once.
 
-Both `class` and `className` are supported, but `class` takes priority when both are passed at the same time.
+Both `class` and `className` are supported — pass one or the other. Passing both is a type error; from untyped code, `class` is used and `className` ignored.
 
 ### Post-Processing
 
