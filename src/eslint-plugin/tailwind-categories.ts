@@ -1922,7 +1922,7 @@ const DISPLAY_OVERLAP_NODES: ReadonlyMap<string, string> = new Map(
 // The conflict key plus the pieces an overlap merge needs: the variant prefix
 // and the overlap node the token belongs to (null for tokens outside every
 // overlap family, including exclusive-group keys).
-type ConflictKeyInfo = {
+export type ConflictKeyInfo = {
 	key: string;
 	variantPrefix: string;
 	overlap: string | null;

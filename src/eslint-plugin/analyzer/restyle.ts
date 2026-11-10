@@ -7,6 +7,7 @@ import type {
 } from 'estree';
 import {
 	areConflictingKeys,
+	type ConflictKeyInfo,
 	type ConflictOptions,
 	getConflictKey
 } from '../tailwind-categories.ts';
@@ -44,6 +45,15 @@ export type ClassParts = {
 	literals: Entry[];
 	dynamic: Array<Identifier | MemberExpression>;
 	merged: boolean;
+};
+
+type KeyedToken = { token: string; info: ConflictKeyInfo };
+
+// The classes a styled part applies: every token, for duplicates, and the
+// ones with a conflict key, each computed once however many literals check it.
+type InternalClasses = {
+	tokens: ReadonlySet<string>;
+	keyed: ReadonlyArray<KeyedToken>;
 };
 
 type LiteralReporter = (
@@ -226,14 +236,32 @@ const collectInternalTokens = (styled: StyledClasses): Set<string> => {
 	return tokens;
 };
 
+const collectInternalClasses = (
+	styled: StyledClasses,
+	options: ConflictOptions
+): InternalClasses => {
+	const tokens = collectInternalTokens(styled);
+	const keyed: KeyedToken[] = [];
+
+	for (const token of tokens) {
+		const info = getConflictKey(token, options);
+
+		if (info !== null) {
+			keyed.push({ token, info });
+		}
+	}
+
+	return { tokens, keyed };
+};
+
 const reportEntry = (
 	context: Rule.RuleContext,
 	entry: Entry,
-	internal: ReadonlySet<string>,
+	internal: InternalClasses,
 	slot: string,
 	options: ConflictOptions
 ): boolean => {
-	if (internal.has(entry.token)) {
+	if (internal.tokens.has(entry.token)) {
 		reportEntryList(context, [entry], 'duplicate', {
 			token: entry.token,
 			slot
@@ -248,10 +276,8 @@ const reportEntry = (
 		return false;
 	}
 
-	for (const token of internal) {
-		const other = getConflictKey(token, options);
-
-		if (other !== null && areConflictingKeys(info, other)) {
+	for (const { token, info: other } of internal.keyed) {
+		if (areConflictingKeys(info, other)) {
 			reportEntryList(context, [entry], 'conflict', {
 				token: entry.token,
 				internal: token,
@@ -279,7 +305,7 @@ const reportAgainstStyled = (
 	reported: Set<string>,
 	options: ConflictOptions
 ) => {
-	const internal = collectInternalTokens(styled);
+	const internal = collectInternalClasses(styled, options);
 
 	for (const entry of literals) {
 		const key = entryKey(entry);
@@ -307,6 +333,11 @@ export const createLiteralReporter = (
 	const reported = new Set<string>();
 
 	return (styled, literals) => {
+		// Nothing to check, so no internal classes to collect.
+		if (literals.length === 0) {
+			return;
+		}
+
 		for (const part of styled) {
 			reportAgainstStyled(context, part, literals, reported, options);
 		}
