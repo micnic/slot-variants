@@ -43,6 +43,8 @@ type TokenExtractionContext = {
 
 type NodeVisitor = (node: Node) => void;
 
+type TokenOffsets = number | AST.Range;
+
 type StringKeyVisitor = (key: Literal, text: string) => void;
 
 type ExtractFn = (
@@ -68,25 +70,34 @@ export const COMPOUND_NON_MATCHER_KEYS: ReadonlySet<string> = new Set([
 	'slots'
 ]);
 
+// Where each token of a text lands: a start offset places every token at its
+// own position after it; a range pins every token to that whole range.
+const getTokenRange = (
+	offsets: TokenOffsets,
+	index: number,
+	token: string
+): AST.Range => {
+	if (typeof offsets === 'number') {
+		const start = offsets + index;
+
+		return [start, start + token.length];
+	}
+
+	return offsets;
+};
+
 const pushTokensFromText = (
 	text: string,
-	base: number,
+	offsets: TokenOffsets,
 	slot: string,
 	source: Source,
 	entries: Entry[]
 ) => {
 	for (const match of text.matchAll(CLASS_TOKEN)) {
 		const token = match[0];
-		const start = base + match.index;
-		const end = start + token.length;
+		const [start, end] = getTokenRange(offsets, match.index, token);
 
-		entries.push({
-			source,
-			slot,
-			token,
-			start,
-			end
-		});
+		entries.push({ source, slot, token, start, end });
 	}
 };
 
@@ -98,24 +109,6 @@ export const pushBaseTokensFromText = (
 	entries: Entry[]
 ) => {
 	pushTokensFromText(text, base, 'base', baseSource, entries);
-};
-
-const pushCookedTokens = (
-	cooked: string,
-	[start, end]: AST.Range,
-	slot: string,
-	source: Source,
-	entries: Entry[]
-) => {
-	for (const match of cooked.matchAll(CLASS_TOKEN)) {
-		entries.push({
-			source,
-			slot,
-			token: match[0],
-			start,
-			end
-		});
-	}
 };
 
 // The tokens of a string literal or template quasi spanning `range`. Raw text
@@ -131,7 +124,7 @@ const pushLiteralTokens = (
 ) => {
 	if (hasEscape(raw)) {
 		/* c8 ignore next -- static literals and untagged quasis are cooked */
-		pushCookedTokens(cooked ?? raw, range, slot, source, entries);
+		pushTokensFromText(cooked ?? raw, range, slot, source, entries);
 
 		return;
 	}
