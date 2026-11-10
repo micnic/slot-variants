@@ -16,6 +16,7 @@ import {
 } from '../analyzer/module-loader.ts';
 import { buildAliasMap } from '../analyzer/module-paths.ts';
 import { createLiteralReporter } from '../analyzer/restyle.ts';
+import { getOrCreate } from '../map-utils.ts';
 
 /**
  * Flags literal classes written on a component or element that collide with
@@ -96,6 +97,9 @@ export const noRestyle: Rule.RuleModule = {
 		// them — a `cn()` call is its own site and a part of the attribute
 		// holding it — reports each literal once.
 		const reportLiterals = createLiteralReporter(context, options);
+		// Each import resolved once per file, however many sites render it:
+		// resolving one walks the filesystem.
+		const importedStyles = new Map<string, ForwardedStyles | null>();
 
 		// A component declared in this file, or one reached through an import —
 		// the import is followed to the module that declares it, through any
@@ -113,13 +117,20 @@ export const noRestyle: Rule.RuleModule = {
 				return scan.forwarded.get(binding.fn) ?? null;
 			}
 
-			return resolveImportedComponent(
-				binding.source.specifier,
-				binding.source.exportName,
-				context.physicalFilename,
-				moduleContext,
-				new Set(),
-				0
+			const { specifier, exportName } = binding.source;
+
+			return getOrCreate(
+				importedStyles,
+				`${specifier}|${exportName}`,
+				() =>
+					resolveImportedComponent(
+						specifier,
+						exportName,
+						context.physicalFilename,
+						moduleContext,
+						new Set(),
+						0
+					)
 			);
 		};
 

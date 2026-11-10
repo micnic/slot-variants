@@ -5,10 +5,16 @@ import { resolveStyledClasses } from '../analyzer/styled-values.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
 /**
- * Flags dynamic values in `sv()` and `cn()` calls. Only statically inferrable
- * values — string literals, template literals without expressions, arrays of
- * those, and ObjectExpressions whose keys/values are themselves inferrable —
- * are allowed in class-bearing positions.
+ * Flags dynamic values in `sv()` and `cn()` calls. A class-bearing position
+ * allows only values known at lint time: string literals, template literals
+ * without expressions, arrays of those, and `const` bindings to any of them.
+ * Config records (`slots`, `variants`, compound entries) need static keys and
+ * values, and a config class value may also be `undefined`.
+ *
+ * In a `cn()`-style position, `cond && x`, ternaries and ternary templates are
+ * allowed when every branch is static. An object there is a clsx-style record
+ * whose keys are the classes, so only its keys must be static; its values are
+ * runtime conditions and aren't checked.
  *
  * A `cn()`-style argument that resolves to another `sv()`/`cn()` call's output
  * (`cn(classes.base, 'p-4')`) is exempt: its classes are known at lint time,
