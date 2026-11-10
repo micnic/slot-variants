@@ -11,6 +11,19 @@ const temporaryDirectory = mkdtempSync(
 const npmCache = join(temporaryDirectory, 'npm-cache');
 const environment = { ...process.env, npm_config_cache: npmCache };
 
+// Each TypeScript the project tests against, by its own launcher: both packages
+// install a `tsc` bin, so `node_modules/.bin/tsc` is whichever was linked last.
+const compilers = [
+	join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
+	join(root, 'node_modules', 'typescript7', 'bin', 'tsc')
+];
+
+// Each consumer file with the module setting it is checked under.
+const typeChecks = [
+	{ module: 'NodeNext', file: 'consumer.ts' },
+	{ module: 'Node16', file: 'consumer-commonjs.cts' }
+];
+
 const run = (command, args, cwd = root) =>
 	execFileSync(command, args, {
 		cwd,
@@ -87,41 +100,31 @@ try {
 
 	run('node', ['esm.mjs'], consumerDirectory);
 	run('node', ['commonjs.cjs'], consumerDirectory);
-	run(
-		join(root, 'node_modules', '.bin', 'tsc'),
-		[
-			'--noEmit',
-			'--strict',
-			'--skipLibCheck',
-			'--target',
-			'ES2022',
-			'--module',
-			'NodeNext',
-			'--moduleResolution',
-			'NodeNext',
-			'consumer.ts'
-		],
-		consumerDirectory
-	);
-	run(
-		join(root, 'node_modules', '.bin', 'tsc'),
-		[
-			'--noEmit',
-			'--strict',
-			'--skipLibCheck',
-			'--target',
-			'ES2022',
-			'--module',
-			'Node16',
-			'--moduleResolution',
-			'Node16',
-			'consumer-commonjs.cts'
-		],
-		consumerDirectory
-	);
+
+	for (const compiler of compilers) {
+		for (const { module, file } of typeChecks) {
+			run(
+				process.execPath,
+				[
+					compiler,
+					'--noEmit',
+					'--strict',
+					'--skipLibCheck',
+					'--target',
+					'ES2022',
+					'--module',
+					module,
+					'--moduleResolution',
+					module,
+					file
+				],
+				consumerDirectory
+			);
+		}
+	}
 
 	console.log(
-		'Packed package passed ESM, CommonJS, plugin, type, and contents checks.'
+		'Packed package passed ESM, CommonJS, plugin, type (TypeScript 6 and 7), and contents checks.'
 	);
 } finally {
 	rmSync(temporaryDirectory, { recursive: true, force: true });
