@@ -1015,21 +1015,21 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 The table lists the options in the canonical key order enforced by the opt-in [`sv-config-style`](#slot-variantssv-config-style) lint rule.
 
-| Option             | Type                                                           | Description                                                                                                          |
-| ------------------ | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `base`             | `string \| string[]`                                           | Additional base classes merged with the base argument and `slots.base`                                               |
-| `slots`            | `Record<string, string \| string[]>`                           | Named slot definitions for multi-element components                                                                  |
-| `groups`           | `Record<string, string[]>`                                     | Named sets of slot names, usable anywhere a slot name is accepted                                                    |
-| `multiSlots`       | `string[] \| boolean`                                          | Slot names exposed as reconfigurable functions instead of strings; `true` makes every slot a function, `false` none  |
-| `variants`         | `Record<string, Record<string \| number, string \| string[]>>` | Variant definitions mapping variant names to their possible values                                                   |
-| `presets`          | `Record<string, Partial<VariantProps>>`                        | Named combinations of variant values selectable via `preset` prop                                                    |
-| `compoundSlots`    | `Array`                                                        | Classes applied to multiple slots based on variant conditions                                                        |
-| `compoundVariants` | `Array`                                                        | Additional classes applied when multiple variant conditions match                                                    |
-| `defaultVariants`  | `Object`                                                       | Default values for variants (static values or functions)                                                             |
-| `requiredVariants` | `string[] \| boolean`                                          | Variant names that must be provided at call time; `true` makes every variant required, `false` none                  |
-| `cacheSize`        | `number`                                                       | Maximum number of cached results (default: `256`); `0` or a negative value disables caching                          |
-| `introspection`    | `boolean`                                                      | When `true`, exposes variant/slot/preset introspection and cache methods on the returned function (default: `false`) |
-| `postProcess`      | `(className: string) => string`                                | Custom transformation applied to final class strings                                                                 |
+| Option             | Type                                                       | Description                                                                                                                                            |
+| ------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `base`             | `string \| string[]`                                       | Additional base classes merged with the base argument and `slots.base`                                                                                 |
+| `slots`            | `Record<string, string \| string[]>`                       | Named slot definitions for multi-element components                                                                                                    |
+| `groups`           | `Record<string, string[]>`                                 | Named sets of slot names, usable anywhere a slot name is accepted                                                                                      |
+| `multiSlots`       | `string[] \| boolean`                                      | Slot names exposed as reconfigurable functions instead of strings; `true` makes every slot a function, `false` none                                    |
+| `variants`         | `Record<string, Record<string \| number, Value> \| Value>` | Variant names mapped to their values, or to one `Value` ([boolean shorthand](#boolean-variants)); `Value` is `string \| string[]` or a per-slot object |
+| `presets`          | `Record<string, Partial<VariantProps>>`                    | Named combinations of variant values selectable via `preset` prop                                                                                      |
+| `compoundSlots`    | `Array`                                                    | Classes applied to multiple slots based on variant conditions                                                                                          |
+| `compoundVariants` | `Array`                                                    | Additional classes applied when multiple variant conditions match                                                                                      |
+| `defaultVariants`  | `Object`                                                   | Default values for variants (static values or functions)                                                                                               |
+| `requiredVariants` | `string[] \| boolean`                                      | Variant names that must be provided at call time; `true` makes every variant required, `false` none                                                    |
+| `cacheSize`        | `number`                                                   | Maximum number of cached results (default: `256`); `0` or a negative value disables caching                                                            |
+| `introspection`    | `boolean`                                                  | When `true`, exposes variant/slot/preset introspection and cache methods on the returned function (default: `false`)                                   |
+| `postProcess`      | `(className: string) => string`                            | Custom transformation applied to final class strings                                                                                                   |
 
 ## Framework Usage
 
@@ -1220,6 +1220,17 @@ cn('flex items-center', 'flex'); // 'flex' duplicated across args
 ```
 
 Move the shared class into `base` — or use compound variants — so each class has a single source.
+
+`exclusiveGroups: true` turns on the built-in Tailwind groups. An array replaces them with your own groups: each group lists at least two utilities that can't apply together, written without Tailwind variants like `md:` and without the `prefix`; `md:flex` and `md:grid` still conflict. A utility may appear in only one group; listing it in two is a configuration error.
+
+```js
+'slot-variants/no-conflicting-classes': ['error', {
+  exclusiveGroups: [
+    ['flex', 'grid', 'block', 'hidden'],
+    ['static', 'relative', 'absolute', 'fixed', 'sticky']
+  ]
+}]
+```
 
 #### `slot-variants/no-dynamic-classes`
 
