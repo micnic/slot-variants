@@ -59,6 +59,40 @@ const getTs7ExePath = () => {
 };
 
 /**
+ * The type literal `IntrospectionValues` is declared as.
+ */
+const findIntrospectionType = (
+	source: ts.SourceFile
+): ts.TypeLiteralNode | undefined => {
+	for (const node of source.statements) {
+		if (
+			ts.isTypeAliasDeclaration(node) &&
+			node.name.text === 'IntrospectionValues' &&
+			ts.isTypeLiteralNode(node.type)
+		) {
+			return node.type;
+		}
+	}
+
+	return undefined;
+};
+
+/**
+ * A member's JSDoc text, from its last JSDoc block as a hover shows it.
+ */
+const getMemberDoc = (member: ts.TypeElement): string => {
+	let doc = '';
+
+	for (const jsDoc of ts.getJSDocCommentsAndTags(member)) {
+		if (ts.isJSDoc(jsDoc)) {
+			doc = ts.getTextOfJSDocComment(jsDoc.comment) ?? '';
+		}
+	}
+
+	return doc;
+};
+
+/**
  * Reads the `IntrospectionValues` members and their JSDoc text straight from
  * the source, so a newly added field is checked without updating this test.
  */
@@ -69,33 +103,20 @@ const getIntrospectionMembers = (): DocumentedMember[] => {
 		ts.ScriptTarget.Latest,
 		true
 	);
+	const type = findIntrospectionType(source);
+
+	// Without the type there'd be no members, and so nothing checked.
+	if (type === undefined) {
+		throw new Error(`No IntrospectionValues type found in ${typesPath}`);
+	}
+
 	const members: DocumentedMember[] = [];
 
-	source.forEachChild((node) => {
-		if (
-			!ts.isTypeAliasDeclaration(node) ||
-			node.name.text !== 'IntrospectionValues' ||
-			!ts.isTypeLiteralNode(node.type)
-		) {
-			return;
+	for (const member of type.members) {
+		if (member.name && ts.isIdentifier(member.name)) {
+			members.push({ name: member.name.text, doc: getMemberDoc(member) });
 		}
-
-		for (const member of node.type.members) {
-			if (!member.name || !ts.isIdentifier(member.name)) {
-				continue;
-			}
-
-			let doc = '';
-
-			for (const jsDoc of ts.getJSDocCommentsAndTags(member)) {
-				if (ts.isJSDoc(jsDoc)) {
-					doc = ts.getTextOfJSDocComment(jsDoc.comment) ?? '';
-				}
-			}
-
-			members.push({ name: member.name.text, doc });
-		}
-	});
+	}
 
 	return members;
 };

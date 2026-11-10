@@ -63,7 +63,7 @@
 		"playground:oxlint": "oxlint -c playground/.oxlintrc.json playground",
 		"playground": "npm run playground:react && npm run playground:solid && npm run playground:vue && npm run playground:svelte && npm run playground:oxlint",
 		"prepublishOnly": "npm run check",
-		"test": "tap --show-full-coverage test/**/*.test.ts",
+		"test": "tap --show-full-coverage \"test/**/*.test.ts\"",
 		"test:package": "node scripts/test-package.mjs",
 		"typecheck": "node node_modules/typescript/bin/tsc --project tsconfig.test.json"
 	},
