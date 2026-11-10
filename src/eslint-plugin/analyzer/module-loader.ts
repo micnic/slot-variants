@@ -9,11 +9,30 @@ import {
 	resolveComponentBinding
 } from './components.ts';
 import { createForwardingScan, type ForwardedStyles } from './forwarding.ts';
-import { type ExportTarget, findExportTargets } from './module-exports.ts';
+import { collectExportTable, type ExportTarget } from './module-exports.ts';
 import { type AliasMap, resolveModulePath } from './module-paths.ts';
 
-/** What one imported module contributes: its components and their configs. */
+/**
+ * One place an export name leads: a component of the module, already resolved
+ * to the classes it forwards, or a name to look up in another module.
+ */
+type ExportStep =
+	| { kind: 'styles'; styles: ForwardedStyles }
+	| { kind: 'forward'; specifier: string; name: string };
+
+/**
+ * What one imported module contributes, resolved while it's analyzed so the
+ * cache holds no AST: each export name's steps, most direct first, the
+ * `export * from` sources tried after them, and the classes a single-file
+ * component forwards as the module itself.
+ */
 type ModuleAnalysis = {
+	exports: ReadonlyMap<string, ReadonlyArray<ExportStep>>;
+	starSources: ReadonlyArray<string>;
+	self: ForwardedStyles | null;
+};
+
+type ModuleScan = {
 	ast: Program;
 	moduleScope: Scope.Scope;
 	forwarded: ReadonlyMap<Component, ForwardedStyles>;
@@ -124,15 +143,88 @@ const getLinterConstructor = (
 	return linterConstructor;
 };
 
+// Where one export target leads, or null when it reaches no component that
+// forwards a class prop. A local name is a function declared in the module,
+// or a binding it imported and re-exports — followed on to that module.
+const toStylesStep = (
+	component: Component,
+	forwarded: ReadonlyMap<Component, ForwardedStyles>
+): ExportStep | null => {
+	const styles = forwarded.get(component);
+
+	if (styles === undefined) {
+		return null;
+	}
+
+	return { kind: 'styles', styles };
+};
+
+// Where one export target leads, or null when it reaches no component that
+// forwards a class prop. A local name is a function declared in the module,
+// or a binding it imported and re-exports — followed on to that module.
+const toExportStep = (
+	target: ExportTarget,
+	{ moduleScope, forwarded }: ModuleScan
+): ExportStep | null => {
+	if (target.kind === 'forward') {
+		return target;
+	}
+
+	if (target.kind === 'node') {
+		return toStylesStep(target.node, forwarded);
+	}
+
+	const binding = resolveComponentBinding(target.name, moduleScope);
+
+	if (binding === null) {
+		return null;
+	}
+
+	if (binding.kind === 'local') {
+		return toStylesStep(binding.fn, forwarded);
+	}
+
+	return {
+		kind: 'forward',
+		specifier: binding.source.specifier,
+		name: binding.source.exportName
+	};
+};
+
+const analyzeScan = (scan: ModuleScan): ModuleAnalysis => {
+	const { named, starSources } = collectExportTable(scan.ast);
+	const exports = new Map<string, ExportStep[]>();
+
+	for (const [name, targets] of named) {
+		const steps: ExportStep[] = [];
+
+		for (const target of targets) {
+			const step = toExportStep(target, scan);
+
+			if (step !== null) {
+				steps.push(step);
+			}
+		}
+
+		exports.set(name, steps);
+	}
+
+	return {
+		exports,
+		starSources,
+		self: scan.forwarded.get(scan.ast) ?? null
+	};
+};
+
 const createCollector = (collected: Collected): Rule.RuleModule => ({
 	create(context) {
 		const scan = createForwardingScan(context, {
 			onExit() {
-				collected.analysis = {
+				collected.analysis = analyzeScan({
 					ast: context.sourceCode.ast,
 					moduleScope: scan.moduleScope(),
 					forwarded: scan.forwarded
-				};
+				});
 			}
 		});
 
@@ -338,15 +430,30 @@ export const resolveImportedComponent = (
 		return null;
 	}
 
-	for (const target of findExportTargets(analysis.ast, exportName)) {
-		const found = followExportTarget(
-			target,
-			analysis,
+	const follow = (specifier: string, name: string) =>
+		resolveImportedComponent(
+			specifier,
+			name,
 			path,
 			moduleContext,
 			seen,
 			depth + 1
 		);
+
+	for (const step of analysis.exports.get(exportName) ?? []) {
+		if (step.kind === 'styles') {
+			return step.styles;
+		}
+
+		const found = follow(step.specifier, step.name);
+
+		if (found !== null) {
+			return found;
+		}
+	}
+
+	for (const specifier of analysis.starSources) {
+		const found = follow(specifier, exportName);
 
 		if (found !== null) {
 			return found;
@@ -356,53 +463,8 @@ export const resolveImportedComponent = (
 	// A single-file component (Svelte, Vue) declares no export of its own: the
 	// module itself is what a default import receives.
 	if (exportName === DEFAULT_EXPORT) {
-		return analysis.forwarded.get(analysis.ast) ?? null;
+		return analysis.self;
 	}
 
 	return null;
-};
-
-const followExportTarget = (
-	target: ExportTarget,
-	analysis: ModuleAnalysis,
-	path: string,
-	moduleContext: ModuleContext,
-	seen: Set<string>,
-	depth: number
-): ForwardedStyles | null => {
-	if (target.kind === 'forward') {
-		return resolveImportedComponent(
-			target.specifier,
-			target.name,
-			path,
-			moduleContext,
-			seen,
-			depth
-		);
-	}
-
-	if (target.kind === 'node') {
-		return analysis.forwarded.get(target.node) ?? null;
-	}
-
-	// A local name is a function declared here, or a binding this module
-	// imported and re-exports — followed on to the module it comes from.
-	const binding = resolveComponentBinding(target.name, analysis.moduleScope);
-
-	if (binding === null) {
-		return null;
-	}
-
-	if (binding.kind === 'local') {
-		return analysis.forwarded.get(binding.fn) ?? null;
-	}
-
-	return resolveImportedComponent(
-		binding.source.specifier,
-		binding.source.exportName,
-		path,
-		moduleContext,
-		seen,
-		depth
-	);
 };

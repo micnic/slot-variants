@@ -5,6 +5,7 @@ import {
 	findWrappedComponent,
 	isComponentFunction
 } from './components.ts';
+import { getOrCreate } from '../map-utils.ts';
 import { getExportName, getModuleSpecifier } from './config-keys.ts';
 
 /**
@@ -16,6 +17,14 @@ export type ExportTarget =
 	| { kind: 'node'; node: ComponentFunction }
 	| { kind: 'forward'; specifier: string; name: string };
 
+/** A module's export names with their targets, and its `export *` sources. */
+export type ExportTable = {
+	named: ReadonlyMap<string, ReadonlyArray<ExportTarget>>;
+	starSources: ReadonlyArray<string>;
+};
+
+type AddTarget = (name: string, target: ExportTarget) => void;
+
 const getSourceValue = (node: Program['body'][number]): string | null => {
 	if (!('source' in node) || !node.source) {
 		return null;
@@ -26,16 +35,18 @@ const getSourceValue = (node: Program['body'][number]): string | null => {
 
 const collectFromDeclaration = (
 	declaration: Node | null | undefined,
-	name: string,
-	targets: ExportTarget[]
+	add: AddTarget
 ) => {
 	if (!declaration) {
 		return;
 	}
 
 	if (declaration.type === 'FunctionDeclaration') {
-		if (declaration.id?.name === name) {
-			targets.push({ kind: 'local', name });
+		if (declaration.id) {
+			add(declaration.id.name, {
+				kind: 'local',
+				name: declaration.id.name
+			});
 		}
 
 		return;
@@ -46,40 +57,35 @@ const collectFromDeclaration = (
 	}
 
 	for (const declarator of declaration.declarations) {
-		if (
-			declarator.id.type === 'Identifier' &&
-			declarator.id.name === name
-		) {
-			targets.push({ kind: 'local', name });
+		if (declarator.id.type === 'Identifier') {
+			const { name } = declarator.id;
+
+			add(name, { kind: 'local', name });
 		}
 	}
 };
 
 const collectFromSpecifiers = (
 	node: ExportNamedDeclaration,
-	name: string,
-	targets: ExportTarget[]
+	add: AddTarget
 ) => {
 	const source = getSourceValue(node);
 
 	for (const specifier of node.specifiers) {
-		if (getExportName(specifier.exported) !== name) {
-			continue;
-		}
-
+		const exported = getExportName(specifier.exported);
 		const local = getExportName(specifier.local);
 
 		if (source === null) {
-			targets.push({ kind: 'local', name: local });
+			add(exported, { kind: 'local', name: local });
 		} else {
-			targets.push({ kind: 'forward', specifier: source, name: local });
+			add(exported, { kind: 'forward', specifier: source, name: local });
 		}
 	}
 };
 
 const collectDefaultExport = (
 	node: Program['body'][number],
-	targets: ExportTarget[]
+	add: AddTarget
 ) => {
 	if (node.type !== 'ExportDefaultDeclaration') {
 		return;
@@ -92,19 +98,19 @@ const collectDefaultExport = (
 	// `forwardRef()` — has no name to look up, so the node itself is the
 	// target. Anything else a default export can be carries no component.
 	if (declaration.type === 'FunctionDeclaration' && declaration.id) {
-		targets.push({ kind: 'local', name: declaration.id.name });
+		add(DEFAULT_EXPORT, { kind: 'local', name: declaration.id.name });
 
 		return;
 	}
 
 	if (declaration.type === 'Identifier') {
-		targets.push({ kind: 'local', name: declaration.name });
+		add(DEFAULT_EXPORT, { kind: 'local', name: declaration.name });
 
 		return;
 	}
 
 	if (isComponentFunction(declaration)) {
-		targets.push({ kind: 'node', node: declaration });
+		add(DEFAULT_EXPORT, { kind: 'node', node: declaration });
 
 		return;
 	}
@@ -121,25 +127,26 @@ const collectDefaultExport = (
 	}
 
 	if (wrapped.type === 'Identifier') {
-		targets.push({ kind: 'local', name: wrapped.name });
+		add(DEFAULT_EXPORT, { kind: 'local', name: wrapped.name });
 
 		return;
 	}
 
-	targets.push({ kind: 'node', node: wrapped });
+	add(DEFAULT_EXPORT, { kind: 'node', node: wrapped });
 };
 
 /**
- * Every place an export name may resolve to, most direct first. A barrel's
- * `export * from` entries come last, since a name declared in the module
+ * Every name a module exports, each with the places it may resolve to in
+ * source order, and the sources of its `export * from` entries. Those come
+ * after a module's own targets for a name, since a name declared in the module
  * itself always wins over one it re-exports.
  */
-export const findExportTargets = (
-	ast: Program,
-	name: string
-): ExportTarget[] => {
-	const targets: ExportTarget[] = [];
+export const collectExportTable = (ast: Program): ExportTable => {
+	const named = new Map<string, ExportTarget[]>();
 	const starSources: string[] = [];
+	const add: AddTarget = (name, target) => {
+		getOrCreate(named, name, () => []).push(target);
+	};
 
 	for (const node of ast.body) {
 		if (node.type === 'ExportAllDeclaration') {
@@ -156,19 +163,13 @@ export const findExportTargets = (
 			continue;
 		}
 
-		if (name === DEFAULT_EXPORT) {
-			collectDefaultExport(node, targets);
-		}
+		collectDefaultExport(node, add);
 
 		if (node.type === 'ExportNamedDeclaration') {
-			collectFromDeclaration(node.declaration, name, targets);
-			collectFromSpecifiers(node, name, targets);
+			collectFromDeclaration(node.declaration, add);
+			collectFromSpecifiers(node, add);
 		}
 	}
 
-	for (const specifier of starSources) {
-		targets.push({ kind: 'forward', specifier, name });
-	}
-
-	return targets;
+	return { named, starSources };
 };
