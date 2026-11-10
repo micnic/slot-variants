@@ -169,31 +169,6 @@ const applyMultiSlots = (
 	return output;
 };
 
-/**
- * Computes the number of distinct variant combinations a config can produce,
- * which is also the largest number of entries its cache can ever hold.
- *
- * Each variant contributes its value count, plus one for the unset state. The
- * unset state is dropped only for a required variant, which can never be left
- * unset. A default doesn't drop it: passing `null` skips the default, and a
- * function default may return `undefined`.
- */
-const countMaxEntries = (config: CompiledConfig) => {
-	const requiredVariants = new Set(config.requiredVariants);
-
-	let count = 1;
-
-	for (const { key, unsetId: valueCount } of config.variantData) {
-		if (requiredVariants.has(key)) {
-			count *= valueCount;
-		} else {
-			count *= valueCount + 1;
-		}
-	}
-
-	return count;
-};
-
 // Multi-slot wrapping is decided once here, so plain variant functions skip it
 // on every call.
 const createRuntimeVariantFn = (
@@ -233,9 +208,6 @@ const createVariantFn = (config: CompiledConfig) => {
 		return variantFn;
 	}
 
-	// The combination count never changes, so it is computed on first use only
-	let maxEntries: number | undefined;
-
 	return assign(variantFn, {
 		variants: config.originalVariants,
 		variantKeys: keys(config.normalizedVariants),
@@ -254,13 +226,7 @@ const createVariantFn = (config: CompiledConfig) => {
 			keys(config.normalizedVariants[key] ?? {}).map(
 				coerceVariantKeyValue
 			),
-		getMaxEntries: () => {
-			if (maxEntries === undefined) {
-				maxEntries = countMaxEntries(config);
-			}
-
-			return maxEntries;
-		},
+		getMaxEntries: () => config.maxEntries,
 		clearCache: () => config.cache.clear(),
 		getCacheSize: () => config.cache.size
 	});

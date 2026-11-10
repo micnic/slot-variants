@@ -38,6 +38,7 @@ type ApplySlotClasses = (slotClasses: SlotClasses) => void;
 type VariantLayout = {
 	variantData: readonly VariantData[];
 	combinationCount: number;
+	maxEntries: number;
 };
 
 type CompoundEntry = Record<string, unknown> & {
@@ -383,12 +384,22 @@ const getOwnDefault = (
  * Numbers each variant's values, so a combination of resolved values maps to a
  * single cache key: the sum of every value id times its variant's stride, with
  * each variant spanning its value count plus one for the unset state.
+ *
+ * Also counts the distinct combinations a call can produce, which is the most
+ * entries the cache can ever hold. That count drops the unset state only for a
+ * required variant, which can never be left unset. A default doesn't drop it:
+ * passing `null` skips the default, and a function default may return
+ * `undefined`.
  */
 const createVariantData = (
 	normalizedVariants: NormalizedVariants,
-	defaultVariants: Record<string, RuntimeDefaultVariant>
+	defaultVariants: Record<string, RuntimeDefaultVariant>,
+	requiredVariants: readonly string[]
 ): VariantLayout => {
+	const required = new Set(requiredVariants);
+
 	let stride = 1;
+	let maxEntries = 1;
 
 	const variantData = entries(normalizedVariants).map(
 		([variantKey, variantValues]) => {
@@ -407,12 +418,18 @@ const createVariantData = (
 
 			stride *= valueKeys.length + 1;
 
+			if (required.has(variantKey)) {
+				maxEntries *= valueKeys.length;
+			} else {
+				maxEntries *= valueKeys.length + 1;
+			}
+
 			return variant;
 		}
 	);
 
 	// Strides only grow, so the final one is the largest key plus one.
-	return { variantData, combinationCount: stride };
+	return { variantData, combinationCount: stride, maxEntries };
 };
 
 const resolveRequiredVariants = (
@@ -741,20 +758,20 @@ export const compileConfig = (
 	]);
 
 	const normalizedVariants = createNormalizedVariants(variants, targetKeys);
-	const { variantData, combinationCount } = createVariantData(
+	const resolvedRequiredVariants = resolveRequiredVariants(
+		requiredVariants,
+		normalizedVariants
+	);
+	const { variantData, combinationCount, maxEntries } = createVariantData(
 		normalizedVariants,
-		defaultVariants
+		defaultVariants,
+		resolvedRequiredVariants
 	);
 
 	const resolvedMultiSlots = resolveMultiSlots(
 		multiSlots,
 		resolvedGroups,
 		slotKeys
-	);
-
-	const resolvedRequiredVariants = resolveRequiredVariants(
-		requiredVariants,
-		normalizedVariants
 	);
 
 	assertValidRequiredVariantConfig(
@@ -830,6 +847,7 @@ export const compileConfig = (
 		...createCache(cacheSize),
 		// Every combination needs a safe integer key to be cached.
 		cacheable: cacheSize > 0 && combinationCount <= Number.MAX_SAFE_INTEGER,
+		maxEntries,
 		introspection,
 		postProcess
 	};

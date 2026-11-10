@@ -312,6 +312,7 @@ export type CompiledConfig = {
 	compounds: readonly CompiledCompound[];
 	cache: VariantCache;
 	cacheable: boolean;
+	maxEntries: number;
 	introspection: boolean;
 	cacheReturn: CacheReturn;
 	postProcess: ((className: string) => string) | undefined;
