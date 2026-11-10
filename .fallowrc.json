@@ -1,6 +1,20 @@
 {
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-	"entry": ["src/index.ts", "bench/*.ts"],
+	"framework": [
+		{
+			"name": "playground",
+			"enablers": ["eslint"],
+			"entryPoints": ["playground/*/App.{tsx,vue,svelte}"],
+			"entryPointRole": "support"
+		},
+		{
+			"name": "bench",
+			"enablers": ["tinybench"],
+			"entryPoints": ["bench/*.ts"],
+			"entryPointRole": "support"
+		}
+	],
 	"ignorePatterns": ["scripts/**"],
+	"ignoreDependencies": ["typescript7"],
 	"rules": {}
 }
