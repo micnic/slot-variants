@@ -98,12 +98,5 @@
 		"eslint": {
 			"optional": true
 		}
-	},
-	"tsup": {
-		"dts": true,
-		"format": [
-			"cjs",
-			"esm"
-		]
 	}
 }
