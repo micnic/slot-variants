@@ -73,11 +73,12 @@ const checkRecordKeysForEmpty = (
 const visitArrayForEmptyClasses = (
 	context: Rule.RuleContext,
 	node: ArrayExpression,
+	site: Node,
 	fix: EmptyFix | undefined,
 	cnStyle: boolean
 ) => {
 	if (node.elements.length === 0) {
-		context.report({ node, messageId: 'emptyArray', fix });
+		context.report({ node: site, messageId: 'emptyArray', fix });
 		return;
 	}
 
@@ -103,10 +104,14 @@ export const visitForEmptyClasses = (
 	fix?: EmptyFix,
 	cnStyle = false
 ) => {
+	// An empty value read through a `const` is reported where it's used:
+	// that's what the fix removes, and the declaration may serve other uses.
+	const site = node;
+
 	node = resolveStaticValue(node, context.sourceCode);
 
 	if (shouldReportEmptyString(node, allowEmptyString)) {
-		context.report({ node, messageId: 'emptyString', fix });
+		context.report({ node: site, messageId: 'emptyString', fix });
 		return;
 	}
 
@@ -127,13 +132,13 @@ export const visitForEmptyClasses = (
 	}
 
 	if (node.type === 'ArrayExpression') {
-		visitArrayForEmptyClasses(context, node, fix, cnStyle);
+		visitArrayForEmptyClasses(context, node, site, fix, cnStyle);
 		return;
 	}
 
 	if (node.type === 'ObjectExpression') {
 		if (node.properties.length === 0) {
-			context.report({ node, messageId: 'emptyObject', fix });
+			context.report({ node: site, messageId: 'emptyObject', fix });
 			return;
 		}
 

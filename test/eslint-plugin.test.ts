@@ -2334,9 +2334,26 @@ const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyString' }, { messageId: 'emptyString' }]
 	},
 	{
-		// A hoisted `const` empty-string alias read through as a cn argument.
+		// A hoisted `const` empty-string alias read through as a cn argument,
+		// reported where it's used.
 		code: IMPORT_CN + "const cls = '';\ncn(cls);",
-		errors: [{ messageId: 'emptyString' }]
+		errors: [{ messageId: 'emptyString', line: 3, column: 4 }]
+	},
+	{
+		// Each use of a shared empty `const` is reported and removed on its
+		// own; the declaration is left for no-unused-vars.
+		code: IMPORT_CN + "const none = '';\ncn('a', none);\ncn('b', none);",
+		output: IMPORT_CN + "const none = '';\ncn('a');\ncn('b');",
+		errors: [
+			{ messageId: 'emptyString', line: 3 },
+			{ messageId: 'emptyString', line: 4 }
+		]
+	},
+	{
+		// The same for an empty array behind a `const`.
+		code: IMPORT_CN + "const none = [];\ncn('a', none);",
+		output: IMPORT_CN + "const none = [];\ncn('a');",
+		errors: [{ messageId: 'emptyArray', line: 3, column: 9 }]
 	},
 	{
 		// Empty string as the `&&` right operand alongside another arg —
@@ -2372,10 +2389,14 @@ const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyString' }, { messageId: 'emptyString' }]
 	},
 	{
-		// A `const` empty-string alias counts as an empty branch.
+		// A `const` empty-string alias counts as an empty branch, reported
+		// in the branch that reads it.
 		code: IMPORT_CN + "const none = '';\ncn('flex', isActive ? none : '');",
 		output: IMPORT_CN + "const none = '';\ncn('flex');",
-		errors: [{ messageId: 'emptyString' }, { messageId: 'emptyString' }]
+		errors: [
+			{ messageId: 'emptyString', line: 3, column: 23 },
+			{ messageId: 'emptyString', line: 3, column: 30 }
+		]
 	}
 ];
 
