@@ -238,6 +238,13 @@ const NO_REDUNDANT_SPACES_INVALID = [
 		errors: 1
 	},
 	{
+		// Collapsed, the text would hold the literal's own quote unescaped, so
+		// it's reported without a fix.
+		code: IMPORT + "sv({ base: 'a  \\'b' });",
+		output: null,
+		errors: 1
+	},
+	{
 		// Leading whitespace.
 		code: IMPORT + "sv({ base: ' flex' });",
 		output: IMPORT + "sv({ base: 'flex' });",

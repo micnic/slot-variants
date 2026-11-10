@@ -2,9 +2,9 @@ import type { Rule } from 'eslint';
 import type { Node, ObjectExpression } from 'estree';
 import { resolveStaticValue } from './const-bindings.ts';
 import {
-	canHoistAsLiteral,
-	getQuoteChar,
 	getStaticStringText,
+	planLiteralRewrite,
+	replaceLiteral,
 	splitClassTokens
 } from './literals.ts';
 import { getProperties } from './properties.ts';
@@ -23,24 +23,23 @@ const reportRedundantSpaces = (
 	node: Node,
 	value: string
 ) => {
-	const canonical = splitClassTokens(value).join(' ');
+	const tokens = splitClassTokens(value);
 
-	if (canonical === value) {
+	if (tokens.join(' ') === value) {
 		return;
 	}
 
-	const quote = getQuoteChar(context.sourceCode, node);
+	const rewrite = planLiteralRewrite(context.sourceCode, node, tokens);
 
 	context.report({
 		node,
 		messageId: 'redundant',
 		fix: (fixer) => {
-			/* c8 ignore next 3 -- canHoistAsLiteral is itself ignored above */
-			if (!canHoistAsLiteral(canonical, quote)) {
+			if (rewrite === null) {
 				return null;
 			}
 
-			return fixer.replaceText(node, `${quote}${canonical}${quote}`);
+			return replaceLiteral(fixer, rewrite);
 		}
 	});
 };

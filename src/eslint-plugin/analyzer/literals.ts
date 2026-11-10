@@ -1,5 +1,8 @@
-import type { SourceCode } from 'eslint';
+import type { Rule, SourceCode } from 'eslint';
 import type { Node } from 'estree';
+
+/** A literal to re-emit with new text at its own delimiter. */
+export type LiteralRewrite = { node: Node; nextText: string; quote: string };
 
 // HTML splits a class attribute on ASCII whitespace only — space, tab, line
 // feed, form feed and carriage return. Any other space, like a non-breaking
@@ -41,7 +44,7 @@ export const splitClassTokens = (text: string): string[] =>
 	text.split(CLASS_SEPARATOR).filter(Boolean);
 
 // A string/template literal's opening delimiter, read from its source text.
-export const getQuoteChar = (sourceCode: SourceCode, node: Node): string => {
+const getQuoteChar = (sourceCode: SourceCode, node: Node): string => {
 	const raw = sourceCode.getText(node);
 
 	/* c8 ignore next -- a string literal or template always has a delimiter */
@@ -61,6 +64,31 @@ export const canHoistAsLiteral = (
 
 	return quote !== '`' || !canonical.includes('${');
 };
+
+// Plans re-emitting a string/template literal as `nextTokens` joined by single
+// spaces, at the literal's own delimiter. Null when the new text can't be
+// written there without escaping (see `canHoistAsLiteral`), so callers drop
+// the fix rather than apply part of it. `node` must be a plain,
+// directly-authored literal.
+export const planLiteralRewrite = (
+	sourceCode: SourceCode,
+	node: Node,
+	nextTokens: readonly string[]
+): LiteralRewrite | null => {
+	const quote = getQuoteChar(sourceCode, node);
+	const nextText = nextTokens.join(' ');
+
+	if (!canHoistAsLiteral(nextText, quote)) {
+		return null;
+	}
+
+	return { node, nextText, quote };
+};
+
+export const replaceLiteral = (
+	fixer: Rule.RuleFixer,
+	{ node, nextText, quote }: LiteralRewrite
+): Rule.Fix => fixer.replaceText(node, `${quote}${nextText}${quote}`);
 
 export const getStaticStringText = (node: Node): string | null => {
 	if (node.type === 'Literal') {

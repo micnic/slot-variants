@@ -4,8 +4,10 @@ import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
 import { type ListItems, makeListFix } from './list-fix.ts';
 import {
 	canHoistAsLiteral,
-	getQuoteChar,
-	getRawLiteralTokens
+	getRawLiteralTokens,
+	type LiteralRewrite,
+	planLiteralRewrite,
+	replaceLiteral
 } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
@@ -125,30 +127,6 @@ const intersectSharedTokensBySlot = (
 	return sharedTokens;
 };
 
-type LiteralRewrite = { node: Node; nextText: string; quote: string };
-
-// Recomputes a literal node's text from a new token list, reusing
-// no-redundant-spaces' quote-preserving rewrite (`canHoistAsLiteral`). Returns
-// null when the new content can't be safely re-emitted at the node's own
-// delimiter — in which case the whole fix is abandoned (see
-// `planSharedTokensFix`), never partially applied. Callers are expected to
-// have already confirmed `node` is a plain, directly-authored string/template
-// literal (via `getRawLiteralTokens`) before calling this.
-const planLiteralRewrite = (
-	context: Rule.RuleContext,
-	node: Node,
-	nextTokens: readonly string[]
-): LiteralRewrite | null => {
-	const quote = getQuoteChar(context.sourceCode, node);
-	const nextText = nextTokens.join(' ');
-
-	if (!canHoistAsLiteral(nextText, quote)) {
-		return null;
-	}
-
-	return { node, nextText, quote };
-};
-
 // Appends to a literal whichever of `tokens` it doesn't already contain,
 // keeping the literal's own tokens first. Null when the literal isn't static
 // or the result can't be re-emitted safely.
@@ -167,20 +145,11 @@ const planAppendRewrite = (
 		(token) => !existingTokens.includes(token)
 	);
 
-	return planLiteralRewrite(context, node, [
+	return planLiteralRewrite(context.sourceCode, node, [
 		...existingTokens,
 		...missingTokens
 	]);
 };
-
-const replaceLiteral = (
-	fixer: Rule.RuleFixer,
-	rewrite: LiteralRewrite
-): Rule.Fix =>
-	fixer.replaceText(
-		rewrite.node,
-		`${rewrite.quote}${rewrite.nextText}${rewrite.quote}`
-	);
 
 // The node holding `slot`'s contribution to a single variant value. Works from
 // the raw (un-resolved) node so a hoisted `const` value isn't silently
@@ -311,7 +280,7 @@ const planValueRewrites = (
 		}
 
 		const valuePlan = planLiteralRewrite(
-			context,
+			context.sourceCode,
 			slotNode,
 			remainingTokens
 		);
