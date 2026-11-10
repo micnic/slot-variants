@@ -8,6 +8,7 @@ import {
 	DEFAULT_EXPORT,
 	resolveComponentBinding
 } from './components.ts';
+import { getOrCreate } from '../map-utils.ts';
 import { createForwardingScan, type ForwardedStyles } from './forwarding.ts';
 import { collectExportTable, type ExportTarget } from './module-exports.ts';
 import { type AliasMap, resolveModulePath } from './module-paths.ts';
@@ -64,11 +65,12 @@ export type ModuleContext = {
 	languageOptions: Linter.LanguageOptions;
 };
 
-// `eslint` is an optional peer dependency, so it is resolved on first use from
-// the project being linted rather than imported at load time — under a host
-// that doesn't ship it (oxlint), cross-file resolution simply stays off
-// instead of breaking the whole plugin.
-let linterConstructor: LinterConstructor | null | undefined;
+// `eslint` is an optional peer dependency, so it is resolved on use from the
+// project being linted rather than imported at load time — under a host that
+// doesn't ship it (oxlint), cross-file resolution simply stays off instead of
+// breaking the whole plugin. Resolved once per directory, since packages of a
+// monorepo may each install their own.
+const linterConstructors = new Map<string, LinterConstructor | null>();
 
 // `**/*.*` matches any file with an extension, which every resolved module
 // path has — a bare `**/*` is treated as a universal pattern and matches
@@ -113,35 +115,37 @@ const loadLinterFrom = (base: string): LinterConstructor | null => {
 	}
 };
 
-/**
- * ESLint's own `Linter`, reached from the file being linted, then the working
- * directory, then the process's. Walking up from the linted file first is what
- * makes a monorepo package with its own `node_modules` resolve correctly, and
- * the process's own directory is where the running ESLint must live — so a
- * failure across all three is permanent and worth remembering.
- */
-const getLinterConstructor = (
-	fromFile: string,
+const findLinterConstructor = (
+	directory: string,
 	cwd: string
 ): LinterConstructor | null => {
-	if (linterConstructor !== undefined) {
-		return linterConstructor;
-	}
+	let loaded: LinterConstructor | null = null;
 
-	linterConstructor = null;
-
-	for (const base of [dirname(fromFile), cwd, process.cwd()]) {
-		const loaded = loadLinterFrom(base);
+	for (const base of [directory, cwd, process.cwd()]) {
+		loaded = loadLinterFrom(base);
 
 		if (loaded !== null) {
-			linterConstructor = loaded;
-
 			break;
 		}
 	}
 
-	return linterConstructor;
+	return loaded;
 };
+
+/**
+ * ESLint's own `Linter`, reached from the module's directory, then the working
+ * directory, then the process's. Walking up from the module first is what makes
+ * a monorepo package with its own `node_modules` resolve its own ESLint, and
+ * the process's own directory is where the running ESLint must live — so a
+ * directory that finds none is remembered too.
+ */
+const getLinterConstructor = (
+	fromFile: string,
+	cwd: string
+): LinterConstructor | null =>
+	getOrCreate(linterConstructors, `${dirname(fromFile)}\0${cwd}`, () =>
+		findLinterConstructor(dirname(fromFile), cwd)
+	);
 
 // Where one export target leads, or null when it reaches no component that
 // forwards a class prop. A local name is a function declared in the module,
