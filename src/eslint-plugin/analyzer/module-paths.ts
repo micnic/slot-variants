@@ -1,5 +1,5 @@
 import { statSync } from 'node:fs';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { dirname, extname, isAbsolute, resolve } from 'node:path';
 
 /** Prefix -> directory, as the `alias` rule option supplies it. */
 export type AliasMap = ReadonlyMap<string, string>;
@@ -35,17 +35,6 @@ const isFile = (path: string): boolean => {
 	}
 };
 
-const getExtension = (path: string): string => {
-	const dot = path.lastIndexOf('.');
-	const slash = path.lastIndexOf('/');
-
-	if (dot <= slash + 1) {
-		return '';
-	}
-
-	return path.slice(dot);
-};
-
 // The first existing file among `stem` plus each extension, in order.
 const findFile = (
 	stem: string,
@@ -69,7 +58,7 @@ const resolveFile = (base: string): string | null => {
 		return base;
 	}
 
-	const extension = getExtension(base);
+	const extension = extname(base);
 	const rewrites = REWRITABLE.get(extension);
 
 	if (rewrites) {
