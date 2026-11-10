@@ -5,7 +5,7 @@ import {
 	findWrappedComponent,
 	isComponentFunction
 } from './components.ts';
-import { getExportName } from './config-keys.ts';
+import { getExportName, getModuleSpecifier } from './config-keys.ts';
 
 /**
  * Where an export name leads: a binding in the same module, a function node
@@ -21,9 +21,7 @@ const getSourceValue = (node: Program['body'][number]): string | null => {
 		return null;
 	}
 
-	// A module source is always a string literal; ESTree only types it as a
-	// general `Literal`.
-	return String(node.source.value);
+	return getModuleSpecifier(node.source);
 };
 
 const collectFromDeclaration = (

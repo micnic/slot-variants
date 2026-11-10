@@ -7,7 +7,7 @@ import type {
 	Node,
 	Program
 } from 'estree';
-import { getExportName } from './config-keys.ts';
+import { getExportName, getModuleSpecifier } from './config-keys.ts';
 import { findSingleBinding, getConstDefInit } from './const-bindings.ts';
 
 export type ComponentFunction =
@@ -79,9 +79,7 @@ export const findWrappedComponent = (
 // The module and export name an import binding reads, or null for a namespace
 // import, whose members are read through a dotted JSX name that is skipped.
 const getImportSource = (def: ImportDefinition): ImportSource | null => {
-	// A module source is always a string literal; ESTree only types it as a
-	// general `Literal`.
-	const value = String(def.parent.source.value);
+	const value = getModuleSpecifier(def.parent.source);
 
 	if (def.node.type === 'ImportDefaultSpecifier') {
 		return { specifier: value, exportName: DEFAULT_EXPORT };

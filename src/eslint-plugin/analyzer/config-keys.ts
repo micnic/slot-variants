@@ -39,6 +39,11 @@ export const getExportName = (node: Identifier | Literal): string => {
 	return String(node.value);
 };
 
+// A module source is always a string literal; ESTree only types it as a
+// general `Literal`.
+export const getModuleSpecifier = (source: Literal): string =>
+	String(source.value);
+
 export const getKeyName = (prop: Property): string | null => {
 	if (prop.computed) {
 		return null;
