@@ -6,6 +6,7 @@ import {
 	addComparison,
 	runEach,
 	type SvBuildOptions,
+	type SvBuilds,
 	svBuilds,
 	svMergeBuilds
 } from './compare.ts';
@@ -15,6 +16,15 @@ import {
 	createSlotsCardConfig
 } from './fixtures.ts';
 import { printBenchResults } from './report.ts';
+
+// One case's competitors: the sv() builds, plain and piped through
+// tailwind-merge, and tailwind-variants with and without its own merge.
+type TvCompetitors<S, V> = {
+	sv: SvBuilds<S>;
+	svMerge: SvBuilds<S>;
+	tvNoMerge: V;
+	tv: V;
+};
 
 type TvSlots = {
 	base: () => string;
@@ -38,116 +48,101 @@ const materializeTvSlots = (slots: TvSlots) => ({
 	footer: slots.footer()
 });
 
+// The competitors for one config: `createSv` builds it with sv(), `createTv`
+// with whichever tailwind-variants function it's handed.
+const createCompetitors = <S, V>(
+	createSv: (options: SvBuildOptions) => S,
+	createTv: (build: typeof tv) => V
+): TvCompetitors<S, V> => ({
+	sv: svBuilds(createSv),
+	svMerge: svMergeBuilds(createSv, twMerge),
+	tvNoMerge: createTv(tvNoMerge),
+	tv: createTv(tv)
+});
+
+// Benchmarks one case across every competitor: `runSv` calls an sv() build,
+// `runTv` a tailwind-variants one, both returning the same output shape.
+const addTvComparison = <S, V, T>(
+	label: string,
+	{ sv: svFns, svMerge, tvNoMerge, tv: tvFn }: TvCompetitors<S, V>,
+	runSv: (fn: S) => T,
+	runTv: (fn: V) => T
+) => {
+	addComparison(bench, label, {
+		...runEach(svFns, (fn) => () => runSv(fn)),
+		'tv (no merge)': () => runTv(tvNoMerge),
+		...runEach(svMerge, (fn) => () => runSv(fn)),
+		tv: () => runTv(tvFn)
+	});
+};
+
 // --- Simple variants (no slots) ---
 
-const createButton = (options: SvBuildOptions) =>
-	sv('btn', { ...createSimpleButtonConfig(), ...options });
+const button = createCompetitors(
+	(options) => sv('btn', { ...createSimpleButtonConfig(), ...options }),
+	(build) => build({ base: 'btn', ...createSimpleButtonConfig() })
+);
 
-const svButton = svBuilds(createButton);
-const svButtonMerge = svMergeBuilds(createButton, twMerge);
+addTvComparison(
+	'simple defaults',
+	button,
+	(fn) => fn(),
+	(fn) => fn()
+);
 
-const tvButton = tv({
-	base: 'btn',
-	...createSimpleButtonConfig()
-});
-
-const tvButtonNoMerge = tvNoMerge({
-	base: 'btn',
-	...createSimpleButtonConfig()
-});
-
-addComparison(bench, 'simple defaults', {
-	...runEach(svButton, (fn) => () => fn()),
-	'tv (no merge)': () => tvButtonNoMerge(),
-	...runEach(svButtonMerge, (fn) => () => fn()),
-	tv: () => tvButton()
-});
-
-addComparison(bench, 'simple with props', {
-	...runEach(svButton, (fn) => () => fn({ color: 'secondary', size: 'lg' })),
-	'tv (no merge)': () => tvButtonNoMerge({ color: 'secondary', size: 'lg' }),
-	...runEach(
-		svButtonMerge,
-		(fn) => () => fn({ color: 'secondary', size: 'lg' })
-	),
-	tv: () => tvButton({ color: 'secondary', size: 'lg' })
-});
+addTvComparison(
+	'simple with props',
+	button,
+	(fn) => fn({ color: 'secondary', size: 'lg' }),
+	(fn) => fn({ color: 'secondary', size: 'lg' })
+);
 
 // --- Compound variants ---
 
-const createCompound = (options: SvBuildOptions) =>
-	sv('btn', { ...createCompoundButtonConfig(), ...options });
+const compound = createCompetitors(
+	(options) => sv('btn', { ...createCompoundButtonConfig(), ...options }),
+	(build) =>
+		build({
+			base: 'btn',
+			...compoundButtonConfig,
+			compoundVariants: [...compoundButtonConfig.compoundVariants]
+		})
+);
 
-const svCompound = svBuilds(createCompound);
-const svCompoundMerge = svMergeBuilds(createCompound, twMerge);
+addTvComparison(
+	'compound match',
+	compound,
+	(fn) => fn({ color: 'primary', size: 'lg' }),
+	(fn) => fn({ color: 'primary', size: 'lg' })
+);
 
-const tvCompound = tv({
-	base: 'btn',
-	...compoundButtonConfig,
-	compoundVariants: [...compoundButtonConfig.compoundVariants]
-});
-
-const tvCompoundNoMerge = tvNoMerge({
-	base: 'btn',
-	...compoundButtonConfig,
-	compoundVariants: [...compoundButtonConfig.compoundVariants]
-});
-
-addComparison(bench, 'compound match', {
-	...runEach(svCompound, (fn) => () => fn({ color: 'primary', size: 'lg' })),
-	'tv (no merge)': () => tvCompoundNoMerge({ color: 'primary', size: 'lg' }),
-	...runEach(
-		svCompoundMerge,
-		(fn) => () => fn({ color: 'primary', size: 'lg' })
-	),
-	tv: () => tvCompound({ color: 'primary', size: 'lg' })
-});
-
-addComparison(bench, 'compound no match', {
-	...runEach(svCompound, (fn) => () => fn({ color: 'primary', size: 'sm' })),
-	'tv (no merge)': () => tvCompoundNoMerge({ color: 'primary', size: 'sm' }),
-	...runEach(
-		svCompoundMerge,
-		(fn) => () => fn({ color: 'primary', size: 'sm' })
-	),
-	tv: () => tvCompound({ color: 'primary', size: 'sm' })
-});
+addTvComparison(
+	'compound no match',
+	compound,
+	(fn) => fn({ color: 'primary', size: 'sm' }),
+	(fn) => fn({ color: 'primary', size: 'sm' })
+);
 
 // --- Slots ---
 
-const createSlots = (options: SvBuildOptions) =>
-	sv('card', { ...createSlotsCardConfig(), ...options });
+const slots = createCompetitors(
+	(options) => sv('card', { ...createSlotsCardConfig(), ...options }),
+	(build) => build({ base: 'card', ...createSlotsCardConfig() })
+);
 
-const svSlots = svBuilds(createSlots);
-const svSlotsMerge = svMergeBuilds(createSlots, twMerge);
+addTvComparison(
+	'slots defaults',
+	slots,
+	(fn) => fn(),
+	(fn) => materializeTvSlots(fn())
+);
 
-const tvSlots = tv({
-	base: 'card',
-	...createSlotsCardConfig()
-});
-
-const tvSlotsNoMerge = tvNoMerge({
-	base: 'card',
-	...createSlotsCardConfig()
-});
-
-addComparison(bench, 'slots defaults', {
-	...runEach(svSlots, (fn) => () => fn()),
-	'tv (no merge)': () => materializeTvSlots(tvSlotsNoMerge()),
-	...runEach(svSlotsMerge, (fn) => () => fn()),
-	tv: () => materializeTvSlots(tvSlots())
-});
-
-addComparison(bench, 'slots with props', {
-	...runEach(svSlots, (fn) => () => fn({ size: 'lg', variant: 'filled' })),
-	'tv (no merge)': () =>
-		materializeTvSlots(tvSlotsNoMerge({ size: 'lg', variant: 'filled' })),
-	...runEach(
-		svSlotsMerge,
-		(fn) => () => fn({ size: 'lg', variant: 'filled' })
-	),
-	tv: () => materializeTvSlots(tvSlots({ size: 'lg', variant: 'filled' }))
-});
+addTvComparison(
+	'slots with props',
+	slots,
+	(fn) => fn({ size: 'lg', variant: 'filled' }),
+	(fn) => materializeTvSlots(fn({ size: 'lg', variant: 'filled' }))
+);
 
 await bench.run();
 

@@ -8,7 +8,7 @@ export type SvBuildOptions = {
 	postProcess?: (className: string) => string;
 };
 
-type SvBuilds<F> = Record<string, F>;
+export type SvBuilds<F> = Record<string, F>;
 
 // The sv() builds every comparison runs: compiled and interpreted, each with
 // and without the cache.
