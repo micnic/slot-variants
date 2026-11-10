@@ -2636,6 +2636,29 @@ t.test('class prop as slot object targets specific slots', (t) => {
 	t.end();
 });
 
+t.test('class wins when both class and className are passed', (t) => {
+	const button = sv('btn', { variants: { size: { sm: 'text-sm' } } });
+	const card = sv({
+		slots: { header: 'font-bold' },
+		multiSlots: ['header']
+	});
+
+	t.equal(
+		// @ts-expect-error passing both class and className is a type error
+		button({ size: 'sm', class: 'mt-2', className: 'mb-2' }),
+		'btn text-sm mt-2',
+		'variant function uses class and ignores className'
+	);
+	t.equal(
+		// @ts-expect-error the same holds for a slot function
+		card().header({ class: 'mt-2', className: 'mb-2' }),
+		'font-bold mt-2',
+		'slot function uses class and ignores className'
+	);
+
+	t.end();
+});
+
 t.test('className prop as slot object targets specific slots', (t) => {
 	const card = sv('border rounded-lg', {
 		slots: {
