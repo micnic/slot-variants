@@ -599,12 +599,20 @@ const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 		}
 	});
 
+	// Without presets no variant reads `pv`, and only a passed `preset` needs
+	// resolving, to throw for it: a call without one skips the lookup.
+	let presetSource = 'const pv = resolvePreset(p.preset);';
+
+	if (keys(config.presets).length === 0) {
+		presetSource = 'if (p.preset !== undefined) resolvePreset(p.preset);';
+	}
+
 	return [
 		'"use strict";',
 		'const { cache, cacheReturn, defaults: d, valueIds, tables: t, merge, postProcess: pp, resolvePreset, missingVariant, invalidValue, hasOwn } = ctx;',
 		...locals,
 		'return (p) => {',
-		'const pv = resolvePreset(p.preset);',
+		presetSource,
 		...variantSources,
 		getValidationSource(config),
 		getResultSource(config, plan),

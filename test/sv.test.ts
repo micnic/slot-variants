@@ -5489,6 +5489,22 @@ t.test('throws for invalid preset name', (t) => {
 	t.end();
 });
 
+t.test('preset throws when the config declares no presets', (t) => {
+	const button = sv('btn', {
+		variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
+	});
+
+	t.equal(button({ size: 'sm' }), 'btn text-sm', 'works without a preset');
+	t.throws(
+		// @ts-expect-error - a config without presets accepts no preset name
+		() => button({ preset: 'cta' }),
+		{ message: 'Invalid preset "cta"' },
+		'throws for any preset name'
+	);
+
+	t.end();
+});
+
 t.test('preset throws when it references an unknown variant', (t) => {
 	t.throws(
 		() =>
