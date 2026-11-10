@@ -97,16 +97,6 @@ const collectOrderedEntries = (
 	return { entries, fixable };
 };
 
-// Any comment inside the config object (attached to a property,
-// or floating between them) disables the reorder fixer for that
-// call — safely reattaching comments to their moved property isn't
-// attempted, matching the "under-suppress, never wrongly rewrite"
-// bail-out pattern used elsewhere in this plugin.
-const hasCommentsInside = (
-	context: Rule.RuleContext,
-	node: ObjectExpression
-): boolean => context.sourceCode.getCommentsInside(node).length > 0;
-
 // Rewrites the run of known properties in canonical order. The separator
 // (comma + whitespace) between the first two properties in their original
 // source order is reused between every reordered property, so the rewritten
@@ -174,7 +164,15 @@ const checkKeyOrder = (
 
 	let fix: ReorderFix | undefined;
 
-	if (fixable && !hasCommentsInside(context, configNode)) {
+	// Any comment inside the config object (attached to a property, or
+	// floating between them) disables the reorder fixer for that call —
+	// safely reattaching comments to their moved property isn't attempted,
+	// matching the "under-suppress, never wrongly rewrite" bail-out pattern
+	// used elsewhere in this plugin.
+	if (
+		fixable &&
+		context.sourceCode.getCommentsInside(configNode).length === 0
+	) {
 		fix = buildReorderFix(context.sourceCode, entries);
 	}
 
@@ -246,8 +244,8 @@ const touchesHoistedSlots = (
 
 const detectBaseSources = (
 	configNode: ObjectExpression,
-	args: ReadonlyArray<Expression | SpreadElement>,
-	sourceCode: SourceCode
+	slotsObj: ObjectExpression | null,
+	args: ReadonlyArray<Expression | SpreadElement>
 ): BaseSource[] => {
 	const sources: BaseSource[] = [];
 	const [arg] = args;
@@ -266,8 +264,6 @@ const detectBaseSources = (
 			container: configNode
 		});
 	}
-
-	const slotsObj = getSlotsObject(configNode, sourceCode);
 
 	if (slotsObj) {
 		const slotsBaseProp = findProperty(slotsObj, 'base');
@@ -500,6 +496,8 @@ const checkBaseStyle = (
 	baseStyle: BaseStyle,
 	isFactoryConfig: boolean
 ) => {
+	const slotsObj = getSlotsObject(configNode, context.sourceCode);
+
 	let insertInto: ObjectExpression | null = null;
 
 	if (baseStyle === 'field') {
@@ -507,8 +505,6 @@ const checkBaseStyle = (
 	}
 
 	if (baseStyle === 'slotsBase') {
-		const slotsObj = getSlotsObject(configNode, context.sourceCode);
-
 		if (!slotsObj) {
 			return;
 		}
@@ -522,7 +518,7 @@ const checkBaseStyle = (
 		return;
 	}
 
-	const sources = detectBaseSources(configNode, args, context.sourceCode);
+	const sources = detectBaseSources(configNode, slotsObj, args);
 	const mismatched = sources.filter((source) => source.style !== baseStyle);
 
 	if (mismatched.length === 0) {

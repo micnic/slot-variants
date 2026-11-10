@@ -40,7 +40,7 @@ const isTransparentWrapper = (node: Node): node is TransparentWrapper =>
 
 // The expression a chain of transparent wrappers stands for: `x as const`,
 // `x satisfies T` and `x!` are read as `x`.
-export const unwrapExpression = (node: Node): Node => {
+const unwrapExpression = (node: Node): Node => {
 	let current = node;
 
 	while (isTransparentWrapper(current)) {
@@ -159,7 +159,7 @@ export const findSingleBinding = (
 
 // The one definition `name` resolves to, or null when it's unbound or
 // declared more than once.
-export const findSingleDef = (
+const findSingleDef = (
 	scope: Scope.Scope,
 	name: string
 ): Scope.Definition | null => {

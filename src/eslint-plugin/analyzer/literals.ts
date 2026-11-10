@@ -7,7 +7,7 @@ export type LiteralRewrite = { node: Node; nextText: string; quote: string };
 // HTML splits a class attribute on ASCII whitespace only — space, tab, line
 // feed, form feed and carriage return. Any other space, like a non-breaking
 // one, is part of a class name, unlike in JavaScript's `\s`.
-export const CLASS_SEPARATOR = /[\t\n\f\r ]+/;
+const CLASS_SEPARATOR = /[\t\n\f\r ]+/;
 
 // A run of non-separator characters: one class name.
 export const CLASS_TOKEN = /[^\t\n\f\r ]+/g;
