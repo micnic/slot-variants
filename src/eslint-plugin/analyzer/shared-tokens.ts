@@ -1,7 +1,7 @@
 import type { Rule, SourceCode } from 'eslint';
-import type { Node, ObjectExpression } from 'estree';
+import type { ArrayExpression, Node, ObjectExpression, Property } from 'estree';
 import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
-import { type ListItems, makeListFix } from './list-fix.ts';
+import { type EmptyFix, type ListItems, makeListFix } from './list-fix.ts';
 import {
 	canHoistAsLiteral,
 	getRawLiteralTokens,
@@ -679,7 +679,7 @@ const getSingleCompoundMatcher = (
 
 // Plans merging a single-key `compoundVariants` entry's class into every
 // variant value its matcher statically resolves to, plus removing the entry
-// itself. Only attempted for `compoundVariants` — `compoundSlots`' class
+// itself (`removeEntry`). Only attempted for `compoundVariants` — `compoundSlots`' class
 // belongs on a specific slot rather than the whole variant value, which is
 // enough extra shape to leave unfixed for now. Any of: a dynamic class, an
 // unreadable matcher value, a missing or non-literal target value, aborts the
@@ -689,10 +689,10 @@ const planSingleKeyCompoundFix = (
 	element: ObjectExpression,
 	matcher: SingleMatcher,
 	variantValue: Node,
-	siblingElements: ListItems,
+	removeEntry: EmptyFix | undefined,
 	canEdit: (node: Node) => boolean
 ): EntryListFixer | undefined => {
-	if (!canEdit(element)) {
+	if (removeEntry === undefined || !canEdit(element)) {
 		return undefined;
 	}
 
@@ -736,8 +736,6 @@ const planSingleKeyCompoundFix = (
 		rewrites.push(rewrite);
 	}
 
-	const removeEntry = makeListFix(context, element, siblingElements);
-
 	return (fixer) => {
 		const removal = removeEntry(fixer);
 
@@ -775,7 +773,7 @@ const checkCompoundEntryForSingleKey = (
 	kind: 'compoundVariants' | 'compoundSlots',
 	variantsMap: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
-	siblingElements: ListItems,
+	removeEntry: EmptyFix | undefined,
 	scope: CompoundScope
 ) => {
 	const matcher = getSingleCompoundMatcher(element);
@@ -808,7 +806,7 @@ const checkCompoundEntryForSingleKey = (
 			element,
 			matcher,
 			variantValue,
-			siblingElements,
+			removeEntry,
 			scope.canEdit
 		);
 	}
@@ -825,15 +823,56 @@ const checkCompoundEntryForSingleKey = (
 	});
 };
 
+const countListItems = (list: ListItems): number => {
+	let count = 0;
+
+	for (const item of list) {
+		if (item) {
+			count += 1;
+		}
+	}
+
+	return count;
+};
+
+// How a compound entry is removed once its class has moved: the entry alone
+// while others remain, else the whole config property, since the empty list
+// left behind would only be reported by no-empty-classes. Undefined when the
+// list isn't written in the config itself, so there's no property to remove.
+const getEntryRemoval = (
+	context: Rule.RuleContext,
+	configNode: ObjectExpression,
+	compounds: ArrayExpression,
+	element: Node
+): EmptyFix | undefined => {
+	if (countListItems(compounds.elements) > 1) {
+		return makeListFix(context, element, compounds.elements);
+	}
+
+	const property = configNode.properties.find(
+		(prop): prop is Property =>
+			prop.type === 'Property' && prop.value === compounds
+	);
+
+	if (property === undefined) {
+		return undefined;
+	}
+
+	return makeListFix(context, property, configNode.properties);
+};
+
 const checkCompoundsForSingleKey = (
 	context: Rule.RuleContext,
-	compoundNode: Node | undefined,
+	configNode: ObjectExpression,
 	kind: 'compoundVariants' | 'compoundSlots',
 	variantsMap: ReadonlyMap<string, Node>,
 	slotNames: Set<string>,
 	scope: CompoundScope
 ) => {
-	const compounds = resolveContainer(compoundNode, context.sourceCode);
+	const compounds = resolveContainer(
+		getProperties(configNode).get(kind),
+		context.sourceCode
+	);
 
 	if (compounds === undefined || compounds.type !== 'ArrayExpression') {
 		return;
@@ -852,7 +891,7 @@ const checkCompoundsForSingleKey = (
 			kind,
 			variantsMap,
 			slotNames,
-			compounds.elements,
+			getEntryRemoval(context, configNode, compounds, element),
 			scope
 		);
 	});
@@ -916,7 +955,7 @@ export const analyzeSharedTokens = (
 
 	checkCompoundsForSingleKey(
 		context,
-		config.get('compoundVariants'),
+		configNode,
 		'compoundVariants',
 		variantsMap,
 		slotNames,
@@ -924,7 +963,7 @@ export const analyzeSharedTokens = (
 	);
 	checkCompoundsForSingleKey(
 		context,
-		config.get('compoundSlots'),
+		configNode,
 		'compoundSlots',
 		variantsMap,
 		slotNames,

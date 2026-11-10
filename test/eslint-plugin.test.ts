@@ -6051,8 +6051,8 @@ const NO_SHARED_TOKENS_INVALID = [
 	},
 	{
 		// Removing the sole compound entry would leave `compoundVariants`
-		// empty, which no-empty-classes would then flag — so it's reported
-		// without a fix instead.
+		// empty, which no-empty-classes would then flag — so the whole
+		// property goes instead.
 		code:
 			IMPORT +
 			`sv({
@@ -6061,6 +6061,27 @@ const NO_SHARED_TOKENS_INVALID = [
 				},
 				compoundVariants: [{ variant: 'link', className: 'e' }]
 			});`,
+		output:
+			IMPORT +
+			`sv({
+				variants: {
+					variant: { primary: 'a', link: 'b e' }
+				}
+			});`,
+		errors: [singleKeyCompound('compoundVariants', 'variant', "'link'")]
+	},
+	{
+		// Removing the property would delete the comment inside it, so it's
+		// reported without a fix.
+		code:
+			IMPORT +
+			`sv({
+				variants: {
+					variant: { primary: 'a', link: 'b' }
+				},
+				compoundVariants: [{ variant: 'link', className: 'e' /* why */ }]
+			});`,
+		output: null,
 		errors: [singleKeyCompound('compoundVariants', 'variant', "'link'")]
 	},
 	{
