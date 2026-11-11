@@ -174,7 +174,7 @@ import { twMerge } from 'tailwind-merge';
 sv('px-4 py-2', { variants: { size: { lg: 'px-6 py-3' } }, postProcess: twMerge });
 ```
 
-To avoid restating `postProcess` (or any config default) per component, wrap `sv` once with `createSV`. Defaults are shallow merged into every config-based call and a per-call value always wins:
+To avoid restating `postProcess` per component, wrap `sv` once with `createSV`. Defaults accept only `base`, `cacheSize`, `postProcess`, `introspection`, and boolean `requiredVariants`/`multiSlots` (reflected in each component's types). They are shallow merged into every config-based call and a per-call value always wins:
 
 ```typescript
 import { createSV } from 'slot-variants';
@@ -316,12 +316,12 @@ An opt-in `sv-config-style` rule additionally enforces a canonical config key or
 
 ## Exported Types
 
-| Type                 | Description                                                                                                    |
-| -------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `ClassValue`         | Valid input types for `cn()` — string, array, object, boolean, number, bigint, `null`, `undefined`             |
-| `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E`                            |
-| `VariantValue<T, K>` | Extracts the value union for a single variant key `K`, without `undefined`                                     |
-| `SlotClassProps<T>`  | Extracts the per-slot class injection shape from an `sv()` return type                                         |
-| `SV<D>`              | The shape of an `sv()` function, with the factory's introspection default `D`; the return type of `createSV()` |
+| Type                 | Description                                                                                                                                                            |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ClassValue`         | Valid input types for `cn()` — string, array, object, boolean, number, bigint, `null`, `undefined`                                                                     |
+| `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E`                                                                                    |
+| `VariantValue<T, K>` | Extracts the value union for a single variant key `K`, without `undefined`                                                                                             |
+| `SlotClassProps<T>`  | Extracts the per-slot class injection shape from an `sv()` return type                                                                                                 |
+| `SV<D, DR, DM>`      | The shape of an `sv()` function, with the factory's `introspection` (`D`), `requiredVariants` (`DR`) and `multiSlots` (`DM`) defaults; the return type of `createSV()` |
 
 Functions are imported as named values; types via `import type { ... } from 'slot-variants'`.

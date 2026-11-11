@@ -7041,6 +7041,116 @@ t.test('createSV with no defaults behaves like sv', (t) => {
 	t.end();
 });
 
+t.test('createSV default requiredVariants requires every variant', (t) => {
+	const factorySv = createSV({ requiredVariants: true });
+
+	const button = factorySv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm'
+			}
+		}
+	});
+
+	t.equal(button({ size: 'sm' }), 'btn text-sm', 'required prop is applied');
+	t.throws(
+		// @ts-expect-error - the default makes `size` a required prop
+		() => button(),
+		{ message: 'Missing required variant: "size"' },
+		'throws when the inherited required variant is missing'
+	);
+
+	const optional = factorySv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm'
+			}
+		},
+		requiredVariants: false
+	});
+
+	t.equal(optional(), 'btn', 'per-call false overrides the default');
+
+	const partial = factorySv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm'
+			},
+			tone: {
+				dark: 'bg-black'
+			}
+		},
+		requiredVariants: ['tone']
+	});
+
+	t.equal(
+		partial({ tone: 'dark' }),
+		'btn bg-black',
+		'per-call list replaces the default'
+	);
+
+	t.end();
+});
+
+t.test('createSV default multiSlots makes every slot a function', (t) => {
+	const factorySv = createSV({ multiSlots: true });
+
+	const card = factorySv('card', {
+		slots: {
+			header: 'title'
+		},
+		variants: {
+			size: {
+				sm: {
+					header: 'text-sm'
+				}
+			}
+		}
+	});
+
+	const { base, header } = card();
+
+	t.equal(base(), 'card', 'base is a slot function');
+	t.equal(header({ size: 'sm' }), 'title text-sm', 'slot fn takes props');
+
+	const box = factorySv('box', {
+		variants: {
+			size: {
+				sm: 'p-2'
+			}
+		}
+	});
+
+	t.equal(box().base({ size: 'sm' }), 'box p-2', 'slotless base is a fn');
+
+	const plain = factorySv('box', {
+		variants: {
+			size: {
+				sm: 'p-2'
+			}
+		},
+		multiSlots: false
+	});
+
+	const plainString: string = plain({ size: 'sm' });
+
+	t.equal(plainString, 'box p-2', 'per-call false overrides it');
+
+	t.end();
+});
+
+t.test('createSV defaults reject options that shape a component', (t) => {
+	// @ts-expect-error - variants can't be shared through the factory
+	const withVariants = createSV({ variants: { size: { sm: 'text-sm' } } });
+	// @ts-expect-error - a list of names can't be checked against each call
+	const withList = createSV({ requiredVariants: ['size'] });
+
+	t.equal(typeof withVariants, 'function', 'still builds at runtime');
+	t.equal(typeof withList, 'function', 'still builds at runtime');
+
+	t.end();
+});
+
 // --- createSV type tests ---
 
 const _factorySv = createSV({ introspection: true });

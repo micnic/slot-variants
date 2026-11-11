@@ -804,9 +804,22 @@ const button = customSV('px-4 py-2 bg-blue-500', {
 });
 ```
 
-`defaults` accepts any config option. A per-call value always wins over the matching default — there is no deep merging of variants or compound rules. Calls with no config object are forwarded straight to `cn()`-style merging and never see the defaults.
+`defaults` accepts `base`, `cacheSize`, `postProcess`, `introspection`, and `true`/`false` for `requiredVariants` and `multiSlots`. Options that describe a single component — `variants`, `slots`, `groups`, `presets`, compound rules, `defaultVariants`, and lists of variant or slot names — belong in each call's config and are a type error in `defaults`. A per-call value always wins over the matching default, and a per-call `undefined` keeps it. Calls with no config object are forwarded straight to `cn()`-style merging and never see the defaults.
 
-A factory-level `introspection: true` is reflected in each component's return type, so the [introspection](#introspection) API is available without setting the flag on every config.
+Factory-level `introspection`, `requiredVariants`, and `multiSlots` are reflected in each component's types: with `introspection: true` the [introspection](#introspection) API is available, with `requiredVariants: true` every variant prop is required, and with `multiSlots: true` every slot is a function — all without setting the flag on every config:
+
+```typescript
+const strictSV = createSV({ requiredVariants: true });
+
+const badge = strictSV('badge', {
+  variants: {
+    tone: { info: 'bg-blue-100', warn: 'bg-amber-100' }
+  }
+});
+
+badge({ tone: 'info' }); // 'badge bg-blue-100'
+badge(); // Type error: `tone` is required
+```
 
 ### Caching
 
@@ -996,13 +1009,13 @@ When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{
 
 ### Exported Types
 
-| Type                 | Description                                                                                                    |
-| -------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `ClassValue`         | Valid input types for `cn()`                                                                                   |
-| `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E`                            |
-| `VariantValue<T, K>` | Extracts the value union for a single variant key `K`, without `undefined`                                     |
-| `SlotClassProps<T>`  | Extracts the per-slot class injection shape from an `sv()` return type                                         |
-| `SV<D>`              | The shape of an `sv()` function, with the factory's introspection default `D`; the return type of `createSV()` |
+| Type                 | Description                                                                                                                                                            |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ClassValue`         | Valid input types for `cn()`                                                                                                                                           |
+| `VariantProps<T, E>` | Extracts variant props from an `sv()` return type, optionally excluding keys in `E`                                                                                    |
+| `VariantValue<T, K>` | Extracts the value union for a single variant key `K`, without `undefined`                                                                                             |
+| `SlotClassProps<T>`  | Extracts the per-slot class injection shape from an `sv()` return type                                                                                                 |
+| `SV<D, DR, DM>`      | The shape of an `sv()` function, with the factory's `introspection` (`D`), `requiredVariants` (`DR`) and `multiSlots` (`DM`) defaults; the return type of `createSV()` |
 
 ### Return Type
 

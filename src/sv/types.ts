@@ -538,15 +538,46 @@ export type RawConfig = Config<
 >;
 
 /**
- * An `sv()` call signature taking class args of shape `C` before a config.
+ * The options `createSV()` applies to every config-based call. Only options
+ * that a call's types can follow are accepted, so `requiredVariants` and
+ * `multiSlots` take a boolean rather than a list of names.
  */
-type ConfigCall<B extends boolean, C extends ClassValue[]> = <
+export type SVDefaults<
+	I extends boolean,
+	R extends boolean,
+	M extends boolean
+> = {
+	/** Classes always applied, unless a call passes its own `base`. */
+	base?: ConfigClassValue;
+	/** Makes every variant required, unless a call sets its own. */
+	requiredVariants?: R | undefined;
+	/** Makes every slot a function, unless a call sets its own. */
+	multiSlots?: M | undefined;
+	/** How many prop combinations' classes are cached. Defaults to 256. */
+	cacheSize?: number | undefined;
+	/** Exposes variant metadata and cache controls on the returned function. */
+	introspection?: I | undefined;
+	/** Transforms the final class string (or each slot's) before returning. */
+	postProcess?: ((className: string) => string) | undefined;
+};
+
+/**
+ * An `sv()` call signature taking class args of shape `C` before a config,
+ * with the factory defaults for `introspection` (`B`), `requiredVariants`
+ * (`DR`) and `multiSlots` (`DM`) used when the config omits them.
+ */
+type ConfigCall<
+	B extends boolean,
+	DR extends boolean,
+	DM extends boolean,
+	C extends ClassValue[]
+> = <
 	S extends MaybeSlots = undefined,
 	G extends MaybeGroups<S> = undefined,
 	V extends MaybeVariants<S, G> = undefined,
 	P extends MaybePresets<S, G, V> = undefined,
-	M extends MultiSlots<S, G> = false,
-	R extends RequiredVariants<V> = false,
+	M extends MultiSlots<S, G> = DM,
+	R extends RequiredVariants<V> = DR,
 	I extends MaybeIntrospection = undefined
 >(
 	...args: [...C, Config<S, G, V, P, M, R, I>]
@@ -565,18 +596,23 @@ type UnmatchedCall = (...args: never[]) => never;
 
 /**
  * The shape of an `sv()` function. Mirrors the overloads of the exported `sv`,
- * with the introspection default `D` baked in by `createSV()` so configs that
- * omit `introspection` inherit the factory default in their return type.
+ * with the defaults for `introspection` (`D`), `requiredVariants` (`DR`) and
+ * `multiSlots` (`DM`) baked in by `createSV()`, so configs that omit them
+ * inherit the factory defaults in their types.
  *
  * The fixed-arity config overloads come last so an invalid config is reported
  * at the offending property rather than across the whole call.
  */
-export type SV<D extends boolean = false> = ConfigCall<D, ClassValue[]> &
+export type SV<
+	D extends boolean = false,
+	DR extends boolean = false,
+	DM extends boolean = false
+> = ConfigCall<D, DR, DM, ClassValue[]> &
 	ClassCall &
 	UnmatchedCall &
-	ConfigCall<D, []> &
-	ConfigCall<D, [ClassValue]> &
-	ConfigCall<D, [ClassValue, ClassValue]>;
+	ConfigCall<D, DR, DM, []> &
+	ConfigCall<D, DR, DM, [ClassValue]> &
+	ConfigCall<D, DR, DM, [ClassValue, ClassValue]>;
 
 /**
  * Extracts the variant props object from an `sv()` return type

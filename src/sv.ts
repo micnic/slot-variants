@@ -29,6 +29,7 @@ import {
 	type RuntimeClassValue,
 	type RuntimeProps,
 	type SV,
+	type SVDefaults,
 	type VariantFn
 } from './sv/types.ts';
 
@@ -259,7 +260,8 @@ const mergeConfig = (defaults: RawConfig | undefined, config: RawConfig) => {
 
 /**
  * Builds a pre-configured `sv()` function whose `defaults` are applied to every
- * config-based call. The defaults accept any config option and are shallow
+ * config-based call. The defaults accept `base`, `cacheSize`, `postProcess`,
+ * `introspection` and boolean `requiredVariants`/`multiSlots`, and are shallow
  * merged so a per-call value always wins; calls with no config are forwarded
  * to `cn()`-style merging untouched.
  *
@@ -275,9 +277,13 @@ const mergeConfig = (defaults: RawConfig | undefined, config: RawConfig) => {
  * });
  * ```
  */
-export const createSV = <I extends boolean = false>(
-	defaults?: RawConfig & { introspection?: I | undefined }
-): SV<I> => {
+export const createSV = <
+	I extends boolean = false,
+	DR extends boolean = false,
+	DM extends boolean = false
+>(
+	defaults?: SVDefaults<I, DR, DM>
+): SV<I, DR, DM> => {
 	// These overloads cover every `SV` signature, so `customSV` is checked
 	// against `SV<I>` on return instead of being asserted to it
 	function customSV<
@@ -285,8 +291,8 @@ export const createSV = <I extends boolean = false>(
 		G extends MaybeGroups<S> = undefined,
 		V extends MaybeVariants<S, G> = undefined,
 		P extends MaybePresets<S, G, V> = undefined,
-		M extends MultiSlots<S, G> = false,
-		R extends RequiredVariants<V> = false,
+		M extends MultiSlots<S, G> = DM,
+		R extends RequiredVariants<V> = DR,
 		J extends MaybeIntrospection = undefined
 	>(
 		...args: [...ClassValue[], Config<S, G, V, P, M, R, J>]
