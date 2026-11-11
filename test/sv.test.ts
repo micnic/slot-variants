@@ -5598,6 +5598,55 @@ t.test('preset throws when it shares a name with a variant', (t) => {
 	t.end();
 });
 
+t.test('variant throws when it has a reserved name', (t) => {
+	t.throws(
+		() =>
+			sv('btn', {
+				variants: {
+					// @ts-expect-error - `slots` is a compound entry key
+					slots: { a: 'x' }
+				}
+			}),
+		{ message: 'Variant name "slots" is reserved' },
+		'rejects slots'
+	);
+	t.throws(
+		() =>
+			sv('btn', {
+				variants: {
+					// @ts-expect-error - `preset` is a prop
+					preset: { a: 'x' }
+				}
+			}),
+		{ message: 'Variant name "preset" is reserved' },
+		'rejects preset'
+	);
+	t.throws(
+		() =>
+			sv('btn', {
+				variants: {
+					// @ts-expect-error - `class` is a prop
+					class: { a: 'x' }
+				}
+			}),
+		{ message: 'Variant name "class" is reserved' },
+		'rejects class'
+	);
+	t.throws(
+		() =>
+			sv('btn', {
+				variants: {
+					// @ts-expect-error - `className` is a prop
+					className: { a: 'x' }
+				}
+			}),
+		{ message: 'Variant name "className" is reserved' },
+		'rejects className'
+	);
+
+	t.end();
+});
+
 t.test('preset with slots', (t) => {
 	const card = sv('card border', {
 		slots: {

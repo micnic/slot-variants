@@ -120,8 +120,9 @@ const createCache = (cacheSize: number) => {
 export const isReservedProp = (key: string) =>
 	key === 'class' || key === 'className' || key === 'preset';
 
-const isCompoundMetaKey = (compoundKey: string) =>
-	compoundKey === 'slots' || isReservedProp(compoundKey);
+// The keys a compound entry reads besides its matchers, which a variant
+// therefore can't be named.
+const isReservedKey = (key: string) => key === 'slots' || isReservedProp(key);
 
 // A variant value is known by its string form, the same way runtime props are
 // looked up.
@@ -220,7 +221,7 @@ const compileCompoundMatchers = (
 	seedPresetMatchers(matchers, presets, compound.preset);
 
 	for (const [compoundKey, value] of entries(compound)) {
-		if (isCompoundMetaKey(compoundKey)) {
+		if (isReservedKey(compoundKey)) {
 			continue;
 		}
 
@@ -361,6 +362,10 @@ const createNormalizedVariants = <S extends MaybeSlots>(
 	const result: NormalizedVariants = {};
 
 	for (const [variantKey, variantValue] of entries(variants)) {
+		if (isReservedKey(variantKey)) {
+			throw new Error(`Variant name "${variantKey}" is reserved`);
+		}
+
 		result[variantKey] = normalizeVariantValue(variantValue, targetKeys);
 	}
 

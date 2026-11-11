@@ -289,6 +289,14 @@ type PresetNameCollision<V extends AnyVariants, P> = {
 	]: 'Preset name must not match a variant name';
 };
 
+/** Keys a variant function or compound entry reads besides its variants. */
+type ReservedVariantName = 'slots' | 'class' | 'className' | 'preset';
+
+// A variant named like a reserved key, typed as the reason it's rejected.
+type ReservedVariantCollision<V> = {
+	[K in Extract<keyof V, ReservedVariantName>]: 'Variant name is reserved';
+};
+
 export type RuntimeProps = RuntimeVariantState & {
 	class?: RuntimeClassValue;
 	className?: RuntimeClassValue;
@@ -406,7 +414,7 @@ export type Config<
 	/** Classes always applied, alongside matched variant/compound classes. */
 	base?: ConfigClassValue;
 	/** Named variants, each mapping its values to the classes they apply. */
-	variants?: V | undefined;
+	variants?: (V & ReservedVariantCollision<V>) | undefined;
 	/** Named slots with their own classes; the result becomes a slot map. */
 	slots?: S | undefined;
 	/** Named slot sets usable as slot names; must not reuse a slot name. */

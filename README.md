@@ -163,6 +163,8 @@ badge({ color: 'green', size: 'sm' });
 // 'badge bg-green-100 text-green-800 text-xs px-2 py-0.5'
 ```
 
+A variant can't be named `class`, `className`, `preset`, or `slots`, since the variant function and compound entries already read those keys. Such a config is rejected by TypeScript and throws when the config is evaluated.
+
 Variant values accept a string or an array of strings:
 
 ```typescript
@@ -930,7 +932,7 @@ Keeping `class` and `className` on the variant side is what lets a caller's own 
 
 ### Errors & Validation
 
-`sv()` validates both the config and the runtime props, throwing an `Error` on misconfiguration. Config problems (an unknown variant referenced by `requiredVariants`, `defaultVariants`, a preset, or a compound entry; a value that isn't one of the variant's defined values; a preset named after a variant; an unknown preset named by a compound entry; a group named after a slot, left empty, or naming a slot that doesn't exist; a compound or slot entry missing required fields) throw as soon as the config is evaluated. Runtime problems (a missing required variant, an invalid variant value, or an unknown preset name) throw when the variant function is called — these guard against untyped input, such as a value coming from a form or API, since TypeScript already prevents most of these at compile time.
+`sv()` validates both the config and the runtime props, throwing an `Error` on misconfiguration. Config problems (an unknown variant referenced by `requiredVariants`, `defaultVariants`, a preset, or a compound entry; a value that isn't one of the variant's defined values; a variant named `class`, `className`, `preset`, or `slots`; a preset named after a variant; an unknown preset named by a compound entry; a group named after a slot, left empty, or naming a slot that doesn't exist; a compound or slot entry missing required fields) throw as soon as the config is evaluated. Runtime problems (a missing required variant, an invalid variant value, or an unknown preset name) throw when the variant function is called — these guard against untyped input, such as a value coming from a form or API, since TypeScript already prevents most of these at compile time.
 
 ## TypeScript
 

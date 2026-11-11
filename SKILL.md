@@ -306,7 +306,7 @@ The table lists the options in the canonical key order enforced by the opt-in `s
 
 ## Errors & Validation
 
-`sv()` throws on misconfiguration. Config errors (unknown variant referenced by `requiredVariants`/`defaultVariants`/a preset/a compound entry, an invalid default/preset/compound value, a preset sharing a name with a variant, an unknown preset named by a compound entry, a group sharing a name with a slot or naming an unknown/no slot, a compound entry missing `class`/`className`) throw when the config is evaluated. Runtime errors (missing required variant, invalid variant value, unknown preset name) throw when the variant function is called with bad props. Treat a thrown error as expected validation, not a library bug — fix the config or the calling props.
+`sv()` throws on misconfiguration. Config errors (unknown variant referenced by `requiredVariants`/`defaultVariants`/a preset/a compound entry, an invalid default/preset/compound value, a variant named `class`/`className`/`preset`/`slots`, a preset sharing a name with a variant, an unknown preset named by a compound entry, a group sharing a name with a slot or naming an unknown/no slot, a compound entry missing `class`/`className`) throw when the config is evaluated. Runtime errors (missing required variant, invalid variant value, unknown preset name) throw when the variant function is called with bad props. Treat a thrown error as expected validation, not a library bug — fix the config or the calling props.
 
 ## Linting
 
