@@ -322,7 +322,8 @@ export const createTrackedCallResolver = (
 // is registered alongside the script's wherever the parser offers it.
 export const createTrackedCallListeners = (
 	context: Rule.RuleContext,
-	onCall: (node: CallExpression, call: CallMatch, ctx: StyledContext) => void
+	onCall: (node: CallExpression, call: CallMatch, ctx: StyledContext) => void,
+	onOtherCall?: (node: CallExpression, ctx: StyledContext) => void
 ): Rule.RuleListener => {
 	const ctx = createTrackedCallResolver(context);
 	const visitors = {
@@ -331,7 +332,10 @@ export const createTrackedCallListeners = (
 
 			if (call) {
 				onCall(node, call, ctx);
+				return;
 			}
+
+			onOtherCall?.(node, ctx);
 		}
 	};
 	const { defineTemplateBodyVisitor } = context.sourceCode.parserServices;

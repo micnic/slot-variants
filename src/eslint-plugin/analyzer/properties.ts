@@ -6,6 +6,14 @@ import { resolveContainer } from './const-bindings.ts';
 
 type KeyPredicate = (key: string) => boolean;
 
+export type GroupSlots = ReadonlyMap<string, ReadonlyArray<string>>;
+
+export type SlotTargetOverlap = { slot: string; other: string };
+
+type SlotTargetOverlaps = ReadonlyMap<string, readonly SlotTargetOverlap[]>;
+
+type GroupEntry = [group: string, slots: ReadonlyArray<string>];
+
 const EMPTY_PROPERTIES: ReadonlyMap<string, Node> = new Map();
 
 const propertiesCache = new WeakMap<
@@ -144,3 +152,40 @@ export const getConfigSlotNames = (
 export const getClassValue = (
 	properties: ReadonlyMap<string, Node>
 ): Node | undefined => properties.get('class') ?? properties.get('className');
+
+// The slots each group key of a slot object reaches that another key of the
+// same object already targets: a key naming the slot, or an earlier group.
+// Keys that overlap nothing are left out.
+export const getSlotTargetOverlaps = (
+	keys: Iterable<string>,
+	groupSlots: GroupSlots
+): SlotTargetOverlaps => {
+	const targeted = new Map<string, string>();
+	const overlaps = new Map<string, SlotTargetOverlap[]>();
+	const groupEntries: GroupEntry[] = [];
+
+	for (const key of keys) {
+		const slots = groupSlots.get(key);
+
+		if (slots === undefined) {
+			targeted.set(key, key);
+		} else {
+			groupEntries.push([key, slots]);
+		}
+	}
+
+	for (const [key, slots] of groupEntries) {
+		for (const slot of slots) {
+			const other = targeted.get(slot);
+
+			if (other === undefined) {
+				targeted.set(slot, key);
+				continue;
+			}
+
+			getOrCreate(overlaps, key, () => []).push({ slot, other });
+		}
+	}
+
+	return overlaps;
+};

@@ -6,7 +6,8 @@ import {
 } from '../analyzer/conflict-options.ts';
 import {
 	analyzeCnForRule,
-	analyzeConfigForRule
+	analyzeConfigForRule,
+	reportClassPropOverlaps
 } from '../analyzer/conflicts.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
@@ -60,18 +61,31 @@ export const noConflictingClasses: Rule.RuleModule = {
 			conflict:
 				'Conflicting classes "{{tokens}}" target the same utility namespace in the "{{slot}}" slot output.',
 			conflictCn:
-				'Conflicting classes "{{tokens}}" target the same utility namespace in the call output.'
+				'Conflicting classes "{{tokens}}" target the same utility namespace in the call output.',
+			overlappingSlotTarget:
+				'"{{key}}" also targets slot "{{slot}}", which "{{other}}" already sets here — "{{slot}}" gets both values.'
 		}
 	},
 	create(context) {
 		const options = readConflictOptions(context.options[0]);
 
-		return createTrackedCallListeners(context, (_node, call) => {
-			if (call.config) {
-				analyzeConfigForRule(context, call.config, call.args, options);
-			} else {
-				analyzeCnForRule(context, call.args, options);
+		return createTrackedCallListeners(
+			context,
+			(_node, call) => {
+				if (call.config) {
+					analyzeConfigForRule(
+						context,
+						call.config,
+						call.args,
+						options
+					);
+				} else {
+					analyzeCnForRule(context, call.args, options);
+				}
+			},
+			(node, ctx) => {
+				reportClassPropOverlaps(context, node, ctx);
 			}
-		});
+		);
 	}
 };

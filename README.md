@@ -614,6 +614,8 @@ card({ size: 'lg' });
 // body:   'b px-2'
 ```
 
+The [`no-conflicting-classes`](#slot-variantsno-conflicting-classes) lint rule flags such overlapping keys.
+
 A group holds slot names only — it cannot name another group. Group names must not collide with a slot name (including `base`), a group must list at least one slot, and every listed slot must exist; otherwise `sv()` throws when the config is evaluated.
 
 ### Compound Slots
@@ -1237,6 +1239,20 @@ cn('flex items-center', 'flex'); // 'flex' duplicated across args
 ```
 
 Move the shared class into `base` — or use compound variants — so each class has a single source.
+
+It also flags a slot object whose keys reach the same slot twice — a slot and a group naming it, or two groups sharing it — since that slot then gets both values:
+
+```typescript
+const card = sv({
+  slots: { header: 'font-bold', body: 'text-sm' },
+  groups: { content: ['header', 'body'] },
+  variants: {
+    size: { lg: { header: 'px-6', content: 'px-2' } } // header gets both
+  }
+});
+
+card({ class: { header: 'mt-1', content: 'mt-2' } }); // same, at a call site
+```
 
 `exclusiveGroups: true` turns on the built-in Tailwind groups. An array replaces them with your own groups: each group lists at least two utilities that can't apply together, written without Tailwind variants like `md:` and without the `prefix`; `md:flex` and `md:grid` still conflict. A utility may appear in only one group; listing it in two is a configuration error.
 

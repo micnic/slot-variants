@@ -1,15 +1,30 @@
 import type { Rule } from 'eslint';
-import type { Expression, Node, SpreadElement } from 'estree';
+import type { CallExpression, Expression, Node, SpreadElement } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import {
 	type ConflictOptions,
 	getConflictKey,
 	overlapNeighbors
 } from '../tailwind-categories.ts';
-import { resolveContainer } from './const-bindings.ts';
-import { getConfigSlotNames, getProperties } from './properties.ts';
-import { readGroups } from './styled-values.ts';
-import { collectCnEntries, collectConfigEntries } from './token-extraction.ts';
+import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
+import {
+	collectSlotKeyedProperties,
+	getConfigSlotNames,
+	getProperties,
+	getSlotTargetOverlaps,
+	type GroupSlots
+} from './properties.ts';
+import {
+	getOverrideValue,
+	readGroups,
+	resolveInvocation,
+	type StyledContext
+} from './styled-values.ts';
+import {
+	collectCnEntries,
+	collectConfigEntries,
+	forEachCompoundClass
+} from './token-extraction.ts';
 import {
 	areDistinctTokensExclusive,
 	areExclusiveMatchers,
@@ -290,6 +305,87 @@ const mergeTokenMaps = (
 	return merged;
 };
 
+// Reports every group key of a static slot object that reaches a slot another
+// key of the object already targets, so that slot gets both values.
+const reportSlotObjectOverlaps = (
+	context: Rule.RuleContext,
+	raw: Node,
+	slotNames: Set<string>,
+	groupSlots: GroupSlots
+) => {
+	const slotKeyed = collectSlotKeyedProperties(
+		resolveStaticValue(raw, context.sourceCode),
+		slotNames
+	);
+
+	if (slotKeyed === null) {
+		return;
+	}
+
+	const overlaps = getSlotTargetOverlaps(slotKeyed.keys(), groupSlots);
+
+	for (const [key, node] of slotKeyed) {
+		for (const { slot, other } of overlaps.get(key) ?? []) {
+			context.report({
+				node,
+				messageId: 'overlappingSlotTarget',
+				data: { key, slot, other }
+			});
+		}
+	}
+};
+
+// The slot objects a config holds: each variant value, and each
+// `compoundVariants` class object.
+const reportConfigOverlaps = (
+	context: Rule.RuleContext,
+	config: ReadonlyMap<string, Node>,
+	slotNames: Set<string>,
+	groupSlots: GroupSlots
+) => {
+	const { sourceCode } = context;
+	const variants = resolveContainer(config.get('variants'), sourceCode);
+
+	for (const variant of getProperties(variants).values()) {
+		const values = resolveStaticValue(variant, sourceCode);
+
+		for (const value of getProperties(values).values()) {
+			reportSlotObjectOverlaps(context, value, slotNames, groupSlots);
+		}
+	}
+
+	forEachCompoundClass(config.get('compoundVariants'), sourceCode, (cls) => {
+		reportSlotObjectOverlaps(context, cls, slotNames, groupSlots);
+	});
+};
+
+/**
+ * Reports overlapping keys in the static `class` / `className` slot object a
+ * call of a compiled variant function passes. A multi-slot slot function's
+ * class prop applies to its own slot, so it's never a slot object.
+ */
+export const reportClassPropOverlaps = (
+	context: Rule.RuleContext,
+	node: CallExpression,
+	ctx: StyledContext
+) => {
+	const invocation = resolveInvocation(node, ctx);
+
+	if (invocation === null || invocation.slot !== null) {
+		return;
+	}
+
+	const value = getOverrideValue(node.arguments[0], ctx);
+
+	if (value === null) {
+		return;
+	}
+
+	const { slotNames, groupSlots } = invocation.styles;
+
+	reportSlotObjectOverlaps(context, value, slotNames, groupSlots);
+};
+
 export const analyzeConfigForRule = (
 	context: Rule.RuleContext,
 	configNode: Node,
@@ -363,6 +459,8 @@ export const analyzeConfigForRule = (
 			(entries) => !isConfinedToGroup(entries)
 		);
 	}
+
+	reportConfigOverlaps(context, config, slotNames, groupSlots);
 };
 
 export const analyzeCnForRule = (

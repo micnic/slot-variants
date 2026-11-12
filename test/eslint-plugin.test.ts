@@ -92,6 +92,9 @@ const dupCn = (token: string) => err('duplicateCn', { token });
 const conflict = (tokens: string, slot = 'base') =>
 	err('conflict', { tokens, slot });
 
+const overlap = (key: string, slot: string, other: string) =>
+	err('overlappingSlotTarget', { key, slot, other });
+
 const IMPORT_SV_CN = "import { cn, sv } from 'slot-variants';\n";
 
 // `no-restyle` names both sides of a collision, so its `conflict` data differs
@@ -2488,6 +2491,22 @@ const NO_CONFLICTING_DUP_VALID = [
 	// Values named like slots are mutually exclusive values.
 	IMPORT +
 		"sv({ slots: { top: 't', bottom: 'b' }, variants: { placement: { top: 'mt-1', bottom: 'mt-2' } } });",
+	// Groups that share no slot with the object's other keys.
+	IMPORT +
+		"sv({ slots: { header: 'font-bold', body: 'text-sm' }, groups: { top: ['header'] }, variants: { size: { lg: { top: 'mt-1', body: 'mt-2' } } } });",
+	// A spread or computed key hides which slots the object reaches.
+	IMPORT +
+		"sv({ slots: { header: 'font-bold' }, groups: { top: ['header'] }, variants: { size: { lg: { ...extra, header: 'mt-1', top: 'mt-2' } } } });",
+	IMPORT +
+		"sv({ slots: { header: 'font-bold' }, groups: { top: ['header'] }, variants: { size: { lg: { [k]: 'mt-1', top: 'mt-2' } } } });",
+	// Call sites: no class prop, a string class prop, and a multi-slot slot
+	// function, whose class prop applies to that one slot.
+	IMPORT +
+		"const card = sv({ slots: { header: 'font-bold' }, groups: { top: ['header'] }, variants: { size: { lg: 'x' } } });\ncard({ size: 'lg' });",
+	IMPORT +
+		"const card = sv({ slots: { header: 'font-bold' }, groups: { top: ['header'] } });\ncard({ class: 'mt-1' });",
+	IMPORT +
+		"const card = sv({ slots: { header: 'font-bold' }, groups: { top: ['header'] }, multiSlots: ['header'] });\ncard().header({ class: { header: 'mt-1', top: 'mt-2' } });",
 	// compoundSlots adds distinct classes — no dup.
 	IMPORT +
 		`sv({
@@ -2600,6 +2619,45 @@ const NO_CONFLICTING_DUP_VALID = [
 ];
 
 const NO_CONFLICTING_DUP_INVALID = [
+	{
+		// Both values reach `header`; the group's own conflict is still
+		// reported once, on the group.
+		code:
+			IMPORT +
+			"sv({ slots: { header: 'font-bold' }, groups: { top: ['header'] }, variants: { size: { lg: { header: 'mt-1', top: 'px-2 px-4' } } } });",
+		errors: [
+			overlap('top', 'header', 'header'),
+			...repeat(conflict('px-2, px-4', 'top'), 2)
+		]
+	},
+	{
+		// A group key reaches a slot the same variant value sets directly.
+		code:
+			IMPORT +
+			"sv({ slots: { header: 'font-bold', body: 'text-sm' }, groups: { content: ['header', 'body'] }, variants: { size: { lg: { header: 'px-6', content: 'mt-2' } } } });",
+		errors: [overlap('content', 'header', 'header')]
+	},
+	{
+		// Two groups share a slot in a compound class object.
+		code:
+			IMPORT +
+			"sv({ slots: { header: 'font-bold', body: 'text-sm' }, groups: { content: ['header', 'body'], top: ['header'] }, variants: { size: { sm: 'a', lg: 'b' } }, compoundVariants: [{ size: 'lg', class: { content: 'mt-1', top: 'italic' } }] });",
+		errors: [overlap('top', 'header', 'content')]
+	},
+	{
+		// A slot object under a `true` key.
+		code:
+			IMPORT +
+			"sv({ slots: { header: 'font-bold' }, groups: { all: ['base', 'header'] }, variants: { hl: { true: { base: 'ring', all: 'italic' } } } });",
+		errors: [overlap('all', 'base', 'base')]
+	},
+	{
+		// A static `class` prop at a call of the variant function.
+		code:
+			IMPORT +
+			"const card = sv({ slots: { header: 'font-bold', body: 'text-sm' }, groups: { content: ['header', 'body'] } });\ncard({ class: { header: 'mt-1', content: 'mt-2' } });",
+		errors: [overlap('content', 'header', 'header')]
+	},
 	{
 		// A separator written as an escape yields two tokens, so the repeat is
 		// visible as a duplicate. Neither token's own position is known inside
