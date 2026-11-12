@@ -154,8 +154,9 @@ export const getClassValue = (
 ): Node | undefined => properties.get('class') ?? properties.get('className');
 
 // The slots each group key of a slot object reaches that another key of the
-// same object already targets: a key naming the slot, or an earlier group.
-// Keys that overlap nothing are left out.
+// same object already targets: a key naming the slot, or an earlier group. A
+// slot a group lists twice is that group's own repeat, not an overlap. Keys
+// that overlap nothing are left out.
 export const getSlotTargetOverlaps = (
 	keys: Iterable<string>,
 	groupSlots: GroupSlots
@@ -183,7 +184,9 @@ export const getSlotTargetOverlaps = (
 				continue;
 			}
 
-			getOrCreate(overlaps, key, () => []).push({ slot, other });
+			if (other !== key) {
+				getOrCreate(overlaps, key, () => []).push({ slot, other });
+			}
 		}
 	}
 

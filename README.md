@@ -1254,6 +1254,8 @@ const card = sv({
 card({ class: { header: 'mt-1', content: 'mt-2' } }); // same, at a call site
 ```
 
+A group that lists the same slot more than once is flagged too, since that slot gets the group's classes once per entry. The repeat is removed automatically, unless the list is a `const` declared outside the config.
+
 `exclusiveGroups: true` turns on the built-in Tailwind groups. An array replaces them with your own groups: each group lists at least two utilities that can't apply together, written without Tailwind variants like `md:` and without the `prefix`; `md:flex` and `md:grid` still conflict. A utility may appear in only one group; listing it in two is a configuration error.
 
 ```js

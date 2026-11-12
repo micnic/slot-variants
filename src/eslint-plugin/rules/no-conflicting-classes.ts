@@ -40,6 +40,7 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 export const noConflictingClasses: Rule.RuleModule = {
 	meta: {
 		type: 'problem',
+		fixable: 'code',
 		docs: {
 			description:
 				'Disallow duplicate class tokens and tokens targeting the same utility namespace within an sv() or cn() output',
@@ -62,6 +63,8 @@ export const noConflictingClasses: Rule.RuleModule = {
 				'Conflicting classes "{{tokens}}" target the same utility namespace in the "{{slot}}" slot output.',
 			conflictCn:
 				'Conflicting classes "{{tokens}}" target the same utility namespace in the call output.',
+			duplicateGroupSlot:
+				'Group "{{group}}" lists slot "{{slot}}" more than once — "{{slot}}" gets the group\'s classes twice.',
 			overlappingSlotTarget:
 				'"{{key}}" also targets slot "{{slot}}", which "{{other}}" already sets here — "{{slot}}" gets both values.'
 		}

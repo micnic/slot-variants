@@ -95,6 +95,9 @@ const conflict = (tokens: string, slot = 'base') =>
 const overlap = (key: string, slot: string, other: string) =>
 	err('overlappingSlotTarget', { key, slot, other });
 
+const duplicateGroupSlot = (group: string, slot: string) =>
+	err('duplicateGroupSlot', { group, slot });
+
 const IMPORT_SV_CN = "import { cn, sv } from 'slot-variants';\n";
 
 // `no-restyle` names both sides of a collision, so its `conflict` data differs
@@ -2491,6 +2494,14 @@ const NO_CONFLICTING_DUP_VALID = [
 	// Values named like slots are mutually exclusive values.
 	IMPORT +
 		"sv({ slots: { top: 't', bottom: 'b' }, variants: { placement: { top: 'mt-1', bottom: 'mt-2' } } });",
+	// Group lists without repeats, with a spread, and with a non-string entry.
+	IMPORT + "sv({ slots: { a: 'x', b: 'y' }, groups: { g: ['a', 'b'] } });",
+	IMPORT +
+		"sv({ slots: { a: 'x', b: 'y' }, groups: { g: [...rest, 'a', 'b'] } });",
+	IMPORT +
+		"sv({ slots: { a: 'x', b: 'y' }, groups: { g: [slot, 'a', 'b'] } });",
+	// A group list that isn't an array literal can't be read.
+	IMPORT + "sv({ slots: { a: 'x' }, groups: { g: dynamicSlots } });",
 	// Groups that share no slot with the object's other keys.
 	IMPORT +
 		"sv({ slots: { header: 'font-bold', body: 'text-sm' }, groups: { top: ['header'] }, variants: { size: { lg: { top: 'mt-1', body: 'mt-2' } } } });",
@@ -2619,6 +2630,39 @@ const NO_CONFLICTING_DUP_VALID = [
 ];
 
 const NO_CONFLICTING_DUP_INVALID = [
+	{
+		// A slot listed twice in a group gets the group's classes twice; the
+		// repeat is removed. A group repeating a slot isn't also reported as
+		// overlapping itself.
+		code:
+			IMPORT +
+			"sv({ slots: { a: 'x', b: 'y' }, groups: { g: ['a', 'a', 'b'] }, variants: { s: { on: { g: 'mt-1' } } } });",
+		output:
+			IMPORT +
+			"sv({ slots: { a: 'x', b: 'y' }, groups: { g: ['a', 'b'] }, variants: { s: { on: { g: 'mt-1' } } } });",
+		errors: [duplicateGroupSlot('g', 'a')]
+	},
+	{
+		// Each repeat is reported, whichever slot it names. The two removals
+		// touch the same comma, so one pass applies the first; `--fix` takes
+		// the other on its next pass.
+		code:
+			IMPORT +
+			"sv({ slots: { a: 'x', b: 'y' }, groups: { g: ['a', 'b', 'a', 'b'] } });",
+		output:
+			IMPORT +
+			"sv({ slots: { a: 'x', b: 'y' }, groups: { g: ['a', 'b', 'b'] } });",
+		errors: [duplicateGroupSlot('g', 'a'), duplicateGroupSlot('g', 'b')]
+	},
+	{
+		// A list shared through a `const` is reported, but not edited where it
+		// is declared.
+		code:
+			IMPORT +
+			"const pair = ['a', 'a'];\nsv({ slots: { a: 'x' }, groups: { g: pair } });",
+		output: null,
+		errors: [duplicateGroupSlot('g', 'a')]
+	},
 	{
 		// Both values reach `header`; the group's own conflict is still
 		// reported once, on the group.

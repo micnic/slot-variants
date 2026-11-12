@@ -7,6 +7,8 @@ import {
 	overlapNeighbors
 } from '../tailwind-categories.ts';
 import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
+import { type EmptyFix, makeListFix } from './list-fix.ts';
+import { getStaticStringText } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
 	getConfigSlotNames,
@@ -23,7 +25,8 @@ import {
 import {
 	collectCnEntries,
 	collectConfigEntries,
-	forEachCompoundClass
+	forEachCompoundClass,
+	forEachStaticItem
 } from './token-extraction.ts';
 import {
 	areDistinctTokensExclusive,
@@ -386,6 +389,60 @@ export const reportClassPropOverlaps = (
 	reportSlotObjectOverlaps(context, value, slotNames, groupSlots);
 };
 
+// Reports each repeated entry of a group's slot list, as the slot then gets the
+// group's classes once per entry. The repeat is removed when the list is
+// written inside this config rather than shared through a `const` declared
+// elsewhere, where editing it could affect its other users.
+const reportDuplicateGroupSlots = (
+	context: Rule.RuleContext,
+	configNode: Node,
+	config: ReadonlyMap<string, Node>
+) => {
+	const { sourceCode } = context;
+	const [configStart, configEnd] = sourceCode.getRange(configNode);
+	const groups = resolveContainer(config.get('groups'), sourceCode);
+
+	for (const [group, value] of getProperties(groups)) {
+		const list = resolveContainer(value, sourceCode);
+
+		if (list === undefined || list.type !== 'ArrayExpression') {
+			continue;
+		}
+
+		const [listStart, listEnd] = sourceCode.getRange(list);
+		const canEdit = listStart >= configStart && listEnd <= configEnd;
+		const seen = new Set<string>();
+
+		forEachStaticItem(list.elements, (element) => {
+			const slot = getStaticStringText(
+				resolveStaticValue(element, sourceCode)
+			);
+
+			if (slot === null) {
+				return;
+			}
+
+			if (!seen.has(slot)) {
+				seen.add(slot);
+				return;
+			}
+
+			let fix: EmptyFix | undefined;
+
+			if (canEdit) {
+				fix = makeListFix(context, element, list.elements);
+			}
+
+			context.report({
+				node: element,
+				messageId: 'duplicateGroupSlot',
+				data: { group, slot },
+				fix
+			});
+		});
+	}
+};
+
 export const analyzeConfigForRule = (
 	context: Rule.RuleContext,
 	configNode: Node,
@@ -461,6 +518,7 @@ export const analyzeConfigForRule = (
 	}
 
 	reportConfigOverlaps(context, config, slotNames, groupSlots);
+	reportDuplicateGroupSlots(context, configNode, config);
 };
 
 export const analyzeCnForRule = (
