@@ -7608,6 +7608,57 @@ t.test('group class prop works without slots', (t) => {
 	t.end();
 });
 
+t.test('groups without slots make target-keyed variants shorthand', (t) => {
+	const button = sv('btn', {
+		groups: {
+			everything: ['base']
+		},
+		variants: {
+			loud: {
+				base: 'font-bold'
+			},
+			size: {
+				sm: {
+					everything: 'text-sm'
+				},
+				lg: 'text-lg'
+			}
+		}
+	});
+
+	const result: string = button({ loud: true, size: 'sm' });
+
+	t.equal(result, 'btn font-bold text-sm', 'shorthand and group value apply');
+	t.equal(button({ size: 'lg' }), 'btn text-lg', 'plain value applies');
+	t.throws(
+		// @ts-expect-error - `loud` is a boolean, not a `base` value
+		() => button({ loud: 'base' }),
+		{ message: 'Invalid value "base" for variant "loud"' },
+		'base is a target, not a value'
+	);
+
+	t.end();
+});
+
+t.test('empty slots keep a base-keyed variant a value', (t) => {
+	const button = sv('btn', {
+		slots: {},
+		variants: {
+			kind: {
+				base: 'kind-base'
+			}
+		}
+	});
+
+	type KindProp = VariantValue<typeof button, 'kind'>;
+
+	const kind: KindProp = 'base';
+
+	t.equal(kind, 'base', 'the prop takes the base value');
+
+	t.end();
+});
+
 t.test('multiSlots accepts a group name', (t) => {
 	const card = sv({
 		slots: {

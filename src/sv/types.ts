@@ -61,10 +61,13 @@ type GroupSlots<
 		: never
 	: never;
 
-type BooleanShorthandKeys<
-	S extends MaybeSlots,
-	G extends MaybeGroups<S>
-> = S extends Slots ? SlotTarget<S, G> : never;
+// A record keyed by targets is a boolean shorthand only when there is a target
+// besides `base`, a slot or a group, as otherwise `base` names a value.
+type BooleanShorthandKeys<S extends MaybeSlots, G extends MaybeGroups<S>> = [
+	Exclude<SlotTarget<S, G>, 'base'>
+] extends [never]
+	? never
+	: SlotTarget<S, G>;
 
 // A record keyed only by slots is a boolean shorthand, and one keyed only by
 // `true`/`false` is a boolean whichever keys it has. Any other record's keys
@@ -170,11 +173,20 @@ type ReturnValue<
 		: SlotResult<S, G, V, P, M>
 	: SlotResult<S, G, V, P, M>;
 
+type SlotRecord<S extends MaybeSlots, G extends MaybeGroups<S>, V> =
+	| Partial<Record<SlotTarget<S, G>, V>>
+	| V;
+
+// Groups name targets even without `slots`, as `base` is always a slot.
 export type SlotValue<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V
-> = S extends Slots ? Partial<Record<SlotTarget<S, G>, V>> | V : V;
+> = S extends Slots
+	? SlotRecord<S, G, V>
+	: [G] extends [undefined]
+		? V
+		: SlotRecord<S, G, V>;
 
 type ClassProp<
 	S extends MaybeSlots,
