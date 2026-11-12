@@ -204,6 +204,20 @@ input({ disabled: true, error: true });
 // 'input border opacity-50 cursor-not-allowed border-red-500'
 ```
 
+A `true` or `false` key can sit beside named values too. The variant then accepts both booleans as well as its named values, and the boolean it doesn't name applies nothing:
+
+```typescript
+const badge = sv('badge', {
+  variants: {
+    size: { true: 'px-2', big: 'px-4' }
+  }
+});
+
+badge({ size: true });  // 'badge px-2'
+badge({ size: 'big' }); // 'badge px-4'
+badge({ size: false }); // 'badge'
+```
+
 **Boolean shorthand** - provide a class value directly instead of a `true`/`false` record. The value is applied when `true`, and nothing is applied when `false`:
 
 ```typescript
@@ -1435,7 +1449,7 @@ Either drop the overriding class, or — if the override is deliberate — move 
 
 #### `slot-variants/no-shared-tokens`
 
-Flags class tokens repeated in every value of a variant that's always applied (has a static default, or is required), since those tokens are constant in the output and belong in `base` (or the corresponding slot) instead. Where it's straightforward to do automatically, it offers to lift the token into `base`/`slots[slot]`: as an autofix for a required variant, and as an editor suggestion for a defaulted one, since passing `null` skips the default and the lifted token would then apply to that call too. With a `postProcess` (set in the config or through [`createSV()`](#shared-defaults-with-createsv)), the lift is a suggestion either way: a merging `postProcess` like `twMerge` keeps the last of two conflicting classes, and lifting moves classes ahead of later variants' ones. A variant whose only value is keyed `true` (or `false`) isn't flagged, since passing the other boolean applies none of its classes.
+Flags class tokens repeated in every value of a variant that's always applied (has a static default, or is required), since those tokens are constant in the output and belong in `base` (or the corresponding slot) instead. Where it's straightforward to do automatically, it offers to lift the token into `base`/`slots[slot]`: as an autofix for a required variant, and as an editor suggestion for a defaulted one, since passing `null` skips the default and the lifted token would then apply to that call too. With a `postProcess` (set in the config or through [`createSV()`](#shared-defaults-with-createsv)), the lift is a suggestion either way: a merging `postProcess` like `twMerge` keeps the last of two conflicting classes, and lifting moves classes ahead of later variants' ones. A variant that names only one of `true` and `false` isn't flagged, since passing the other boolean applies none of its classes.
 
 ```typescript
 const button = sv({

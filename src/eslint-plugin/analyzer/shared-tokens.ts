@@ -552,11 +552,10 @@ const collectVariantCoverage = (
 	return coverage;
 };
 
-// A record whose only value is keyed `true` or `false` still accepts the
-// other boolean, which applies none of its classes.
-const isLoneBooleanValue = (valueEntries: ReadonlyMap<string, Node>) =>
-	valueEntries.size === 1 &&
-	(valueEntries.has('true') || valueEntries.has('false'));
+// A record naming one of `true` and `false` but not the other still accepts
+// the other boolean, which applies none of its classes.
+const hasUnwrittenBoolean = (valueEntries: ReadonlyMap<string, Node>) =>
+	valueEntries.has('true') !== valueEntries.has('false');
 
 const collectVariantTokensByValue = (
 	variantEntries: ReadonlyMap<string, Node>,
@@ -604,12 +603,13 @@ const analyzeVariantSharedTokens = (
 	// over-flag tokens that may differ in the unseen branches. An empty record
 	// has no tokens to compare and is reported by no-empty-classes instead. A
 	// single value needs no comparison — the variant is covered, so that one
-	// value applies and every token in it is constant — unless it's a lone
-	// boolean value, whose counterpart applies nothing.
+	// value applies and every token in it is constant. A record naming only
+	// one boolean also takes the other, which applies nothing, so none of its
+	// tokens is constant.
 	if (
 		!valueEntries ||
 		valueEntries.size === 0 ||
-		isLoneBooleanValue(valueEntries)
+		hasUnwrittenBoolean(valueEntries)
 	) {
 		return;
 	}

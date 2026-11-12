@@ -61,16 +61,25 @@ type GroupSlots<
 		: never
 	: never;
 
+// `boolean` when a record's keys include `true` or `false`, so a record mixing
+// either with named keys takes both booleans.
+type BooleanKeys<K> = [Extract<K, 'true' | 'false'>] extends [never]
+	? never
+	: boolean;
+
 // A record keyed only by `true`/`false` is a boolean. Any other record's keys
-// are its values — a `true` key among them takes `true` alone, not `false`.
-// Anything else is a boolean shorthand.
+// are its values, plus both booleans when it names either one. Anything else
+// is a boolean shorthand.
 type VariantPropType<T> =
 	T extends Record<string | number, unknown>
 		? [Extract<keyof T, number>] extends [never]
 			? StringKeyof<T> extends 'true' | 'false'
 				? boolean
-				: KeyValue<StringKeyof<T>>
-			: KeyValue<StringKeyof<T>> | Extract<keyof T, number>
+				: KeyValue<StringKeyof<T>> | BooleanKeys<StringKeyof<T>>
+			:
+					| KeyValue<StringKeyof<T>>
+					| Extract<keyof T, number>
+					| BooleanKeys<StringKeyof<T>>
 		: boolean;
 
 export type NormalizedVariantValue =

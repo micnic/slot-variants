@@ -1163,6 +1163,32 @@ const _assertMixedBool: AssertMixedBool = true;
 
 void _boolRecordFn;
 void _assertBoolRecord;
+// a record mixing a boolean key with named keys takes both booleans
+const _mixedBooleanFn = sv('badge', {
+	variants: {
+		size: { true: 'a', big: 'b' },
+		level: { 1: 'one', false: 'off' }
+	}
+});
+
+type MixedSize = VariantValue<typeof _mixedBooleanFn, 'size'>;
+type MixedLevel = VariantValue<typeof _mixedBooleanFn, 'level'>;
+type AssertMixedSize = [MixedSize] extends [boolean | 'big']
+	? [boolean | 'big'] extends [MixedSize]
+		? true
+		: false
+	: false;
+type AssertMixedLevel = [MixedLevel] extends [boolean | 1]
+	? [boolean | 1] extends [MixedLevel]
+		? true
+		: false
+	: false;
+const _assertMixedSize: AssertMixedSize = true;
+const _assertMixedLevel: AssertMixedLevel = true;
+
+void _mixedBooleanFn;
+void _assertMixedSize;
+void _assertMixedLevel;
 void _boolShorthandFn;
 void _assertBoolShorthand;
 void _mixedBoolFn;
@@ -3898,46 +3924,65 @@ t.test('variant value named after an object method is invalid', (t) => {
 	t.end();
 });
 
-t.test(
-	'a record mixing true with other keys takes each key as a value',
-	(t) => {
-		const card = sv({
-			slots: { header: 'h' },
-			variants: { tone: { true: 'a', header: 'b' } }
-		});
+t.test('a record mixing a boolean key with others takes both booleans', (t) => {
+	const card = sv({
+		slots: { header: 'h' },
+		variants: { tone: { true: 'a', header: 'b' } }
+	});
 
-		t.equal(card({ tone: true }).base, 'a', '`true` names the true key');
-		t.equal(
-			card({ tone: 'header' }).base,
-			'b',
-			'a slot name is a plain value'
-		);
-		t.throws(
-			// @ts-expect-error - `false` names no value of this variant
-			() => card({ tone: false }),
-			{ message: 'Invalid value "false" for variant "tone"' },
-			'`false` is rejected by the types and at runtime'
-		);
+	t.equal(card({ tone: true }).base, 'a', '`true` names the true key');
+	t.equal(card({ tone: 'header' }).base, 'b', 'a slot name is a plain value');
+	t.equal(card({ tone: false }).base, '', '`false` applies nothing');
 
-		const badge = sv('badge', {
-			variants: { size: { true: 'a', big: 'b' } }
-		});
+	const badge = sv('badge', {
+		variants: { size: { true: 'a', big: 'b' } }
+	});
 
-		t.equal(badge({ size: 'big' }), 'badge b', 'without slots too');
-		// @ts-expect-error - `false` names no value of this variant
-		t.throws(() => badge({ size: false }), 'and `false` is rejected there');
+	t.equal(badge({ size: 'big' }), 'badge b', 'without slots too');
+	t.equal(badge({ size: false }), 'badge', 'and `false` is accepted there');
 
-		const only = sv('x', { variants: { on: { true: 'a' } } });
+	const off = sv('x', { variants: { tone: { false: 'f', sm: 's' } } });
 
-		t.equal(
-			only({ on: false }),
-			'x',
-			'a true-only record still takes false'
-		);
+	t.equal(off({ tone: false }), 'x f', 'a false key with named keys');
+	t.equal(off({ tone: true }), 'x', '`true` applies nothing');
 
-		t.end();
-	}
-);
+	const only = sv('x', { variants: { on: { true: 'a' } } });
+
+	t.equal(only({ on: false }), 'x', 'a true-only record still takes false');
+
+	t.end();
+});
+
+t.test('a mixed boolean record in introspection', (t) => {
+	const badge = sv('badge', {
+		variants: { size: { true: 'a', big: 'b' } },
+		introspection: true
+	});
+
+	t.strictSame(
+		badge.getVariantValues('size'),
+		[true, 'big', false],
+		'the added boolean comes last'
+	);
+	t.equal(badge.getMaxEntries(), 4, 'three values plus unset');
+
+	t.end();
+});
+
+t.test('compounds match the added boolean of a mixed record', (t) => {
+	const badge = sv('badge', {
+		variants: {
+			size: { true: 'a', big: 'b' },
+			tone: { red: 'r' }
+		},
+		compoundVariants: [{ size: false, tone: 'red', class: 'c' }]
+	});
+
+	t.equal(badge({ size: false, tone: 'red' }), 'badge r c', 'false matches');
+	t.equal(badge({ size: true, tone: 'red' }), 'badge a r', 'true does not');
+
+	t.end();
+});
 
 t.test('variants named after object members resolve like any other', (t) => {
 	// TypeScript checks an object literal's inherited members against the

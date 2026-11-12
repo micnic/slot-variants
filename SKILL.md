@@ -193,7 +193,7 @@ The library caches results automatically (default 256 entries). Each cache entry
 maxEntries = factor₁ × factor₂ × ... × factorₙ
 ```
 
-A variant's factor is its value count `+ 1` (the `+ 1` counts the variant being left unset). A boolean variant — shorthand (`loading: 'opacity-50'`) or a record keyed only by `true`/`false` — always has both values, even when only one is written, so its factor is `3`. The `+ 1` is dropped — factor is just the value count — only when the variant is required, since it can never be unset. Defaults keep the `+ 1`: passing `null` skips a default, and a function default may return `undefined`. Raise `cacheSize` only when `maxEntries` exceeds 256 — below that the cache never evicts. With `introspection: true`, `getMaxEntries()` returns this exact number, and `getCacheSize()`/`clearCache()` inspect the live cache.
+A variant's factor is its value count `+ 1` (the `+ 1` counts the variant being left unset). A boolean variant — shorthand (`loading: 'opacity-50'`) or a record keyed only by `true`/`false` — always has both values, even when only one is written, so its factor is `3`. A record mixing a `true` or `false` key with named values also counts both booleans. The `+ 1` is dropped — factor is just the value count — only when the variant is required, since it can never be unset. Defaults keep the `+ 1`: passing `null` skips a default, and a function default may return `undefined`. Raise `cacheSize` only when `maxEntries` exceeds 256 — below that the cache never evicts. With `introspection: true`, `getMaxEntries()` returns this exact number, and `getCacheSize()`/`clearCache()` inspect the live cache.
 
 ### 13. Use Presets for Reusable Variant Combinations
 

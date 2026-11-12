@@ -5069,6 +5069,10 @@ t.test('no-conflicting-classes (exclusiveGroups validation)', (t) => {
 });
 
 const NO_SHARED_TOKENS_VALID = [
+	// A record mixing `true` with named keys also takes `false`, which applies
+	// nothing, so a token in every written value isn't always applied.
+	IMPORT +
+		"sv({ variants: { size: { true: 'p-2 a', big: 'p-2 b' } }, requiredVariants: true });",
 	// Non-object variants field bails out immediately.
 	IMPORT + 'sv({ variants: dynamic });',
 	// No defaultVariants and no requiredVariants — variant prop

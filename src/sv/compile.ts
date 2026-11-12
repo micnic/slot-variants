@@ -280,7 +280,19 @@ const normalizeVariantValue = (variantValue: RuntimeVariantConfigValue) => {
 		} satisfies NormalizedVariantValues;
 	}
 
-	return withoutUndefinedValues(variantValue);
+	const result = withoutUndefinedValues(variantValue);
+
+	// A record mixing a boolean key with named ones takes both booleans; the
+	// one it doesn't name follows the written keys and applies nothing.
+	if (hasOwn(result, 'true') || hasOwn(result, 'false')) {
+		return {
+			...result,
+			true: result.true ?? '',
+			false: result.false ?? ''
+		} satisfies NormalizedVariantValues;
+	}
+
+	return result;
 };
 
 export const coerceVariantKeyValue = (value: string) => {
