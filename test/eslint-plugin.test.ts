@@ -989,11 +989,11 @@ const NO_DYNAMIC_CLASSES_VALID = [
 				}
 			}
 		});`,
-	// Slot-keyed boolean shorthand variant.
+	// Boolean variant with a slot object under `true`.
 	IMPORT +
 		`sv({
 			slots: { body: 'p-4' },
-			variants: { disabled: { base: 'opacity-50', body: 'cursor-not-allowed' } }
+			variants: { disabled: { true: { base: 'opacity-50', body: 'cursor-not-allowed' } } }
 		});`,
 	// Boolean shorthand variant — value is a class value.
 	IMPORT + "sv({ variants: { disabled: 'opacity-50' } });",
@@ -1783,9 +1783,9 @@ const NO_EMPTY_CLASSES_VALID = [
 	IMPORT + "sv({ variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });",
 	// Boolean shorthand variant with non-empty class.
 	IMPORT + "sv({ variants: { disabled: 'opacity-50' } });",
-	// Slot-keyed boolean shorthand variant with non-empty class.
+	// Slot object under `true` with a non-empty class.
 	IMPORT +
-		"sv({ slots: { body: 'p-4' }, variants: { disabled: { body: 'opacity-50' } } });",
+		"sv({ slots: { body: 'p-4' }, variants: { disabled: { true: { body: 'opacity-50' } } } });",
 	// compoundVariants with non-empty class.
 	IMPORT +
 		`sv({
@@ -2479,12 +2479,15 @@ const NO_CONFLICTING_DUP_VALID = [
 		"sv({ slots: { body: 'p-4' }, variants: { size: { ...extra, sm: 'text-sm' } } });",
 	// Computed key in a variant record — key is dynamic.
 	IMPORT + "sv({ variants: { size: { [dyn]: 'x', sm: 'text-sm' } } });",
-	// Variant value is a slot-keyed object (boolean shorthand w/ slots).
+	// Slot object under `true` — distinct from the slot's class.
 	IMPORT +
 		`sv({
 			slots: { body: 'p-4' },
-			variants: { disabled: { body: 'opacity-50' } }
+			variants: { disabled: { true: { body: 'opacity-50' } } }
 		});`,
+	// Values named like slots are mutually exclusive values.
+	IMPORT +
+		"sv({ slots: { top: 't', bottom: 'b' }, variants: { placement: { top: 'mt-1', bottom: 'mt-2' } } });",
 	// compoundSlots adds distinct classes — no dup.
 	IMPORT +
 		`sv({
@@ -2735,12 +2738,12 @@ const NO_CONFLICTING_DUP_INVALID = [
 		errors: 2
 	},
 	{
-		// Slot-keyed variant value duplicates the slot's base class.
+		// A `true` slot object duplicates the slot's base class.
 		code:
 			IMPORT +
 			`sv({
 				slots: { body: 'flex' },
-				variants: { disabled: { body: 'flex' } }
+				variants: { disabled: { true: { body: 'flex' } } }
 			});`,
 		errors: repeat(dup('flex', 'body'), 2)
 	},
@@ -5022,11 +5025,11 @@ const NO_SHARED_TOKENS_VALID = [
 			variants: { disabled: 'opacity-50 cursor-not-allowed' },
 			defaultVariants: { disabled: false }
 		});`,
-	// Slot-keyed boolean shorthand — also a single branch.
+	// A `true`-only slot object — the `false` side applies nothing.
 	IMPORT +
 		`sv({
 			slots: { body: 'p-4' },
-			variants: { disabled: { body: 'opacity-50' } },
+			variants: { disabled: { true: { body: 'opacity-50' } } },
 			defaultVariants: { disabled: false }
 		});`,
 	// A record with only a `true` value still accepts `false`, which applies
@@ -5157,14 +5160,13 @@ const NO_SHARED_TOKENS_VALID = [
 			variants: dynamicVariants,
 			compoundVariants: [{ variant: 'link', className: 'e' }]
 		});`,
-	// A slot-keyed boolean-shorthand variant has a single branch — no "other"
-	// value to hold the class for the matcher's false case.
+	// An array shorthand has a single branch — no other value to hold the
+	// class for the matcher's false case.
 	IMPORT +
 		`sv({
-			slots: { body: 'p-4' },
 			variants: {
 				variant: { primary: 'a', link: 'b' },
-				disabled: { body: 'opacity-50' }
+				disabled: ['opacity-50']
 			},
 			compoundVariants: [{ disabled: true, className: 'e' }]
 		});`,
@@ -5211,6 +5213,32 @@ const NO_SHARED_TOKENS_VALID = [
 ];
 
 const NO_SHARED_TOKENS_INVALID = [
+	{
+		// A `true` key is a value like any other, so a compound matching only
+		// it is reported; its value is a slot object, so there's no fix.
+		code:
+			IMPORT +
+			`sv({
+			slots: { body: 'p-4' },
+			variants: {
+				variant: { primary: 'a', link: 'b' },
+				disabled: { true: { body: 'opacity-50' } }
+			},
+			compoundVariants: [{ disabled: true, className: 'e' }]
+		});`,
+		output: null,
+		errors: [singleKeyCompound('compoundVariants', 'disabled', 'true')]
+	},
+	{
+		// Values named like slots are values, so a token in each is shared.
+		code:
+			IMPORT +
+			"sv({ base: 'flex', slots: { top: 't', bottom: 'b' }, variants: { placement: { top: 'z-10 a', bottom: 'z-10 b' } }, requiredVariants: true });",
+		output:
+			IMPORT +
+			"sv({ base: 'flex z-10', slots: { top: 't', bottom: 'b' }, variants: { placement: { top: 'a', bottom: 'b' } }, requiredVariants: true });",
+		errors: repeat(shared('z-10', 'placement'), 2)
+	},
 	{
 		// With a merging `postProcess`, the last of two conflicting classes
 		// wins, so lifting `p-2` ahead of the later variant's `p-4` would

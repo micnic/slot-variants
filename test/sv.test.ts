@@ -1571,7 +1571,7 @@ type AssertSlotVariantProps = SlotVariantProps extends {
 	: false;
 const _assertSlotVariantProps: AssertSlotVariantProps = true;
 
-// boolean shorthand with slots — slot object as shorthand value
+// boolean variant targeting slots — slot object under a `true` key
 const _slotBoolFn = sv('border', {
 	slots: {
 		header: 'font-bold',
@@ -1579,8 +1579,10 @@ const _slotBoolFn = sv('border', {
 	},
 	variants: {
 		highlighted: {
-			base: 'ring-2 ring-blue-500',
-			header: 'bg-blue-100'
+			true: {
+				base: 'ring-2 ring-blue-500',
+				header: 'bg-blue-100'
+			}
 		}
 	}
 });
@@ -1594,6 +1596,22 @@ type AssertSlotBool = SlotBoolProps extends {
 	: false;
 const _assertSlotBool: AssertSlotBool = true;
 
+// values named like slots stay values
+const _slotNamedValuesFn = sv({
+	slots: { top: 't', bottom: 'b' },
+	variants: { placement: { top: 'mt', bottom: 'mb' } }
+});
+
+type AssertSlotNamedValues =
+	VariantValue<typeof _slotNamedValuesFn, 'placement'> extends
+		| 'top'
+		| 'bottom'
+		? true
+		: false;
+const _assertSlotNamedValues: AssertSlotNamedValues = true;
+
+void _slotNamedValuesFn;
+void _assertSlotNamedValues;
 void _slotFn;
 void _assertSlotReturn;
 void _slotVariantFn;
@@ -1713,7 +1731,7 @@ t.test('slots with variant applied to only some slots', (t) => {
 	t.end();
 });
 
-t.test('slots with boolean shorthand targeting slots', (t) => {
+t.test('true-keyed slot object targets slots', (t) => {
 	const card = sv('border rounded-lg', {
 		slots: {
 			header: 'font-bold',
@@ -1721,8 +1739,10 @@ t.test('slots with boolean shorthand targeting slots', (t) => {
 		},
 		variants: {
 			highlighted: {
-				base: 'ring-2 ring-blue-500',
-				header: 'bg-blue-100'
+				true: {
+					base: 'ring-2 ring-blue-500',
+					header: 'bg-blue-100'
+				}
 			}
 		}
 	});
@@ -1739,6 +1759,152 @@ t.test('slots with boolean shorthand targeting slots', (t) => {
 	const off = card({ highlighted: false });
 	t.equal(off.base, 'border rounded-lg', 'not highlighted base');
 	t.equal(off.header, 'font-bold', 'not highlighted header');
+	t.strictSame(
+		card(),
+		{ base: 'border rounded-lg', header: 'font-bold', body: 'py-4' },
+		'unset applies nothing'
+	);
+
+	t.end();
+});
+
+t.test('variant values may share names with slots', (t) => {
+	const tooltip = sv({
+		slots: { top: 't', bottom: 'b' },
+		variants: { placement: { top: 'mt', bottom: 'mb' } }
+	});
+
+	t.strictSame(
+		tooltip({ placement: 'top' }),
+		{ base: 'mt', top: 't', bottom: 'b' },
+		'top is a value, its class lands on base'
+	);
+	t.throws(
+		// @ts-expect-error - `placement` takes 'top' | 'bottom', not a boolean
+		() => tooltip({ placement: true }),
+		{ message: 'Invalid value "true" for variant "placement"' },
+		'true is not a value'
+	);
+
+	t.end();
+});
+
+t.test('variant values may share names with groups', (t) => {
+	const card = sv({
+		slots: { header: 'h', body: 'b' },
+		groups: { content: ['header', 'body'] },
+		variants: { area: { content: 'c', header: 'x' } }
+	});
+
+	t.strictSame(
+		card({ area: 'content' }),
+		{ base: 'c', header: 'h', body: 'b' },
+		'content is a value, its class lands on base'
+	);
+
+	t.end();
+});
+
+t.test('a base-keyed variant record names the value base', (t) => {
+	const plain = sv({ variants: { tone: { base: 'x' } } });
+	const slotted = sv({
+		slots: { header: 'h' },
+		variants: { tone: { base: 'x' } }
+	});
+
+	t.equal(plain({ tone: 'base' }), 'x', 'without slots');
+	t.strictSame(
+		slotted({ tone: 'base' }),
+		{ base: 'x', header: 'h' },
+		'with slots'
+	);
+
+	t.end();
+});
+
+t.test('adding a slot does not change an existing variant', (t) => {
+	const before = sv({
+		slots: { arrow: 'a' },
+		variants: { placement: { top: 'mt', bottom: 'mb' } }
+	});
+	const after = sv({
+		slots: { arrow: 'a', top: 't', bottom: 'b' },
+		variants: { placement: { top: 'mt', bottom: 'mb' } }
+	});
+
+	t.equal(before({ placement: 'top' }).base, 'mt', 'before');
+	t.equal(after({ placement: 'top' }).base, 'mt', 'after');
+
+	t.end();
+});
+
+t.test('slot-named values work in defaults, presets and compounds', (t) => {
+	const tooltip = sv({
+		slots: { top: 't', bottom: 'b' },
+		variants: {
+			placement: { top: 'mt', bottom: 'mb' },
+			size: { sm: 'text-sm', lg: 'text-lg' }
+		},
+		presets: { above: { placement: 'top', size: 'lg' } },
+		compoundVariants: [{ placement: 'bottom', size: 'sm', class: 'tight' }],
+		defaultVariants: { placement: 'bottom', size: 'sm' }
+	});
+
+	t.equal(tooltip().base, 'mb text-sm tight', 'defaults and compound');
+	t.equal(tooltip({ preset: 'above' }).base, 'mt text-lg', 'preset');
+
+	t.end();
+});
+
+t.test('true and false slot objects each apply their own slots', (t) => {
+	const card = sv({
+		slots: { header: 'h' },
+		variants: {
+			open: {
+				true: { header: 'shown' },
+				false: { base: 'closed', header: 'hidden' }
+			}
+		}
+	});
+
+	t.strictSame(card({ open: true }), { base: '', header: 'h shown' }, 'true');
+	t.strictSame(
+		card({ open: false }),
+		{ base: 'closed', header: 'h hidden' },
+		'false'
+	);
+
+	t.end();
+});
+
+t.test('slot-named values in introspection', (t) => {
+	const tooltip = sv({
+		slots: { top: 't', bottom: 'b' },
+		variants: { placement: { top: 'mt', bottom: 'mb' } },
+		introspection: true
+	});
+
+	t.strictSame(
+		tooltip.getVariantValues('placement'),
+		['top', 'bottom'],
+		'values'
+	);
+	t.equal(tooltip.getMaxEntries(), 3, 'two values plus unset');
+
+	t.end();
+});
+
+t.test('multi slot function overrides a true-keyed slot variant', (t) => {
+	const card = sv({
+		slots: { header: 'h' },
+		multiSlots: ['header'],
+		variants: { highlighted: { true: { header: 'hl' } } }
+	});
+
+	const result = card();
+
+	t.equal(result.header(), 'h', 'inherits unset');
+	t.equal(result.header({ highlighted: true }), 'h hl', 'override');
 
 	t.end();
 });
@@ -7409,7 +7575,7 @@ t.test('group can name the base slot', (t) => {
 			outer: ['base', 'header']
 		},
 		variants: {
-			bordered: { outer: 'border-2' }
+			bordered: { true: { outer: 'border-2' } }
 		}
 	});
 
@@ -7608,15 +7774,12 @@ t.test('group class prop works without slots', (t) => {
 	t.end();
 });
 
-t.test('groups without slots make target-keyed variants shorthand', (t) => {
+t.test('groups without slots name targets in variant values', (t) => {
 	const button = sv('btn', {
 		groups: {
 			everything: ['base']
 		},
 		variants: {
-			loud: {
-				base: 'font-bold'
-			},
 			size: {
 				sm: {
 					everything: 'text-sm'
@@ -7626,16 +7789,10 @@ t.test('groups without slots make target-keyed variants shorthand', (t) => {
 		}
 	});
 
-	const result: string = button({ loud: true, size: 'sm' });
+	const result: string = button({ size: 'sm' });
 
-	t.equal(result, 'btn font-bold text-sm', 'shorthand and group value apply');
+	t.equal(result, 'btn text-sm', 'group value applies');
 	t.equal(button({ size: 'lg' }), 'btn text-lg', 'plain value applies');
-	t.throws(
-		// @ts-expect-error - `loud` is a boolean, not a `base` value
-		() => button({ loud: 'base' }),
-		{ message: 'Invalid value "base" for variant "loud"' },
-		'base is a target, not a value'
-	);
 
 	t.end();
 });
@@ -7926,12 +8083,12 @@ type GroupSizeProp = VariantValue<typeof _groupsFn, 'size'>;
 type AssertGroupSizeProp = GroupSizeProp extends 'sm' | 'lg' ? true : false;
 const _assertGroupSizeProp: AssertGroupSizeProp = true;
 
-// A variant whose only value is a group object is a boolean shorthand
+// A group object under a `true` key is a boolean variant
 const _groupShorthandFn = sv({
 	slots: { header: 'h', body: 'b' },
 	groups: { content: ['header', 'body'] },
 	variants: {
-		bordered: { content: 'border' }
+		bordered: { true: { content: 'border' } }
 	}
 });
 

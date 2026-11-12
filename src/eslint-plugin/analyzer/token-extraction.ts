@@ -521,14 +521,9 @@ export const forEachStaticItem = (
 	}
 };
 
-// Boolean shorthand when not a plain object, or when its keys are slot names
-// rather than value names.
-export const isBooleanShorthandVariant = (
-	node: Node,
-	slotNames: Set<string>
-): boolean =>
-	node.type !== 'ObjectExpression' ||
-	collectSlotKeyedProperties(node, slotNames) !== null;
+// Boolean shorthand when not a plain object; any record is keyed by value.
+export const isBooleanShorthandVariant = (node: Node): boolean =>
+	node.type !== 'ObjectExpression';
 
 export const forEachStringLiteralElement = (
 	node: Node | undefined,
@@ -581,14 +576,13 @@ export const forEachCompoundClass = (
 
 const extractVariantTokens = (
 	variantsMap: ReadonlyMap<string, Node>,
-	slotNames: Set<string>,
 	sourceCode: SourceCode,
 	extract: ExtractFn
 ) => {
 	for (const [variantKey, rawValue] of variantsMap.entries()) {
 		const variantValue = resolveStaticValue(rawValue, sourceCode);
 
-		if (isBooleanShorthandVariant(variantValue, slotNames)) {
+		if (isBooleanShorthandVariant(variantValue)) {
 			extract(variantValue, 'base', variantSource(variantKey, 'true'));
 			continue;
 		}
@@ -747,7 +741,6 @@ export const collectConfigEntries = (
 
 	extractVariantTokens(
 		getProperties(resolveContainer(config.get('variants'), sourceCode)),
-		slotNames,
 		sourceCode,
 		extract
 	);

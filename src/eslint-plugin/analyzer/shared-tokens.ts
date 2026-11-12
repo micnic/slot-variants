@@ -594,7 +594,7 @@ const analyzeVariantSharedTokens = (
 	const variantValue = resolveStaticValue(rawValue, context.sourceCode);
 
 	// Boolean shorthand has a single branch — no cross-value comparison.
-	if (isBooleanShorthandVariant(variantValue, slotNames)) {
+	if (isBooleanShorthandVariant(variantValue)) {
 		return;
 	}
 
@@ -772,7 +772,6 @@ const checkCompoundEntryForSingleKey = (
 	element: ObjectExpression,
 	kind: 'compoundVariants' | 'compoundSlots',
 	variantsMap: ReadonlyMap<string, Node>,
-	slotNames: Set<string>,
 	removeEntry: EmptyFix | undefined,
 	scope: CompoundScope
 ) => {
@@ -794,7 +793,7 @@ const checkCompoundEntryForSingleKey = (
 	// Boolean shorthand (which includes any non-object value) has only one
 	// branch — there's no "other" value to hold the class for the matcher's
 	// false case, so this isn't the same simplification.
-	if (isBooleanShorthandVariant(variantValue, slotNames)) {
+	if (isBooleanShorthandVariant(variantValue)) {
 		return;
 	}
 
@@ -866,7 +865,6 @@ const checkCompoundsForSingleKey = (
 	configNode: ObjectExpression,
 	kind: 'compoundVariants' | 'compoundSlots',
 	variantsMap: ReadonlyMap<string, Node>,
-	slotNames: Set<string>,
 	scope: CompoundScope
 ) => {
 	const compounds = resolveContainer(
@@ -890,7 +888,6 @@ const checkCompoundsForSingleKey = (
 			element,
 			kind,
 			variantsMap,
-			slotNames,
 			getEntryRemoval(context, configNode, compounds, element),
 			scope
 		);
@@ -958,7 +955,6 @@ export const analyzeSharedTokens = (
 		configNode,
 		'compoundVariants',
 		variantsMap,
-		slotNames,
 		{ canEdit, suggestOnly }
 	);
 	checkCompoundsForSingleKey(
@@ -966,7 +962,6 @@ export const analyzeSharedTokens = (
 		configNode,
 		'compoundSlots',
 		variantsMap,
-		slotNames,
 		{ canEdit, suggestOnly }
 	);
 

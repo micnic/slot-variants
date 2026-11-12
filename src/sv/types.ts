@@ -61,25 +61,15 @@ type GroupSlots<
 		: never
 	: never;
 
-// A record keyed by targets is a boolean shorthand only when there is a target
-// besides `base`, a slot or a group, as otherwise `base` names a value.
-type BooleanShorthandKeys<S extends MaybeSlots, G extends MaybeGroups<S>> = [
-	Exclude<SlotTarget<S, G>, 'base'>
-] extends [never]
-	? never
-	: SlotTarget<S, G>;
-
-// A record keyed only by slots is a boolean shorthand, and one keyed only by
-// `true`/`false` is a boolean whichever keys it has. Any other record's keys
+// A record keyed only by `true`/`false` is a boolean. Any other record's keys
 // are its values — a `true` key among them takes `true` alone, not `false`.
-type VariantPropType<S extends MaybeSlots, G extends MaybeGroups<S>, T> =
+// Anything else is a boolean shorthand.
+type VariantPropType<T> =
 	T extends Record<string | number, unknown>
 		? [Extract<keyof T, number>] extends [never]
-			? StringKeyof<T> extends BooleanShorthandKeys<S, G>
+			? StringKeyof<T> extends 'true' | 'false'
 				? boolean
-				: StringKeyof<T> extends 'true' | 'false'
-					? boolean
-					: KeyValue<StringKeyof<T>>
+				: KeyValue<StringKeyof<T>>
 			: KeyValue<StringKeyof<T>> | Extract<keyof T, number>
 		: boolean;
 
@@ -197,7 +187,7 @@ type ClassProp<
 export type Variants<S extends MaybeSlots, G extends MaybeGroups<S>> = Record<
 	string,
 	| Record<string | number, SlotValue<S, G, ConfigClassValue>>
-	| SlotValue<S, G, ConfigClassValue>
+	| ConfigClassValue
 >;
 
 export type MaybeVariants<S extends MaybeSlots, G extends MaybeGroups<S>> =
@@ -213,11 +203,8 @@ type VariantConditions<
 	V extends MaybeVariants<S, G>
 > = {
 	[K in StringKeyof<V>]?:
-		| VariantPropType<S, G, V[K]>
-		| readonly [
-				VariantPropType<S, G, V[K]>,
-				...VariantPropType<S, G, V[K]>[]
-		  ];
+		| VariantPropType<V[K]>
+		| readonly [VariantPropType<V[K]>, ...VariantPropType<V[K]>[]];
 };
 
 type CompoundConditions<
@@ -252,7 +239,7 @@ type VariantPropsInternal<
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>
 > = {
-	[K in StringKeyof<V>]: VariantPropType<S, G, V[K]>;
+	[K in StringKeyof<V>]: VariantPropType<V[K]>;
 };
 
 type PresetVariantProps<
@@ -277,8 +264,8 @@ type DefaultVariantValue<
 	V extends MaybeVariants<S, G>,
 	K extends StringKeyof<V>
 > =
-	| VariantPropType<S, G, V[K]>
-	| ((props: RuntimeVariantState) => VariantPropType<S, G, V[K]> | undefined)
+	| VariantPropType<V[K]>
+	| ((props: RuntimeVariantState) => VariantPropType<V[K]> | undefined)
 	| undefined;
 
 export type RuntimeClassValue = SlotValue<Slots, undefined, ClassValue>;
@@ -511,7 +498,7 @@ type IntrospectionValues<
 	/** Lists every valid value for a given variant. */
 	getVariantValues: V extends undefined
 		? (key: never) => never[]
-		: <K extends StringKeyof<V>>(key: K) => VariantPropType<S, G, V[K]>[];
+		: <K extends StringKeyof<V>>(key: K) => VariantPropType<V[K]>[];
 	/** Number of variant combinations: the most cache entries it can hold. */
 	getMaxEntries: () => number;
 	/** Empties the cache of computed class results. */

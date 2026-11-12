@@ -47,6 +47,8 @@ const button = sv('btn', {
 button({ disabled: true });
 ```
 
+Shorthand is a class value only. To target slots, put the slot object under a `true` key: `highlighted: { true: { base: 'ring-2', header: 'bg-blue-100' } }`.
+
 ### 3. Use Required Variants for Mandatory Props
 
 List a variant in `requiredVariants: ['intent']` to make it mandatory — `button()` throws when it is missing.

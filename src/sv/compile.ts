@@ -251,14 +251,6 @@ const isPlainObject = <T>(
 const hasOnlySlotKeys = (value: object, targetKeys: ReadonlySet<string>) =>
 	keys(value).every((key) => targetKeys.has(key));
 
-const isSlotObjectVariantValue = (
-	variantValue: NormalizedVariantValues,
-	targetKeys: ReadonlySet<string>
-): variantValue is Record<string, ConfigClassValue> =>
-	targetKeys.size > 1 &&
-	keys(variantValue).length > 0 &&
-	hasOnlySlotKeys(variantValue, targetKeys);
-
 const isBooleanVariantRecord = (variantValue: NormalizedVariantValues) =>
 	keys(variantValue).every((key) => key === 'true' || key === 'false');
 
@@ -272,14 +264,8 @@ const withoutUndefinedValues = (variantValues: NormalizedVariantValues) => {
 	return result;
 };
 
-const normalizeVariantValue = (
-	variantValue: RuntimeVariantConfigValue,
-	targetKeys: ReadonlySet<string>
-) => {
-	if (
-		!isPlainObject(variantValue) ||
-		isSlotObjectVariantValue(variantValue, targetKeys)
-	) {
+const normalizeVariantValue = (variantValue: RuntimeVariantConfigValue) => {
+	if (!isPlainObject(variantValue)) {
 		return {
 			false: '',
 			true: variantValue ?? ''
@@ -356,8 +342,7 @@ export const isConfig = (value: ClassValue | RawConfig): value is RawConfig => {
 };
 
 const createNormalizedVariants = <S extends MaybeSlots>(
-	variants: Variants<S, undefined>,
-	targetKeys: ReadonlySet<string>
+	variants: Variants<S, undefined>
 ) => {
 	const result: NormalizedVariants = {};
 
@@ -366,7 +351,7 @@ const createNormalizedVariants = <S extends MaybeSlots>(
 			throw new Error(`Variant name "${variantKey}" is reserved`);
 		}
 
-		result[variantKey] = normalizeVariantValue(variantValue, targetKeys);
+		result[variantKey] = normalizeVariantValue(variantValue);
 	}
 
 	return result;
@@ -762,7 +747,7 @@ export const compileConfig = (
 		...resolvedGroups.keys()
 	]);
 
-	const normalizedVariants = createNormalizedVariants(variants, targetKeys);
+	const normalizedVariants = createNormalizedVariants(variants);
 	const resolvedRequiredVariants = resolveRequiredVariants(
 		requiredVariants,
 		normalizedVariants

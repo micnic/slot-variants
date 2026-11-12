@@ -237,15 +237,7 @@ const checkVariantDefinition = (
 ) => {
 	const node = resolveStaticValue(raw, context.sourceCode);
 
-	// A boolean shorthand variant is a single branch value; any other record is
-	// keyed by variant value.
-	const slotKeyed = collectSlotKeyedProperties(node, slotNames);
-
-	if (slotKeyed) {
-		checkSlotKeyedValues(context, slotKeyed);
-		return;
-	}
-
+	// A record is keyed by variant value; anything else is a boolean shorthand.
 	if (node.type === 'ObjectExpression') {
 		checkValueKeyedVariant(context, node, slotNames);
 		return;

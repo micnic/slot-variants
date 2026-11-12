@@ -537,7 +537,7 @@ const { base, header, body, footer } = card({ size: 'lg' });
 // footer: 'border-t pt-4'
 ```
 
-A boolean shorthand variant can also be a slot object:
+A boolean variant can also target slots — put the slot object under a `true` key (and, if needed, another under `false`):
 
 ```typescript
 const card = sv('border rounded-lg', {
@@ -547,8 +547,10 @@ const card = sv('border rounded-lg', {
   },
   variants: {
     highlighted: {
-      base: 'ring-2 ring-blue-500',
-      header: 'bg-blue-100'
+      true: {
+        base: 'ring-2 ring-blue-500',
+        header: 'bg-blue-100'
+      }
     }
   }
 });
@@ -1030,21 +1032,21 @@ Class values inside the config (`base`, `variants`, `slots`, and `compound*` `cl
 
 The table lists the options in the canonical key order enforced by the opt-in [`sv-config-style`](#slot-variantssv-config-style) lint rule.
 
-| Option             | Type                                                       | Description                                                                                                                                            |
-| ------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `base`             | `string \| string[]`                                       | Additional base classes merged with the base argument and `slots.base`                                                                                 |
-| `slots`            | `Record<string, string \| string[]>`                       | Named slot definitions for multi-element components                                                                                                    |
-| `groups`           | `Record<string, string[]>`                                 | Named sets of slot names, usable anywhere a slot name is accepted                                                                                      |
-| `multiSlots`       | `string[] \| boolean`                                      | Slot names exposed as reconfigurable functions instead of strings; `true` makes every slot a function, `false` none                                    |
-| `variants`         | `Record<string, Record<string \| number, Value> \| Value>` | Variant names mapped to their values, or to one `Value` ([boolean shorthand](#boolean-variants)); `Value` is `string \| string[]` or a per-slot object |
-| `presets`          | `Record<string, Partial<VariantProps>>`                    | Named combinations of variant values selectable via `preset` prop                                                                                      |
-| `compoundSlots`    | `Array`                                                    | Classes applied to multiple slots based on variant conditions                                                                                          |
-| `compoundVariants` | `Array`                                                    | Additional classes applied when multiple variant conditions match                                                                                      |
-| `defaultVariants`  | `Object`                                                   | Default values for variants (static values or functions)                                                                                               |
-| `requiredVariants` | `string[] \| boolean`                                      | Variant names that must be provided at call time; `true` makes every variant required, `false` none                                                    |
-| `cacheSize`        | `number`                                                   | Maximum number of cached results (default: `256`); `0` or a negative value disables caching                                                            |
-| `introspection`    | `boolean`                                                  | When `true`, exposes variant/slot/preset introspection and cache methods on the returned function (default: `false`)                                   |
-| `postProcess`      | `(className: string) => string`                            | Custom transformation applied to final class strings                                                                                                   |
+| Option             | Type                                                                    | Description                                                                                                                                              |
+| ------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`             | `string \| string[]`                                                    | Additional base classes merged with the base argument and `slots.base`                                                                                   |
+| `slots`            | `Record<string, string \| string[]>`                                    | Named slot definitions for multi-element components                                                                                                      |
+| `groups`           | `Record<string, string[]>`                                              | Named sets of slot names, usable anywhere a slot name is accepted                                                                                        |
+| `multiSlots`       | `string[] \| boolean`                                                   | Slot names exposed as reconfigurable functions instead of strings; `true` makes every slot a function, `false` none                                      |
+| `variants`         | `Record<string, Record<string \| number, Value> \| string \| string[]>` | Variant names mapped to their values, or to a class value ([boolean shorthand](#boolean-variants)); `Value` is `string \| string[]` or a per-slot object |
+| `presets`          | `Record<string, Partial<VariantProps>>`                                 | Named combinations of variant values selectable via `preset` prop                                                                                        |
+| `compoundSlots`    | `Array`                                                                 | Classes applied to multiple slots based on variant conditions                                                                                            |
+| `compoundVariants` | `Array`                                                                 | Additional classes applied when multiple variant conditions match                                                                                        |
+| `defaultVariants`  | `Object`                                                                | Default values for variants (static values or functions)                                                                                                 |
+| `requiredVariants` | `string[] \| boolean`                                                   | Variant names that must be provided at call time; `true` makes every variant required, `false` none                                                      |
+| `cacheSize`        | `number`                                                                | Maximum number of cached results (default: `256`); `0` or a negative value disables caching                                                              |
+| `introspection`    | `boolean`                                                               | When `true`, exposes variant/slot/preset introspection and cache methods on the returned function (default: `false`)                                     |
+| `postProcess`      | `(className: string) => string`                                         | Custom transformation applied to final class strings                                                                                                     |
 
 ## Framework Usage
 
@@ -1574,6 +1576,19 @@ module.exports = {
   }
 }
 ```
+
+## Upgrading to 2.0
+
+A variant written directly as a slot object is no longer a boolean shorthand — its keys are read as its values. Move the slot object under a `true` key:
+
+```diff
+  variants: {
+-   highlighted: { base: 'ring-2', header: 'bg-blue-100' }
++   highlighted: { true: { base: 'ring-2', header: 'bg-blue-100' } }
+  }
+```
+
+TypeScript reports every call site, default, preset and compound entry that still passes `true` to such a variant.
 
 ## Migrating from CVA / tailwind-variants
 
