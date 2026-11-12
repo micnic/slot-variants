@@ -3231,6 +3231,66 @@ t.test('function default resolves based on other props', (t) => {
 	t.end();
 });
 
+t.test('function default reads a passed preset like props', (t) => {
+	const seen: (string | number | boolean | null | undefined)[] = [];
+
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		presets: {
+			big: { size: 'lg' }
+		},
+		defaultVariants: {
+			intent: (props) => {
+				seen.push(props.size);
+
+				if (props.size === 'lg') {
+					return 'danger';
+				}
+
+				return 'primary';
+			}
+		}
+	});
+
+	t.equal(
+		button({ preset: 'big' }),
+		button({ size: 'lg' }),
+		'a preset reads the same as passing its values'
+	);
+	t.equal(
+		button({ preset: 'big', size: undefined }),
+		'btn text-lg bg-red-500',
+		'an undefined prop takes the preset value'
+	);
+	t.equal(
+		button({ preset: 'big', size: 'sm' }),
+		'btn text-sm bg-blue-500',
+		'an explicit prop wins over the preset'
+	);
+	t.equal(
+		button({ preset: 'big', size: null }),
+		'btn bg-blue-500',
+		'a null prop skips the preset value'
+	);
+	t.equal(button(), 'btn bg-blue-500', 'no preset passes the props as-is');
+	t.same(
+		seen,
+		['lg', 'lg', 'lg', 'sm', null, undefined],
+		'the default sees the preset-filled size'
+	);
+
+	t.end();
+});
+
 t.test('function default is evaluated once per call', (t) => {
 	let calls = 0;
 

@@ -271,7 +271,7 @@ button({ size: undefined }); // 'btn text-base rounded-md' — falls back to def
 button({ size: null });      // 'btn rounded-md' (no size classes at all)
 ```
 
-Default variants can also be functions that receive the current props and return a value dynamically. Return `undefined` to skip the variant entirely:
+Default variants can also be functions that receive the current props and return a value dynamically. When a [preset](#presets) is passed, its values are filled in for the props left unset, so a preset reads the same as passing its values. Other defaults are not filled in. Return `undefined` to skip the variant entirely:
 
 ```typescript
 const button = sv('btn', {

@@ -162,7 +162,7 @@ defaultVariants: {
 }
 ```
 
-Prefer static defaults — function-based defaults run on every invocation.
+The function sees the passed props, with a passed preset's values filled in for unset ones; it doesn't see other defaults. Prefer static defaults — function-based defaults run on every invocation.
 
 ### 11. Use Post-Processing with tailwind-merge
 

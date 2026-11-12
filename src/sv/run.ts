@@ -67,6 +67,7 @@ type RunPlan = {
 	variants: readonly VariantPlan[];
 	tables: readonly FragmentTable[];
 	compounds: readonly (readonly CompoundSlotFragment[])[];
+	presetDefaults: boolean;
 };
 
 type ResolvePreset = (
@@ -82,6 +83,7 @@ type CompiledRunContext = {
 	merge: MergeClassProp;
 	postProcess: ProcessCacheValue;
 	resolvePreset: ResolvePreset;
+	withPreset: typeof withPresetValues;
 	missingVariant: typeof createMissingVariantError;
 	invalidValue: typeof createInvalidValueError;
 	hasOwn: typeof hasOwn;
@@ -137,10 +139,31 @@ const readVariantState = <T>(
 	return state[variant.key];
 };
 
+/**
+ * The props a function default receives: the passed props, with the preset's
+ * values filled in where they leave a variant `undefined`, so a preset reads
+ * the same as passing its values.
+ */
+const withPresetValues = (
+	props: RuntimeVariantState,
+	presetValues: ResolvedVariantState
+) => {
+	const result: RuntimeVariantState = { ...props };
+
+	for (const [key, value] of entries(presetValues)) {
+		if (!hasOwn(result, key) || result[key] === undefined) {
+			result[key] = value;
+		}
+	}
+
+	return result;
+};
+
 const resolveVariantValue = (
 	variant: VariantData,
 	props: RuntimeVariantState,
-	presetValues: ResolvedVariantState | undefined
+	presetValues: ResolvedVariantState | undefined,
+	defaultProps: RuntimeVariantState
 ) => {
 	const propValue = readVariantState(props, variant);
 
@@ -165,7 +188,7 @@ const resolveVariantValue = (
 
 	// Check for function default value, to evaluate it with the current props.
 	if (typeof defaultValue === 'function') {
-		return defaultValue(props);
+		return defaultValue(defaultProps);
 	}
 
 	return defaultValue;
@@ -336,7 +359,13 @@ const createRunPlan = (config: CompiledConfig): RunPlan => {
 			)
 		),
 		tables,
-		compounds: compounds.map(({ fragments }) => fragments)
+		compounds: compounds.map(({ fragments }) => fragments),
+		// Only a function default reads the preset's values as props
+		presetDefaults:
+			keys(config.presets).length > 0 &&
+			variantData.some(
+				({ defaultValue }) => typeof defaultValue === 'function'
+			)
 	};
 };
 
@@ -356,14 +385,15 @@ const getValueCases = (valueKey: string) => {
 
 const getDefaultSource = (
 	defaultValue: RuntimeDefaultVariant,
-	index: number
+	index: number,
+	defaultProps: string
 ) => {
 	if (typeof defaultValue === 'string') {
 		return JSON.stringify(defaultValue);
 	}
 
 	if (typeof defaultValue === 'function') {
-		return `d${index}(p)`;
+		return `d${index}(${defaultProps})`;
 	}
 
 	// Numbers and booleans print as literals of the same value
@@ -377,6 +407,7 @@ const getDefaultSource = (
  */
 const getVariantSource = (
 	config: CompiledConfig,
+	plan: RunPlan,
 	{ data: variant, undefinedId }: VariantPlan,
 	index: number
 ) => {
@@ -400,8 +431,14 @@ const getVariantSource = (
 	}
 
 	if (defaultValue !== undefined) {
+		let defaultProps = 'p';
+
+		if (plan.presetDefaults) {
+			defaultProps = 'dp';
+		}
+
 		fallbacks.push(
-			`if (${value} === undefined) ${value} = ${getDefaultSource(defaultValue, index)};`
+			`if (${value} === undefined) ${value} = ${getDefaultSource(defaultValue, index, defaultProps)};`
 		);
 	}
 
@@ -584,7 +621,7 @@ const getResultSource = (config: CompiledConfig, plan: RunPlan) => {
 const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 	const { variantData } = config;
 	const variantSources = plan.variants.map((variant, index) =>
-		getVariantSource(config, variant, index)
+		getVariantSource(config, plan, variant, index)
 	);
 
 	const locals = plan.tables.map(
@@ -605,11 +642,14 @@ const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 
 	if (keys(config.presets).length === 0) {
 		presetSource = 'if (p.preset !== undefined) resolvePreset(p.preset);';
+	} else if (plan.presetDefaults) {
+		presetSource +=
+			' let dp = p; if (pv !== undefined) dp = withPreset(p, pv);';
 	}
 
 	return [
 		'"use strict";',
-		'const { cache, cacheReturn, defaults: d, valueIds, tables: t, merge, postProcess: pp, resolvePreset, missingVariant, invalidValue, hasOwn } = ctx;',
+		'const { cache, cacheReturn, defaults: d, valueIds, tables: t, merge, postProcess: pp, resolvePreset, withPreset, missingVariant, invalidValue, hasOwn } = ctx;',
 		...locals,
 		'return (p) => {',
 		presetSource,
@@ -630,8 +670,19 @@ const resolveVariants = (
 ): ResolvedVariant[] => {
 	const presetValues = resolvePresetValues(config.presets, props.preset);
 
+	let defaultProps: RuntimeVariantState = props;
+
+	if (plan.presetDefaults && presetValues !== undefined) {
+		defaultProps = withPresetValues(props, presetValues);
+	}
+
 	return plan.variants.map((variant) => {
-		const value = resolveVariantValue(variant.data, props, presetValues);
+		const value = resolveVariantValue(
+			variant.data,
+			props,
+			presetValues,
+			defaultProps
+		);
 
 		let id = variant.undefinedId;
 
@@ -789,6 +840,7 @@ export const createRun = (config: CompiledConfig): RunFn => {
 		postProcess: (value) => applyPostProcess(config.postProcess, value),
 		resolvePreset: (presetName) =>
 			resolvePresetValues(config.presets, presetName),
+		withPreset: withPresetValues,
 		missingVariant: createMissingVariantError,
 		invalidValue: createInvalidValueError,
 		hasOwn
