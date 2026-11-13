@@ -38,8 +38,7 @@ import {
 	getOverrideValue,
 	literalStyles,
 	resolveInvocation,
-	type StyledClasses,
-	type StyledContext
+	type StyledClasses
 } from './styled-values.ts';
 import { createTrackedCallResolver } from './tracked-calls.ts';
 
@@ -80,7 +79,6 @@ type PropRead = { component: Component; prop: string };
 // or a props declaration written below its use (a Svelte template above its
 // `<script>`) has been seen by then.
 type PendingPosition = {
-	ctx: StyledContext;
 	site: ComponentSite | null;
 	run: (emit: (parts: ClassParts) => void) => void;
 };
@@ -194,12 +192,10 @@ export const createForwardingScan = (
 	const moduleScope = (): Scope.Scope => getModuleScope(sourceCode);
 
 	const deferParts = (
-		positionCtx: StyledContext,
 		site: ComponentSite | null,
 		collect: (parts: ClassParts) => void
 	) => {
 		pending.push({
-			ctx: positionCtx,
 			site,
 			run(emit) {
 				const parts = emptyParts();
@@ -330,10 +326,7 @@ export const createForwardingScan = (
 	};
 
 	// `props.className` — `class` / `className` read off a props object.
-	const readMemberProp = (
-		node: MemberExpression,
-		positionCtx: StyledContext
-	): PropRead | null => {
+	const readMemberProp = (node: MemberExpression): PropRead | null => {
 		if (
 			node.computed ||
 			node.property.type !== 'Identifier' ||
@@ -345,7 +338,7 @@ export const createForwardingScan = (
 
 		const component = lookupBinding(
 			propsObjects,
-			positionCtx.scopeOf(node.object),
+			ctx.scopeOf(node.object),
 			node.object.name
 		);
 
@@ -357,19 +350,12 @@ export const createForwardingScan = (
 	};
 
 	// The `class` prop a dynamic value reads, if it is one.
-	const readProp = (
-		node: ClassParts['dynamic'][number],
-		positionCtx: StyledContext
-	): PropRead | null => {
+	const readProp = (node: ClassParts['dynamic'][number]): PropRead | null => {
 		if (node.type === 'MemberExpression') {
-			return readMemberProp(node, positionCtx);
+			return readMemberProp(node);
 		}
 
-		return lookupBinding(
-			propBindings,
-			positionCtx.scopeOf(node),
-			node.name
-		);
+		return lookupBinding(propBindings, ctx.scopeOf(node), node.name);
 	};
 
 	// What a forwarded prop is merged with at this position. Inside a `cn()`
@@ -384,7 +370,7 @@ export const createForwardingScan = (
 	};
 
 	// The first position a component forwards its prop into is the one kept.
-	const trackForwarding = (parts: ClassParts, positionCtx: StyledContext) => {
+	const trackForwarding = (parts: ClassParts) => {
 		if (parts.dynamic.length === 0) {
 			return;
 		}
@@ -396,7 +382,7 @@ export const createForwardingScan = (
 		}
 
 		for (const node of parts.dynamic) {
-			const read = readProp(node, positionCtx);
+			const read = readProp(node);
 
 			if (read !== null && !forwarded.has(read.component)) {
 				forwarded.set(read.component, { prop: read.prop, targets });
@@ -407,30 +393,29 @@ export const createForwardingScan = (
 	// A `cn()` (or config-less `sv()`) call is a class list in its own right,
 	// wherever it is written; a variant-function call is checked through the
 	// override it is passed.
-	const visitCall = (node: CallExpression, positionCtx: StyledContext) => {
+	const visitCall = (node: CallExpression) => {
 		pending.push({
-			ctx: positionCtx,
 			site: null,
 			run(emit) {
-				if (isClassListCall(node, positionCtx)) {
+				if (isClassListCall(node, ctx)) {
 					const parts = emptyParts();
 
-					collectCallParts(node, positionCtx, parts);
+					collectCallParts(node, ctx, parts);
 					emit(parts);
 
 					return;
 				}
 
-				const invocation = resolveInvocation(node, positionCtx);
+				const invocation = resolveInvocation(node, ctx);
 
 				if (invocation === null) {
 					return;
 				}
 
-				const value = getOverrideValue(node.arguments[0], positionCtx);
+				const value = getOverrideValue(node.arguments[0], ctx);
 
 				if (value !== null) {
-					forEachOverrideParts(value, invocation, positionCtx, emit);
+					forEachOverrideParts(value, invocation, ctx, emit);
 				}
 			}
 		});
@@ -453,7 +438,6 @@ export const createForwardingScan = (
 		}
 
 		deferParts(
-			ctx,
 			makeSite(component, prop, sourceCode.getScope(value)),
 			(parts) => {
 				collectParts(value, ctx, parts);
@@ -497,7 +481,7 @@ export const createForwardingScan = (
 			visitDeclarator(node);
 		},
 		CallExpression(node: CallExpression) {
-			visitCall(node, ctx);
+			visitCall(node);
 		},
 		JSXOpeningElement(node: MarkupNode) {
 			/* c8 ignore next 3 -- the selector only matches this type */
@@ -530,7 +514,6 @@ export const createForwardingScan = (
 				}
 
 				deferParts(
-					ctx,
 					makeSite(component, attribute.key.name, moduleScope()),
 					(parts) => {
 						for (const part of attribute.value) {
@@ -553,13 +536,13 @@ export const createForwardingScan = (
 
 			for (const item of pending) {
 				item.run((parts) => {
-					positions.push({ parts, ctx: item.ctx, site: item.site });
+					positions.push({ parts, site: item.site });
 				});
 			}
 
 			// Every forward is known before any component site is checked.
 			for (const position of positions) {
-				trackForwarding(position.parts, position.ctx);
+				trackForwarding(position.parts);
 			}
 
 			for (const position of positions) {
@@ -574,7 +557,7 @@ export const createForwardingScan = (
 	// call written inside a `:class` binding is picked up here.
 	const templateVisitors = {
 		CallExpression(node: CallExpression) {
-			visitCall(node, ctx);
+			visitCall(node);
 		},
 		VElement(node: MarkupNode) {
 			/* c8 ignore next 3 -- the selector only matches this type */
@@ -590,7 +573,6 @@ export const createForwardingScan = (
 			}
 
 			deferParts(
-				ctx,
 				makeSite(getVueComponentName(node), 'class', moduleScope()),
 				(parts) => {
 					for (const attribute of attributes) {

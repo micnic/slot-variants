@@ -18,6 +18,10 @@ export type CallMatch = {
 // caller's context assigns it.
 type ResolveNode = (node: Node) => Node;
 
+/** Whether `node` is the last argument `call` is passed. */
+export const isLastArgument = (call: CallExpression, node: Node): boolean =>
+	call.arguments.at(-1) === node;
+
 /**
  * A config-less, non-factory `sv()`/`cn()` call: a class list in its own
  * right rather than a variant function or a factory.
@@ -50,13 +54,19 @@ export const matchSvCall = (
 	return { config: null, args, isFactoryConfig: false };
 };
 
-// An empty object is a config too, as `sv()` reads it at runtime: a variant
-// function with nothing configured.
-const isEmptyObject = (node: Node | undefined): node is ObjectExpression =>
-	node !== undefined &&
-	node.type === 'ObjectExpression' &&
-	node.properties.length === 0;
+// An object holding only config keys.
+const isConfigLike = (node: Node): node is ObjectExpression => {
+	if (node.type !== 'ObjectExpression') {
+		return false;
+	}
 
-const isConfigLike = (node: Node | undefined): node is ObjectExpression =>
-	isEmptyObject(node) ||
-	getStrictPropertiesWithKeys(node, (key) => CONFIG_KEYS.has(key)) !== null;
+	// An empty object is a config too, as `sv()` reads it at runtime: a
+	// variant function with nothing configured.
+	if (node.properties.length === 0) {
+		return true;
+	}
+
+	const isConfigKey = (key: string) => CONFIG_KEYS.has(key);
+
+	return getStrictPropertiesWithKeys(node, isConfigKey) !== null;
+};

@@ -1,30 +1,40 @@
 import type { Rule } from 'eslint';
-import type { CallExpression, Expression, Node, SpreadElement } from 'estree';
+import type {
+	CallExpression,
+	Expression,
+	Node,
+	ObjectExpression,
+	SpreadElement
+} from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import {
 	type ConflictOptions,
 	getConflictKey,
 	overlapNeighbors
 } from '../tailwind-categories.ts';
-import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
+import {
+	isWithinNode,
+	resolveArray,
+	resolveContainer,
+	resolveStaticValue
+} from './const-bindings.ts';
 import { type EmptyFix, makeListFix } from './list-fix.ts';
 import { getStaticStringText } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
-	getConfigSlotNames,
 	getProperties,
 	getSlotTargetOverlaps,
 	type GroupSlots
 } from './properties.ts';
 import {
+	getConfigStyles,
 	getOverrideValue,
-	readGroups,
+	getSlotBuckets,
 	resolveInvocation,
 	type StyledContext
 } from './styled-values.ts';
 import {
 	collectCnEntries,
-	collectConfigEntries,
 	forEachCompoundClass,
 	forEachStaticItem
 } from './token-extraction.ts';
@@ -399,18 +409,16 @@ const reportDuplicateGroupSlots = (
 	config: ReadonlyMap<string, Node>
 ) => {
 	const { sourceCode } = context;
-	const [configStart, configEnd] = sourceCode.getRange(configNode);
 	const groups = resolveContainer(config.get('groups'), sourceCode);
 
 	for (const [group, value] of getProperties(groups)) {
-		const list = resolveContainer(value, sourceCode);
+		const list = resolveArray(value, sourceCode);
 
-		if (list === undefined || list.type !== 'ArrayExpression') {
+		if (list === null) {
 			continue;
 		}
 
-		const [listStart, listEnd] = sourceCode.getRange(list);
-		const canEdit = listStart >= configStart && listEnd <= configEnd;
+		const canEdit = isWithinNode(sourceCode, list, configNode);
 		const seen = new Set<string>();
 
 		forEachStaticItem(list.elements, (element) => {
@@ -445,20 +453,19 @@ const reportDuplicateGroupSlots = (
 
 export const analyzeConfigForRule = (
 	context: Rule.RuleContext,
-	configNode: Node,
+	node: CallExpression,
+	configNode: ObjectExpression,
 	baseArgs: ReadonlyArray<Expression | SpreadElement>,
 	options: ConflictOptions
 ) => {
-	const { sourceCode } = context;
 	const config = getProperties(configNode);
-	const slotNames = getConfigSlotNames(config, sourceCode);
-	const bySlot = indexEntriesBySlotAndToken(
-		collectConfigEntries(config, slotNames, baseArgs, sourceCode)
+	const styles = getConfigStyles(
+		node,
+		configNode,
+		baseArgs,
+		context.sourceCode
 	);
-	const { groupSlots, slotGroups } = readGroups(
-		getProperties(resolveContainer(config.get('groups'), sourceCode)),
-		sourceCode
-	);
+	const { bySlot, slotNames, groupSlots } = styles;
 	const report = (
 		tokenMap: Map<string, Entry[]>,
 		slot: string,
@@ -508,10 +515,10 @@ export const analyzeConfigForRule = (
 
 	// A slot's classes are its own plus those of every group naming it.
 	for (const slot of slots) {
-		const buckets = [slot, ...(slotGroups.get(slot) ?? [])];
-
 		report(
-			mergeTokenMaps(buckets.map((bucket) => bySlot.get(bucket))),
+			mergeTokenMaps(
+				getSlotBuckets(styles, slot).map((bucket) => bySlot.get(bucket))
+			),
 			slot,
 			(entries) => !isConfinedToGroup(entries)
 		);

@@ -1,5 +1,5 @@
 import type { Scope, SourceCode } from 'eslint';
-import type { Node } from 'estree';
+import type { ArrayExpression, Node } from 'estree';
 
 // A node that only wraps another expression without changing its value.
 type TransparentWrapper = Node & { expression: Node };
@@ -143,48 +143,24 @@ export const findSingleBinding = (
 ): SingleBinding | null => {
 	const variable = findVariable(scope, name);
 
-	if (!variable || variable.defs.length !== 1) {
+	if (!variable) {
 		return null;
 	}
 
-	const [def] = variable.defs;
+	const [def, extra] = variable.defs;
 
-	/* c8 ignore next 3 -- a length-1 defs array always has a first element */
-	if (!def) {
+	// A global has no definition, a redeclared name more than one
+	if (def === undefined || extra !== undefined) {
 		return null;
 	}
 
 	return { def, scope: variable.scope };
 };
 
-// The one definition `name` resolves to, or null when it's unbound or
-// declared more than once.
-const findSingleDef = (
-	scope: Scope.Scope,
-	name: string
-): Scope.Definition | null => {
-	const binding = findSingleBinding(scope, name);
-
-	if (binding === null) {
-		return null;
-	}
-
-	return binding.def;
-};
-
-// The initializer of a single same-file `const name = <value>` binding, or null
-// for anything we can't safely read through: let/var, redeclarations, imports,
-// function parameters, and destructuring patterns.
-const getConstBindingInit = (scope: Scope.Scope, name: string): Node | null =>
-	getConstDefInit(findSingleDef(scope, name));
-
 // The initializer of a `const name = <value>` definition, or null for any other
-// kind of definition, including a destructuring pattern.
-export const getConstDefInit = (def: Scope.Definition | null): Node | null => {
-	if (!def) {
-		return null;
-	}
-
+// kind of definition — let/var, imports, function parameters — and for a
+// destructuring pattern.
+export const getConstDefInit = (def: Scope.Definition): Node | null => {
 	if (def.type !== 'Variable' || def.parent.kind !== 'const') {
 		return null;
 	}
@@ -226,7 +202,13 @@ export const resolveStaticValue = (
 			return current;
 		}
 
-		const init = getConstBindingInit(scope, current.name);
+		const binding = findSingleBinding(scope, current.name);
+
+		if (binding === null) {
+			return current;
+		}
+
+		const init = getConstDefInit(binding.def);
 
 		if (!init) {
 			return current;
@@ -250,4 +232,32 @@ export const resolveContainer = (
 	}
 
 	return resolveStaticValue(node, sourceCode);
+};
+
+// A list config value (`compoundVariants`, a group's slots, …) read through
+// `const` bindings, or null when it's unset or not an array literal.
+export const resolveArray = (
+	node: Node | undefined,
+	sourceCode: SourceCode
+): ArrayExpression | null => {
+	const list = resolveContainer(node, sourceCode);
+
+	if (list === undefined || list.type !== 'ArrayExpression') {
+		return null;
+	}
+
+	return list;
+};
+
+// Whether `node` is written inside `container`, rather than in a `const`
+// declared elsewhere that other code may share.
+export const isWithinNode = (
+	sourceCode: SourceCode,
+	node: Node,
+	container: Node
+): boolean => {
+	const [start, end] = sourceCode.getRange(node);
+	const [containerStart, containerEnd] = sourceCode.getRange(container);
+
+	return start >= containerStart && end <= containerEnd;
 };

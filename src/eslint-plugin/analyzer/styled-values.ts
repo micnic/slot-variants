@@ -67,7 +67,7 @@ const EMPTY_GROUPS: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
 
 const NO_SKIP: ReadonlySet<string> = new Set();
 
-export const readGroups = (
+const readGroups = (
 	groups: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
 ): Pick<InternalStyles, 'groupSlots' | 'slotGroups'> => {
@@ -113,6 +113,19 @@ const buildStyles = (
 
 const stylesCache = new WeakMap<Node, InternalStyles>();
 
+/**
+ * The classes an `sv(config)` call compiles to, memoized on the call node so a
+ * config referenced from many call sites, or read by more than one rule, is
+ * walked once per lint pass.
+ */
+export const getConfigStyles = (
+	node: CallExpression,
+	config: ObjectExpression,
+	args: ReadonlyArray<Expression | SpreadElement>,
+	sourceCode: SourceCode
+): InternalStyles =>
+	getOrCreate(stylesCache, node, () => buildStyles(config, args, sourceCode));
+
 /** Everything the resolver needs from the rule that owns it. */
 export type StyledContext = {
 	sourceCode: SourceCode;
@@ -131,19 +144,20 @@ export const createStyledContext = (
 	resolve: (node) => resolveStaticValue(node, sourceCode)
 });
 
-// `defaultVariants` values a call site doesn't override, merged under the
-// values it passes.
-const withDefaults = (
-	props: Map<string, ReadonlySet<string>>,
-	defaults: VariantMatchers
+// Later matchers win: a call site's props over the config's `defaultVariants`,
+// and a slot call's own props over the ones already fixed when the result was
+// produced.
+const mergeMatchers = (
+	outer: VariantMatchers,
+	inner: VariantMatchers
 ): VariantMatchers => {
-	for (const [key, values] of defaults) {
-		if (!props.has(key)) {
-			props.set(key, values);
-		}
+	const merged = new Map(outer);
+
+	for (const [key, values] of inner) {
+		merged.set(key, values);
 	}
 
-	return props;
+	return merged;
 };
 
 // The props object a call site passes, read through `const` bindings. Empty for
@@ -164,9 +178,9 @@ const buildCallMatchers = (
 	styles: InternalStyles,
 	ctx: StyledContext
 ): VariantMatchers =>
-	withDefaults(
-		readMatchers(getCallProps(arg, ctx), NON_MATCHER_KEYS),
-		styles.defaults
+	mergeMatchers(
+		styles.defaults,
+		readMatchers(getCallProps(arg, ctx), NON_MATCHER_KEYS)
 	);
 
 // The `sv(config)` call a compiled variant function came from, reached through
@@ -194,13 +208,7 @@ const resolveVariantFnStyles = (
 		return null;
 	}
 
-	const { config, args } = match;
-
-	// Memoized on the call node so a config referenced from many call sites is
-	// walked once per lint pass.
-	return getOrCreate(stylesCache, resolved, () =>
-		buildStyles(config, args, ctx.sourceCode)
-	);
+	return getConfigStyles(resolved, match.config, match.args, ctx.sourceCode);
 };
 
 /**
@@ -257,21 +265,6 @@ export const resolveInvocation = (
 		matchers: buildCallMatchers(node.arguments[0], styles, ctx),
 		slot: null
 	};
-};
-
-// Later matchers win, mirroring how a slot call's own props refine the ones
-// already fixed when the result was produced.
-const mergeMatchers = (
-	outer: VariantMatchers,
-	inner: VariantMatchers
-): VariantMatchers => {
-	const merged = new Map(outer);
-
-	for (const [key, values] of inner) {
-		merged.set(key, values);
-	}
-
-	return merged;
 };
 
 // `classes.header` — a slot read off a variant function's result.

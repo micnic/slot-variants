@@ -4,6 +4,8 @@ import type {
 	FunctionDeclaration,
 	FunctionExpression,
 	Identifier,
+	MaybeNamedClassDeclaration,
+	MaybeNamedFunctionDeclaration,
 	Node,
 	Program
 } from 'estree';
@@ -14,6 +16,13 @@ export type ComponentFunction =
 	| FunctionDeclaration
 	| FunctionExpression
 	| ArrowFunctionExpression;
+
+// Anything that may name or wrap a component, including what `export default`
+// takes besides an expression: a function or class declaration, maybe unnamed.
+type WrapperCandidate =
+	| Node
+	| MaybeNamedFunctionDeclaration
+	| MaybeNamedClassDeclaration;
 
 /**
  * Something a `class` prop is passed to: a component function, or a whole
@@ -51,7 +60,7 @@ export const isComponentFunction = (node: {
  * the component. Null when nothing is reachable that way.
  */
 export const findWrappedComponent = (
-	node: Node
+	node: WrapperCandidate
 ): ComponentFunction | Identifier | null => {
 	if (isComponentFunction(node) || node.type === 'Identifier') {
 		return node;

@@ -7,6 +7,7 @@ import type {
 	Property,
 	SpreadElement
 } from 'estree';
+import { isLastArgument } from '../analyzer/call-matching.ts';
 import {
 	CONFIG_KEY_ORDER,
 	docsUrl,
@@ -423,7 +424,7 @@ const isBareLastArgument = (
 	call: CallExpression,
 	configNode: ObjectExpression
 ): boolean => {
-	if (call.arguments[call.arguments.length - 1] !== configNode) {
+	if (!isLastArgument(call, configNode)) {
 		return false;
 	}
 

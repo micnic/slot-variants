@@ -2,8 +2,7 @@ import type { ExportNamedDeclaration, Node, Program } from 'estree';
 import {
 	type ComponentFunction,
 	DEFAULT_EXPORT,
-	findWrappedComponent,
-	isComponentFunction
+	findWrappedComponent
 } from './components.ts';
 import { getOrCreate } from '../map-utils.ts';
 import { getExportName, getModuleSpecifier } from './config-keys.ts';
@@ -24,14 +23,6 @@ export type ExportTable = {
 };
 
 type AddTarget = (name: string, target: ExportTarget) => void;
-
-const getSourceValue = (node: Program['body'][number]): string | null => {
-	if (!('source' in node) || !node.source) {
-		return null;
-	}
-
-	return getModuleSpecifier(node.source);
-};
 
 const collectFromDeclaration = (
 	declaration: Node | null | undefined,
@@ -69,7 +60,11 @@ const collectFromSpecifiers = (
 	node: ExportNamedDeclaration,
 	add: AddTarget
 ) => {
-	const source = getSourceValue(node);
+	let source: string | null = null;
+
+	if (node.source) {
+		source = getModuleSpecifier(node.source);
+	}
 
 	for (const specifier of node.specifiers) {
 		const exported = getExportName(specifier.exported);
@@ -94,32 +89,16 @@ const collectDefaultExport = (
 	const { declaration } = node;
 
 	// A named function or a re-exported binding is reached through the module
-	// scope; an anonymous function — bare, or inside a wrapper call like
-	// `forwardRef()` — has no name to look up, so the node itself is the
-	// target. Anything else a default export can be carries no component.
+	// scope, as is a named component handed to a wrapper (`memo(Impl)`); an
+	// anonymous function — bare, or inside a wrapper call like `forwardRef()`
+	// — has no name to look up, so the node itself is the target. Anything
+	// else a default export can be carries no component.
 	if (declaration.type === 'FunctionDeclaration' && declaration.id) {
 		add(DEFAULT_EXPORT, { kind: 'local', name: declaration.id.name });
 
 		return;
 	}
 
-	if (declaration.type === 'Identifier') {
-		add(DEFAULT_EXPORT, { kind: 'local', name: declaration.name });
-
-		return;
-	}
-
-	if (isComponentFunction(declaration)) {
-		add(DEFAULT_EXPORT, { kind: 'node', node: declaration });
-
-		return;
-	}
-
-	if (declaration.type !== 'CallExpression') {
-		return;
-	}
-
-	// A wrapper handed a named component (`memo(Impl)`) exports that binding.
 	const wrapped = findWrappedComponent(declaration);
 
 	if (wrapped === null) {
@@ -153,11 +132,7 @@ export const collectExportTable = (ast: Program): ExportTable => {
 			// `export * as ns from` exports a namespace object, not the names
 			// inside it, so it never answers a plain name.
 			if (node.exported === null) {
-				const source = getSourceValue(node);
-
-				if (source !== null) {
-					starSources.push(source);
-				}
+				starSources.push(getModuleSpecifier(node.source));
 			}
 
 			continue;

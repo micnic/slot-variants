@@ -42,32 +42,6 @@ const trackNamedImport = (
 	exportByLocal.set(specifier.local.name, importedName);
 };
 
-const createImportsTracker = () => {
-	const names: TrackedNames = {
-		exportByLocal: new Map<string, string>(),
-		namespaceNames: new Set<string>()
-	};
-
-	const importsTracker = (node: ImportDeclaration) => {
-		if (node.source.value !== 'slot-variants') {
-			return;
-		}
-
-		for (const specifier of node.specifiers) {
-			// `import * as SV` reaches every export through one local binding,
-			// so the export being called is only known at the call site.
-			if (specifier.type === 'ImportNamespaceSpecifier') {
-				names.namespaceNames.add(specifier.local.name);
-				continue;
-			}
-
-			trackNamedImport(specifier, names.exportByLocal);
-		}
-	};
-
-	return { names, importsTracker };
-};
-
 // A tracked-name identifier could still be a local binding that shadows the
 // import (e.g. a function parameter named `cn`), so confirm it resolves to
 // an import binding.
@@ -290,6 +264,34 @@ const collectImportDeclarations = (
 	return imports;
 };
 
+// The local names the file's `slot-variants` imports give `sv`, `cn` and
+// `createSV`, and the namespaces they can be reached through.
+const collectTrackedNames = (program: AST.Program): TrackedNames => {
+	const names: TrackedNames = {
+		exportByLocal: new Map<string, string>(),
+		namespaceNames: new Set<string>()
+	};
+
+	for (const node of collectImportDeclarations(program)) {
+		if (node.source.value !== 'slot-variants') {
+			continue;
+		}
+
+		for (const specifier of node.specifiers) {
+			// `import * as SV` reaches every export through one local binding,
+			// so the export being called is only known at the call site.
+			if (specifier.type === 'ImportNamespaceSpecifier') {
+				names.namespaceNames.add(specifier.local.name);
+				continue;
+			}
+
+			trackNamedImport(specifier, names.exportByLocal);
+		}
+	}
+
+	return names;
+};
+
 // An on-demand classifier, for rules that need to ask whether an arbitrary call
 // is a tracked sv/cn call outside a CallExpression visitor (`no-restyle`
 // resolves callees and class-list parts that way). The file's imports are read
@@ -297,11 +299,7 @@ const collectImportDeclarations = (
 export const createTrackedCallResolver = (
 	context: Rule.RuleContext
 ): StyledContext => {
-	const { names, importsTracker } = createImportsTracker();
-
-	for (const node of collectImportDeclarations(context.sourceCode.ast)) {
-		importsTracker(node);
-	}
+	const names = collectTrackedNames(context.sourceCode.ast);
 
 	const hasTrackedImports =
 		names.exportByLocal.size > 0 || names.namespaceNames.size > 0;

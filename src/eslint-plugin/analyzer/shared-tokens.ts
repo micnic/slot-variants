@@ -1,6 +1,11 @@
 import type { Rule, SourceCode } from 'eslint';
 import type { ArrayExpression, Node, ObjectExpression, Property } from 'estree';
-import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
+import {
+	isWithinNode,
+	resolveArray,
+	resolveContainer,
+	resolveStaticValue
+} from './const-bindings.ts';
 import { type EmptyFix, type ListItems, makeListFix } from './list-fix.ts';
 import {
 	canHoistAsLiteral,
@@ -867,12 +872,12 @@ const checkCompoundsForSingleKey = (
 	variantsMap: ReadonlyMap<string, Node>,
 	scope: CompoundScope
 ) => {
-	const compounds = resolveContainer(
+	const compounds = resolveArray(
 		getProperties(configNode).get(kind),
 		context.sourceCode
 	);
 
-	if (compounds === undefined || compounds.type !== 'ArrayExpression') {
+	if (compounds === null) {
 		return;
 	}
 
@@ -930,7 +935,6 @@ export const analyzeSharedTokens = (
 	const variantsMap = getProperties(
 		resolveContainer(config.get('variants'), sourceCode)
 	);
-	const [configStart, configEnd] = sourceCode.getRange(configNode);
 	// A spread or computed key may override whatever a fix would edit or
 	// create, so such a config's findings are reported without a fix.
 	const isStrictConfig = getStrictProperties(configNode) !== null;
@@ -943,9 +947,7 @@ export const analyzeSharedTokens = (
 			return true;
 		}
 
-		const [start, end] = sourceCode.getRange(node);
-
-		return start >= configStart && end <= configEnd;
+		return isWithinNode(sourceCode, node, configNode);
 	};
 
 	const suggestOnly = inheritsPostProcess || config.has('postProcess');

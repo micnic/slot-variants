@@ -1,6 +1,6 @@
 import type { Rule } from 'eslint';
 import type { CallExpression, Node, ObjectExpression } from 'estree';
-import type { CallMatch } from '../analyzer/call-matching.ts';
+import { type CallMatch, isLastArgument } from '../analyzer/call-matching.ts';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import { getStrictProperties } from '../analyzer/properties.ts';
 import {
@@ -64,10 +64,7 @@ const getLeadingArg = (
 ): SharedTokensCall['leadingArg'] => {
 	const lastLeadingArg = call.args[call.args.length - 1];
 
-	if (
-		lastLeadingArg === undefined ||
-		node.arguments[node.arguments.length - 1] !== config
-	) {
+	if (lastLeadingArg === undefined || !isLastArgument(node, config)) {
 		return null;
 	}
 

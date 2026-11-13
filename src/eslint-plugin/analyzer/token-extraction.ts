@@ -10,7 +10,11 @@ import type {
 	TemplateLiteral
 } from 'estree';
 import { getKeyName } from './config-keys.ts';
-import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
+import {
+	resolveArray,
+	resolveContainer,
+	resolveStaticValue
+} from './const-bindings.ts';
 import {
 	CLASS_TOKEN,
 	getInnerText,
@@ -530,9 +534,9 @@ export const forEachStringLiteralElement = (
 	sourceCode: SourceCode,
 	visit: (value: string) => void
 ) => {
-	const list = resolveContainer(node, sourceCode);
+	const list = resolveArray(node, sourceCode);
 
-	if (list === undefined || list.type !== 'ArrayExpression') {
+	if (list === null) {
 		return;
 	}
 
@@ -552,9 +556,9 @@ export const forEachCompoundClass = (
 	sourceCode: SourceCode,
 	visit: (cls: Node, compound: ReadonlyMap<string, Node>) => void
 ) => {
-	const list = resolveContainer(node, sourceCode);
+	const list = resolveArray(node, sourceCode);
 
-	if (list === undefined || list.type !== 'ArrayExpression') {
+	if (list === null) {
 		return;
 	}
 

@@ -112,22 +112,18 @@ export const getEntriesMatchers = (
 	return matchers;
 };
 
-// True when every pair of matchers disagrees on at least one shared key. Null
-// (some entry has no readable matchers) is never exclusive.
-const arePairwiseExclusive = (
-	matchers: ReadonlyArray<VariantMatchers> | null
+// True when `test` holds for every pair of entries. Indexed rather than
+// sliced: this runs for every candidate pair of tokens, so it shouldn't copy
+// the rest of the list on each step.
+const everyPair = (
+	entries: ReadonlyArray<Entry>,
+	test: (a: Entry, b: Entry) => boolean
 ): boolean => {
-	if (matchers === null) {
-		return false;
-	}
+	for (const [index, current] of entries.entries()) {
+		for (let next = index + 1; next < entries.length; next += 1) {
+			const other = entries[next];
 
-	for (const [index, current] of matchers.entries()) {
-		// Indexed rather than sliced: this runs for every candidate pair of
-		// tokens, so it shouldn't copy the rest of the list on each step.
-		for (let next = index + 1; next < matchers.length; next += 1) {
-			const other = matchers[next];
-
-			if (other !== undefined && !areExclusiveMatchers(current, other)) {
+			if (other !== undefined && !test(current, other)) {
 				return false;
 			}
 		}
@@ -136,6 +132,8 @@ const arePairwiseExclusive = (
 	return true;
 };
 
+// An entry with no readable matchers (base/compound) can co-occur with
+// anything, so it's never exclusive.
 const areEntriesExclusive = (a: Entry, b: Entry): boolean => {
 	const matchersA = getEntryMatchers(a);
 	const matchersB = getEntryMatchers(b);
@@ -152,25 +150,16 @@ const areEntriesExclusive = (a: Entry, b: Entry): boolean => {
 // and doesn't make the tokens it never renders with conflict.
 export const areDistinctTokensExclusive = (
 	entries: ReadonlyArray<Entry>
-): boolean => {
-	for (const [index, current] of entries.entries()) {
-		for (const other of entries.slice(index + 1)) {
-			if (
-				current.token !== other.token &&
-				!areEntriesExclusive(current, other)
-			) {
-				return false;
-			}
-		}
-	}
-
-	return true;
-};
+): boolean =>
+	everyPair(
+		entries,
+		(a, b) => a.token === b.token || areEntriesExclusive(a, b)
+	);
 
 // True when every pair of entries disagrees on at least one shared matcher
 // key, so they can't co-occur.
 const isMutuallyExclusiveVariants = (list: Entry[]): boolean =>
-	arePairwiseExclusive(getEntriesMatchers(list));
+	everyPair(list, areEntriesExclusive);
 
 export const EMPTY_SLOT_NAMES = new Set<string>();
 
