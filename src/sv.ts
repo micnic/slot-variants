@@ -102,11 +102,12 @@ const mergeSlotFnProps = (
 	outerProps: RuntimeProps,
 	innerProps: RuntimeProps
 ): RuntimeProps => {
-	const { class: _class, className: _className, ...innerState } = innerProps;
 	const mergedProps: RuntimeProps = { ...outerProps };
 
-	for (const [key, value] of entries(innerState)) {
-		if (value !== undefined) {
+	for (const key of keys(innerProps)) {
+		const value = innerProps[key];
+
+		if (value !== undefined && key !== 'class' && key !== 'className') {
 			mergedProps[key] = value;
 		}
 	}

@@ -150,10 +150,14 @@ const withPresetValues = (
 	props: RuntimeVariantState,
 	presetValues: ResolvedVariantState
 ) => {
-	const result: RuntimeVariantState = { ...props };
+	const result: RuntimeVariantState = { ...presetValues };
 
-	for (const [key, value] of entries(presetValues)) {
-		if (!hasOwn(result, key) || result[key] === undefined) {
+	// Copying the preset first and overlaying the props is the fastest way
+	// found; an `undefined` prop still shows up when the preset leaves it out.
+	for (const key of keys(props)) {
+		const value = props[key];
+
+		if (value !== undefined || !hasOwn(result, key)) {
 			result[key] = value;
 		}
 	}
