@@ -81,7 +81,7 @@ const card = sv('border', {
 card({ size: 'lg' }); // header and body both get 'text-lg'
 ```
 
-Groups never become keys of the result — it always holds `base` plus each declared slot. The keys of a slot object are applied in the order they are written, so when one object names both a group and one of its slots, the key written first lands first. A group lists slot names only (it cannot name another group), must be non-empty, and its name must not match a slot name (including `base`).
+Groups never appear in the result. A group lists existing slots (not other groups), and its name can't match a slot name. Don't name both a group and one of its slots in the same slot object.
 
 ### 6. Use Multi Slots for Repeated Renders
 
@@ -100,9 +100,7 @@ header({ size: 'lg' });    // 'font-bold text-lg' — override per instance
 header({ class: 'mt-2' }); // 'font-bold text-sm mt-2'
 ```
 
-Pass `true` to make every slot a function, `false` (default) to keep them all strings.
-
-A slot function also accepts `preset` when the config declares `presets`. It inherits the outer call's preset, and its own `preset` wins.
+Pass `true` to make every slot a function. A slot function also accepts `preset`; it inherits the outer call's preset, and its own wins.
 
 ### 7. Use the Runtime `class` Prop for Call-Site Overrides
 
@@ -140,7 +138,7 @@ compoundVariants: [
 ]
 ```
 
-A `preset` name may stand in for the variant values it holds, in `compoundVariants` and `compoundSlots` alike. It expands when the config is evaluated, so the entry matches those values however they were reached; a matcher written alongside it overrides the value it contributes:
+A `preset` name can stand in for its variant values in `compoundVariants` and `compoundSlots`. The entry matches those values whether or not the preset was passed, and conditions written alongside it override its values:
 
 ```typescript
 presets: { cta: { size: 'lg', intent: 'primary' } },
@@ -164,7 +162,7 @@ defaultVariants: {
 }
 ```
 
-The function sees the passed props, with a passed preset's values filled in for unset ones; it doesn't see other defaults. Prefer static defaults — function-based defaults run on every invocation.
+The function receives the call's props (including preset values), not other defaults. Prefer static defaults when possible.
 
 ### 11. Use Post-Processing with tailwind-merge
 
@@ -176,7 +174,7 @@ import { twMerge } from 'tailwind-merge';
 sv('px-4 py-2', { variants: { size: { lg: 'px-6 py-3' } }, postProcess: twMerge });
 ```
 
-To avoid restating `postProcess` per component, wrap `sv` once with `createSV`. Defaults accept only `base`, `cacheSize`, `postProcess`, `introspection`, and boolean `requiredVariants`/`multiSlots` (reflected in each component's types). They are shallow merged into every config-based call and a per-call value always wins:
+To avoid restating `postProcess` per component, wrap `sv` once with `createSV`. Defaults accept only `base`, `cacheSize`, `postProcess`, `introspection`, and boolean `requiredVariants`/`multiSlots`; a per-call value always wins:
 
 ```typescript
 import { createSV } from 'slot-variants';
@@ -187,13 +185,7 @@ const customSV = createSV({ cacheSize: 512, postProcess: twMerge });
 
 ### 12. Leverage Caching for Performance
 
-The library caches results automatically (default 256 entries). Each cache entry is one distinct combination of resolved variant values:
-
-```
-maxEntries = factor₁ × factor₂ × ... × factorₙ
-```
-
-A variant's factor is its value count `+ 1` (the `+ 1` counts the variant being left unset). A boolean variant — shorthand (`loading: 'opacity-50'`) or a record keyed only by `true`/`false` — always has both values, even when only one is written, so its factor is `3`. A record mixing a `true` or `false` key with named values also counts both booleans. The `+ 1` is dropped — factor is just the value count — only when the variant is required, since it can never be unset. Defaults keep the `+ 1`: passing `null` skips a default, and a function default may return `undefined`. Raise `cacheSize` only when `maxEntries` exceeds 256 — below that the cache never evicts. With `introspection: true`, `getMaxEntries()` returns this exact number, and `getCacheSize()`/`clearCache()` inspect the live cache.
+Results are cached automatically (default 256 entries). Leave `cacheSize` alone unless a component has more variant combinations than that — `getMaxEntries()` (with `introspection: true`) reports the count. `cacheSize: 0` disables caching.
 
 ### 13. Use Presets for Reusable Variant Combinations
 
@@ -206,7 +198,7 @@ const button = sv('btn', {
 button({ preset: 'cta' }); // applies size: 'lg', intent: 'primary'
 ```
 
-A preset name must not match a variant name — TypeScript rejects it and the config throws. A preset name can also be used as a compound matcher, see above.
+A preset name must not match a variant name.
 
 ### 14. Pass `null` to Explicitly Opt Out of a Defaulted Variant
 
@@ -219,9 +211,7 @@ button({ size: null });      // no size classes at all, default and preset skipp
 
 ### 15. Use Introspection for Single Source of Truth
 
-Set `introspection: true` to expose configuration and cache members on the returned function (off by default): `variantKeys`, `variants`, `slotKeys`, `slots`, `groupKeys`, `groups`, `defaultVariants`, `requiredVariants`, `multiSlots`, `presetKeys`, `presets`, `getVariantValues(key)`, `splitProps(props)`, `getMaxEntries()`, `getCacheSize()`, and `clearCache()`. `splitProps(props)` returns `[variantProps, restProps]`, keeping the declared variants plus `class`, `className` and `preset` on the variant side and leaving everything else to forward to an element.
-
-Without `introspection: true`, accessing these is a type error. Use it to centralize variant/slot definitions and reuse them across the codebase.
+Set `introspection: true` to expose configuration and cache members on the returned function (off by default): `variantKeys`, `variants`, `slotKeys`, `slots`, `groupKeys`, `groups`, `defaultVariants`, `requiredVariants`, `multiSlots`, `presetKeys`, `presets`, `getVariantValues(key)`, `splitProps(props)`, `getMaxEntries()`, `getCacheSize()`, and `clearCache()`. `splitProps(props)` returns `[variantProps, restProps]`, so the rest can be forwarded to an element.
 
 ## Common Patterns
 
@@ -286,7 +276,7 @@ A `multiSlots` function is called per rendered item, still reading off the same 
 
 ## Config Reference
 
-Class values inside the config (`base`, `variants` values, `slots` values, and `compound*` `class`/`className`) accept only `string`, `string[]`, or `undefined`, where `undefined` applies no classes, the same as an empty string. Dynamic class values (objects, booleans, nested arrays) belong on the `class`/`className` runtime prop, not in the config. Variant keys are strings or numbers (`level: { 1: 'text-4xl' }`), plus `true`/`false` for boolean variants.
+Class values inside the config accept only `string`, `string[]`, or `undefined`. Dynamic class values (objects, booleans, nested arrays) belong on the `class`/`className` runtime prop, not in the config. Variant keys are strings or numbers (`level: { 1: 'text-4xl' }`), plus `true`/`false` for boolean variants.
 
 The table lists the options in the canonical key order enforced by the opt-in `sv-config-style` lint rule.
 
@@ -308,7 +298,7 @@ The table lists the options in the canonical key order enforced by the opt-in `s
 
 ## Errors & Validation
 
-`sv()` throws on misconfiguration. Config errors (unknown variant referenced by `requiredVariants`/`defaultVariants`/a preset/a compound entry, an invalid default/preset/compound value, a variant named `class`/`className`/`preset`/`slots`, a preset sharing a name with a variant, an unknown preset named by a compound entry, a group sharing a name with a slot or naming an unknown/no slot, a compound entry missing `class`/`className`) throw when the config is evaluated. Runtime errors (missing required variant, invalid variant value, unknown preset name) throw when the variant function is called with bad props. Treat a thrown error as expected validation, not a library bug — fix the config or the calling props.
+`sv()` throws for an invalid config (unknown variant, value, slot or preset name; a reserved variant name like `class`/`className`/`preset`/`slots`; a preset or group named after a variant or slot) when it is defined, and for invalid props (missing required variant, unknown value or preset) when the variant function is called. Treat a thrown error as expected validation, not a library bug — fix the config or the calling props.
 
 ## Linting
 

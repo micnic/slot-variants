@@ -97,13 +97,6 @@ sv({ btn: true, disabled: false });          // 'btn'
 sv('flex', ['items-center'], { gap: true }); // 'flex items-center gap'
 ```
 
-An object argument counts as a config only when every one of its keys is a config option _and_ holds a value of the shape that option expects. An object that merely happens to be keyed by a config option name still merges like `cn()` does:
-
-```typescript
-sv({ base: true, hidden: false }); // 'base' — a class record
-sv({ base: 'btn' });               // a variant function based on 'btn'
-```
-
 ### Config-Only Call
 
 When called with a single config object (no separate base argument), `sv()` returns a variant function. Use the `base` field inside the config:
@@ -163,7 +156,7 @@ badge({ color: 'green', size: 'sm' });
 // 'badge bg-green-100 text-green-800 text-xs px-2 py-0.5'
 ```
 
-A variant can't be named `class`, `className`, `preset`, or `slots`, since the variant function and compound entries already read those keys. Such a config is rejected by TypeScript and throws when the config is evaluated.
+`class`, `className`, `preset`, and `slots` are reserved and can't be used as variant names.
 
 Variant values accept a string or an array of strings:
 
@@ -285,7 +278,7 @@ button({ size: undefined }); // 'btn text-base rounded-md' — falls back to def
 button({ size: null });      // 'btn rounded-md' (no size classes at all)
 ```
 
-Default variants can also be functions that receive the current props and return a value dynamically. When a [preset](#presets) is passed, its values are filled in for the props left unset, so a preset reads the same as passing its values. Other defaults are not filled in. Return `undefined` to skip the variant entirely:
+Default variants can also be functions that receive the call's props (including any [preset](#presets) values) and return a value. Return `undefined` to skip the variant:
 
 ```typescript
 const button = sv('btn', {
@@ -353,8 +346,6 @@ compoundVariants: [
 ]
 ```
 
-A matcher array must list at least one value; an empty one could never match, so `sv()` throws when the config is evaluated.
-
 `className` is accepted as an alternative to `class`.
 
 When the config declares [presets](#presets), a compound entry can name one instead of restating the variant values it stands for:
@@ -389,7 +380,7 @@ button({ intent: 'primary', size: 'lg' });
 // 'btn bg-blue-500 text-lg uppercase font-bold'
 ```
 
-The name expands to the preset's variant values when the config is evaluated, so the entry matches those values however they were reached — passing the preset is not required. Conditions written alongside `preset` override the values it contributes, mirroring how an explicit prop overrides a preset value at call time:
+The entry matches whenever those values apply, whether or not the preset itself was passed. Conditions written alongside `preset` override its values:
 
 ```typescript
 compoundVariants: [
@@ -401,8 +392,6 @@ compoundVariants: [
 ]
 // matches intent: 'primary' with size: 'sm'
 ```
-
-An unknown preset name is rejected by TypeScript and throws when the config is evaluated.
 
 ### Required Variants
 
@@ -474,11 +463,7 @@ button({ preset: 'cta', size: 'sm' });
 // size overridden to 'sm', rest from preset
 ```
 
-Presets can satisfy required variants at runtime. Passing `null` for a variant prop overrides the preset's value for that variant too, skipping it entirely. An invalid preset name throws an error.
-
-A preset name must not match a variant name — such a config is rejected by TypeScript and throws when the config is evaluated.
-
-A preset name can also stand in for its variant values inside a [compound variant](#compound-variants) or compound slot matcher.
+Presets can satisfy required variants, and `null` skips a preset's value just like a default. A preset can't share a name with a variant, and can also be used in a [compound variant](#compound-variants) or compound slot matcher.
 
 ### Slots
 
@@ -603,34 +588,7 @@ const { base, header, body, footer } = card({ size: 'lg' });
 // footer: 'text-xs text-sm'
 ```
 
-Groups are a way to write one class value for several slots — they never become keys of the result, which always holds exactly `base` plus each declared slot.
-
-The keys of a slot object are applied in the order they are written, so when the same object names both a group and one of its slots, the key written first lands first:
-
-```typescript
-const card = sv({
-  slots: {
-    header: 'h',
-    body: 'b'
-  },
-  groups: {
-    content: ['header', 'body']
-  },
-  variants: {
-    size: {
-      lg: { header: 'px-6', content: 'px-2' }
-    }
-  }
-});
-
-card({ size: 'lg' });
-// header: 'h px-6 px-2' — the slot's class, then the group's
-// body:   'b px-2'
-```
-
-The [`no-conflicting-classes`](#slot-variantsno-conflicting-classes) lint rule flags such overlapping keys.
-
-A group holds slot names only — it cannot name another group. Group names must not collide with a slot name (including `base`), a group must list at least one slot, and every listed slot must exist; otherwise `sv()` throws when the config is evaluated.
+Groups are only a shorthand for writing one class value for several slots — they never appear in the result. A group lists existing slots (not other groups), and its name can't match a slot name.
 
 ### Compound Slots
 
@@ -671,13 +629,11 @@ const result = dialog({ size: 'sm' });
 // actions: 'flex gap-2 px-6 text-sm'
 ```
 
-Compound slots support the same array matching and [`preset` matchers](#compound-variants) as compound variants. The `slots` array accepts [group names](#slot-groups) alongside slot names, and a slot reached through more than one name in the same entry still gets the class once.
+Compound slots support the same array matching and [`preset` matchers](#compound-variants) as compound variants, and the `slots` array accepts [group names](#slot-groups).
 
 ### Multi Slots
 
-By default each slot in the result object is a plain class string. The `multiSlots` option turns the listed slots into reconfigurable functions instead — the list accepts [group names](#slot-groups) as well, turning every slot of the group into a function. A slot function accepts variant prop overrides, a `preset` name when the config declares [presets](#presets), and a `class`/`className` override, and returns that slot's class string.
-
-This is designed for cases where a single slot is rendered multiple times with different props — for example a list of items where each item needs its own variant values:
+By default each slot in the result is a class string. Slots (or [groups](#slot-groups)) listed in `multiSlots` become functions instead, which accept variant props, a `preset`, and `class`/`className`, and return that slot's class string. Use this when one slot is rendered many times with different props, like the items of a list:
 
 ```typescript
 const card = sv('border', {
@@ -706,7 +662,7 @@ result.header({ class: 'mt-2' }); // 'font-bold text-sm mt-2'
 
 Slots not listed in `multiSlots` stay plain strings. Pass `true` to make every slot a function, or `false` (the default) to keep them all strings.
 
-A slot function may also switch presets per call. It inherits the preset passed to the outer call, and its own `preset` takes precedence:
+A slot function inherits the outer call's preset, and its own `preset` takes precedence:
 
 ```typescript
 const badge = sv({
@@ -773,9 +729,7 @@ card({ class: { base: 'shadow-xl', header: 'text-blue-700', body: 'min-h-24' } }
 // base: 'border shadow-xl', header: 'font-bold text-blue-700', body: 'py-4 min-h-24'
 ```
 
-A key of that object can also be a [group name](#slot-groups), targeting every slot of the group at once.
-
-Both `class` and `className` are supported — pass one or the other. Passing both is a type error; from untyped code, `class` is used and `className` ignored.
+A key of that object can also be a [group name](#slot-groups). Pass either `class` or `className`, not both.
 
 ### Post-Processing
 
@@ -796,9 +750,7 @@ const button = sv('px-4 py-2 bg-blue-500', {
 });
 ```
 
-`sv()` and `cn()` concatenate classes in order without deduplicating or resolving conflicts — a class repeated across `base` and a variant value appears twice in the output, and conflicting Tailwind utilities are both kept. Use `postProcess: twMerge` when you need duplicates collapsed and later utilities to win.
-
-For statically-defined classes, the bundled [ESLint / oxlint plugin](#eslint--oxlint-plugin) catches most duplication at lint time, before it ever reaches the output.
+`sv()` and `cn()` join classes in order without removing duplicates or resolving conflicts. Use `postProcess: twMerge` when you need that, or let the [ESLint / oxlint plugin](#eslint--oxlint-plugin) catch duplicates at lint time.
 
 ### Shared Defaults with `createSV()`
 
@@ -824,9 +776,7 @@ const button = customSV('px-4 py-2 bg-blue-500', {
 });
 ```
 
-`defaults` accepts `base`, `cacheSize`, `postProcess`, `introspection`, and `true`/`false` for `requiredVariants` and `multiSlots`. Options that describe a single component — `variants`, `slots`, `groups`, `presets`, compound rules, `defaultVariants`, and lists of variant or slot names — belong in each call's config and are a type error in `defaults`. A per-call value always wins over the matching default, and a per-call `undefined` keeps it. Calls with no config object are forwarded straight to `cn()`-style merging and never see the defaults.
-
-Factory-level `introspection`, `requiredVariants`, and `multiSlots` are reflected in each component's types: with `introspection: true` the [introspection](#introspection) API is available, with `requiredVariants: true` every variant prop is required, and with `multiSlots: true` every slot is a function — all without setting the flag on every config:
+`defaults` accepts `base`, `cacheSize`, `postProcess`, `introspection`, and `true`/`false` for `requiredVariants` and `multiSlots`. Component-specific options like `variants` or `slots` belong in each call. A per-call value always wins over the default, and the defaults are reflected in each component's types:
 
 ```typescript
 const strictSV = createSV({ requiredVariants: true });
@@ -857,17 +807,9 @@ const button = sv('btn', {
 });
 ```
 
-Each entry corresponds to one distinct combination of resolved variant values, so raising `cacheSize` only helps when a definition has more combinations than the current size — below that the cache never evicts. With `introspection: true`, `getMaxEntries()` reports that number for a given definition.
+Raising `cacheSize` only helps when a component has more variant combinations than the current size; [`getMaxEntries()`](#introspection) tells you how many it has. Set `cacheSize` to `0` to disable caching.
 
-Setting `cacheSize` to `0` (or a negative number) disables caching entirely — every call recomputes its result. This is useful when variant combinations are effectively unbounded and you'd rather not retain any entries.
-
-A definition whose variants allow more than `Number.MAX_SAFE_INTEGER` combinations (roughly 16 variants of 10 values each) is never cached, whatever its `cacheSize`.
-
-Cache inspection and control methods (`getCacheSize`, `clearCache`, `getMaxEntries`) are exposed on the returned function only when `introspection: true` is set — see [Introspection](#introspection).
-
-### Runtime Code Generation
-
-When a config is evaluated, `sv()` compiles a variant function specialized to that config with `new Function`, which keeps each call fast. Environments that block runtime code generation — such as a Content Security Policy without `'unsafe-eval'` — get a variant function that interprets the config on each call instead. It returns the same results and uses the same cache, just more slowly.
+`sv()` also works under a Content Security Policy that blocks `'unsafe-eval'`, just somewhat slower.
 
 ### Introspection
 
@@ -920,11 +862,11 @@ button.getCacheSize();              // current number of cached entries
 button.clearCache();                // clear all cached entries
 ```
 
-Without `introspection: true`, only the variant function itself is returned — accessing introspection or cache properties is a type error.
+Without `introspection: true`, these members don't exist and accessing them is a type error.
 
 #### Splitting Props
 
-`splitProps()` divides a props object in two: the props the variant function consumes — its declared variants plus `class`, `className` and `preset` — and everything else, ready to forward to an element. Both halves keep the types they had on the original object:
+`splitProps()` splits a props object into the props the variant function uses (its variants plus `class`, `className` and `preset`) and everything else, ready to forward to an element:
 
 ```tsx
 const button = sv('btn', {
@@ -946,11 +888,9 @@ const Button = (props: ButtonProps) => {
 };
 ```
 
-Keeping `class` and `className` on the variant side is what lets a caller's own classes reach the variant function instead of overwriting its result.
-
 ### Errors & Validation
 
-`sv()` validates both the config and the runtime props, throwing an `Error` on misconfiguration. Config problems (an unknown variant referenced by `requiredVariants`, `defaultVariants`, a preset, or a compound entry; a value that isn't one of the variant's defined values; a variant named `class`, `className`, `preset`, or `slots`; a preset named after a variant; an unknown preset named by a compound entry; a group named after a slot, left empty, or naming a slot that doesn't exist; a compound or slot entry missing required fields) throw as soon as the config is evaluated. Runtime problems (a missing required variant, an invalid variant value, or an unknown preset name) throw when the variant function is called — these guard against untyped input, such as a value coming from a form or API, since TypeScript already prevents most of these at compile time.
+TypeScript catches most mistakes at compile time. At runtime, `sv()` throws an `Error` for an invalid config (such as an unknown variant, value, slot or preset name) as soon as it is defined, and for invalid props (a missing required variant, an unknown value or preset) when the variant function is called — useful for untyped input like form or API data.
 
 ## TypeScript
 
@@ -1044,9 +984,9 @@ When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{
 
 ## Config Reference
 
-Class values inside the config (`base`, `variants`, `slots`, and `compound*` `class`/`className`) accept `string`, `string[]`, or `undefined`, where `undefined` applies no classes, the same as an empty string. Dynamic class values (objects, booleans, nested arrays) are only accepted at call time via the `class`/`className` prop.
+Class values inside the config accept `string`, `string[]`, or `undefined`. Dynamic class values (objects, booleans, nested arrays) are only accepted at call time via the `class`/`className` prop.
 
-The table lists the options in the canonical key order enforced by the opt-in [`sv-config-style`](#slot-variantssv-config-style) lint rule.
+Options are listed in the order enforced by the opt-in [`sv-config-style`](#slot-variantssv-config-style) lint rule.
 
 | Option             | Type                                                                    | Description                                                                                                                                              |
 | ------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1226,17 +1166,15 @@ const classes = computed(() => list());
 
 ## ESLint / oxlint Plugin
 
-`slot-variants` ships an ESLint-compatible plugin at the `slot-variants/eslint-plugin` subpath. It runs under ESLint v9+ (flat config) and under [oxlint](https://oxc.rs/docs/guide/usage/linter/js-plugins) via its `jsPlugins` API. The plugin is a separate entry point that the main `slot-variants` entry never loads, so using `sv()` and `cn()` doesn't pull any lint code into your bundle.
+`slot-variants` ships an ESLint plugin at `slot-variants/eslint-plugin`, for ESLint v9+ (flat config) and [oxlint](https://oxc.rs/docs/guide/usage/linter/js-plugins) (`jsPlugins`). It's a separate entry point, so it never ends up in your app bundle.
 
 ### Rules
 
-Rules analyze `sv`/`cn` imported from `'slot-variants'` (including aliased and namespace imports), same-file `const` aliases of them, and `const` bindings to a [`createSV()`](#shared-defaults-with-createsv) result. Values reachable only through `let`/`var`, imported bindings, or destructuring are treated as dynamic and are not analyzed.
-
-Most rules look only at the `sv()`/`cn()` call itself. [`no-restyle`](#slot-variantsno-restyle) also reads the places a call's result is used — class lists and framework class attributes — and follows an imported component back to the module that declares it.
+Rules check calls to `sv`/`cn` imported from `'slot-variants'` and to functions created with [`createSV()`](#shared-defaults-with-createsv).
 
 #### `slot-variants/no-conflicting-classes`
 
-Flags class tokens that collide within the output of an `sv()` or `cn()` call: exact duplicates and distinct tokens targeting the same Tailwind utility (e.g. `w-100`/`w-200`, or shorthand/longhand overlaps like `px-4`/`pl-2`). It skips positions that can't actually co-occur, like different values of the same variant. Single-word utilities (`flex`, `block`) are ignored by default; set `exclusiveGroups: true` to catch conflicts between them too (`display`, `position`, etc.), or pass your own list of mutually-exclusive groups. If your Tailwind v3 config sets a `prefix`, pass the same value via the `prefix` option so the rule can read the namespace correctly.
+Flags classes that collide in the output of an `sv()` or `cn()` call: exact duplicates and Tailwind utilities that target the same property (e.g. `w-100`/`w-200`, or `px-4`/`pl-2`). Classes that can never apply together, like two values of the same variant, are not flagged. Single-word utilities (`flex`, `block`) are ignored unless `exclusiveGroups` is set. If your Tailwind v3 config sets a `prefix`, pass it via the `prefix` option.
 
 ```typescript
 const button = sv({
@@ -1254,7 +1192,7 @@ cn('flex items-center', 'flex'); // 'flex' duplicated across args
 
 Move the shared class into `base` — or use compound variants — so each class has a single source.
 
-It also flags a slot object whose keys reach the same slot twice — a slot and a group naming it, or two groups sharing it — since that slot then gets both values:
+It also flags a slot object whose keys reach the same slot twice (a slot and a group containing it, or two overlapping groups):
 
 ```typescript
 const card = sv({
@@ -1268,9 +1206,9 @@ const card = sv({
 card({ class: { header: 'mt-1', content: 'mt-2' } }); // same, at a call site
 ```
 
-A group that lists the same slot more than once is flagged too, since that slot gets the group's classes once per entry. The repeat is removed automatically, unless the list is a `const` declared outside the config.
+A group that lists the same slot twice is flagged and auto-fixed.
 
-`exclusiveGroups: true` turns on the built-in Tailwind groups. An array replaces them with your own groups: each group lists at least two utilities that can't apply together, written without Tailwind variants like `md:` and without the `prefix`; `md:flex` and `md:grid` still conflict. A utility may appear in only one group; listing it in two is a configuration error.
+`exclusiveGroups: true` turns on built-in groups of mutually exclusive Tailwind utilities (`display`, `position`, etc.). Or pass your own groups, written without `md:`-style variants or the `prefix`:
 
 ```js
 'slot-variants/no-conflicting-classes': ['error', {
@@ -1283,7 +1221,7 @@ A group that lists the same slot more than once is flagged too, since that slot 
 
 #### `slot-variants/no-dynamic-classes`
 
-Flags class-bearing positions that aren't statically inferrable (identifiers, member access, calls, spreads, computed keys, template expressions), so every class in your config can be verified at lint time. Simple conditional forms in `cn()`-style positions (`cond && 'px-4'`, `cond ? 'px-4' : 'px-2'`) stay allowed as long as every branch is static.
+Flags class values that can't be known at lint time (variables, function calls, spreads, computed keys, template expressions), so the other rules can check every class. Simple conditionals in `cn()` (`cond && 'px-4'`, `cond ? 'px-4' : 'px-2'`) are allowed when every branch is static.
 
 ```typescript
 const extra = getDynamicClass();
@@ -1293,9 +1231,7 @@ sv({ variants: { [key]: 'x' } }); // computed variant key
 cn(extra, 'flex');                // identifier argument
 ```
 
-Replace dynamic class strings with static ones, or move them to the runtime `class` / `className` prop on the returned function, which this rule intentionally leaves alone ([`no-restyle`](#slot-variantsno-restyle) is what checks that prop).
-
-An argument that resolves to another `sv()`/`cn()` call's output is not dynamic — its classes are known at lint time even though they aren't spelled as a literal:
+Replace dynamic class strings with static ones, or move them to the runtime `class` / `className` prop, which this rule leaves alone. The output of another `sv()`/`cn()` call counts as static:
 
 ```tsx
 const classes = card();
@@ -1305,7 +1241,7 @@ cn(classes.base, 'p-4'); // allowed — `classes.base` resolves to card()'s base
 
 #### `slot-variants/no-empty-classes`
 
-Flags empty class values (empty strings, arrays, objects) and zero-argument `sv()` / `cn()` calls, plus an empty-array matcher in `compoundVariants`/`compoundSlots` (which could never match, so `sv()` throws for the config). Partially auto-fixable.
+Flags empty class values (empty strings, arrays, objects), zero-argument `sv()` / `cn()` calls, and empty compound matcher arrays. Partially auto-fixable.
 
 ```typescript
 sv({ base: '' });                        // empty base
@@ -1313,15 +1249,12 @@ sv({ variants: { size: { sm: [] } } });  // empty variant value
 sv();                                    // zero-arg call — always produces ''
 ```
 
-An empty string is allowed at a direct `slots` or `variants` value position — declaring a slot or a variant value that contributes no classes of its own is a meaningful thing to write:
+An empty string is allowed as a slot or variant value, since declaring a slot or value with no classes of its own is meaningful:
 
 ```typescript
 sv({ slots: { body: '' } });                            // allowed
 sv({ variants: { size: { sm: '', lg: 'text-lg' } } });  // allowed
-sv({ slots: { body: 'p-4' }, variants: { size: { sm: { body: '' } } } }); // allowed
 ```
-
-That allowance is for empty strings in that position only. An empty array or object still reports, so does an empty `variants: {}`, `slots: {}` or variant record, and so does an empty string anywhere else — inside an array, in `base`, in a compound entry's classes, or as a call argument.
 
 #### `slot-variants/no-redundant-spaces`
 
@@ -1336,7 +1269,7 @@ Run `eslint --fix` to rewrite these to the canonical single-space form.
 
 #### `slot-variants/no-restyle`
 
-Flags class names written on a component or element that collide with the classes its `sv()` / `cn()` config already applies there — the same duplicate/same-namespace analysis [`no-conflicting-classes`](#slot-variantsno-conflicting-classes) does inside one config, applied where that config's output meets hand-written classes. It reads three positions, in whichever framework spells them:
+Flags classes added on top of an `sv()` / `cn()` result that collide with the classes it already applies, using the same checks as [`no-conflicting-classes`](#slot-variantsno-conflicting-classes). It checks three places:
 
 ```tsx
 const card = sv('border p-2', { slots: { header: 'font-bold px-4' } });
@@ -1359,67 +1292,19 @@ function Button({ className }) {
 <Button className="p-4" />;              // p-4 vs p-2
 ```
 
-The same positions in the other frameworks:
+The same checks apply to Svelte and Vue templates and components (with `svelte-eslint-parser` / `vue-eslint-parser` configured as usual):
 
 ```svelte
 <div class="p-4 {classes.base}">…</div>
 ```
 
 ```vue
-<div class="p-4" :class="classes.base">…</div>
 <div :class="[classes.base, 'p-4']">…</div>
-<div :class="cn(classes.base, 'p-4')">…</div>
 ```
 
-Vue and Svelte need their own parser (`vue-eslint-parser` / `svelte-eslint-parser`) configured for those files, as usual.
+Classes from variant values the call doesn't select are ignored, so `card({ size: 'sm', class: 'mt-4' })` doesn't collide with a margin from `size: 'lg'`.
 
-A component forwards its `class` / `className` prop when the prop ends up in a variant call's override, or beside a slot-variants result in one class list — `cn(button({ size }), className)`, `` `${button()} ${className}` ``, `:class="[button(), props.class]"`, `class="{button()} {className}"`. Inside a `cn()` list the literals count too: a component built on `cn('p-2 rounded', className)` alone applies `p-2` just as a config would, and `<Button className="p-4" />` is flagged against it. The prop is read off the component's first parameter — destructured, with or without a default, or as a whole props object, including one destructured or renamed in the component body (`const { className } = props`) and one derived from it with Solid's `splitProps` / `mergeProps` — and a wrapper like `React.forwardRef()` or `memo()` around the function is looked through:
-
-```tsx
-const Button = React.forwardRef(({ className, ...props }, ref) => (
-  <button ref={ref} className={cn(button(), className)} {...props} />
-));
-
-const Chip = (props) => {
-  const [local, others] = splitProps(props, ['class']);
-
-  return <span class={chip({ class: local.class })} {...others} />;
-};
-```
-
-A Svelte or Vue single-file component is a component too. Its props are the ones its script declares at the top level — `$props()` in Svelte, `defineProps()` (bare or under `withDefaults()`) or `useAttrs()` in Vue — and a usage of the component in another file's template is checked against what it forwards, whether the tag is written `<MyButton>` or `<my-button>`:
-
-```svelte
-<!-- Button.svelte -->
-<script>
-  let { class: className, ...rest } = $props();
-</script>
-
-<button class={button({ class: className })} {...rest}>…</button>
-
-<!-- page.svelte -->
-<Button class="p-4" />  <!-- p-4 vs the button's own p-2 -->
-```
-
-```vue
-<!-- Button.vue -->
-<script setup>
-const props = defineProps({ class: String });
-</script>
-
-<template>
-  <button :class="cn(button(), props.class)">…</button>
-</template>
-
-<!-- page.vue -->
-<my-button class="p-4" />  <!-- p-4 vs the button's own p-2 -->
-```
-
-Following an import reads and parses the imported module, which only ESLint itself can do — under oxlint the rule still checks everything inside the current file, but imported components are left alone.
-
-Classes that can't render together are not flagged: the variant values a call site fixes — directly, or through [`defaultVariants`](#default-variants) — rule out every variant and compound entry requiring a different value, so `card({ size: 'sm', class: 'mt-4' })` doesn't collide with a `size: 'lg'` margin.
-
-A component imported from another module is followed to the file that declares it, through any re-export or barrel file in between:
+Components imported from another file are followed to the file that declares them (ESLint only; under oxlint, imported components are skipped):
 
 ```tsx
 // ui/button.tsx
@@ -1435,21 +1320,19 @@ import { Button } from './ui/button.tsx';
 <Button className="p-4" />; // p-4 vs the button's own p-2
 ```
 
-Relative and absolute specifiers resolve on their own, with the usual extension and directory-index lookup (and a `./button.js` specifier falls back to the `./button.tsx` behind it). A path alias needs the `alias` option, mapping each prefix to a directory — relative entries resolve against the ESLint working directory, and the longest matching prefix wins:
+Relative imports work out of the box; path aliases need the `alias` option. Packages from `node_modules` are not followed.
 
 ```js
 'slot-variants/no-restyle': ['error', { alias: { '@/': './src' } }]
 ```
 
-Bare package specifiers are not resolved: a component from `node_modules` is left alone. The imported module is parsed with the same parser as the file that imports it, so a `.vue` page reaches a `.vue` component and a `.svelte` page a `.svelte` one. Nothing is reported when a module can't be read or parsed, so an unconfigured alias means missed reports, never false ones.
+`exclusiveGroups` and `prefix` work as in [`no-conflicting-classes`](#slot-variantsno-conflicting-classes).
 
-`exclusiveGroups` and `prefix` mean exactly what they do in [`no-conflicting-classes`](#slot-variantsno-conflicting-classes).
-
-Either drop the overriding class, or — if the override is deliberate — move it into the config as a variant, so the component owns the choice instead of each call site.
+Either drop the overriding class, or, if the override is deliberate, move it into the config as a variant.
 
 #### `slot-variants/no-shared-tokens`
 
-Flags class tokens repeated in every value of a variant that's always applied (has a static default, or is required), since those tokens are constant in the output and belong in `base` (or the corresponding slot) instead. Where it's straightforward to do automatically, it offers to lift the token into `base`/`slots[slot]`: as an autofix for a required variant, and as an editor suggestion for a defaulted one, since passing `null` skips the default and the lifted token would then apply to that call too. With a `postProcess` (set in the config or through [`createSV()`](#shared-defaults-with-createsv)), the lift is a suggestion either way: a merging `postProcess` like `twMerge` keeps the last of two conflicting classes, and lifting moves classes ahead of later variants' ones. A variant that names only one of `true` and `false` isn't flagged, since passing the other boolean applies none of its classes.
+Flags classes repeated in every value of a variant that always applies (it has a default or is required). Those classes belong in `base` (or the matching slot), and the rule offers to move them there.
 
 ```typescript
 const button = sv({
@@ -1463,9 +1346,9 @@ const button = sv({
 });
 ```
 
-`rounded` is present in every value of an exhaustive variant. Lift it into `base` (or the corresponding slot for slot-based variants) so each variant value contains only the classes that actually vary.
+`rounded` is in every value of `size` — move it into `base`.
 
-The same rule also flags a `compoundVariants`/`compoundSlots` entry whose matcher covers exactly one variant key — it isn't combining variants, so it isn't really a compound; its class belongs directly on that variant's value instead. `compoundVariants` is auto-fixed when its class and the target variant value are plain string/template literals (offered as a suggestion with a `postProcess`, for the same reason as above); `compoundSlots` is always reported without a fix, since its class targets a specific slot rather than the whole variant value.
+The rule also flags a `compoundVariants`/`compoundSlots` entry that matches only one variant, since its class belongs on that variant's value instead:
 
 ```typescript
 const button = sv({
@@ -1478,11 +1361,11 @@ const button = sv({
 });
 ```
 
-This entry only matches `variant: 'link'` — merge `hover:underline` into `variants.variant.link` directly instead.
+Move `hover:underline` into `variants.variant.link`.
 
 #### `slot-variants/require-top-level-config`
 
-Flags `sv()` calls with a config object that aren't at module top level (e.g. inside a function body, a non-static class field, a Svelte/Vue template expression, or a component's instance script — Svelte's `<script>` or Vue's `<script setup>` — which runs for every component instance), since the config form does its setup work once per call and starts with an empty cache — re-entering the call repeats that work and discards everything cached so far.
+Flags `sv()` calls with a config that aren't at module top level — inside a function, a class field, a template, or a Svelte `<script>` / Vue `<script setup>` block. Such a call is rebuilt every time it runs and loses its cache.
 
 ```typescript
 function createButton() {
@@ -1494,11 +1377,11 @@ class Card {
 }
 ```
 
-Move the `sv()` call to a module-level `const` so it's compiled once and its cache persists across calls.
+Move the `sv()` call to a module-level `const`.
 
 #### `slot-variants/sv-config-style`
 
-Enforces a canonical `sv()`/`createSV()` config key order (`base`, `slots`, `groups`, `multiSlots`, `variants`, `presets`, `compoundSlots`, `compoundVariants`, `defaultVariants`, `requiredVariants`, `cacheSize`, `introspection`, `postProcess`) and a single style for expressing base classes, selected via the `baseStyle` option (`'field'` by default):
+Enforces the config key order shown in the [Config Reference](#config-reference) and one way of writing base classes, chosen with the `baseStyle` option (`'field'` by default):
 
 - `'field'` — a `base` field inside the config (tv-style)
 - `'separateArg'` — a leading class argument before the config object (cva-style)
@@ -1510,13 +1393,11 @@ sv({ variants: { size: { sm: 'text-sm' } }, base: 'flex' }); // base out of orde
 sv('flex', { variants: {} }); // baseStyle: 'field' expects a base field instead
 ```
 
-Partially auto-fixable — a fix is only applied when the change is unambiguous: reordering skips a config containing a spread, a computed/unknown key, or a comment anywhere inside the config object, and a base-style rewrite skips a call whose base value isn't a static string/array, whose target location already holds a value of its own, that passes more than one leading class argument, or whose config object is a `const` declared outside the call.
-
-Disabled by default (`recommended: false`) since it's a pure style/consistency check with no runtime correctness impact — enable it explicitly in your ESLint config.
+Auto-fixable when the fix is unambiguous. Not part of `recommended`, since it's purely stylistic — enable it explicitly.
 
 ### ESLint (flat config)
 
-Use the `recommended` preset to enable every rule marked `recommended` at `error` in one line (that's all rules except `sv-config-style`, which is opt-in):
+The `recommended` preset enables every rule except `sv-config-style`:
 
 ```js
 import svPlugin from 'slot-variants/eslint-plugin';
@@ -1608,19 +1489,6 @@ module.exports = {
   }
 }
 ```
-
-## Upgrading to 2.0
-
-A variant written directly as a slot object is no longer a boolean shorthand — its keys are read as its values. Move the slot object under a `true` key:
-
-```diff
-  variants: {
--   highlighted: { base: 'ring-2', header: 'bg-blue-100' }
-+   highlighted: { true: { base: 'ring-2', header: 'bg-blue-100' } }
-  }
-```
-
-TypeScript reports every call site, default, preset and compound entry that still passes `true` to such a variant.
 
 ## Migrating from CVA / tailwind-variants
 
