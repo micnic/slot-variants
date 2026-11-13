@@ -195,7 +195,7 @@ export const getConstDefInit = (def: Scope.Definition | null): Node | null => {
 
 	const { init } = def.node;
 
-	/* c8 ignore next 3 -- a const declarator always has an initializer */
+	// An ambient `declare const` has a type but no value to read
 	if (!init) {
 		return null;
 	}

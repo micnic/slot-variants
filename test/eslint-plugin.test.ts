@@ -585,6 +585,33 @@ t.test('TypeScript wrappers are read through to the value they wrap', (t) => {
 	t.end();
 });
 
+// A `declare const` has no initializer, so its value is unknown, like any
+// other value that can't be read statically.
+t.test('an ambient `declare const` is not read through', (t) => {
+	const linter = new Linter({ configType: 'flat' });
+	const messages = linter.verify(
+		`${IMPORT}declare const base: string;\nsv({ base });`,
+		{
+			files: ['**/*.ts'],
+			plugins: { 'slot-variants': plugin },
+			rules: { 'slot-variants/no-dynamic-classes': 2 },
+			languageOptions: { parser: tsParser }
+		},
+		{ filename: 'test.ts' }
+	);
+
+	t.match(messages, [
+		{
+			ruleId: 'slot-variants/no-dynamic-classes',
+			messageId: 'dynamic',
+			line: 3,
+			column: 6
+		}
+	]);
+	t.equal(messages.length, 1);
+	t.end();
+});
+
 t.test('const containers are read like inline ones', (t) => {
 	const linter = new Linter({ configType: 'flat' });
 	const config: Linter.Config[] = [
@@ -8979,7 +9006,7 @@ t.test('oxlint compatibility', (t) => {
 		t.doesNotThrow(() => {
 			oxlintJsxTester.run('no-restyle', restyleRule, {
 				valid: [...RESTYLE_VALID, ...CROSS_FILE_VALID],
-				invalid: RESTYLE_INVALID
+				invalid: [...RESTYLE_INVALID, ...CROSS_FILE_INVALID]
 			});
 		}, 'no-restyle: oxlint rule tester passes');
 	} else {

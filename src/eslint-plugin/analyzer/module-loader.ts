@@ -236,9 +236,13 @@ const createCollector = (collected: Collected): Rule.RuleModule => ({
 	}
 });
 
+// The importer's options, minus what reading a module's syntax can't take:
+// the type-aware parser options, and the `env` oxlint adds, which ESLint's
+// flat config rejects.
 const toSyntaxOnly = (
 	languageOptions: Linter.LanguageOptions
 ): Linter.LanguageOptions => {
+	const { env: _env, ...rest } = languageOptions;
 	const parserOptions: Linter.ParserOptions = {};
 
 	for (const [key, value] of Object.entries({
@@ -249,7 +253,7 @@ const toSyntaxOnly = (
 		}
 	}
 
-	return { ...languageOptions, parserOptions };
+	return { ...rest, parserOptions };
 };
 
 const isParser = (
@@ -385,7 +389,7 @@ const loadModule = (
 	if (moduleCache.size >= MAX_CACHED_MODULES) {
 		const oldest = moduleCache.keys().next().value;
 
-		/* c8 ignore next 3 -- a non-empty map always yields a first key */
+		// Always set, as the map is full; the check narrows the type
 		if (oldest !== undefined) {
 			moduleCache.delete(oldest);
 		}

@@ -206,8 +206,8 @@ export const getVueClassAttributeName = (node: VAttribute): string | null => {
 		return null;
 	}
 
+	// A dynamic argument (`:[name]="…"`) names no attribute statically
 	if (node.key.argument.type !== 'VIdentifier') {
-		/* c8 ignore next 2 -- a dynamic argument is a VExpressionContainer */
 		return null;
 	}
 

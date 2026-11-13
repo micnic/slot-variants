@@ -51,9 +51,9 @@ const getQuoteChar = (sourceCode: SourceCode, node: Node): string => {
 	return raw[0] ?? '';
 };
 
-// Class tokens shouldn't contain the surrounding quote, backslashes, or `${` —
-// re-emitting at the same delimiter is safe without escaping.
-/* c8 ignore next 7 -- real class tokens have no backslash, quote, or `${` */
+// Whether the text can be written at the delimiter as is: it must not hold a
+// backslash, the delimiter itself, or — in a template — `${`, any of which
+// would need escaping (an arbitrary value like `content-['x']` can).
 export const canHoistAsLiteral = (
 	canonical: string,
 	quote: string
