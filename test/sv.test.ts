@@ -3424,7 +3424,7 @@ t.test('function default resolves based on other props', (t) => {
 });
 
 t.test('function default reads a passed preset like props', (t) => {
-	const seen: (string | number | boolean | null | undefined)[] = [];
+	const seen: ('sm' | 'lg' | null | undefined)[] = [];
 
 	const button = sv('btn', {
 		variants: {
@@ -3479,6 +3479,46 @@ t.test('function default reads a passed preset like props', (t) => {
 		['lg', 'lg', 'lg', 'sm', null, undefined],
 		'the default sees the preset-filled size'
 	);
+
+	t.end();
+});
+
+t.test('function default props are typed from the config', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			}
+		},
+		presets: {
+			big: { size: 'lg' }
+		},
+		defaultVariants: {
+			intent: (props) => {
+				// @ts-expect-error - `color` is not a variant
+				t.equal(props.color, undefined, 'unknown props are not typed');
+
+				// @ts-expect-error - 'xl' is not a `size` value
+				if (props.size === 'xl') {
+					return 'primary';
+				}
+
+				if (props.preset === 'big') {
+					return 'danger';
+				}
+
+				return undefined;
+			}
+		}
+	});
+
+	t.equal(button({ preset: 'big' }), 'btn text-lg bg-red-500');
+	t.equal(button(), 'btn');
 
 	t.end();
 });

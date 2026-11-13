@@ -267,15 +267,25 @@ type MultiSlotFnProps<
 	P extends MaybePresets<S, G, V>
 > = VariantArgs<S, G, V, P, false> & EitherClassProp<ClassValue, true>;
 
+// A function default reads the call's variant props, with a passed preset's
+// values filled in where the props leave a variant unset.
+type DefaultVariantFn<
+	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
+	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, G, V>,
+	R extends RequiredVariants<V>,
+	K extends StringKeyof<V>
+> = (props: VariantArgs<S, G, V, P, R>) => VariantPropType<V[K]> | undefined;
+
 type DefaultVariantValue<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, G, V>,
+	R extends RequiredVariants<V>,
 	K extends StringKeyof<V>
-> =
-	| VariantPropType<V[K]>
-	| ((props: RuntimeVariantState) => VariantPropType<V[K]> | undefined)
-	| undefined;
+> = VariantPropType<V[K]> | DefaultVariantFn<S, G, V, P, R, K> | undefined;
 
 export type RuntimeClassValue = SlotValue<Slots, undefined, ClassValue>;
 
@@ -351,11 +361,12 @@ type DefaultVariants<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, G, V>,
 	R extends RequiredVariants<V>
 > = {
 	[
 		K in Exclude<StringKeyof<V>, RequiredVariantKeys<V, R>>
-	]?: DefaultVariantValue<S, G, V, K>;
+	]?: DefaultVariantValue<S, G, V, P, R, K>;
 };
 
 // A default for a required variant, typed as the reason it's rejected: while
@@ -433,7 +444,7 @@ export type Config<
 	compoundSlots?: CompoundSlots<S, G, V, P> | undefined;
 	/** Variant values used when the caller doesn't pass one. */
 	defaultVariants?:
-		| (DefaultVariants<S, G, V, R> & RequiredDefaultCollision<V, R>)
+		| (DefaultVariants<S, G, V, P, R> & RequiredDefaultCollision<V, R>)
 		| undefined;
 	/** Variants the caller must always pass, so their props lose the `?`. */
 	requiredVariants?: R | undefined;
@@ -493,7 +504,7 @@ type IntrospectionValues<
 	/** Names of all declared groups. */
 	groupKeys: G extends undefined ? [] : StringKeyof<G>[];
 	/** The `defaultVariants` config passed in, as-is. */
-	defaultVariants: DefaultVariants<S, G, V, R>;
+	defaultVariants: DefaultVariants<S, G, V, P, R>;
 	/** Names of the variants the caller must always provide. */
 	requiredVariants: RequiredVariantKeys<V, R>[];
 	/** Slots exposed as functions, with groups expanded to their slots. */
