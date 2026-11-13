@@ -148,16 +148,17 @@ export const visitForEmptyClasses = (
 	}
 };
 
-// A record is a container: reported when empty, otherwise each of its values
-// is visited.
+// A record is a container: reported at `site`, where it's used, when empty,
+// otherwise each of its values is visited.
 const visitRecordForEmpty = (
 	context: Rule.RuleContext,
 	node: ObjectExpression,
+	site: Node,
 	remove: EmptyFix | undefined,
 	visitValue: ValueVisitor
 ) => {
 	if (node.properties.length === 0) {
-		context.report({ node, messageId: 'emptyObject', fix: remove });
+		context.report({ node: site, messageId: 'emptyObject', fix: remove });
 		return;
 	}
 
@@ -179,25 +180,33 @@ const visitVariantValueForEmpty = (
 	const variantValue = resolveStaticValue(rawValue, context.sourceCode);
 
 	if (variantValue.type === 'ObjectExpression') {
-		visitRecordForEmpty(context, variantValue, undefined, (value) => {
-			visitVariantValueForEmpty(context, value);
-		});
+		visitRecordForEmpty(
+			context,
+			variantValue,
+			rawValue,
+			undefined,
+			(value) => {
+				visitVariantValueForEmpty(context, value);
+			}
+		);
 		return;
 	}
 
-	visitForEmptyClasses(context, variantValue, true);
+	visitForEmptyClasses(context, rawValue, true);
 };
 
 const checkVariantsForEmpty = (
 	context: Rule.RuleContext,
-	value: Node,
+	rawValue: Node,
 	remove: EmptyFix
 ) => {
+	const value = resolveStaticValue(rawValue, context.sourceCode);
+
 	if (value.type !== 'ObjectExpression') {
 		return;
 	}
 
-	visitRecordForEmpty(context, value, remove, (variantValue) => {
+	visitRecordForEmpty(context, value, rawValue, remove, (variantValue) => {
 		visitVariantValueForEmpty(context, variantValue);
 	});
 };
@@ -224,7 +233,7 @@ const checkCompoundMatchersForEmpty = (
 
 			if (isEmptyArrayLiteral(value)) {
 				context.report({
-					node: value,
+					node: raw,
 					messageId: 'emptyMatcher',
 					data: { key }
 				});
@@ -235,15 +244,21 @@ const checkCompoundMatchersForEmpty = (
 
 const checkCompoundsForEmpty = (
 	context: Rule.RuleContext,
-	value: Node,
+	rawValue: Node,
 	remove: EmptyFix
 ) => {
+	const value = resolveStaticValue(rawValue, context.sourceCode);
+
 	if (value.type !== 'ArrayExpression') {
 		return;
 	}
 
 	if (value.elements.length === 0) {
-		context.report({ node: value, messageId: 'emptyArray', fix: remove });
+		context.report({
+			node: rawValue,
+			messageId: 'emptyArray',
+			fix: remove
+		});
 		return;
 	}
 
@@ -253,27 +268,35 @@ const checkCompoundsForEmpty = (
 		const cls = resolveStaticValue(rawClass, context.sourceCode);
 
 		if (cls.type === 'ObjectExpression') {
-			visitRecordForEmpty(context, cls, undefined, (slotClass) => {
-				visitForEmptyClasses(context, slotClass, false);
-			});
+			visitRecordForEmpty(
+				context,
+				cls,
+				rawClass,
+				undefined,
+				(slotClass) => {
+					visitForEmptyClasses(context, slotClass, false);
+				}
+			);
 
 			return;
 		}
 
-		visitForEmptyClasses(context, cls, false);
+		visitForEmptyClasses(context, rawClass, false);
 	});
 };
 
 const checkSlotsForEmpty = (
 	context: Rule.RuleContext,
-	value: Node,
+	rawValue: Node,
 	remove: EmptyFix
 ) => {
+	const value = resolveStaticValue(rawValue, context.sourceCode);
+
 	if (value.type !== 'ObjectExpression') {
 		return;
 	}
 
-	visitRecordForEmpty(context, value, remove, (slotValue) => {
+	visitRecordForEmpty(context, value, rawValue, remove, (slotValue) => {
 		visitForEmptyClasses(context, slotValue, true);
 	});
 };
@@ -294,16 +317,16 @@ const isEmptyContainer = (value: Node): boolean => {
 // removed rather than left to look meaningful.
 const checkEmptyConfigContainer: EmptyConfigChecker = (
 	context,
-	value,
+	rawValue,
 	remove,
 	key
 ) => {
-	if (!isEmptyContainer(value)) {
+	if (!isEmptyContainer(resolveStaticValue(rawValue, context.sourceCode))) {
 		return;
 	}
 
 	context.report({
-		node: value,
+		node: rawValue,
 		messageId: 'emptyConfig',
 		data: { key },
 		fix: remove
@@ -334,7 +357,8 @@ const svEmptyConfigValueCheckers: ReadonlyMap<string, EmptyConfigChecker> =
 
 // A `createSV()` factory config may carry a spread or computed key (reported
 // as dynamic by no-dynamic-classes); those aren't class-bearing, so they're
-// skipped here.
+// skipped here. Each checker gets the value as written and resolves it, so an
+// empty value read through a `const` is reported in this config.
 export const checkConfigForEmptyClasses = (
 	context: Rule.RuleContext,
 	config: ObjectExpression
@@ -355,7 +379,7 @@ export const checkConfigForEmptyClasses = (
 		if (checker) {
 			checker(
 				context,
-				resolveStaticValue(prop.value, context.sourceCode),
+				prop.value,
 				makeListFix(context, prop, config.properties),
 				key
 			);

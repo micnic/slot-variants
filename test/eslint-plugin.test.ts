@@ -2258,7 +2258,7 @@ const NO_EMPTY_CLASSES_INVALID = [
 				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
 				compoundVariants: [{ size: noSizes, class: 'font-bold' }]
 			});`,
-		errors: [{ messageId: 'emptyMatcher' }]
+		errors: [{ messageId: 'emptyMatcher', line: 5, column: 32 }]
 	},
 	{
 		// cn() with empty string.
@@ -2360,6 +2360,63 @@ const NO_EMPTY_CLASSES_INVALID = [
 		code: IMPORT_CN + "const none = [];\ncn('a', none);",
 		output: IMPORT_CN + "const none = [];\ncn('a');",
 		errors: [{ messageId: 'emptyArray', line: 3, column: 9 }]
+	},
+	{
+		// An empty `base` behind a `const` is reported in each config that
+		// uses it, where the fix removes it.
+		code:
+			IMPORT +
+			"const none = [];\nsv({ base: none, slots: { a: 'x' } });\nsv({ base: none, slots: { b: 'y' } });",
+		output:
+			IMPORT +
+			"const none = [];\nsv({ slots: { a: 'x' } });\nsv({ slots: { b: 'y' } });",
+		errors: [
+			{ messageId: 'emptyArray', line: 3, column: 12 },
+			{ messageId: 'emptyArray', line: 4, column: 12 }
+		]
+	},
+	{
+		// An empty config container behind a `const`, reported where it's used.
+		code:
+			IMPORT +
+			"const none = {};\nsv({ base: 'a', defaultVariants: none });",
+		output: IMPORT + "const none = {};\nsv({ base: 'a' });",
+		errors: [{ messageId: 'emptyConfig', line: 3, column: 34 }]
+	},
+	{
+		// An empty `variants` record behind a `const`.
+		code: IMPORT + "const none = {};\nsv({ base: 'a', variants: none });",
+		output: IMPORT + "const none = {};\nsv({ base: 'a' });",
+		errors: [{ messageId: 'emptyObject', line: 3, column: 27 }]
+	},
+	{
+		// An empty compound list behind a `const`.
+		code:
+			IMPORT +
+			"const none = [];\nsv({ base: 'a', compoundVariants: none });",
+		output: IMPORT + "const none = [];\nsv({ base: 'a' });",
+		errors: [{ messageId: 'emptyArray', line: 3, column: 35 }]
+	},
+	{
+		// Empty variant values and value records behind a `const`.
+		code:
+			IMPORT +
+			"const none = [];\nconst empty = {};\nsv({ variants: { size: { sm: none, lg: 'x' }, tone: empty } });",
+		errors: [
+			{ messageId: 'emptyArray', line: 4, column: 30 },
+			{ messageId: 'emptyObject', line: 4, column: 53 }
+		]
+	},
+	{
+		// Empty compound classes behind a `const`, as a value and as a slot
+		// record.
+		code:
+			IMPORT +
+			"const none = [];\nconst empty = {};\nsv({ variants: { size: { sm: 'a', lg: 'b' } }, compoundVariants: [{ size: 'sm', class: none }, { size: 'lg', class: empty }] });",
+		errors: [
+			{ messageId: 'emptyArray', line: 4, column: 88 },
+			{ messageId: 'emptyObject', line: 4, column: 117 }
+		]
 	},
 	{
 		// Empty string as the `&&` right operand alongside another arg —
