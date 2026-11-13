@@ -69,7 +69,10 @@ const mergeMultiSlotClass = (
 	const merged: Record<string, ClassValue> = {};
 
 	if (!isSlotObjectValue(outerClass, targetKeys)) {
-		merged.base = outerClass;
+		// A `base: undefined` key would only add a no-op merge step
+		if (outerClass !== undefined) {
+			merged.base = outerClass;
+		}
 	} else if (!hasGroupKey(outerClass, groups)) {
 		assign(merged, outerClass);
 	} else {
