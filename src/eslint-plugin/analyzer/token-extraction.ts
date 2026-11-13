@@ -40,7 +40,7 @@ import {
 type TokenExtractionContext = {
 	slot: string;
 	source: Source;
-	slotNames: Set<string>;
+	slotNames: ReadonlySet<string>;
 	entries: Entry[];
 	sourceCode: SourceCode;
 };
@@ -713,7 +713,7 @@ const extractCompoundTokens = (
 
 export const collectConfigEntries = (
 	config: ReadonlyMap<string, Node>,
-	slotNames: Set<string>,
+	slotNames: ReadonlySet<string>,
 	baseArgs: ReadonlyArray<Expression | SpreadElement>,
 	sourceCode: SourceCode
 ): Entry[] => {

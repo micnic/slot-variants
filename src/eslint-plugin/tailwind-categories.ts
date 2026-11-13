@@ -506,11 +506,12 @@ const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
 		bg: {
 			keywords: categoryMap([
 				['color', COLOR_KEYWORDS],
-				// The bare keyword forms (`bg-cover`, `bg-center`) and the explicit
-				// `bg-size-*`/`bg-position-*` namespaces Tailwind 4.1 added are the
-				// same two properties, so each namespace segment joins its
-				// keyword's category — `bg-size-[3px_4px]` collides with
-				// `bg-cover`, and neither is mistaken for the color fallback.
+				// The bare keyword forms (`bg-cover`, `bg-center`) and the
+				// explicit `bg-size-*`/`bg-position-*` namespaces Tailwind 4.1
+				// added are the same two properties, so each namespace segment
+				// joins its keyword's category — `bg-size-[3px_4px]` collides
+				// with `bg-cover`, and neither is mistaken for the color
+				// fallback.
 				['size', ['auto', 'cover', 'contain', 'size']],
 				[
 					'position',
@@ -538,8 +539,8 @@ const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
 				['opacity', ['opacity']]
 			]),
 			// `border-spacing-x`/`-y` compose into the single `border-spacing`
-			// property, so they're keyed per axis rather than lumped together; each
-			// side introduces its own width/color sub-properties.
+			// property, so they're keyed per axis rather than lumped together;
+			// each side introduces its own width/color sub-properties.
 			nested: new Map<string, PrefixSpec>([
 				['spacing', axisSpec],
 				...SIDES.map((side): [string, PrefixSpec] => [
@@ -596,9 +597,10 @@ const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
 		decoration: {
 			keywords: categoryMap([
 				['style', ['solid', 'double', 'dotted', 'dashed', 'wavy']],
-				// Tailwind v3's box-decoration-break spelling (v4 renamed these to
-				// `box-decoration-*`) — an unrelated property that would otherwise
-				// fall into the thickness bucket and collide with `decoration-2`.
+				// Tailwind v3's box-decoration-break spelling (v4 renamed these
+				// to `box-decoration-*`) — an unrelated property that would
+				// otherwise fall into the thickness bucket and collide with
+				// `decoration-2`.
 				['break', ['clone', 'slice']],
 				['color', COLOR_KEYWORDS],
 				['thickness', ['from', 'auto']]
@@ -740,9 +742,10 @@ const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
 					]
 				]
 			]),
-			// `font-stretch-*` (`font-stretch-condensed`, `font-stretch-50%`, …)
-			// and `font-features-*` (font-feature-settings) are each their own font
-			// sub-property, distinct from weight and family and from each other.
+			// `font-stretch-*` (`font-stretch-condensed`, `font-stretch-50%`,
+			// …) and `font-features-*` (font-feature-settings) are each their
+			// own font sub-property, distinct from weight and family and from
+			// each other.
 			nested: new Map([
 				['stretch', unifiedSpec],
 				['features', unifiedSpec]
@@ -786,9 +789,9 @@ const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
 		inline: inlineSpec,
 		block: unifiedSpec,
 		// `col-start-*`/`col-end-*` are their own classGroups (kept as distinct
-		// categories below), but `col-auto`, `col-span-*`, and a bare `col-3` are
-		// all one `col-start-end` classGroup — they share one category, and the
-		// bare-integer/arbitrary form reaches it through the fallback.
+		// categories below), but `col-auto`, `col-span-*`, and a bare `col-3`
+		// are all one `col-start-end` classGroup — they share one category, and
+		// the bare-integer/arbitrary form reaches it through the fallback.
 		col: {
 			keywords: categoryMap([
 				['value', ['span', 'auto']],

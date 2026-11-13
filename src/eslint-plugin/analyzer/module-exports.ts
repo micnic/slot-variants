@@ -1,11 +1,11 @@
 import type { ExportNamedDeclaration, Node, Program } from 'estree';
-import {
-	type ComponentFunction,
-	DEFAULT_EXPORT,
-	findWrappedComponent
-} from './components.ts';
 import { getOrCreate } from '../map-utils.ts';
-import { getExportName, getModuleSpecifier } from './config-keys.ts';
+import { type ComponentFunction, findWrappedComponent } from './components.ts';
+import {
+	DEFAULT_EXPORT,
+	getExportName,
+	getModuleSpecifier
+} from './module-syntax.ts';
 
 /**
  * Where an export name leads: a binding in the same module, a function node

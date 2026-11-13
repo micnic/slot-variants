@@ -1,9 +1,4 @@
-import type { Identifier, Literal, Property } from 'estree';
-
-// GitHub anchors a `slot-variants/<rule>` README heading as
-// `slot-variants<rule>`, dropping the backticks and the slash.
-export const docsUrl = (rule: string): string =>
-	`https://github.com/micnic/slot-variants#slot-variants${rule}`;
+import type { Property } from 'estree';
 
 /**
  * Every recognized sv()/createSV() config key, in the project's canonical
@@ -29,20 +24,10 @@ export const CONFIG_KEY_ORDER: readonly string[] = [
 
 export const CONFIG_KEYS = new Set(CONFIG_KEY_ORDER);
 
-// An export name is an identifier, or a string literal for the `export { x as
-// "a-b" }` form.
-export const getExportName = (node: Identifier | Literal): string => {
-	if (node.type === 'Identifier') {
-		return node.name;
-	}
-
-	return String(node.value);
-};
-
-// A module source is always a string literal; ESTree only types it as a
-// general `Literal`.
-export const getModuleSpecifier = (source: Literal): string =>
-	String(source.value);
+// GitHub anchors a `slot-variants/<rule>` README heading as
+// `slot-variants<rule>`, dropping the backticks and the slash.
+export const docsUrl = (rule: string): string =>
+	`https://github.com/micnic/slot-variants#slot-variants${rule}`;
 
 export const getKeyName = (prop: Property): string | null => {
 	if (prop.computed) {

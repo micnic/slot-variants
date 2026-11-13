@@ -3,6 +3,10 @@ import type { Node } from 'estree';
 
 export type ListItems = ReadonlyArray<Node | null>;
 
+// Built by `makeListFix` for a call/array list element, or supplied directly
+// for a config property.
+export type EmptyFix = (fixer: Rule.RuleFixer) => Rule.Fix | null;
+
 // `charAt` returns '' past either end of the string, so neither of the walks
 // below needs a bounds check.
 const isSpaceOrTab = (char: string): boolean => char === ' ' || char === '\t';
@@ -147,14 +151,7 @@ export const removeFromList = (
 	]);
 };
 
-// Built by `makeListFix` for a call/array list element, or supplied directly
-// for a config property.
-export type EmptyFix = (fixer: Rule.RuleFixer) => Rule.Fix | null;
-
-export const makeListFix = (
-	context: Rule.RuleContext,
-	node: Node,
-	list: ListItems
-): EmptyFix => {
-	return (fixer) => removeFromList(fixer, context.sourceCode, node, list);
-};
+export const makeListFix =
+	(context: Rule.RuleContext, node: Node, list: ListItems): EmptyFix =>
+	(fixer) =>
+		removeFromList(fixer, context.sourceCode, node, list);

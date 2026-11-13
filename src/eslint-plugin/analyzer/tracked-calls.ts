@@ -6,8 +6,8 @@ import type {
 	Node
 } from 'estree';
 import { type CallMatch, matchSvCall } from './call-matching.ts';
-import { getExportName } from './config-keys.ts';
 import { findVariable } from './const-bindings.ts';
+import { getExportName } from './module-syntax.ts';
 import { createStyledContext, type StyledContext } from './styled-values.ts';
 
 // The tracked export each named-import local stands for, plus the locals bound

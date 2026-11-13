@@ -337,7 +337,7 @@ export const createLiteralReporter = (
 			return;
 		}
 
-		// Each literal's conflict key is read once, however many parts check it.
+		// Each literal's conflict key is read once for every part to use
 		const keyed = literals.map((entry) => ({
 			entry,
 			info: getConflictKey(entry.token, options)

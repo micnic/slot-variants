@@ -38,7 +38,7 @@ import {
 /** The classes one `sv()`/`cn()` call applies internally, indexed per slot. */
 type InternalStyles = {
 	bySlot: TokenEntriesBySlot;
-	slotNames: Set<string>;
+	slotNames: ReadonlySet<string>;
 	defaults: VariantMatchers;
 	groupSlots: ReadonlyMap<string, ReadonlyArray<string>>;
 	slotGroups: ReadonlyMap<string, ReadonlyArray<string>>;
@@ -49,6 +49,14 @@ export type StyledClasses = {
 	styles: InternalStyles;
 	slot: string;
 	matchers: VariantMatchers;
+};
+
+/** Everything the resolver needs from the rule that owns it. */
+export type StyledContext = {
+	sourceCode: SourceCode;
+	matchCall: (node: CallExpression) => CallMatch | null;
+	scopeOf: (node: Node) => Scope.Scope | null;
+	resolve: (node: Node) => Node;
 };
 
 /**
@@ -66,6 +74,8 @@ const EMPTY_MATCHERS: VariantMatchers = new Map();
 const EMPTY_GROUPS: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
 
 const NO_SKIP: ReadonlySet<string> = new Set();
+
+const stylesCache = new WeakMap<Node, InternalStyles>();
 
 const readGroups = (
 	groups: ReadonlyMap<string, Node>,
@@ -111,8 +121,6 @@ const buildStyles = (
 	};
 };
 
-const stylesCache = new WeakMap<Node, InternalStyles>();
-
 /**
  * The classes an `sv(config)` call compiles to, memoized on the call node so a
  * config referenced from many call sites, or read by more than one rule, is
@@ -125,14 +133,6 @@ export const getConfigStyles = (
 	sourceCode: SourceCode
 ): InternalStyles =>
 	getOrCreate(stylesCache, node, () => buildStyles(config, args, sourceCode));
-
-/** Everything the resolver needs from the rule that owns it. */
-export type StyledContext = {
-	sourceCode: SourceCode;
-	matchCall: (node: CallExpression) => CallMatch | null;
-	scopeOf: (node: Node) => Scope.Scope | null;
-	resolve: (node: Node) => Node;
-};
 
 export const createStyledContext = (
 	sourceCode: SourceCode,

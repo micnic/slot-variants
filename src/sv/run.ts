@@ -401,7 +401,7 @@ const createRunPlan = (config: CompiledConfig): RunPlan => {
 		),
 		tables,
 		compounds: compounds.map(({ fragments }) => fragments),
-		// Missing variants are reported in the order they are listed as required
+		// Missing variants are reported in `requiredVariants` order
 		required: requiredVariants.map((key) => ({
 			key,
 			index: variantData.findIndex((variant) => variant.key === key)

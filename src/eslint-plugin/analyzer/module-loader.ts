@@ -3,15 +3,12 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import type { Linter, Rule, Scope } from 'eslint';
 import type { Program } from 'estree';
-import {
-	type Component,
-	DEFAULT_EXPORT,
-	resolveComponentBinding
-} from './components.ts';
 import { getOrCreate } from '../map-utils.ts';
+import { type Component, resolveComponentBinding } from './components.ts';
 import { createForwardingScan, type ForwardedStyles } from './forwarding.ts';
 import { collectExportTable, type ExportTarget } from './module-exports.ts';
 import { type AliasMap, resolveModulePath } from './module-paths.ts';
+import { DEFAULT_EXPORT } from './module-syntax.ts';
 
 /**
  * One place an export name leads: a component of the module, already resolved
@@ -150,9 +147,8 @@ const getLinterConstructor = (
 	);
 };
 
-// Where one export target leads, or null when it reaches no component that
-// forwards a class prop. A local name is a function declared in the module,
-// or a binding it imported and re-exports — followed on to that module.
+// The step for a component that forwards its class prop, or null when it
+// forwards none.
 const toStylesStep = (
 	component: Component,
 	forwarded: ReadonlyMap<Component, ForwardedStyles>

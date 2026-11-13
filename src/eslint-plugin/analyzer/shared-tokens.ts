@@ -68,6 +68,36 @@ export type SharedTokensCall = {
 	inheritsPostProcess: boolean;
 };
 
+// A `base` property to create, as text inserted ahead of the config's first
+// property.
+type BaseInsertion = { insertBefore: Node; text: string };
+
+// Where a slot's lifted tokens go: the `base`/`slots[slot]` literal it already
+// has, or the config object a `base` property has to be created in.
+type SharedTokensTarget = { node: Node } | { createBaseIn: ObjectExpression };
+
+// Where a variant's shared tokens can be lifted to, and which nodes a fix may
+// rewrite at all: only those inside the config object, never a `const`
+// container declared beside it that other configs may share.
+type SharedTokensScope = {
+	getTarget: (slot: string) => SharedTokensTarget | null;
+	canEdit: (node: Node) => boolean;
+	// A merging `postProcess` keeps the last of two conflicting classes, so
+	// moving classes earlier may change which one wins: the fixes that do
+	// are then offered as suggestions only.
+	suggestOnly: boolean;
+};
+
+// What a single-key compound fix needs from the config's scope.
+type CompoundScope = Pick<SharedTokensScope, 'canEdit' | 'suggestOnly'>;
+
+type SharedTokensFixPlan = {
+	target: LiteralRewrite | BaseInsertion;
+	values: ReadonlyArray<LiteralRewrite>;
+};
+
+type SingleMatcher = { key: string; value: Node; cls: Node };
+
 const intersectSharedTokensStep = (
 	sharedTokens: SharedEntries,
 	valueMap: TokenEntriesBySlot
@@ -165,7 +195,7 @@ const planAppendRewrite = (
 const getRawSlotValueNode = (
 	valueNode: Node,
 	slot: string,
-	slotNames: Set<string>
+	slotNames: ReadonlySet<string>
 ): Node | null => {
 	const slotKeyed = collectSlotKeyedProperties(valueNode, slotNames);
 
@@ -179,34 +209,6 @@ const getRawSlotValueNode = (
 	}
 
 	return valueNode;
-};
-
-// A `base` property to create, as text inserted ahead of the config's first
-// property.
-type BaseInsertion = { insertBefore: Node; text: string };
-
-// Where a slot's lifted tokens go: the `base`/`slots[slot]` literal it already
-// has, or the config object a `base` property has to be created in.
-type SharedTokensTarget = { node: Node } | { createBaseIn: ObjectExpression };
-
-// What a single-key compound fix needs from the config's scope.
-type CompoundScope = Pick<SharedTokensScope, 'canEdit' | 'suggestOnly'>;
-
-type SharedTokensFixPlan = {
-	target: LiteralRewrite | BaseInsertion;
-	values: ReadonlyArray<LiteralRewrite>;
-};
-
-// Where a variant's shared tokens can be lifted to, and which nodes a fix may
-// rewrite at all: only those inside the config object, never a `const`
-// container declared beside it that other configs may share.
-type SharedTokensScope = {
-	getTarget: (slot: string) => SharedTokensTarget | null;
-	canEdit: (node: Node) => boolean;
-	// A merging `postProcess` keeps the last of two conflicting classes, so
-	// moving classes earlier may change which one wins: the fixes that do
-	// are then offered as suggestions only.
-	suggestOnly: boolean;
 };
 
 // The text of a `base` property to create, laid out like the config's existing
@@ -257,7 +259,7 @@ const planValueRewrites = (
 	slot: string,
 	sharedTokens: ReadonlySet<string>,
 	valueEntries: ReadonlyMap<string, Node>,
-	slotNames: Set<string>
+	slotNames: ReadonlySet<string>
 ): LiteralRewrite[] | null => {
 	const values: LiteralRewrite[] = [];
 
@@ -336,7 +338,7 @@ const planSharedTokensFix = (
 	slot: string,
 	sharedTokens: ReadonlySet<string>,
 	valueEntries: ReadonlyMap<string, Node>,
-	slotNames: Set<string>,
+	slotNames: ReadonlySet<string>,
 	target: SharedTokensTarget
 ): SharedTokensFixPlan | null => {
 	const values = planValueRewrites(
@@ -465,7 +467,7 @@ const planSlotFix = (
 	slot: string,
 	sharedTokens: ReadonlySet<string>,
 	valueEntries: ReadonlyMap<string, Node>,
-	slotNames: Set<string>,
+	slotNames: ReadonlySet<string>,
 	scope: SharedTokensScope
 ): SharedTokensFixPlan | null => {
 	const target = scope.getTarget(slot);
@@ -496,7 +498,7 @@ const reportSharedTokensBySlot = (
 	variantKey: string,
 	coverage: VariantCoverage,
 	valueEntries: ReadonlyMap<string, Node>,
-	slotNames: Set<string>,
+	slotNames: ReadonlySet<string>,
 	scope: SharedTokensScope
 ) => {
 	for (const [slot, tokens] of sharedTokens) {
@@ -589,7 +591,7 @@ const hasUnwrittenBoolean = (valueEntries: ReadonlyMap<string, Node>) =>
 const collectVariantTokensByValue = (
 	variantEntries: ReadonlyMap<string, Node>,
 	variantKey: string,
-	slotNames: Set<string>,
+	slotNames: ReadonlySet<string>,
 	sourceCode: SourceCode
 ): TokenEntriesBySlot[] => {
 	const tokensByValue: TokenEntriesBySlot[] = [];
@@ -616,7 +618,7 @@ const analyzeVariantSharedTokens = (
 	variantKey: string,
 	coverage: VariantCoverage,
 	rawValue: Node,
-	slotNames: Set<string>,
+	slotNames: ReadonlySet<string>,
 	scope: SharedTokensScope
 ) => {
 	const variantValue = resolveStaticValue(rawValue, context.sourceCode);
@@ -664,8 +666,6 @@ const analyzeVariantSharedTokens = (
 	);
 };
 
-type SingleMatcher = { key: string; value: Node; cls: Node };
-
 // The one variant-key matcher on a compound entry, plus the class it applies,
 // or null when the entry has no class or doesn't have exactly one matcher: none
 // at all, two or more (a `preset` brings its own), or a shape that can't be
@@ -708,11 +708,11 @@ const getSingleCompoundMatcher = (
 
 // Plans merging a single-key `compoundVariants` entry's class into every
 // variant value its matcher statically resolves to, plus removing the entry
-// itself (`removeEntry`). Only attempted for `compoundVariants` — `compoundSlots`' class
-// belongs on a specific slot rather than the whole variant value, which is
-// enough extra shape to leave unfixed for now. Any of: a dynamic class, an
-// unreadable matcher value, a missing or non-literal target value, aborts the
-// whole plan, leaving the finding reported without a fix.
+// itself (`getRemoval`). Only attempted for `compoundVariants` —
+// `compoundSlots`' class belongs on a specific slot rather than the whole
+// variant value, which is enough extra shape to leave unfixed for now. Any of:
+// a dynamic class, an unreadable matcher value, a missing or non-literal target
+// value, aborts the whole plan, leaving the finding reported without a fix.
 const planSingleKeyCompoundFix = (
 	context: Rule.RuleContext,
 	element: ObjectExpression,
@@ -933,7 +933,7 @@ const analyzeExhaustiveVariants = (
 	context: Rule.RuleContext,
 	variantsMap: ReadonlyMap<string, Node>,
 	coverageByVariant: ReadonlyMap<string, VariantCoverage>,
-	slotNames: Set<string>,
+	slotNames: ReadonlySet<string>,
 	scope: SharedTokensScope
 ) => {
 	for (const [variantKey, variantValue] of variantsMap) {

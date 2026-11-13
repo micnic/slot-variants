@@ -207,7 +207,7 @@ const checkSlotKeyedValues = (
 const checkVariantBranchValue = (
 	context: Rule.RuleContext,
 	raw: Node,
-	slotNames: Set<string>
+	slotNames: ReadonlySet<string>
 ) => {
 	const node = resolveStaticValue(raw, context.sourceCode);
 	const slotKeyed = collectSlotKeyedProperties(node, slotNames);
@@ -223,7 +223,7 @@ const checkVariantBranchValue = (
 const checkValueKeyedVariant = (
 	context: Rule.RuleContext,
 	node: ObjectExpression,
-	slotNames: Set<string>
+	slotNames: ReadonlySet<string>
 ) => {
 	forEachStaticProperty(context, node, (prop) => {
 		checkVariantBranchValue(context, prop.value, slotNames);
@@ -233,7 +233,7 @@ const checkValueKeyedVariant = (
 const checkVariantDefinition = (
 	context: Rule.RuleContext,
 	raw: Node,
-	slotNames: Set<string>
+	slotNames: ReadonlySet<string>
 ) => {
 	const node = resolveStaticValue(raw, context.sourceCode);
 
@@ -249,7 +249,7 @@ const checkVariantDefinition = (
 const checkVariants = (
 	context: Rule.RuleContext,
 	raw: Node,
-	slotNames: Set<string>
+	slotNames: ReadonlySet<string>
 ) => {
 	const node = resolveStaticValue(raw, context.sourceCode);
 
@@ -285,7 +285,7 @@ const checkCompoundEntries = (
 	context: Rule.RuleContext,
 	raw: Node,
 	hasSlotsKey: boolean,
-	slotNames: Set<string>
+	slotNames: ReadonlySet<string>
 ) => {
 	const node = resolveStaticValue(raw, context.sourceCode);
 
@@ -311,7 +311,7 @@ const checkCompoundEntries = (
 const getCompoundEntryValueChecker = (
 	key: string | null,
 	hasSlotsKey: boolean,
-	slotNames: Set<string>
+	slotNames: ReadonlySet<string>
 ): SvConfigValueChecker | null => {
 	if (key === 'class' || key === 'className') {
 		// A compoundSlots entry already targets specific slots, so its class
@@ -337,7 +337,7 @@ const checkCompoundEntryProperty = (
 	context: Rule.RuleContext,
 	prop: Property,
 	hasSlotsKey: boolean,
-	slotNames: Set<string>
+	slotNames: ReadonlySet<string>
 ) => {
 	const checker = getCompoundEntryValueChecker(
 		getKeyName(prop),
@@ -360,7 +360,7 @@ const svConfigValueCheckers: ReadonlyMap<string, SvConfigValueChecker> =
 const checkSvConfigProperty = (
 	context: Rule.RuleContext,
 	prop: Property,
-	slotNames: Set<string>
+	slotNames: ReadonlySet<string>
 ) => {
 	const key = getKeyName(prop);
 

@@ -114,7 +114,7 @@ export const getStrictPropertiesWithKeys = (
 
 export const collectSlotKeyedProperties = (
 	node: Node,
-	slotNames: Set<string>
+	slotNames: ReadonlySet<string>
 ): ReadonlyMap<string, Node> | null => {
 	if (slotNames.size === 0) {
 		return null;
@@ -132,7 +132,7 @@ export const collectSlotKeyedProperties = (
 export const getConfigSlotNames = (
 	config: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
-): Set<string> => {
+): ReadonlySet<string> => {
 	const slots = resolveContainer(config.get('slots'), sourceCode);
 	const groups = resolveContainer(config.get('groups'), sourceCode);
 	const slotNames = new Set(getProperties(slots).keys());

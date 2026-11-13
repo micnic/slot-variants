@@ -11,9 +11,10 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  * re-runs per call, an instance class field initializer, which re-runs per
  * `new`, a Svelte markup or Vue template expression, which re-runs per render,
  * and a component's instance script (Svelte's `<script>`, Vue's
- * `<script setup>`), which re-runs per component instance. A `static` field
- * or static block runs once with the class definition and is left alone. The cn-style calling convention of `sv()` (and every
- * `cn()` call) carries no config and is left alone too.
+ * `<script setup>`), which re-runs per component instance. A `static` field or
+ * static block runs once with the class definition and is left alone. The
+ * cn-style calling convention of `sv()` (and every `cn()` call) carries no
+ * config and is left alone too.
  */
 export const requireTopLevelConfig: Rule.RuleModule = {
 	meta: {

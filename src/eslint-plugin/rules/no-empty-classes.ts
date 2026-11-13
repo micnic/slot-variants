@@ -14,9 +14,9 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  * always produce an empty class string). Inside an `sv()` config, an empty
  * string is still allowed at a direct `slots[key]` or `variants` value
  * position, since declaring a slot or a variant value with no classes of its
- * own is a meaningful use case. Also flags an empty
- * array (`[]`) as a `compoundVariants`/`compoundSlots` matcher value — a
- * matcher must list at least one value, so `sv()` throws for the config.
+ * own is a meaningful use case. Also flags an empty array (`[]`) as a
+ * `compoundVariants`/`compoundSlots` matcher value — a matcher must list at
+ * least one value, so `sv()` throws for the config.
  *
  * The config containers that carry no class values of their own —
  * `defaultVariants`, `requiredVariants`, `multiSlots`, `presets` — are reported

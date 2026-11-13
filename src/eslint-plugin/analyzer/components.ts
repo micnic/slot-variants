@@ -9,8 +9,12 @@ import type {
 	Node,
 	Program
 } from 'estree';
-import { getExportName, getModuleSpecifier } from './config-keys.ts';
 import { findSingleBinding, getConstDefInit } from './const-bindings.ts';
+import {
+	DEFAULT_EXPORT,
+	getExportName,
+	getModuleSpecifier
+} from './module-syntax.ts';
 
 export type ComponentFunction =
 	| FunctionDeclaration
@@ -41,8 +45,6 @@ type ComponentBinding =
 	| { kind: 'local'; fn: ComponentFunction }
 	| { kind: 'import'; source: ImportSource }
 	| null;
-
-export const DEFAULT_EXPORT = 'default';
 
 // Takes the structural minimum so framework node unions narrow through it too.
 export const isComponentFunction = (node: {

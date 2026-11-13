@@ -323,7 +323,7 @@ const mergeTokenMaps = (
 const reportSlotObjectOverlaps = (
 	context: Rule.RuleContext,
 	raw: Node,
-	slotNames: Set<string>,
+	slotNames: ReadonlySet<string>,
 	groupSlots: GroupSlots
 ) => {
 	const slotKeyed = collectSlotKeyedProperties(
@@ -353,7 +353,7 @@ const reportSlotObjectOverlaps = (
 const reportConfigOverlaps = (
 	context: Rule.RuleContext,
 	config: ReadonlyMap<string, Node>,
-	slotNames: Set<string>,
+	slotNames: ReadonlySet<string>,
 	groupSlots: GroupSlots
 ) => {
 	const { sourceCode } = context;

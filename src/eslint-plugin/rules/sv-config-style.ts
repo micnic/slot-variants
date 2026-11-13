@@ -574,7 +574,7 @@ export const svConfigStyle: Rule.RuleModule = {
 				properties: {
 					baseStyle: {
 						type: 'string',
-						enum: ['field', 'separateArg', 'slotsBase']
+						enum: Object.keys(BASE_STYLE_LABELS)
 					}
 				},
 				additionalProperties: false

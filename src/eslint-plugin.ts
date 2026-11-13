@@ -3,8 +3,7 @@ import { rules } from './eslint-plugin/rules/index.ts';
 
 export { rules };
 
-/** Plugin metadata surfaced by ESLint and oxlint. */
-const meta = { name: 'slot-variants', version: pkg.version };
+type PluginMeta = { name: string; version: string };
 
 type RecommendedConfig = {
 	name: string;
@@ -13,10 +12,13 @@ type RecommendedConfig = {
 };
 
 type SlotVariantsPlugin = {
-	meta: typeof meta;
+	meta: PluginMeta;
 	rules: typeof rules;
 	configs: { recommended: RecommendedConfig };
 };
+
+/** Plugin metadata surfaced by ESLint and oxlint. */
+const meta: PluginMeta = { name: 'slot-variants', version: pkg.version };
 
 // Derive the preset from rule metadata so adding a recommended rule remains a
 // single edit in its rule definition.

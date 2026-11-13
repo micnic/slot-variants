@@ -13,10 +13,30 @@ export type Source =
 	| { kind: 'variant'; matchers: VariantMatchers }
 	| { kind: 'compound' };
 
+export type Entry = {
+	source: Source;
+	slot: string;
+	token: string;
+	start: number;
+	end: number;
+};
+
+export type TokenEntriesBySlot = Map<string, Map<string, Entry[]>>;
+
+// Whether a finding over these entries is reported by the current pass.
+export type EntryListFilter = (entries: ReadonlyArray<Entry>) => boolean;
+
+export type EntryListFixer = (fixer: Rule.RuleFixer) => Rule.Fix[] | null;
+
+/** How a finding can be resolved: an autofix, suggestions, or neither. */
+export type EntryRemedy = Pick<Rule.ReportDescriptorOptions, 'fix' | 'suggest'>;
+
 export const baseSource: Source = { kind: 'base' };
 
 // No readable matcher — never exclusive with anything.
 export const compoundSource: Source = { kind: 'compound' };
+
+export const EMPTY_SLOT_NAMES: ReadonlySet<string> = new Set();
 
 export const variantSource = (key: string, value: string): Source => ({
 	kind: 'variant',
@@ -40,16 +60,6 @@ export const withMatcher = (
 
 	return { kind: 'variant', matchers };
 };
-
-export type Entry = {
-	source: Source;
-	slot: string;
-	token: string;
-	start: number;
-	end: number;
-};
-
-export type TokenEntriesBySlot = Map<string, Map<string, Entry[]>>;
 
 export const getEntryMatchers = (entry: Entry): VariantMatchers | null => {
 	if (entry.source.kind === 'variant') {
@@ -161,8 +171,6 @@ export const areDistinctTokensExclusive = (
 const isMutuallyExclusiveVariants = (list: Entry[]): boolean =>
 	everyPair(list, areEntriesExclusive);
 
-export const EMPTY_SLOT_NAMES = new Set<string>();
-
 export const indexEntriesBySlotAndToken = (
 	entries: Iterable<Entry>
 ): TokenEntriesBySlot => {
@@ -181,14 +189,6 @@ export const indexEntriesBySlotAndToken = (
 
 	return bySlot;
 };
-
-// Whether a finding over these entries is reported by the current pass.
-export type EntryListFilter = (entries: ReadonlyArray<Entry>) => boolean;
-
-export type EntryListFixer = (fixer: Rule.RuleFixer) => Rule.Fix[] | null;
-
-/** How a finding can be resolved: an autofix, suggestions, or neither. */
-export type EntryRemedy = Pick<Rule.ReportDescriptorOptions, 'fix' | 'suggest'>;
 
 export const reportEntryList = (
 	context: Rule.RuleContext,

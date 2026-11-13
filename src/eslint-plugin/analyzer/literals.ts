@@ -113,6 +113,7 @@ export const getStaticStringText = (node: Node): string | null => {
 	/* c8 ignore next -- cooked is always defined on untagged templates */
 	return quasi.value.cooked ?? quasi.value.raw;
 };
+
 // A static literal's class tokens as written in source (see
 // `splitClassTokens`), or null when the node isn't a static string.
 export const getRawLiteralTokens = (
