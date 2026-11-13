@@ -331,17 +331,16 @@ const cnStyles = (
 };
 
 /**
- * Reads `node` as a class-valued slot-variants expression: a `cn()` call, a
- * config-less `sv()` call, a slotless variant function's result, a slot read
- * off a result object, or a multi-slot slot call. Null for anything else,
- * including a variant function itself (which yields no classes until called).
+ * Reads an already resolved node as a class-valued slot-variants expression: a
+ * `cn()` call, a config-less `sv()` call, a slotless variant function's result,
+ * a slot read off a result object, or a multi-slot slot call. Null for anything
+ * else, including a variant function itself (which yields no classes until
+ * called).
  */
-export const resolveStyledClasses = (
-	node: Node,
+export const readStyledClasses = (
+	resolved: Node,
 	ctx: StyledContext
 ): StyledClasses | null => {
-	const resolved = ctx.resolve(node);
-
 	if (resolved.type === 'MemberExpression') {
 		return resolveStyledMember(resolved, ctx);
 	}
@@ -380,6 +379,12 @@ export const resolveStyledClasses = (
 		matchers: invocation.matchers
 	};
 };
+
+/** `readStyledClasses` for a node read through `const` bindings first. */
+export const resolveStyledClasses = (
+	node: Node,
+	ctx: StyledContext
+): StyledClasses | null => readStyledClasses(ctx.resolve(node), ctx);
 
 /**
  * The `class` / `className` value a call site passes, split per targeted slot.

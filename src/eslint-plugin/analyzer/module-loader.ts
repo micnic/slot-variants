@@ -142,10 +142,13 @@ const findLinterConstructor = (
 const getLinterConstructor = (
 	fromFile: string,
 	cwd: string
-): LinterConstructor | null =>
-	getOrCreate(linterConstructors, `${dirname(fromFile)}\0${cwd}`, () =>
-		findLinterConstructor(dirname(fromFile), cwd)
+): LinterConstructor | null => {
+	const directory = dirname(fromFile);
+
+	return getOrCreate(linterConstructors, `${directory}\0${cwd}`, () =>
+		findLinterConstructor(directory, cwd)
 	);
+};
 
 // Where one export target leads, or null when it reaches no component that
 // forwards a class prop. A local name is a function declared in the module,

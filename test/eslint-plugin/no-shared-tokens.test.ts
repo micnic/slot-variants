@@ -1,6 +1,8 @@
 import t from 'tap';
+import { RuleTester } from 'eslint';
+import { parser as tsParser } from 'typescript-eslint';
 import { rules } from '../../src/eslint-plugin.ts';
-import { tester } from './helpers.ts';
+import { IMPORT, tester } from './helpers.ts';
 import {
 	NO_SHARED_TOKENS_INVALID,
 	NO_SHARED_TOKENS_VALID
@@ -13,6 +15,29 @@ t.test('no-shared-tokens', (t) => {
 		tester.run('no-shared-tokens', sharedRule, {
 			valid: NO_SHARED_TOKENS_VALID,
 			invalid: NO_SHARED_TOKENS_INVALID
+		});
+	}, 'rule tester passes');
+	t.end();
+});
+
+// A compound list wrapped in `as const` isn't the config property's value
+// itself, so emptying it leaves no property the fix knows how to remove.
+t.test('no-shared-tokens leaves a wrapped compound list unfixed', (t) => {
+	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
+
+	t.doesNotThrow(() => {
+		tsTester.run('no-shared-tokens', rules['no-shared-tokens'], {
+			valid: [],
+			invalid: [
+				{
+					code:
+						IMPORT +
+						"sv({ variants: { size: { sm: 'p-1', lg: 'p-2' } }, compoundVariants: [{ size: 'sm', class: 'gap-2' }] as const });",
+					filename: 'test.ts',
+					output: null,
+					errors: [{ messageId: 'singleKeyCompound' }]
+				}
+			]
 		});
 	}, 'rule tester passes');
 	t.end();

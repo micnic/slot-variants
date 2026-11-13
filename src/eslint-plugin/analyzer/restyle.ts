@@ -17,7 +17,7 @@ import {
 	forEachOverrideTarget,
 	getSlotBuckets,
 	type Invocation,
-	resolveStyledClasses,
+	readStyledClasses,
 	resolveTargetSlots,
 	type StyledClasses,
 	type StyledContext
@@ -48,6 +48,9 @@ export type ClassParts = {
 };
 
 type KeyedToken = { token: string; info: ConflictKeyInfo };
+
+// A literal class with its conflict key, null when it has none.
+type KeyedLiteral = { entry: Entry; info: ConflictKeyInfo | null };
 
 // The classes a styled part applies: every token, for duplicates, and the
 // ones with a conflict key, each computed once however many literals check it.
@@ -114,15 +117,14 @@ export const collectParts = (
 		return;
 	}
 
-	const styled = resolveStyledClasses(node, ctx);
+	const resolved = ctx.resolve(node);
+	const styled = readStyledClasses(resolved, ctx);
 
 	if (styled !== null) {
 		parts.styled.push(styled);
 
 		return;
 	}
-
-	const resolved = ctx.resolve(node);
 
 	if (
 		resolved.type === 'Identifier' ||
@@ -256,10 +258,9 @@ const collectInternalClasses = (
 
 const reportEntry = (
 	context: Rule.RuleContext,
-	entry: Entry,
+	{ entry, info }: KeyedLiteral,
 	internal: InternalClasses,
-	slot: string,
-	options: ConflictOptions
+	slot: string
 ): boolean => {
 	if (internal.tokens.has(entry.token)) {
 		reportEntryList(context, [entry], 'duplicate', {
@@ -269,8 +270,6 @@ const reportEntry = (
 
 		return true;
 	}
-
-	const info = getConflictKey(entry.token, options);
 
 	if (info === null) {
 		return false;
@@ -301,20 +300,20 @@ const entryKey = (entry: Entry): string =>
 const reportAgainstStyled = (
 	context: Rule.RuleContext,
 	styled: StyledClasses,
-	literals: ReadonlyArray<Entry>,
+	literals: ReadonlyArray<KeyedLiteral>,
 	reported: Set<string>,
 	options: ConflictOptions
 ) => {
 	const internal = collectInternalClasses(styled, options);
 
-	for (const entry of literals) {
-		const key = entryKey(entry);
+	for (const literal of literals) {
+		const key = entryKey(literal.entry);
 
 		if (reported.has(key)) {
 			continue;
 		}
 
-		if (reportEntry(context, entry, internal, styled.slot, options)) {
+		if (reportEntry(context, literal, internal, styled.slot)) {
 			reported.add(key);
 		}
 	}
@@ -333,13 +332,19 @@ export const createLiteralReporter = (
 	const reported = new Set<string>();
 
 	return (styled, literals) => {
-		// Nothing to check, so no internal classes to collect.
-		if (literals.length === 0) {
+		// Nothing to check, or nothing to check against.
+		if (literals.length === 0 || styled.length === 0) {
 			return;
 		}
 
+		// Each literal's conflict key is read once, however many parts check it.
+		const keyed = literals.map((entry) => ({
+			entry,
+			info: getConflictKey(entry.token, options)
+		}));
+
 		for (const part of styled) {
-			reportAgainstStyled(context, part, literals, reported, options);
+			reportAgainstStyled(context, part, keyed, reported, options);
 		}
 	};
 };

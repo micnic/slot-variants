@@ -490,11 +490,12 @@ export const analyzeConfigForRule = (
 	// A finding inside one group's own classes is the group's to report, not
 	// each of its member slots'.
 	const isConfinedToGroup: EntryListFilter = (entries) => {
-		const buckets = new Set(entries.map((entry) => entry.slot));
+		const [first] = entries;
 
 		return (
-			buckets.size === 1 &&
-			[...buckets].every((bucket) => groupSlots.has(bucket))
+			first !== undefined &&
+			groupSlots.has(first.slot) &&
+			entries.every((entry) => entry.slot === first.slot)
 		);
 	};
 	const slots = new Set<string>();

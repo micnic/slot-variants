@@ -17,14 +17,14 @@ type SvelteScriptElement = {
 
 // A top-level child of a Vue file's document fragment: its blocks, and any
 // text between them.
-type VDocumentChild =
-	| {
-			type: 'VElement';
-			name: string;
-			range: [number, number];
-			startTag: { attributes: ReadonlyArray<VAttribute> };
-	  }
-	| { type: 'VText' };
+type VDocumentElement = {
+	type: 'VElement';
+	name: string;
+	range: [number, number];
+	startTag: { attributes: ReadonlyArray<VAttribute> };
+};
+
+type VDocumentChild = VDocumentElement | { type: 'VText' };
 
 type VDocumentFragment = { children: ReadonlyArray<VDocumentChild> };
 
@@ -54,21 +54,19 @@ const isTemplateNode = (node: Node): boolean => {
 		return true;
 	}
 
-	return (
-		type.startsWith(SVELTE_NODE_PREFIX) && type !== SVELTE_SCRIPT_ELEMENT
-	);
+	return type.startsWith(SVELTE_NODE_PREFIX);
 };
 
 const isSvelteScriptElement = (
 	node: Node | SvelteScriptElement
-): node is SvelteScriptElement => node.type === 'SvelteScriptElement';
+): node is SvelteScriptElement => node.type === SVELTE_SCRIPT_ELEMENT;
 
 const isSvelteModuleScript = (script: SvelteScriptElement): boolean =>
 	script.startTag.attributes.some(({ key }) =>
 		SVELTE_MODULE_ATTRIBUTES.has(key.name)
 	);
 
-const isVueScriptSetup = (child: VDocumentChild): boolean =>
+const isVueScriptSetup = (child: VDocumentChild): child is VDocumentElement =>
 	child.type === 'VElement' &&
 	child.name === 'script' &&
 	child.startTag.attributes.some(
@@ -99,11 +97,40 @@ const isInVueScriptSetup = (
 
 	return fragment.children.some(
 		(child) =>
-			child.type === 'VElement' &&
 			isVueScriptSetup(child) &&
 			child.range[0] <= start &&
 			start < child.range[1]
 	);
+};
+
+// Why entering `ancestor`, on the way down to `child`, would evaluate the call
+// again, or null when it doesn't.
+const getAncestorReason = (ancestor: Node, child: Node): RepeatedEvaluation => {
+	if (isSvelteScriptElement(ancestor)) {
+		if (isSvelteModuleScript(ancestor)) {
+			return null;
+		}
+
+		return 'instance';
+	}
+
+	if (isComponentFunction(ancestor)) {
+		return 'nested';
+	}
+
+	if (
+		ancestor.type === 'PropertyDefinition' &&
+		ancestor.static === false &&
+		ancestor.value === child
+	) {
+		return 'field';
+	}
+
+	if (isTemplateNode(ancestor)) {
+		return 'template';
+	}
+
+	return null;
 };
 
 // An `sv()` config call compiles the variant function (and seeds its cache)
@@ -115,40 +142,34 @@ const isInVueScriptSetup = (
 // A `static` field and a static block both run once with the class definition,
 // and so does any field's computed key, so they're fine on their own — but the
 // class may itself sit inside a function, which is why the walk doesn't stop
-// at them. The innermost reason
-// wins, so the report names what the author can see around the call.
+// at them. The innermost reason wins, so the report names what the author can
+// see around the call: the walk goes outwards and stops at the first one.
 export const findRepeatedEvaluation = (
 	context: Rule.RuleContext,
 	node: CallExpression
 ): RepeatedEvaluation => {
 	const { sourceCode } = context;
-	let reason: RepeatedEvaluation = null;
-
-	if (isInVueScriptSetup(sourceCode, node)) {
-		reason = 'instance';
-	}
-
 	const ancestors = sourceCode.getAncestors(node);
-	// The node below each ancestor on the way down to the call.
-	const path = [...ancestors, node];
+	let child: Node = node;
 
-	for (const [index, ancestor] of ancestors.entries()) {
-		if (isSvelteScriptElement(ancestor)) {
-			if (!isSvelteModuleScript(ancestor)) {
-				reason = 'instance';
+	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+		const ancestor = ancestors[index];
+
+		if (ancestor !== undefined) {
+			const reason = getAncestorReason(ancestor, child);
+
+			if (reason !== null) {
+				return reason;
 			}
-		} else if (isComponentFunction(ancestor)) {
-			reason = 'nested';
-		} else if (
-			ancestor.type === 'PropertyDefinition' &&
-			ancestor.static === false &&
-			ancestor.value === path[index + 1]
-		) {
-			reason = 'field';
-		} else if (isTemplateNode(ancestor)) {
-			reason = 'template';
+
+			child = ancestor;
 		}
 	}
 
-	return reason;
+	// `<script setup>` holds every other reason, so it's the outermost one.
+	if (isInVueScriptSetup(sourceCode, node)) {
+		return 'instance';
+	}
+
+	return null;
 };

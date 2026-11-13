@@ -351,12 +351,6 @@ const removeLeadingArgFix = (
 	return fixer.removeRange([argStart, configStart]);
 };
 
-const insertLeadingArgFix = (
-	fixer: Rule.RuleFixer,
-	configNode: ObjectExpression,
-	text: string
-): Rule.Fix => fixer.insertTextBefore(configNode, `${text}, `);
-
 // The fix removing a base source from where it is now, or null when that
 // would delete a comment.
 const removeBaseSourceFix = (
@@ -382,7 +376,6 @@ const buildBaseStyleFix = (
 	insertInto: ObjectExpression | null
 ): Rule.ReportFixer => {
 	const valueText = sourceCode.getText(source.value);
-	const propertyText = `base: ${valueText}`;
 
 	return (fixer) => {
 		const removal = removeBaseSourceFix(
@@ -396,23 +389,22 @@ const buildBaseStyleFix = (
 			return null;
 		}
 
-		const fixes: Rule.Fix[] = [removal];
-
 		if (insertInto === null) {
-			fixes.push(insertLeadingArgFix(fixer, configNode, valueText));
-			return fixes;
+			return [
+				removal,
+				fixer.insertTextBefore(configNode, `${valueText}, `)
+			];
 		}
 
-		fixes.push(
+		return [
+			removal,
 			insertAsFirstPropertyFix(
 				fixer,
 				sourceCode,
 				insertInto,
-				propertyText
+				`base: ${valueText}`
 			)
-		);
-
-		return fixes;
+		];
 	};
 };
 
@@ -497,26 +489,24 @@ const checkBaseStyle = (
 	baseStyle: BaseStyle,
 	isFactoryConfig: boolean
 ) => {
+	// `createSV(defaults)` takes exactly one argument and ignores any extra, so
+	// a leading class argument there is unsatisfiable, not merely un-fixable.
+	if (baseStyle === 'separateArg' && isFactoryConfig) {
+		return;
+	}
+
 	const slotsObj = getSlotsObject(configNode, context.sourceCode);
 
 	let insertInto: ObjectExpression | null = null;
 
 	if (baseStyle === 'field') {
 		insertInto = configNode;
-	}
-
-	if (baseStyle === 'slotsBase') {
+	} else if (baseStyle === 'slotsBase') {
 		if (!slotsObj) {
 			return;
 		}
 
 		insertInto = slotsObj;
-	}
-
-	// `createSV(defaults)` takes exactly one argument and ignores any extra, so
-	// a leading class argument there is unsatisfiable, not merely un-fixable.
-	if (baseStyle === 'separateArg' && isFactoryConfig) {
-		return;
 	}
 
 	const sources = detectBaseSources(configNode, slotsObj, args);

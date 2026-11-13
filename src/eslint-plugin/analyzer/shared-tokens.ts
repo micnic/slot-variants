@@ -52,6 +52,9 @@ type SharedEntries = Map<string, Map<string, Entry[][]>>;
 // render.
 type VariantCoverage = 'required' | 'default';
 
+// How a compound entry would be removed, worked out only once a fix needs it.
+type GetEntryRemoval = () => EmptyFix | undefined;
+
 /** Where else a call's base classes are, besides its config's `base` field. */
 export type SharedTokensCall = {
 	// False where a `base` created in the config would replace another one,
@@ -454,6 +457,39 @@ const isPlanEditable = (
 	return plan.values.every((value) => canEdit(value.node));
 };
 
+// The lift of a slot's shared tokens, or null when the slot has no target to
+// lift into, or a piece of the rewrite can't be inferred or edited — the
+// finding is then reported without a fix.
+const planSlotFix = (
+	context: Rule.RuleContext,
+	slot: string,
+	sharedTokens: ReadonlySet<string>,
+	valueEntries: ReadonlyMap<string, Node>,
+	slotNames: Set<string>,
+	scope: SharedTokensScope
+): SharedTokensFixPlan | null => {
+	const target = scope.getTarget(slot);
+
+	if (target === null) {
+		return null;
+	}
+
+	const plan = planSharedTokensFix(
+		context,
+		slot,
+		sharedTokens,
+		valueEntries,
+		slotNames,
+		target
+	);
+
+	if (plan === null || !isPlanEditable(plan, scope.canEdit)) {
+		return null;
+	}
+
+	return plan;
+};
+
 const reportSharedTokensBySlot = (
 	context: Rule.RuleContext,
 	sharedTokens: SharedEntries,
@@ -464,26 +500,14 @@ const reportSharedTokensBySlot = (
 	scope: SharedTokensScope
 ) => {
 	for (const [slot, tokens] of sharedTokens) {
-		const target = scope.getTarget(slot);
-
-		// A slot with no target to lift into is reported without a fix.
-		let plan: SharedTokensFixPlan | null = null;
-
-		if (target) {
-			plan = planSharedTokensFix(
-				context,
-				slot,
-				new Set(tokens.keys()),
-				valueEntries,
-				slotNames,
-				target
-			);
-		}
-
-		if (plan !== null && !isPlanEditable(plan, scope.canEdit)) {
-			plan = null;
-		}
-
+		const plan = planSlotFix(
+			context,
+			slot,
+			new Set(tokens.keys()),
+			valueEntries,
+			slotNames,
+			scope
+		);
 		const remedy = getSharedTokensRemedy(
 			plan,
 			coverage,
@@ -694,10 +718,16 @@ const planSingleKeyCompoundFix = (
 	element: ObjectExpression,
 	matcher: SingleMatcher,
 	variantValue: Node,
-	removeEntry: EmptyFix | undefined,
+	getRemoval: GetEntryRemoval,
 	canEdit: (node: Node) => boolean
 ): EntryListFixer | undefined => {
-	if (removeEntry === undefined || !canEdit(element)) {
+	if (!canEdit(element)) {
+		return undefined;
+	}
+
+	const removeEntry = getRemoval();
+
+	if (removeEntry === undefined) {
 		return undefined;
 	}
 
@@ -777,7 +807,7 @@ const checkCompoundEntryForSingleKey = (
 	element: ObjectExpression,
 	kind: 'compoundVariants' | 'compoundSlots',
 	variantsMap: ReadonlyMap<string, Node>,
-	removeEntry: EmptyFix | undefined,
+	getRemoval: GetEntryRemoval,
 	scope: CompoundScope
 ) => {
 	const matcher = getSingleCompoundMatcher(element);
@@ -810,7 +840,7 @@ const checkCompoundEntryForSingleKey = (
 			element,
 			matcher,
 			variantValue,
-			removeEntry,
+			getRemoval,
 			scope.canEdit
 		);
 	}
@@ -893,7 +923,7 @@ const checkCompoundsForSingleKey = (
 			element,
 			kind,
 			variantsMap,
-			getEntryRemoval(context, configNode, compounds, element),
+			() => getEntryRemoval(context, configNode, compounds, element),
 			scope
 		);
 	});
