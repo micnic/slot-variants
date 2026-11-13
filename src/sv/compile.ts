@@ -80,19 +80,6 @@ const configKeyChecks: ReadonlyMap<string, ConfigValueCheck> = new Map(
 	entries(configKeysRecord)
 );
 
-const isRuntimeVariantValue = (value: unknown): value is RuntimeVariantValue =>
-	typeof value === 'string' ||
-	typeof value === 'number' ||
-	typeof value === 'boolean';
-
-const createInvalidCompoundMatcherValueError = (
-	variant: string,
-	value: unknown
-) =>
-	new Error(
-		`Compound matcher for variant "${variant}" has invalid value "${value}"`
-	);
-
 const createCache = (cacheSize: number) => {
 	const cache: VariantCache = new Map();
 
@@ -139,10 +126,14 @@ const toExpectedValue = (
 	variantValues: NormalizedVariantValues
 ) => {
 	if (
-		!isRuntimeVariantValue(value) ||
+		(typeof value !== 'string' &&
+			typeof value !== 'number' &&
+			typeof value !== 'boolean') ||
 		!hasVariantValue(variantValues, value)
 	) {
-		throw createInvalidCompoundMatcherValueError(variant, value);
+		throw new Error(
+			`Compound matcher for variant "${variant}" has invalid value "${value}"`
+		);
 	}
 
 	return `${value}`;
@@ -172,17 +163,27 @@ const resolveCompoundMatcherExpected = (
 	return expected;
 };
 
-// A record's own value for `key`, or the given error when `key` is missing or
-// only inherited (`toString`, `constructor`) — config records are plain objects,
-// so a lookup alone would accept `Object.prototype` members.
+/**
+ * A record's own value for `key`. Config records and props are plain objects,
+ * so a lookup alone would read `Object.prototype` members (`toString`).
+ */
+export const getOwn = <T>(record: Record<string, T>, key: string) => {
+	if (!hasOwn(record, key)) {
+		return undefined;
+	}
+
+	return record[key];
+};
+
+// A record's own value for `key`, or the given error when there is none.
 const getOwnOrThrow = <T>(
 	record: Record<string, T>,
 	key: string,
 	errorMessage: string
 ): T => {
-	const value = record[key];
+	const value = getOwn(record, key);
 
-	if (value === undefined || !hasOwn(record, key)) {
+	if (value === undefined) {
 		throw new Error(errorMessage);
 	}
 
@@ -369,19 +370,6 @@ const createNormalizedVariants = <S extends MaybeSlots>(
 	return result;
 };
 
-// A variant named like an `Object.prototype` member (`toString`) would
-// otherwise read that inherited member as its default.
-const getOwnDefault = (
-	defaultVariants: Record<string, RuntimeDefaultVariant>,
-	variantKey: string
-): RuntimeDefaultVariant => {
-	if (!hasOwn(defaultVariants, variantKey)) {
-		return undefined;
-	}
-
-	return defaultVariants[variantKey];
-};
-
 /**
  * Numbers each variant's values, so a combination of resolved values maps to a
  * single cache key: the sum of every value id times its variant's stride, with
@@ -414,7 +402,7 @@ const createVariantData = (
 				unsetId: valueKeys.length,
 				stride,
 				values: variantValues,
-				defaultValue: getOwnDefault(defaultVariants, variantKey),
+				defaultValue: getOwn(defaultVariants, variantKey),
 				inherited: variantKey in Object.prototype
 			};
 

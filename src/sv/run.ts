@@ -2,6 +2,7 @@ import { cn, type ClassValue } from '../cn.ts';
 import {
 	applyValueToSlotClasses,
 	coerceVariantKeyValue,
+	getOwn,
 	getSlotFragmentTables,
 	getTargetSlots,
 	isSlotObjectValue,
@@ -56,6 +57,8 @@ type VariantPlan = {
 
 type SlotPlan = { key: string; base: string };
 
+type RequiredVariantPlan = { key: string; index: number };
+
 /**
  * Everything a call needs besides the props, precomputed from the config:
  * each slot's base fragment, each variant's fragment tables and compound
@@ -67,6 +70,8 @@ type RunPlan = {
 	variants: readonly VariantPlan[];
 	tables: readonly FragmentTable[];
 	compounds: readonly (readonly CompoundSlotFragment[])[];
+	required: readonly RequiredVariantPlan[];
+	hasPresets: boolean;
 	presetDefaults: boolean;
 };
 
@@ -137,8 +142,8 @@ const readVariantState = <T>(
 	state: Record<string, T>,
 	variant: VariantData
 ): T | undefined => {
-	if (variant.inherited && !hasOwn(state, variant.key)) {
-		return undefined;
+	if (variant.inherited) {
+		return getOwn(state, variant.key);
 	}
 
 	return state[variant.key];
@@ -379,6 +384,7 @@ const createRunPlan = (config: CompiledConfig): RunPlan => {
 	const { slotEntries, variantData, compounds, requiredVariants } = config;
 	const required = new Set(requiredVariants);
 	const tables: FragmentTable[] = [];
+	const hasPresets = keys(config.presets).length > 0;
 
 	return {
 		slots: slotEntries.map(([key, value]) => ({
@@ -395,9 +401,15 @@ const createRunPlan = (config: CompiledConfig): RunPlan => {
 		),
 		tables,
 		compounds: compounds.map(({ fragments }) => fragments),
+		// Missing variants are reported in the order they are listed as required
+		required: requiredVariants.map((key) => ({
+			key,
+			index: variantData.findIndex((variant) => variant.key === key)
+		})),
+		hasPresets,
 		// Only a function default reads the preset's values as props
 		presetDefaults:
-			keys(config.presets).length > 0 &&
+			hasPresets &&
 			variantData.some(
 				({ defaultValue }) => typeof defaultValue === 'function'
 			)
@@ -441,7 +453,6 @@ const getDefaultSource = (
  * are matched by their string form, the same way class names are looked up.
  */
 const getVariantSource = (
-	config: CompiledConfig,
 	plan: RunPlan,
 	{ data: variant, undefinedId }: VariantPlan,
 	index: number
@@ -461,7 +472,7 @@ const getVariantSource = (
 		presetCheck += ` && hasOwn(pv, ${key})`;
 	}
 
-	if (keys(config.presets).length > 0) {
+	if (plan.hasPresets) {
 		fallbacks.push(`if (${presetCheck}) ${value} = pv[${key}];`);
 	}
 
@@ -501,31 +512,23 @@ const getVariantSource = (
  * Emits the checks that throw for missing required variants and then for
  * unknown values, once any value id came out negative.
  */
-const getValidationSource = (config: CompiledConfig) => {
-	const { variantData, requiredVariants } = config;
-
-	if (variantData.length === 0) {
+const getValidationSource = (plan: RunPlan) => {
+	if (plan.variants.length === 0) {
 		return '';
 	}
 
-	const checks: string[] = [];
+	const checks = plan.required.map(
+		({ key, index }) =>
+			`if (i${index} === ${missingValueId}) throw missingVariant(${JSON.stringify(key)});`
+	);
 
-	// Missing variants are reported in the order they are listed as required
-	for (const variant of requiredVariants) {
-		const index = variantData.findIndex(({ key }) => key === variant);
-
+	plan.variants.forEach(({ data }, index) => {
 		checks.push(
-			`if (i${index} === ${missingValueId}) throw missingVariant(${JSON.stringify(variant)});`
-		);
-	}
-
-	variantData.forEach(({ key }, index) => {
-		checks.push(
-			`if (i${index} === ${unknownValueId}) throw invalidValue(${JSON.stringify(key)}, v${index});`
+			`if (i${index} === ${unknownValueId}) throw invalidValue(${JSON.stringify(data.key)}, v${index});`
 		);
 	});
 
-	const anyNegative = variantData.map((_variant, index) => `i${index} < 0`);
+	const anyNegative = plan.variants.map((_variant, index) => `i${index} < 0`);
 
 	return `if (${anyNegative.join(' || ')}) { ${checks.join(' ')} }`;
 };
@@ -657,7 +660,7 @@ const getResultSource = (config: CompiledConfig, plan: RunPlan) => {
 const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 	const { variantData } = config;
 	const variantSources = plan.variants.map((variant, index) =>
-		getVariantSource(config, plan, variant, index)
+		getVariantSource(plan, variant, index)
 	);
 
 	const locals = plan.tables.map(
@@ -676,7 +679,7 @@ const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 	// resolving, to throw for it: a call without one skips the lookup.
 	let presetSource = 'const pv = resolvePreset(p.preset);';
 
-	if (keys(config.presets).length === 0) {
+	if (!plan.hasPresets) {
 		presetSource = 'if (p.preset !== undefined) resolvePreset(p.preset);';
 	} else if (plan.presetDefaults) {
 		presetSource += ' let dp; if (pv === undefined) dp = p;';
@@ -689,7 +692,7 @@ const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 		'return (p) => {',
 		presetSource,
 		...variantSources,
-		getValidationSource(config),
+		getValidationSource(plan),
 		getResultSource(config, plan),
 		'};'
 	].join('\n');
@@ -728,16 +731,12 @@ const resolveVariants = (
  * The interpreted counterpart of `getValidationSource`.
  */
 const assertResolvedVariants = (
-	requiredVariants: readonly string[],
+	plan: RunPlan,
 	resolved: readonly ResolvedVariant[]
 ) => {
-	for (const variant of requiredVariants) {
-		const match = resolved.find(
-			({ variant: { data } }) => data.key === variant
-		);
-
-		if (match?.id === missingValueId) {
-			throw createMissingVariantError(variant);
+	for (const { key, index } of plan.required) {
+		if (resolved[index]?.id === missingValueId) {
+			throw createMissingVariantError(key);
 		}
 	}
 
@@ -838,7 +837,7 @@ const createInterpretedRun =
 	(config: CompiledConfig, plan: RunPlan) => (props: RuntimeProps) => {
 		const resolved = resolveVariants(config, plan, props);
 
-		assertResolvedVariants(config.requiredVariants, resolved);
+		assertResolvedVariants(plan, resolved);
 
 		const entry = getEntry(config, plan, resolved);
 		const classProp = props.class ?? props.className;
@@ -877,7 +876,7 @@ export const createRun = (config: CompiledConfig): RunFn => {
 	};
 
 	try {
-		return new Function('ctx', source).call(undefined, context);
+		return new Function('ctx', source)(context);
 	} catch {
 		return createInterpretedRun(config, plan);
 	}
