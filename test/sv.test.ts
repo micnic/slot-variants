@@ -6816,6 +6816,25 @@ t.test('multiSlots makes listed slot a reconfigurable function', (t) => {
 	t.end();
 });
 
+t.test('multiSlots result keeps the slot order', (t) => {
+	const card = sv({
+		slots: {
+			header: 'font-bold',
+			body: 'py-4',
+			footer: 'pt-2'
+		},
+		multiSlots: ['body']
+	});
+
+	const result = card();
+
+	t.same(Object.keys(result), ['base', 'header', 'body', 'footer']);
+	t.equal(result.header, 'font-bold', 'a plain slot stays a string');
+	t.equal(result.body(), 'py-4', 'a multi slot becomes a function');
+
+	t.end();
+});
+
 t.test('multiSlots slot function accepts a preset', (t) => {
 	const card = sv('border', {
 		slots: {

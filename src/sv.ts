@@ -152,20 +152,15 @@ const applyMultiSlots = (
 	props: RuntimeProps,
 	result: CacheValue
 ) => {
-	const output: MultiSlotResult = {};
-
 	if (typeof result === 'string') {
-		output.base = buildSlotFn(config, run, props, 'base');
-
-		return output;
+		return { base: buildSlotFn(config, run, props, 'base') };
 	}
 
-	for (const [slotKey, slotValue] of entries(result)) {
-		if (config.multiSlots.has(slotKey)) {
-			output[slotKey] = buildSlotFn(config, run, props, slotKey);
-		} else {
-			output[slotKey] = slotValue;
-		}
+	// Overwriting a copied key keeps its place, so slots stay in order.
+	const output: MultiSlotResult = { ...result };
+
+	for (const slotKey of config.multiSlots) {
+		output[slotKey] = buildSlotFn(config, run, props, slotKey);
 	}
 
 	return output;
