@@ -70,6 +70,8 @@ type RunPlan = {
 	presetDefaults: boolean;
 };
 
+type GetDefaultProps = () => RuntimeVariantState;
+
 type ResolvePreset = (
 	presetName: string | undefined
 ) => ResolvedVariantState | undefined;
@@ -159,11 +161,33 @@ const withPresetValues = (
 	return result;
 };
 
+/**
+ * Gets the props function defaults receive, filling in the preset's values
+ * only once a function default runs.
+ */
+const createGetDefaultProps = (
+	plan: RunPlan,
+	props: RuntimeVariantState,
+	presetValues: ResolvedVariantState | undefined
+): GetDefaultProps => {
+	if (!plan.presetDefaults || presetValues === undefined) {
+		return () => props;
+	}
+
+	let defaultProps: RuntimeVariantState | undefined;
+
+	return () => {
+		defaultProps ??= withPresetValues(props, presetValues);
+
+		return defaultProps;
+	};
+};
+
 const resolveVariantValue = (
 	variant: VariantData,
 	props: RuntimeVariantState,
 	presetValues: ResolvedVariantState | undefined,
-	defaultProps: RuntimeVariantState
+	getDefaultProps: GetDefaultProps
 ) => {
 	const propValue = readVariantState(props, variant);
 
@@ -188,7 +212,7 @@ const resolveVariantValue = (
 
 	// Check for function default value, to evaluate it with the current props.
 	if (typeof defaultValue === 'function') {
-		return defaultValue(defaultProps);
+		return defaultValue(getDefaultProps());
 	}
 
 	return defaultValue;
@@ -433,8 +457,9 @@ const getVariantSource = (
 	if (defaultValue !== undefined) {
 		let defaultProps = 'p';
 
+		// Built by the first function default to run, then shared
 		if (plan.presetDefaults) {
-			defaultProps = 'dp';
+			defaultProps = '(dp ??= withPreset(p, pv))';
 		}
 
 		fallbacks.push(
@@ -643,8 +668,7 @@ const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 	if (keys(config.presets).length === 0) {
 		presetSource = 'if (p.preset !== undefined) resolvePreset(p.preset);';
 	} else if (plan.presetDefaults) {
-		presetSource +=
-			' let dp = p; if (pv !== undefined) dp = withPreset(p, pv);';
+		presetSource += ' let dp; if (pv === undefined) dp = p;';
 	}
 
 	return [
@@ -669,19 +693,14 @@ const resolveVariants = (
 	props: RuntimeProps
 ): ResolvedVariant[] => {
 	const presetValues = resolvePresetValues(config.presets, props.preset);
-
-	let defaultProps: RuntimeVariantState = props;
-
-	if (plan.presetDefaults && presetValues !== undefined) {
-		defaultProps = withPresetValues(props, presetValues);
-	}
+	const getDefaultProps = createGetDefaultProps(plan, props, presetValues);
 
 	return plan.variants.map((variant) => {
 		const value = resolveVariantValue(
 			variant.data,
 			props,
 			presetValues,
-			defaultProps
+			getDefaultProps
 		);
 
 		let id = variant.undefinedId;

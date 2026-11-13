@@ -3483,6 +3483,59 @@ t.test('function default reads a passed preset like props', (t) => {
 	t.end();
 });
 
+t.test('function defaults share the preset-filled props', (t) => {
+	const seen: object[] = [];
+
+	const button = sv('btn', {
+		variants: {
+			size: {
+				sm: 'text-sm',
+				lg: 'text-lg'
+			},
+			intent: {
+				primary: 'bg-blue-500',
+				danger: 'bg-red-500'
+			},
+			outline: 'border'
+		},
+		presets: {
+			big: { size: 'lg' }
+		},
+		defaultVariants: {
+			intent: (props) => {
+				seen.push(props);
+
+				if (props.size === 'lg') {
+					return 'danger';
+				}
+
+				return 'primary';
+			},
+			outline: (props) => {
+				seen.push(props);
+
+				return props.size === 'lg';
+			}
+		}
+	});
+
+	t.equal(
+		button({ preset: 'big' }),
+		'btn text-lg bg-red-500 border',
+		'both defaults read the preset value'
+	);
+	t.equal(seen.length, 2, 'both defaults ran');
+	t.equal(seen[0], seen[1], 'the defaults share one props object');
+	t.equal(
+		button({ preset: 'big', intent: 'primary', outline: false }),
+		'btn text-lg bg-blue-500',
+		'passed props skip the function defaults'
+	);
+	t.equal(seen.length, 2, 'no default ran');
+
+	t.end();
+});
+
 t.test('function default props are typed from the config', (t) => {
 	const button = sv('btn', {
 		variants: {
