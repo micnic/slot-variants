@@ -1,14 +1,16 @@
+import * as fs from 'node:fs';
 import {
 	mkdtempSync,
 	mkdirSync,
 	readFileSync,
 	rmSync,
+	utimesSync,
 	writeFileSync
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import t from 'tap';
-import { Linter, RuleTester } from 'eslint';
+import { ESLint, Linter, RuleTester } from 'eslint';
 import { RuleTester as OxlintRuleTester } from 'oxlint/plugins-dev';
 import * as svelteParser from 'svelte-eslint-parser';
 import { parser as tsParser } from 'typescript-eslint';
@@ -8767,6 +8769,85 @@ t.test('no-restyle reparses a module for other parser options', (t) => {
 		'with one it is read'
 	);
 	t.end();
+});
+
+// Refreshing a stale module overwrites its own cache entry, so a full cache
+// keeps every other module instead of evicting the oldest one.
+t.test('no-restyle refreshes a stale module without evicting', async (t) => {
+	// The loader's cache limit, filled exactly
+	const moduleCount = 200;
+	const reads = new Map<string, number>();
+	const fresh = await t.mockImport<typeof import('../src/eslint-plugin.ts')>(
+		'../src/eslint-plugin.ts',
+		{
+			'node:fs': {
+				...fs,
+				readFileSync: new Proxy(fs.readFileSync, {
+					apply: (target, thisArg, args) => {
+						const path = `${args[0]}`;
+
+						reads.set(path, (reads.get(path) ?? 0) + 1);
+
+						return Reflect.apply(target, thisArg, args);
+					}
+				})
+			}
+		}
+	);
+	const paths = Array.from({ length: moduleCount }, (_value, index) =>
+		writeFixture(
+			`evict/mod${index}.tsx`,
+			`${IMPORT}const mod = sv({ base: 'p-2' });
+
+			export function Mod${index}({ className }) {
+				return <i className={mod({ class: className })} />;
+			}
+			`
+		)
+	);
+	// One ESLint instance keeps one config, as a real run does, so the
+	// parser options the cache is keyed by stay the same between files
+	const eslint = new ESLint({
+		cwd: fixtureDir,
+		overrideConfigFile: true,
+		overrideConfig: {
+			files: ['**/*.tsx'],
+			plugins: { 'slot-variants': fresh.default },
+			rules: { 'slot-variants/no-restyle': 2 },
+			languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } }
+		}
+	});
+	const lintUsages = async (indexes: readonly number[]) => {
+		const imports = indexes.map(
+			(index) => `import { Mod${index} } from './evict/mod${index}.tsx';`
+		);
+		const usages = indexes.map(
+			(index) => `<Mod${index} className="p-4" />;`
+		);
+
+		await eslint.lintText(`${imports.join('\n')}\n${usages.join('\n')}`, {
+			filePath: join(fixtureDir, 'page.tsx')
+		});
+	};
+	const [oldest] = paths;
+	const newest = paths.at(-1);
+
+	if (oldest === undefined || newest === undefined) {
+		throw new Error('No modules were written');
+	}
+
+	await lintUsages(paths.map((_path, index) => index));
+	await lintUsages([0]);
+	t.equal(reads.get(oldest), 1, 'a full cache still hands out the oldest');
+
+	const later = new Date(Date.now() + 60_000);
+
+	utimesSync(newest, later, later);
+	await lintUsages([moduleCount - 1]);
+	t.equal(reads.get(newest), 2, 'the stale module is read again');
+
+	await lintUsages([0]);
+	t.equal(reads.get(oldest), 1, 'the oldest module is still cached');
 });
 
 // An imported module is only read for its syntax, so a type-aware parser

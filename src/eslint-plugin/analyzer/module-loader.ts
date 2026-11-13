@@ -379,6 +379,9 @@ const loadModule = (
 
 	const analysis = analyzeModule(path, cwd, languageOptions);
 
+	// A stale entry is replaced rather than counted, and requeued as the newest
+	moduleCache.delete(path);
+
 	if (moduleCache.size >= MAX_CACHED_MODULES) {
 		const oldest = moduleCache.keys().next().value;
 
