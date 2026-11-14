@@ -588,6 +588,10 @@ export const NO_CONFLICTING_DUP_INVALID = [
 ];
 
 export const NO_CONFLICTING_NS_VALID = [
+	// Compound matchers are read through `const` bindings like any other
+	// value, so these two compounds can never apply together.
+	IMPORT +
+		"const SM = 'sm';\nconst LARGE = ['lg', 'xl'];\nsv({ variants: { size: { sm: 'a', lg: 'b', xl: 'c' } }, compoundVariants: [{ size: SM, class: 'p-2' }, { size: LARGE, class: 'p-4' }] });",
 	// Variants that pick another element keep their place in the stack:
 	// `hover:*:` styles children of a hovered element, `*:hover:` hovered
 	// children, so the two never target the same element.

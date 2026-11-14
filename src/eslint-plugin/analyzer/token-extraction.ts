@@ -598,8 +598,13 @@ const extractVariantTokens = (
 };
 
 // Strings, booleans, and numbers align with variant value keys (`{ true: … }`,
-// `{ 2: … }`), which getKeyName also reads as strings.
-export const getStaticMatcherValue = (node: Node): string | null => {
+// `{ 2: … }`), which getKeyName also reads as strings. Read through `const`
+// bindings, like class values.
+export const getStaticMatcherValue = (
+	raw: Node,
+	sourceCode: SourceCode
+): string | null => {
+	const node = resolveStaticValue(raw, sourceCode);
 	const text = getStaticStringText(node);
 
 	if (text !== null) {
@@ -622,22 +627,25 @@ export const getStaticMatcherValue = (node: Node): string | null => {
 // element inside the array is skipped, same as a wholly dynamic matcher;
 // an array with no statically-readable element gives up, same as null.
 export const getStaticMatcherValues = (
-	node: Node
+	node: Node,
+	sourceCode: SourceCode
 ): ReadonlySet<string> | null => {
-	const scalar = getStaticMatcherValue(node);
+	const scalar = getStaticMatcherValue(node, sourceCode);
 
 	if (scalar !== null) {
 		return new Set([scalar]);
 	}
 
-	if (node.type !== 'ArrayExpression') {
+	const list = resolveArray(node, sourceCode);
+
+	if (list === null) {
 		return null;
 	}
 
 	const values = new Set<string>();
 
-	forEachStaticItem(node.elements, (element) => {
-		const value = getStaticMatcherValue(element);
+	forEachStaticItem(list.elements, (element) => {
+		const value = getStaticMatcherValue(element, sourceCode);
 
 		if (value !== null) {
 			values.add(value);
@@ -653,7 +661,8 @@ export const getStaticMatcherValues = (
 
 export const readMatchers = (
 	properties: ReadonlyMap<string, Node>,
-	skip: ReadonlySet<string>
+	skip: ReadonlySet<string>,
+	sourceCode: SourceCode
 ): Map<string, ReadonlySet<string>> => {
 	const matchers = new Map<string, ReadonlySet<string>>();
 
@@ -662,7 +671,7 @@ export const readMatchers = (
 			continue;
 		}
 
-		const values = getStaticMatcherValues(value);
+		const values = getStaticMatcherValues(value, sourceCode);
 
 		if (values !== null) {
 			matchers.set(key, values);
@@ -678,8 +687,15 @@ export const readMatchers = (
 // with no statically-readable element) is skipped, which can only
 // under-suppress, never wrongly suppress. With no readable matcher left,
 // falls back to the never-exclusive compound source.
-const getCompoundSource = (compound: ReadonlyMap<string, Node>): Source => {
-	const matchers = readMatchers(compound, COMPOUND_NON_MATCHER_KEYS);
+const getCompoundSource = (
+	compound: ReadonlyMap<string, Node>,
+	sourceCode: SourceCode
+): Source => {
+	const matchers = readMatchers(
+		compound,
+		COMPOUND_NON_MATCHER_KEYS,
+		sourceCode
+	);
 
 	if (matchers.size === 0) {
 		return compoundSource;
@@ -695,11 +711,11 @@ const extractCompoundTokens = (
 	extract: ExtractFn
 ) => {
 	forEachCompoundClass(compoundVariants, sourceCode, (cls, compound) => {
-		extract(cls, 'base', getCompoundSource(compound));
+		extract(cls, 'base', getCompoundSource(compound, sourceCode));
 	});
 
 	forEachCompoundClass(compoundSlots, sourceCode, (cls, compound) => {
-		const source = getCompoundSource(compound);
+		const source = getCompoundSource(compound, sourceCode);
 
 		forEachStringLiteralElement(
 			compound.get('slots'),

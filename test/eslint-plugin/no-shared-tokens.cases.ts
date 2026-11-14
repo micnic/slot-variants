@@ -261,6 +261,43 @@ export const NO_SHARED_TOKENS_VALID = [
 
 export const NO_SHARED_TOKENS_INVALID = [
 	{
+		// A `defaultVariants` value read through a `const` still makes the
+		// variant exhaustive.
+		code:
+			IMPORT +
+			"const SIZE = 'sm';\nsv({ variants: { size: { sm: 'flex a', lg: 'flex b' } }, defaultVariants: { size: SIZE } });",
+		output: null,
+		errors: repeat(
+			sharedLift(
+				'flex',
+				'size',
+				IMPORT +
+					"const SIZE = 'sm';\nsv({ base: 'flex', variants: { size: { sm: 'a', lg: 'b' } }, defaultVariants: { size: SIZE } });"
+			),
+			2
+		)
+	},
+	{
+		// A single-key compound's matcher is read through a `const` binding.
+		code:
+			IMPORT +
+			"const SM = 'sm';\nsv({ variants: { size: { sm: 'p-1', lg: 'p-2' } }, compoundVariants: [{ size: SM, class: 'gap-2' }] });",
+		output:
+			IMPORT +
+			"const SM = 'sm';\nsv({ variants: { size: { sm: 'p-1 gap-2', lg: 'p-2' } } });",
+		errors: [singleKeyCompound('compoundVariants', 'size', 'SM')]
+	},
+	{
+		// The same for an element of an array matcher.
+		code:
+			IMPORT +
+			"const LG = 'lg';\nsv({ variants: { size: { sm: 'p-1', lg: 'p-2', xl: 'p-3' } }, compoundVariants: [{ size: [LG, 'xl'], class: 'gap-4' }] });",
+		output:
+			IMPORT +
+			"const LG = 'lg';\nsv({ variants: { size: { sm: 'p-1', lg: 'p-2 gap-4', xl: 'p-3 gap-4' } } });",
+		errors: [singleKeyCompound('compoundVariants', 'size', "[LG, 'xl']")]
+	},
+	{
 		// A `true` key is a value like any other, so a compound matching only
 		// it is reported; its value is a slot object, so there's no fix.
 		code:

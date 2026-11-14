@@ -8,7 +8,7 @@ type KeyPredicate = (key: string) => boolean;
 
 export type GroupSlots = ReadonlyMap<string, ReadonlyArray<string>>;
 
-export type SlotTargetOverlap = { slot: string; other: string };
+type SlotTargetOverlap = { slot: string; other: string };
 
 type SlotTargetOverlaps = ReadonlyMap<string, readonly SlotTargetOverlap[]>;
 

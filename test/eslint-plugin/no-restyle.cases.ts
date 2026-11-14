@@ -41,6 +41,12 @@ const RESTYLE_BUTTON = `const button = sv({
 });\n`;
 
 export const RESTYLE_VALID = [
+	// `defaultVariants` and a call site's props are read through `const`
+	// bindings, so the `lg` compound is known not to apply here.
+	IMPORT_SV_CN +
+		"const SIZE = 'sm';\nconst card = sv({ variants: { size: { sm: 'a', lg: 'b' } }, compoundVariants: [{ size: 'lg', class: 'p-4' }], defaultVariants: { size: SIZE } });\ncn(card(), 'p-2');",
+	IMPORT_SV_CN +
+		"const SIZE = 'sm';\nconst card = sv({ variants: { size: { sm: 'a', lg: 'b' } }, compoundVariants: [{ size: 'lg', class: 'p-4' }] });\ncn(card({ size: SIZE }), 'p-2');",
 	// A wrapper bound to itself names no component, and lints without looping.
 	IMPORT + 'const Loop = memo(Loop);\n<Loop className="p-4" />;',
 	// No slot-variants import at all — nothing is tracked.

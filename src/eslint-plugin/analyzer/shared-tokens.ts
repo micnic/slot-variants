@@ -532,12 +532,13 @@ const reportSharedTokensBySlot = (
 };
 
 const collectDefaultVariantKeys = (
-	defaultVariants: Node | undefined
+	defaultVariants: Node | undefined,
+	sourceCode: SourceCode
 ): Map<string, VariantCoverage> => {
 	const coverage = new Map<string, VariantCoverage>();
 
 	for (const [key, value] of getProperties(defaultVariants)) {
-		if (getStaticMatcherValue(value) !== null) {
+		if (getStaticMatcherValue(value, sourceCode) !== null) {
 			coverage.set(key, 'default');
 		}
 	}
@@ -556,7 +557,8 @@ const collectVariantCoverage = (
 	sourceCode: SourceCode
 ): Map<string, VariantCoverage> => {
 	const coverage = collectDefaultVariantKeys(
-		resolveContainer(config.get('defaultVariants'), sourceCode)
+		resolveContainer(config.get('defaultVariants'), sourceCode),
+		sourceCode
 	);
 	const requiredVariants = resolveContainer(
 		config.get('requiredVariants'),
@@ -739,7 +741,10 @@ const planSingleKeyCompoundFix = (
 		return undefined;
 	}
 
-	const matcherValues = getStaticMatcherValues(matcher.value);
+	const matcherValues = getStaticMatcherValues(
+		matcher.value,
+		context.sourceCode
+	);
 
 	if (!matcherValues) {
 		return undefined;

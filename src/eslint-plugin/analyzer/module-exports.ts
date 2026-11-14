@@ -17,7 +17,7 @@ export type ExportTarget =
 	| { kind: 'forward'; specifier: string; name: string };
 
 /** A module's export names with their targets, and its `export *` sources. */
-export type ExportTable = {
+type ExportTable = {
 	named: ReadonlyMap<string, ReadonlyArray<ExportTarget>>;
 	starSources: ReadonlyArray<string>;
 };

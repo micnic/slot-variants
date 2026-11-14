@@ -116,7 +116,7 @@ const buildStyles = (
 			collectConfigEntries(config, slotNames, args, sourceCode)
 		),
 		slotNames,
-		defaults: readMatchers(getProperties(defaults), NO_SKIP),
+		defaults: readMatchers(getProperties(defaults), NO_SKIP, sourceCode),
 		...readGroups(getProperties(groups), sourceCode)
 	};
 };
@@ -180,7 +180,7 @@ const buildCallMatchers = (
 ): VariantMatchers =>
 	mergeMatchers(
 		styles.defaults,
-		readMatchers(getCallProps(arg, ctx), NON_MATCHER_KEYS)
+		readMatchers(getCallProps(arg, ctx), NON_MATCHER_KEYS, ctx.sourceCode)
 	);
 
 // The `sv(config)` call a compiled variant function came from, reached through
@@ -247,7 +247,8 @@ export const resolveInvocation = (
 				slotFn.matchers,
 				readMatchers(
 					getCallProps(node.arguments[0], ctx),
-					NON_MATCHER_KEYS
+					NON_MATCHER_KEYS,
+					ctx.sourceCode
 				)
 			),
 			slot: slotFn.slot
