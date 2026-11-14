@@ -8,17 +8,21 @@ import { noSharedTokens } from './no-shared-tokens.ts';
 import { requireTopLevelConfig } from './require-top-level-config.ts';
 import { svConfigStyle } from './sv-config-style.ts';
 
-// What makes two reports the same one: the message, its data and where it is.
-// A node stands in by its location, since it would be serialized with its
-// whole subtree, and a fix is a function, which serializing leaves out.
-const getReportKey = (descriptor: Rule.ReportDescriptor): string =>
-	JSON.stringify(descriptor, (key, value) => {
-		if (key === 'node') {
-			return value.loc;
-		}
+// Where a report points: its node's location, since the node would serialize
+// with its whole subtree, or the location given instead of one.
+const getReportLocation = (descriptor: Rule.ReportDescriptor) => {
+	if ('node' in descriptor) {
+		return descriptor.node.loc;
+	}
 
-		return value;
-	});
+	return descriptor.loc;
+};
+
+// What makes two reports the same one: the message, its data and where it is.
+// A fix is a function, which serializing leaves out. The node is swapped out
+// up front, as a replacer would run for every nested key.
+const getReportKey = (descriptor: Rule.ReportDescriptor): string =>
+	JSON.stringify({ ...descriptor, node: getReportLocation(descriptor) });
 
 /**
  * The rule context with a `report` that drops a report identical to an earlier

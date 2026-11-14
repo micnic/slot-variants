@@ -271,3 +271,133 @@ t.test('no-restyle reads a module outside the typed project', (t) => {
 	);
 	t.end();
 });
+// A module linted earlier in the run is read from the scan its own lint made,
+// rather than parsed again for the file importing it — but only when that
+// scan is of the text the file holds on disk.
+t.test('no-restyle reuses the scan of a module linted earlier', async (t) => {
+	const reads = new Map<string, number>();
+	const fresh = await t.mockImport<
+		typeof import('../../src/eslint-plugin.ts')
+	>('../../src/eslint-plugin.ts', {
+		'node:fs': {
+			...fs,
+			readFileSync: new Proxy(fs.readFileSync, {
+				apply: (target, thisArg, args) => {
+					const path = `${args[0]}`;
+
+					reads.set(path, (reads.get(path) ?? 0) + 1);
+
+					return Reflect.apply(target, thisArg, args);
+				}
+			})
+		}
+	});
+	const component = (name: string) =>
+		`${IMPORT}const styles = sv({ base: 'p-2' });
+
+		export function ${name}({ className }) {
+			return <i className={styles({ class: className })} />;
+		}
+		`;
+	const seeded = writeFixture('seed/seeded.tsx', component('Seeded'));
+	const barrel = writeFixture(
+		'seed/index.ts',
+		"export * from './other.tsx';\n"
+	);
+	const edited = writeFixture('seed/edited.tsx', component('Edited'));
+	const single = writeFixture(
+		'seed/Single.vue',
+		`<script setup>
+		${IMPORT}const single = sv({ base: 'p-2' });
+		const props = defineProps({ class: String });
+		</script>
+		<template><b :class="single({ class: props.class })">x</b></template>`
+	);
+
+	writeFixture('seed/other.tsx', component('Other'));
+
+	const plugins = { 'slot-variants': fresh.default };
+	const rules: Linter.RulesRecord = { 'slot-variants/no-restyle': 2 };
+	// One ESLint instance keeps one config, as a real run does, so a module
+	// and the page importing it share the language options the cache is
+	// keyed by
+	const eslint = new ESLint({
+		cwd: fixtureDir,
+		overrideConfigFile: true,
+		overrideConfig: [
+			{
+				files: ['**/*.ts', '**/*.tsx'],
+				plugins,
+				rules,
+				languageOptions: {
+					parserOptions: { ecmaFeatures: { jsx: true } }
+				}
+			},
+			{
+				files: ['**/*.vue'],
+				plugins,
+				rules,
+				languageOptions: { parser: vueParser }
+			}
+		]
+	});
+	const lintPage = async (code: string, page = 'page.tsx') => {
+		const [result] = await eslint.lintText(code, {
+			filePath: join(fixtureDir, page)
+		});
+
+		return result?.messages;
+	};
+	const conflict = [
+		{ ruleId: 'slot-variants/no-restyle', messageId: 'conflict' }
+	];
+
+	await eslint.lintFiles([seeded, barrel, single]);
+	t.equal(reads.get(seeded), 1, 'a forwarding component is read once');
+	t.equal(reads.get(barrel), 1, 'a barrel is read once');
+	t.equal(reads.get(single), 1, 'a single-file component is read once');
+
+	t.match(
+		await lintPage(
+			`import { Seeded } from './seed/seeded.tsx';\nimport { Other } from './seed/index.ts';\n<Seeded className="p-4" />;\n<Other className="p-4" />;`
+		),
+		[conflict[0], conflict[0]],
+		'both imports are resolved'
+	);
+	t.equal(reads.get(seeded), 1, 'the component is not parsed again');
+	t.equal(reads.get(barrel), 1, 'the barrel is not parsed again');
+	t.match(
+		await lintPage(
+			`<script setup>import Single from './seed/Single.vue';</script>\n<template><Single class="p-4" /></template>`,
+			'page.vue'
+		),
+		conflict,
+		'the single-file component is resolved'
+	);
+	t.equal(
+		reads.get(single),
+		1,
+		'the single-file component is not parsed again'
+	);
+
+	// An unsaved editor buffer isn't what an importer reads from disk
+	await eslint.lintText(`${component('Edited')}// unsaved\n`, {
+		filePath: edited
+	});
+	t.equal(reads.get(edited), 1, 'the buffer is compared to the file');
+	t.match(
+		await lintPage(
+			`import { Edited } from './seed/edited.tsx';\n<Edited className="p-4" />;`
+		),
+		conflict,
+		'the edited component is resolved'
+	);
+	t.equal(reads.get(edited), 2, 'the edited component is parsed from disk');
+
+	// A file that isn't on disk is never cached
+	t.same(
+		await lintPage(component('Ghost'), 'seed/ghost.tsx'),
+		[],
+		'a file missing from disk lints without errors'
+	);
+});

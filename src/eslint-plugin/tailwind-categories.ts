@@ -1935,6 +1935,7 @@ export type ConflictKeyInfo = {
 export type ConflictOptions = {
 	exclusiveGroups: ReadonlyMap<string, string>;
 	prefix: string;
+	conflictKeys: Map<string, ConflictKeyInfo | null>;
 };
 
 // The `prefix` option in the form `getConflictKey` wants it. Tailwind v3 writes
@@ -2151,7 +2152,7 @@ const getFontSizeLeadingKey = (
 // Returns null for tokens that don't look like a namespaced utility — single
 // words (`flex`), purely-prefixed (`-`), or anything without a top-level `-`
 // after the optional leading negative marker.
-export const getConflictKey = (
+const computeConflictKey = (
 	token: string,
 	{ exclusiveGroups, prefix }: ConflictOptions
 ): ConflictKeyInfo | null => {
@@ -2235,6 +2236,26 @@ export const getConflictKey = (
 		overlap: wordOverlap ?? getOverlapNode(firstSegment, category)
 	};
 };
+
+// A token's key depends only on the options, which are shared by every file
+// linted with them, so each token is worked out once per options.
+export const getConflictKey = (
+	token: string,
+	options: ConflictOptions
+): ConflictKeyInfo | null => {
+	const cached = options.conflictKeys.get(token);
+
+	if (cached !== undefined) {
+		return cached;
+	}
+
+	const info = computeConflictKey(token, options);
+
+	options.conflictKeys.set(token, info);
+
+	return info;
+};
+
 // The pairwise form of the grouping `no-conflicting-classes` does over whole
 // token sets: two tokens collide when they share a conflict key, or when their
 // overlap nodes are the same or adjacent in the covers relation (`p` vs `px`).

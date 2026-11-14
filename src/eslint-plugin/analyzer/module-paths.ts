@@ -27,9 +27,17 @@ const REWRITABLE = new Map([
 	['.jsx', ['.tsx']]
 ]);
 
+// Most probes miss, and a miss that doesn't throw is several times cheaper.
+// Other errors (a name too long, a symlink loop) still throw.
 const isFile = (path: string): boolean => {
 	try {
-		return statSync(path).isFile();
+		const stats = statSync(path, { throwIfNoEntry: false });
+
+		if (stats === undefined) {
+			return false;
+		}
+
+		return stats.isFile();
 	} catch {
 		return false;
 	}

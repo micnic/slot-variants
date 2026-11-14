@@ -35,9 +35,33 @@ export const conflictOptionProperties: Record<string, JSONSchema> = {
 	prefix: { type: 'string', minLength: 1 }
 };
 
-export const readConflictOptions = (
-	option: ConflictRuleOption | undefined
+// Stands in for a rule left without options, so it is cached like any other.
+const noOption: ConflictRuleOption = {};
+
+// ESLint hands every file linted with one config the same options object, so
+// the options read from it, and the conflict keys they cache, are reused.
+const readOptions = new WeakMap<ConflictRuleOption, ConflictOptions>();
+
+const createConflictOptions = (
+	option: ConflictRuleOption
 ): ConflictOptions => ({
-	exclusiveGroups: buildExclusiveGroupMap(option?.exclusiveGroups),
-	prefix: normalizePrefix(option?.prefix)
+	exclusiveGroups: buildExclusiveGroupMap(option.exclusiveGroups),
+	prefix: normalizePrefix(option.prefix),
+	conflictKeys: new Map()
 });
+
+export const readConflictOptions = (
+	option: ConflictRuleOption = noOption
+): ConflictOptions => {
+	const cached = readOptions.get(option);
+
+	if (cached !== undefined) {
+		return cached;
+	}
+
+	const options = createConflictOptions(option);
+
+	readOptions.set(option, options);
+
+	return options;
+};

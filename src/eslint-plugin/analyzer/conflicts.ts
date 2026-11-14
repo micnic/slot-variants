@@ -382,15 +382,17 @@ export const reportClassPropOverlaps = (
 	node: CallExpression,
 	ctx: StyledContext
 ) => {
-	const invocation = resolveInvocation(node, ctx);
-
-	if (invocation === null || invocation.slot !== null) {
-		return;
-	}
-
+	// Most calls pass no class prop, which is cheaper to find out than whether
+	// the callee is a variant function.
 	const value = getOverrideValue(node.arguments[0], ctx);
 
 	if (value === null) {
+		return;
+	}
+
+	const invocation = resolveInvocation(node, ctx);
+
+	if (invocation === null || invocation.slot !== null) {
 		return;
 	}
 

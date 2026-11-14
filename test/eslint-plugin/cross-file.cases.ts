@@ -52,6 +52,12 @@ export const CROSS_FILE_VALID = [
 		filename: join(fixtureDir, 'page.tsx')
 	},
 	{
+		// A specifier too long to name a file fails to stat, rather than
+		// just missing.
+		code: `import { Button } from './${'x'.repeat(300)}';\n<Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
 		code: `import { Plain } from './ui/plain.tsx';\n<Plain className="p-4" />;`,
 		filename: join(fixtureDir, 'page.tsx')
 	},

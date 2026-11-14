@@ -25,6 +25,10 @@ type MatchContext = {
 
 const TRACKED_EXPORTS = new Set(['sv', 'cn', 'createSV']);
 
+// Every rule classifies every call of a file, and the outcome depends only on
+// the file's AST and scopes, which the rules share, so it is worked out once.
+const matchedCalls = new WeakMap<CallExpression, CallMatch | null>();
+
 const trackNamedImport = (
 	specifier: ImportDeclaration['specifiers'][number],
 	exportByLocal: Map<string, string>
@@ -308,7 +312,17 @@ export const createTrackedCallResolver = (
 			return null;
 		}
 
-		return matchTrackedCall(match, node);
+		const cached = matchedCalls.get(node);
+
+		if (cached !== undefined) {
+			return cached;
+		}
+
+		const call = matchTrackedCall(match, node);
+
+		matchedCalls.set(node, call);
+
+		return call;
 	});
 	// Read lazily by the classifier above, so it is set before any call.
 	const match: MatchContext = { names, ctx };

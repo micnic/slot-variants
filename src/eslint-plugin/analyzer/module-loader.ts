@@ -30,11 +30,14 @@ type ModuleAnalysis = {
 	self: ForwardedStyles | null;
 };
 
-type ModuleScan = {
+/** A file's scan, as the cache analyzes it. */
+export type ModuleScan = {
 	ast: Program;
 	moduleScope: Scope.Scope;
 	forwarded: ReadonlyMap<Component, ForwardedStyles>;
 };
+
+type DiskModule = { mtimeMs: number; text: string };
 
 type LinterConstructor = new (options: { cwd: string }) => Linter;
 
@@ -356,6 +359,22 @@ const analyzeModule = (
 	}
 };
 
+// A stale entry is replaced rather than counted, and requeued as the newest.
+const storeModule = (path: string, entry: CacheEntry) => {
+	moduleCache.delete(path);
+
+	if (moduleCache.size >= MAX_CACHED_MODULES) {
+		const oldest = moduleCache.keys().next().value;
+
+		// Always set, as the map is full; the check narrows the type
+		if (oldest !== undefined) {
+			moduleCache.delete(oldest);
+		}
+	}
+
+	moduleCache.set(path, entry);
+};
+
 const loadModule = (
 	path: string,
 	cwd: string,
@@ -382,21 +401,68 @@ const loadModule = (
 
 	const analysis = analyzeModule(path, cwd, languageOptions);
 
-	// A stale entry is replaced rather than counted, and requeued as the newest
-	moduleCache.delete(path);
+	storeModule(path, { mtimeMs, languageOptions, analysis });
 
-	if (moduleCache.size >= MAX_CACHED_MODULES) {
-		const oldest = moduleCache.keys().next().value;
+	return analysis;
+};
 
-		// Always set, as the map is full; the check narrows the type
-		if (oldest !== undefined) {
-			moduleCache.delete(oldest);
+// Whether a module leads an import anywhere: a component forwarding its class
+// prop, a re-export, or itself as a single-file component.
+const leadsAnywhere = (analysis: ModuleAnalysis) => {
+	if (analysis.self !== null || analysis.starSources.length > 0) {
+		return true;
+	}
+
+	for (const steps of analysis.exports.values()) {
+		if (steps.length > 0) {
+			return true;
 		}
 	}
 
-	moduleCache.set(path, { mtimeMs, languageOptions, analysis });
+	return false;
+};
 
-	return analysis;
+// The file's text and modification time on disk, or null when it can't be
+// read (a path that names no file, like ESLint's `<text>` for stdin).
+const readDiskModule = (path: string): DiskModule | null => {
+	try {
+		const { mtimeMs } = statSync(path);
+
+		return { mtimeMs, text: readFileSync(path, 'utf8') };
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * Caches the analysis of the file being linted, so a file importing it later
+ * in the same run reads it from there instead of parsing it again. Only a
+ * file that leads an import anywhere is worth the disk read, and only text
+ * that is what the file holds on disk is cached — not an unsaved editor
+ * buffer, a fix pass, or a processor's code block.
+ */
+export const cacheLintedModule = (
+	context: Rule.RuleContext,
+	scan: ModuleScan
+) => {
+	const analysis = analyzeScan(scan);
+
+	if (!leadsAnywhere(analysis)) {
+		return;
+	}
+
+	const path = context.physicalFilename;
+	const disk = readDiskModule(path);
+
+	if (disk === null || disk.text !== context.sourceCode.text) {
+		return;
+	}
+
+	storeModule(path, {
+		mtimeMs: disk.mtimeMs,
+		languageOptions: context.languageOptions,
+		analysis
+	});
 };
 
 /**

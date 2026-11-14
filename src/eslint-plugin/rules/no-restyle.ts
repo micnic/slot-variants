@@ -11,6 +11,7 @@ import {
 	type ForwardedStyles
 } from '../analyzer/forwarding.ts';
 import {
+	cacheLintedModule,
 	type ModuleContext,
 	resolveImportedComponent
 } from '../analyzer/module-loader.ts';
@@ -145,6 +146,15 @@ export const noRestyle: Rule.RuleModule = {
 				}
 
 				reportLiterals(parts.styled, parts.literals);
+			},
+			// A later file importing this one reads the scan from the cache
+			// rather than parsing the file again.
+			onExit() {
+				cacheLintedModule(context, {
+					ast: context.sourceCode.ast,
+					moduleScope: scan.moduleScope(),
+					forwarded: scan.forwarded
+				});
 			}
 		});
 
