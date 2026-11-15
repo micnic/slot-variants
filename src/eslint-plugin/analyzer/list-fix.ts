@@ -79,6 +79,18 @@ const removeRangeKeepingComments = (
 
 	return fixer.removeRange(range);
 };
+// The items a list holds, skipping the holes of a sparse array.
+export const countListItems = (list: ListItems): number => {
+	let count = 0;
+
+	for (const item of list) {
+		if (item) {
+			count += 1;
+		}
+	}
+
+	return count;
+};
 
 // Removes `node` along with one adjacent comma so the surrounding call/array
 // literal stays syntactically valid, and with the separating whitespace
@@ -91,15 +103,7 @@ export const removeFromList = (
 	node: Node,
 	list: ListItems
 ): Rule.Fix | null => {
-	let nonNullCount = 0;
-
-	for (const item of list) {
-		if (item) {
-			nonNullCount += 1;
-		}
-	}
-
-	if (nonNullCount <= 1) {
+	if (countListItems(list) <= 1) {
 		return null;
 	}
 

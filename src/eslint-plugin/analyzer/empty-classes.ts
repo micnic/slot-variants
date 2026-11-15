@@ -1,7 +1,7 @@
 import type { Rule } from 'eslint';
 import type { ArrayExpression, Node, ObjectExpression } from 'estree';
 import { getKeyName } from './config-keys.ts';
-import { resolveStaticValue } from './const-bindings.ts';
+import { resolveArray, resolveStaticValue } from './const-bindings.ts';
 import { type EmptyFix, makeListFix } from './list-fix.ts';
 import { getStaticStringText } from './literals.ts';
 import { getProperties } from './properties.ts';
@@ -50,11 +50,6 @@ const getBranchFix = (
 
 	return undefined;
 };
-
-const shouldReportEmptyString = (
-	node: Node,
-	allowEmptyString: boolean
-): boolean => !allowEmptyString && isEmptyStringNode(node);
 
 // In cn-style position an ObjectExpression is a clsx-style
 // record whose keys are the class strings, so an empty
@@ -110,7 +105,7 @@ export const visitForEmptyClasses = (
 
 	node = resolveStaticValue(node, context.sourceCode);
 
-	if (shouldReportEmptyString(node, allowEmptyString)) {
+	if (!allowEmptyString && isEmptyStringNode(node)) {
 		context.report({ node: site, messageId: 'emptyString', fix });
 		return;
 	}
@@ -148,23 +143,34 @@ export const visitForEmptyClasses = (
 	}
 };
 
-// A record is a container: reported at `site`, where it's used, when empty,
-// otherwise each of its values is visited.
+// A record is a container: reported where it's used when empty, otherwise
+// each of its values is visited. False when `rawValue` isn't a record.
 const visitRecordForEmpty = (
 	context: Rule.RuleContext,
-	node: ObjectExpression,
-	site: Node,
+	rawValue: Node,
 	remove: EmptyFix | undefined,
 	visitValue: ValueVisitor
-) => {
+): boolean => {
+	const node = resolveStaticValue(rawValue, context.sourceCode);
+
+	if (node.type !== 'ObjectExpression') {
+		return false;
+	}
+
 	if (node.properties.length === 0) {
-		context.report({ node: site, messageId: 'emptyObject', fix: remove });
-		return;
+		context.report({
+			node: rawValue,
+			messageId: 'emptyObject',
+			fix: remove
+		});
+		return true;
 	}
 
 	for (const value of getProperties(node).values()) {
 		visitValue(value);
 	}
+
+	return true;
 };
 
 // Empty strings are allowed at a direct variant-value position — a plain
@@ -177,22 +183,18 @@ const visitVariantValueForEmpty = (
 	context: Rule.RuleContext,
 	rawValue: Node
 ) => {
-	const variantValue = resolveStaticValue(rawValue, context.sourceCode);
+	const isRecord = visitRecordForEmpty(
+		context,
+		rawValue,
+		undefined,
+		(value) => {
+			visitVariantValueForEmpty(context, value);
+		}
+	);
 
-	if (variantValue.type === 'ObjectExpression') {
-		visitRecordForEmpty(
-			context,
-			variantValue,
-			rawValue,
-			undefined,
-			(value) => {
-				visitVariantValueForEmpty(context, value);
-			}
-		);
-		return;
+	if (!isRecord) {
+		visitForEmptyClasses(context, rawValue, true);
 	}
-
-	visitForEmptyClasses(context, rawValue, true);
 };
 
 const checkVariantsForEmpty = (
@@ -200,13 +202,7 @@ const checkVariantsForEmpty = (
 	rawValue: Node,
 	remove: EmptyFix
 ) => {
-	const value = resolveStaticValue(rawValue, context.sourceCode);
-
-	if (value.type !== 'ObjectExpression') {
-		return;
-	}
-
-	visitRecordForEmpty(context, value, rawValue, remove, (variantValue) => {
+	visitRecordForEmpty(context, rawValue, remove, (variantValue) => {
 		visitVariantValueForEmpty(context, variantValue);
 	});
 };
@@ -247,9 +243,9 @@ const checkCompoundsForEmpty = (
 	rawValue: Node,
 	remove: EmptyFix
 ) => {
-	const value = resolveStaticValue(rawValue, context.sourceCode);
+	const value = resolveArray(rawValue, context.sourceCode);
 
-	if (value.type !== 'ArrayExpression') {
+	if (value === null) {
 		return;
 	}
 
@@ -265,23 +261,18 @@ const checkCompoundsForEmpty = (
 	checkCompoundMatchersForEmpty(context, value);
 
 	forEachCompoundClass(value, context.sourceCode, (rawClass) => {
-		const cls = resolveStaticValue(rawClass, context.sourceCode);
+		const isRecord = visitRecordForEmpty(
+			context,
+			rawClass,
+			undefined,
+			(slotClass) => {
+				visitForEmptyClasses(context, slotClass, false);
+			}
+		);
 
-		if (cls.type === 'ObjectExpression') {
-			visitRecordForEmpty(
-				context,
-				cls,
-				rawClass,
-				undefined,
-				(slotClass) => {
-					visitForEmptyClasses(context, slotClass, false);
-				}
-			);
-
-			return;
+		if (!isRecord) {
+			visitForEmptyClasses(context, rawClass, false);
 		}
-
-		visitForEmptyClasses(context, rawClass, false);
 	});
 };
 
@@ -290,13 +281,7 @@ const checkSlotsForEmpty = (
 	rawValue: Node,
 	remove: EmptyFix
 ) => {
-	const value = resolveStaticValue(rawValue, context.sourceCode);
-
-	if (value.type !== 'ObjectExpression') {
-		return;
-	}
-
-	visitRecordForEmpty(context, value, rawValue, remove, (slotValue) => {
+	visitRecordForEmpty(context, rawValue, remove, (slotValue) => {
 		visitForEmptyClasses(context, slotValue, true);
 	});
 };

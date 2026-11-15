@@ -15,12 +15,7 @@ import {
 	resolveContainer,
 	resolveStaticValue
 } from './const-bindings.ts';
-import {
-	CLASS_TOKEN,
-	getInnerText,
-	getStaticStringText,
-	hasEscape
-} from './literals.ts';
+import { CLASS_TOKEN, getInnerText, getStaticStringText } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
 	getClassValue,
@@ -73,6 +68,19 @@ export const COMPOUND_NON_MATCHER_KEYS: ReadonlySet<string> = new Set([
 	...NON_MATCHER_KEYS,
 	'slots'
 ]);
+
+// Token identity follows the value the browser sees, so a class string
+// with an escape has to be split on its cooked value: `'w-1\x20w-2'` is two
+// classes even though its source holds no whitespace to split on, and
+// `'w\-1'` is the same class as `w-1`. Escapes are the only thing that
+// can make the two disagree, so a source without a backslash tokenizes
+// exactly as written (the caller's fast path) and keeps per-token report
+// offsets. With one, mapping each token back through the escapes would be
+// needed to place it, so the whole literal is highlighted instead — the
+// trade-off `reportRedundantSpaces` already makes. A fix is unaffected:
+// `canHoistAsLiteral` refuses any rewrite whose text would contain a backslash,
+// so an escape-bearing literal is reported unfixed either way.
+const hasEscape = (rawText: string): boolean => rawText.includes('\\');
 
 // Where each token of a text lands: a start offset places every token at its
 // own position after it; a range pins every token to that whole range.
@@ -232,11 +240,10 @@ const branchName = (truthy: boolean) => {
 // class string; identifier/numeric keys are a single, space-free token.
 const pushRecordKeyTokens = (
 	prop: Property,
-	slot: string,
 	source: Source,
-	entries: Entry[],
-	sourceCode: SourceCode
+	context: TokenExtractionContext
 ) => {
+	const { slot, entries, sourceCode } = context;
 	const { key } = prop;
 
 	if (key.type === 'Literal' && typeof key.value === 'string') {
@@ -269,20 +276,17 @@ const pushRecordKeyTokens = (
 // and `!cond` resolve as mutually exclusive.
 const extractRecordTokens = (
 	node: ObjectExpression,
-	slot: string,
-	source: Source,
-	entries: Entry[],
-	sourceCode: SourceCode
+	context: TokenExtractionContext
 ) => {
 	for (const prop of node.properties) {
 		if (prop.type !== 'Property' || prop.computed) {
 			continue;
 		}
 
-		const [key, truthy] = conditionMatcher(prop.value, sourceCode);
-		const keySource = withMatcher(source, key, branchName(truthy));
+		const [key, truthy] = conditionMatcher(prop.value, context.sourceCode);
+		const keySource = withMatcher(context.source, key, branchName(truthy));
 
-		pushRecordKeyTokens(prop, slot, keySource, entries, sourceCode);
+		pushRecordKeyTokens(prop, keySource, context);
 	}
 };
 
@@ -350,7 +354,7 @@ const extractCnStyleTokens = (
 	node: Node,
 	context: TokenExtractionContext
 ): boolean => {
-	const { slot, source, entries, sourceCode } = context;
+	const { source, sourceCode } = context;
 
 	// Only the right operand is a class contribution; the left is recorded as a
 	// truthy-branch matcher so a complementary `!cond && …` elsewhere resolves
@@ -389,7 +393,7 @@ const extractCnStyleTokens = (
 	}
 
 	if (node.type === 'ObjectExpression') {
-		extractRecordTokens(node, slot, source, entries, sourceCode);
+		extractRecordTokens(node, context);
 
 		return true;
 	}

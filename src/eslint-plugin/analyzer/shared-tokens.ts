@@ -6,9 +6,8 @@ import {
 	resolveContainer,
 	resolveStaticValue
 } from './const-bindings.ts';
-import { type EmptyFix, type ListItems, makeListFix } from './list-fix.ts';
+import { countListItems, type EmptyFix, makeListFix } from './list-fix.ts';
 import {
-	canHoistAsLiteral,
 	getRawLiteralTokens,
 	type LiteralRewrite,
 	planLiteralRewrite,
@@ -228,12 +227,9 @@ const planBaseCreation = (
 		return null;
 	}
 
+	// Every shared token is written unescaped in the value that lends `quote`,
+	// or that value's rewrite has already bailed, so the text needs no escape.
 	const nextText = [...sharedTokens].join(' ');
-
-	/* c8 ignore next 3 -- backslash tokens already bail in the rewrite above */
-	if (!canHoistAsLiteral(nextText, quote)) {
-		return null;
-	}
 
 	const { sourceCode } = context;
 	const leadingText = sourceCode
@@ -327,53 +323,6 @@ const planTargetRewrite = (
 	return planAppendRewrite(context, target.node, sharedTokens);
 };
 
-// Plans a fix that lifts every shared token of one (variant, slot) pair out
-// of each variant value and into the slot's `base`/`slots[slot]` target in one
-// atomic rewrite — or returns null when any piece isn't safely inferrable, in
-// which case the finding is still reported, just without a fix. Eligibility
-// requires the target and every variant value's contribution to this slot to
-// be a plain, directly-authored string or template literal.
-const planSharedTokensFix = (
-	context: Rule.RuleContext,
-	slot: string,
-	sharedTokens: ReadonlySet<string>,
-	valueEntries: ReadonlyMap<string, Node>,
-	slotNames: ReadonlySet<string>,
-	target: SharedTokensTarget
-): SharedTokensFixPlan | null => {
-	const values = planValueRewrites(
-		context,
-		slot,
-		sharedTokens,
-		valueEntries,
-		slotNames
-	);
-
-	if (values === null) {
-		return null;
-	}
-
-	const [firstValue] = values;
-
-	/* c8 ignore next 3 -- a shared token always has a value sharing it */
-	if (!firstValue) {
-		return null;
-	}
-
-	const targetPlan = planTargetRewrite(
-		context,
-		target,
-		sharedTokens,
-		firstValue.quote
-	);
-
-	if (!targetPlan) {
-		return null;
-	}
-
-	return { target: targetPlan, values };
-};
-
 const applySharedTokensFixPlan = (
 	fixer: Rule.RuleFixer,
 	plan: SharedTokensFixPlan
@@ -424,25 +373,6 @@ const getSharedTokensRemedy = (
 	return { fix };
 };
 
-const reportSharedTokenEntries = (
-	context: Rule.RuleContext,
-	entryLists: ReadonlyArray<ReadonlyArray<Entry>>,
-	variantKey: string,
-	slot: string,
-	token: string,
-	remedy: EntryRemedy
-) => {
-	for (const entryList of entryLists) {
-		reportEntryList(
-			context,
-			entryList,
-			'shared',
-			{ token, variant: variantKey, slot },
-			remedy
-		);
-	}
-};
-
 // Whether every node a lift rewrites may be edited. A created `base` is
 // inserted into the config object itself, so only an existing target is
 // checked.
@@ -459,9 +389,13 @@ const isPlanEditable = (
 	return plan.values.every((value) => canEdit(value.node));
 };
 
-// The lift of a slot's shared tokens, or null when the slot has no target to
-// lift into, or a piece of the rewrite can't be inferred or edited — the
-// finding is then reported without a fix.
+// Plans a fix that lifts every shared token of one (variant, slot) pair out
+// of each variant value and into the slot's `base`/`slots[slot]` target in one
+// atomic rewrite — or returns null when the slot has no target to lift into,
+// or any piece isn't safely inferrable or editable, in which case the finding
+// is still reported, just without a fix. Eligibility requires the target and
+// every variant value's contribution to this slot to be a plain,
+// directly-authored string or template literal.
 const planSlotFix = (
 	context: Rule.RuleContext,
 	slot: string,
@@ -476,16 +410,39 @@ const planSlotFix = (
 		return null;
 	}
 
-	const plan = planSharedTokensFix(
+	const values = planValueRewrites(
 		context,
 		slot,
 		sharedTokens,
 		valueEntries,
-		slotNames,
-		target
+		slotNames
 	);
 
-	if (plan === null || !isPlanEditable(plan, scope.canEdit)) {
+	if (values === null) {
+		return null;
+	}
+
+	const [firstValue] = values;
+
+	/* c8 ignore next 3 -- a shared token always has a value sharing it */
+	if (!firstValue) {
+		return null;
+	}
+
+	const targetPlan = planTargetRewrite(
+		context,
+		target,
+		sharedTokens,
+		firstValue.quote
+	);
+
+	if (!targetPlan) {
+		return null;
+	}
+
+	const plan = { target: targetPlan, values };
+
+	if (!isPlanEditable(plan, scope.canEdit)) {
 		return null;
 	}
 
@@ -519,14 +476,15 @@ const reportSharedTokensBySlot = (
 		);
 
 		for (const [token, entryLists] of tokens) {
-			reportSharedTokenEntries(
-				context,
-				entryLists,
-				variantKey,
-				slot,
-				token,
-				remedy
-			);
+			for (const entryList of entryLists) {
+				reportEntryList(
+					context,
+					entryList,
+					'shared',
+					{ token, variant: variantKey, slot },
+					remedy
+				);
+			}
 		}
 	}
 };
@@ -860,18 +818,6 @@ const checkCompoundEntryForSingleKey = (
 		},
 		...getSingleKeyCompoundRemedy(fix, matcher.key, scope.suggestOnly)
 	});
-};
-
-const countListItems = (list: ListItems): number => {
-	let count = 0;
-
-	for (const item of list) {
-		if (item) {
-			count += 1;
-		}
-	}
-
-	return count;
 };
 
 // How a compound entry is removed once its class has moved: the entry alone

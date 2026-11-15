@@ -166,11 +166,6 @@ export const areDistinctTokensExclusive = (
 		(a, b) => a.token === b.token || areEntriesExclusive(a, b)
 	);
 
-// True when every pair of entries disagrees on at least one shared matcher
-// key, so they can't co-occur.
-const isMutuallyExclusiveVariants = (list: Entry[]): boolean =>
-	everyPair(list, areEntriesExclusive);
-
 export const indexEntriesBySlotAndToken = (
 	entries: Iterable<Entry>
 ): TokenEntriesBySlot => {
@@ -212,8 +207,9 @@ export const reportEntryList = (
 	}
 };
 
-// Safe for cn() too: isMutuallyExclusiveVariants short-circuits to false on
-// non-variant entries, so base-only token lists are never skipped.
+// A token is skipped when every pair of its entries disagrees on a shared
+// matcher key, so they can't co-occur. Safe for cn() too: the check is false
+// for non-variant entries, so base-only token lists are never skipped.
 export const reportDuplicateTokens = (
 	context: Rule.RuleContext,
 	tokenMap: Map<string, Entry[]>,
@@ -224,7 +220,7 @@ export const reportDuplicateTokens = (
 	for (const [token, list] of tokenMap.entries()) {
 		if (
 			list.length < 2 ||
-			isMutuallyExclusiveVariants(list) ||
+			everyPair(list, areEntriesExclusive) ||
 			!isReported(list)
 		) {
 			continue;
