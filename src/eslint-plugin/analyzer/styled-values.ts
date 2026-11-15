@@ -2,6 +2,7 @@ import type { Scope, SourceCode } from 'eslint';
 import type {
 	CallExpression,
 	Expression,
+	Identifier,
 	MemberExpression,
 	Node,
 	ObjectExpression,
@@ -10,7 +11,7 @@ import type {
 import { getOrCreate } from '../map-utils.ts';
 import { type CallMatch, isClassListMatch } from './call-matching.ts';
 import {
-	getLookupScope,
+	findLookupVariable,
 	resolveContainer,
 	resolveStaticValue
 } from './const-bindings.ts';
@@ -18,7 +19,8 @@ import {
 	collectSlotKeyedProperties,
 	getClassValue,
 	getConfigSlotNames,
-	getProperties
+	getProperties,
+	type GroupSlots
 } from './properties.ts';
 import {
 	collectCnEntries,
@@ -40,7 +42,7 @@ type InternalStyles = {
 	bySlot: TokenEntriesBySlot;
 	slotNames: ReadonlySet<string>;
 	defaults: VariantMatchers;
-	groupSlots: ReadonlyMap<string, ReadonlyArray<string>>;
+	groupSlots: GroupSlots;
 	slotGroups: ReadonlyMap<string, ReadonlyArray<string>>;
 };
 
@@ -55,7 +57,7 @@ export type StyledClasses = {
 export type StyledContext = {
 	sourceCode: SourceCode;
 	matchCall: (node: CallExpression) => CallMatch | null;
-	scopeOf: (node: Node) => Scope.Scope | null;
+	variableOf: (node: Identifier) => Scope.Variable | null;
 	resolve: (node: Node) => Node;
 };
 
@@ -71,7 +73,7 @@ export type Invocation = {
 
 const EMPTY_MATCHERS: VariantMatchers = new Map();
 
-const EMPTY_GROUPS: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
+const EMPTY_GROUPS: GroupSlots = new Map();
 
 const NO_SKIP: ReadonlySet<string> = new Set();
 
@@ -140,7 +142,7 @@ export const createStyledContext = (
 ): StyledContext => ({
 	sourceCode,
 	matchCall,
-	scopeOf: (node) => getLookupScope(node, sourceCode),
+	variableOf: (node) => findLookupVariable(node, sourceCode),
 	resolve: (node) => resolveStaticValue(node, sourceCode)
 });
 
@@ -173,22 +175,26 @@ const getCallProps = (
 	return getProperties(ctx.resolve(arg));
 };
 
+// The matchers a call applies: `base`, refined by the props it passes.
 const buildCallMatchers = (
 	arg: Expression | SpreadElement | undefined,
-	styles: InternalStyles,
+	base: VariantMatchers,
 	ctx: StyledContext
 ): VariantMatchers =>
 	mergeMatchers(
-		styles.defaults,
+		base,
 		readMatchers(getCallProps(arg, ctx), NON_MATCHER_KEYS, ctx.sourceCode)
 	);
 
-// The `sv(config)` call a compiled variant function came from, reached through
-// the `const` binding the call site names.
-const resolveVariantFnStyles = (
+/**
+ * The call a callee names through its `const` binding — the `sv(config)` a
+ * variant function came from, or the `createSV(...)` an `sv` alias did. Null
+ * for a callee that isn't an identifier bound to a call.
+ */
+export const resolveCalleeCall = (
 	callee: Node,
 	ctx: StyledContext
-): InternalStyles | null => {
+): CallExpression | null => {
 	if (callee.type !== 'Identifier') {
 		return null;
 	}
@@ -196,6 +202,21 @@ const resolveVariantFnStyles = (
 	const resolved = ctx.resolve(callee);
 
 	if (resolved.type !== 'CallExpression') {
+		return null;
+	}
+
+	return resolved;
+};
+
+// The `sv(config)` call a compiled variant function came from, reached through
+// the `const` binding the call site names.
+const resolveVariantFnStyles = (
+	callee: Node,
+	ctx: StyledContext
+): InternalStyles | null => {
+	const resolved = resolveCalleeCall(callee, ctx);
+
+	if (resolved === null) {
 		return null;
 	}
 
@@ -243,13 +264,10 @@ export const resolveInvocation = (
 		// would override the values the result was produced with.
 		return {
 			styles: slotFn.styles,
-			matchers: mergeMatchers(
+			matchers: buildCallMatchers(
+				node.arguments[0],
 				slotFn.matchers,
-				readMatchers(
-					getCallProps(node.arguments[0], ctx),
-					NON_MATCHER_KEYS,
-					ctx.sourceCode
-				)
+				ctx
 			),
 			slot: slotFn.slot
 		};
@@ -263,7 +281,7 @@ export const resolveInvocation = (
 
 	return {
 		styles,
-		matchers: buildCallMatchers(node.arguments[0], styles, ctx),
+		matchers: buildCallMatchers(node.arguments[0], styles.defaults, ctx),
 		slot: null
 	};
 };

@@ -21,10 +21,8 @@ const propertiesCache = new WeakMap<
 	ReadonlyMap<string, Node>
 >();
 
-const strictPropertiesCache = new WeakMap<
-	ObjectExpression,
-	ReadonlyMap<string, Node> | null
->();
+// Whether an object's every property is a plain, statically keyed one.
+const strictObjects = new WeakMap<ObjectExpression, boolean>();
 
 const buildPropertiesMap = (
 	obj: ObjectExpression
@@ -56,28 +54,6 @@ export const getProperties = (
 	return getOrCreate(propertiesCache, obj, () => buildPropertiesMap(obj));
 };
 
-const buildStrictPropertiesMap = (
-	obj: ObjectExpression
-): ReadonlyMap<string, Node> | null => {
-	const map = new Map<string, Node>();
-
-	for (const prop of obj.properties) {
-		if (prop.type !== 'Property') {
-			return null;
-		}
-
-		const key = getKeyName(prop);
-
-		if (key === null) {
-			return null;
-		}
-
-		map.set(key, prop.value);
-	}
-
-	return map;
-};
-
 export const getStrictProperties = (
 	obj: Node | undefined
 ): ReadonlyMap<string, Node> | null => {
@@ -85,9 +61,17 @@ export const getStrictProperties = (
 		return null;
 	}
 
-	return getOrCreate(strictPropertiesCache, obj, () =>
-		buildStrictPropertiesMap(obj)
+	const isStrict = getOrCreate(strictObjects, obj, () =>
+		obj.properties.every(
+			(prop) => prop.type === 'Property' && getKeyName(prop) !== null
+		)
 	);
+
+	if (!isStrict) {
+		return null;
+	}
+
+	return getProperties(obj);
 };
 
 // The strict properties of a non-empty object whose every key passes

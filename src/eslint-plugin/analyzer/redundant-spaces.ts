@@ -8,13 +8,14 @@ import {
 	splitClassTokens
 } from './literals.ts';
 import { getProperties } from './properties.ts';
-import type { SvConfigValueChecker } from './static-values.ts';
 import {
 	forEachCnBranch,
 	forEachCompoundClass,
 	forEachStaticItem,
 	forEachStringRecordKey
 } from './token-extraction.ts';
+
+type SvConfigValueChecker = (context: Rule.RuleContext, node: Node) => void;
 
 // Highlights the whole literal: span-level reports would need to chase
 // raw-text/escape-sequence mismatches.

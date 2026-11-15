@@ -108,19 +108,15 @@ const getImportSource = (def: ImportDefinition): ImportSource | null => {
  * declaration, or a `const` bound to a function expression, possibly through a
  * wrapper call — or the module and export name it is imported from. Null for
  * anything else: a `let`/`var`, a redeclared binding, a namespace import.
+ *
+ * A name wrapped (`memo(Impl)`) or aliased (`const Button = Impl`) is
+ * resolved from the scope that declares the wrapper. `seen` stops a binding
+ * that wraps itself (`const Loop = memo(Loop)`).
  */
 export const resolveComponentBinding = (
 	name: string,
-	scope: Scope.Scope
-): ComponentBinding => resolveBindingOnce(name, scope, new Set());
-
-// A name wrapped (`memo(Impl)`) or aliased (`const Button = Impl`) is
-// resolved from the scope that declares the wrapper. `seen` stops a binding
-// that wraps itself (`const Loop = memo(Loop)`).
-const resolveBindingOnce = (
-	name: string,
 	scope: Scope.Scope,
-	seen: Set<Scope.Definition>
+	seen = new Set<Scope.Definition>()
 ): ComponentBinding => {
 	const binding = findSingleBinding(scope, name);
 
@@ -159,7 +155,7 @@ const resolveBindingOnce = (
 	}
 
 	if (wrapped.type === 'Identifier') {
-		return resolveBindingOnce(wrapped.name, binding.scope, seen);
+		return resolveComponentBinding(wrapped.name, binding.scope, seen);
 	}
 
 	return { kind: 'local', fn: wrapped };

@@ -27,10 +27,9 @@ type StaticClassValueOptions = {
 	isStyled?: (node: Node) => boolean;
 };
 
-export type SvConfigValueChecker = (
-	context: Rule.RuleContext,
-	node: Node
-) => void;
+type PropertyVisitor = (prop: Property) => void;
+
+type NodeVisitor = (node: Node) => void;
 
 const reportDynamic = (context: Rule.RuleContext, node: Node) => {
 	context.report({ node, messageId: 'dynamic' });
@@ -153,7 +152,7 @@ const checkConfigClassValueIsStatic = (
 const forEachStaticProperty = (
 	context: Rule.RuleContext,
 	node: ObjectExpression,
-	visit: (prop: Property) => void
+	visit: PropertyVisitor
 ) => {
 	for (const prop of node.properties) {
 		if (prop.type === 'SpreadElement') {
@@ -180,7 +179,13 @@ const checkClassRecordKeys = (
 	forEachStaticProperty(context, node, () => {});
 };
 
-const checkClassValueRecord = (context: Rule.RuleContext, raw: Node) => {
+// Visits each property of the record `raw` resolves to; anything else is
+// reported as dynamic.
+const forEachResolvedProperty = (
+	context: Rule.RuleContext,
+	raw: Node,
+	visit: PropertyVisitor
+) => {
 	const node = resolveStaticValue(raw, context.sourceCode);
 
 	if (node.type !== 'ObjectExpression') {
@@ -188,18 +193,26 @@ const checkClassValueRecord = (context: Rule.RuleContext, raw: Node) => {
 		return;
 	}
 
-	forEachStaticProperty(context, node, (prop) => {
-		checkConfigClassValueIsStatic(context, prop.value);
-	});
+	forEachStaticProperty(context, node, visit);
 };
 
-const checkSlotKeyedValues = (
+// Visits each element, resolved, of the array `raw` resolves to; anything else
+// is reported as dynamic.
+const forEachResolvedElement = (
 	context: Rule.RuleContext,
-	slotKeyed: ReadonlyMap<string, Node>
+	raw: Node,
+	visit: NodeVisitor
 ) => {
-	for (const value of slotKeyed.values()) {
-		checkConfigClassValueIsStatic(context, value);
+	const node = resolveStaticValue(raw, context.sourceCode);
+
+	if (node.type !== 'ArrayExpression') {
+		reportDynamic(context, node);
+		return;
 	}
+
+	forEachItemReportingSpread(context, node.elements, (item) => {
+		visit(resolveStaticValue(item, context.sourceCode));
+	});
 };
 
 // A slot-keyed record holds one class value per slot; anything else is a plain
@@ -213,21 +226,13 @@ const checkVariantBranchValue = (
 	const slotKeyed = collectSlotKeyedProperties(node, slotNames);
 
 	if (slotKeyed) {
-		checkSlotKeyedValues(context, slotKeyed);
+		for (const value of slotKeyed.values()) {
+			checkConfigClassValueIsStatic(context, value);
+		}
 		return;
 	}
 
 	checkConfigClassValueIsStatic(context, node);
-};
-
-const checkValueKeyedVariant = (
-	context: Rule.RuleContext,
-	node: ObjectExpression,
-	slotNames: ReadonlySet<string>
-) => {
-	forEachStaticProperty(context, node, (prop) => {
-		checkVariantBranchValue(context, prop.value, slotNames);
-	});
 };
 
 const checkVariantDefinition = (
@@ -239,41 +244,17 @@ const checkVariantDefinition = (
 
 	// A record is keyed by variant value; anything else is a boolean shorthand.
 	if (node.type === 'ObjectExpression') {
-		checkValueKeyedVariant(context, node, slotNames);
+		forEachStaticProperty(context, node, (prop) => {
+			checkVariantBranchValue(context, prop.value, slotNames);
+		});
 		return;
 	}
 
 	checkConfigClassValueIsStatic(context, node);
 };
 
-const checkVariants = (
-	context: Rule.RuleContext,
-	raw: Node,
-	slotNames: ReadonlySet<string>
-) => {
-	const node = resolveStaticValue(raw, context.sourceCode);
-
-	if (node.type !== 'ObjectExpression') {
-		reportDynamic(context, node);
-		return;
-	}
-
-	forEachStaticProperty(context, node, (prop) => {
-		checkVariantDefinition(context, prop.value, slotNames);
-	});
-};
-
 const checkCompoundSlotsArray = (context: Rule.RuleContext, raw: Node) => {
-	const value = resolveStaticValue(raw, context.sourceCode);
-
-	if (value.type !== 'ArrayExpression') {
-		reportDynamic(context, value);
-		return;
-	}
-
-	forEachItemReportingSpread(context, value.elements, (item) => {
-		const element = resolveStaticValue(item, context.sourceCode);
-
+	forEachResolvedElement(context, raw, (element) => {
 		if (!isStaticStringNode(element)) {
 			reportDynamic(context, element);
 		}
@@ -281,81 +262,44 @@ const checkCompoundSlotsArray = (context: Rule.RuleContext, raw: Node) => {
 };
 
 // Other keys on compound entries are runtime matchers and are not validated.
-const checkCompoundEntries = (
-	context: Rule.RuleContext,
-	raw: Node,
-	hasSlotsKey: boolean,
-	slotNames: ReadonlySet<string>
-) => {
-	const node = resolveStaticValue(raw, context.sourceCode);
-
-	if (node.type !== 'ArrayExpression') {
-		reportDynamic(context, node);
-		return;
-	}
-
-	forEachItemReportingSpread(context, node.elements, (item) => {
-		const element = resolveStaticValue(item, context.sourceCode);
-
-		if (element.type !== 'ObjectExpression') {
-			reportDynamic(context, element);
-			return;
-		}
-
-		forEachStaticProperty(context, element, (prop) => {
-			checkCompoundEntryProperty(context, prop, hasSlotsKey, slotNames);
-		});
-	});
-};
-
-const getCompoundEntryValueChecker = (
-	key: string | null,
-	hasSlotsKey: boolean,
-	slotNames: ReadonlySet<string>
-): SvConfigValueChecker | null => {
-	if (key === 'class' || key === 'className') {
-		// A compoundSlots entry already targets specific slots, so its class
-		// value is plain; a compoundVariants class follows a variant branch's
-		// shape and may be a slot-keyed record.
-		if (hasSlotsKey) {
-			return checkConfigClassValueIsStatic;
-		}
-
-		return (context, node) => {
-			checkVariantBranchValue(context, node, slotNames);
-		};
-	}
-
-	if (key === 'slots' && hasSlotsKey) {
-		return checkCompoundSlotsArray;
-	}
-
-	return null;
-};
-
 const checkCompoundEntryProperty = (
 	context: Rule.RuleContext,
 	prop: Property,
 	hasSlotsKey: boolean,
 	slotNames: ReadonlySet<string>
 ) => {
-	const checker = getCompoundEntryValueChecker(
-		getKeyName(prop),
-		hasSlotsKey,
-		slotNames
-	);
+	const key = getKeyName(prop);
 
-	if (checker) {
-		checker(context, prop.value);
+	if (key === 'class' || key === 'className') {
+		// A compoundSlots entry already targets specific slots, so its class
+		// value is plain; a compoundVariants class follows a variant branch's
+		// shape and may be a slot-keyed record.
+		if (hasSlotsKey) {
+			checkConfigClassValueIsStatic(context, prop.value);
+			return;
+		}
+
+		checkVariantBranchValue(context, prop.value, slotNames);
+		return;
+	}
+
+	if (key === 'slots' && hasSlotsKey) {
+		checkCompoundSlotsArray(context, prop.value);
 	}
 };
 
-// A Map, so a key named like an `Object.prototype` member finds no checker.
-const svConfigValueCheckers: ReadonlyMap<string, SvConfigValueChecker> =
-	new Map([
-		['base', checkConfigClassValueIsStatic],
-		['slots', checkClassValueRecord]
-	]);
+const checkCompoundEntries = (
+	context: Rule.RuleContext,
+	raw: Node,
+	hasSlotsKey: boolean,
+	slotNames: ReadonlySet<string>
+) => {
+	forEachResolvedElement(context, raw, (element) => {
+		forEachResolvedProperty(context, element, (prop) => {
+			checkCompoundEntryProperty(context, prop, hasSlotsKey, slotNames);
+		});
+	});
+};
 
 const checkSvConfigProperty = (
 	context: Rule.RuleContext,
@@ -364,8 +308,22 @@ const checkSvConfigProperty = (
 ) => {
 	const key = getKeyName(prop);
 
+	if (key === 'base') {
+		checkConfigClassValueIsStatic(context, prop.value);
+		return;
+	}
+
+	if (key === 'slots') {
+		forEachResolvedProperty(context, prop.value, (slot) => {
+			checkConfigClassValueIsStatic(context, slot.value);
+		});
+		return;
+	}
+
 	if (key === 'variants') {
-		checkVariants(context, prop.value, slotNames);
+		forEachResolvedProperty(context, prop.value, (variant) => {
+			checkVariantDefinition(context, variant.value, slotNames);
+		});
 		return;
 	}
 
@@ -376,11 +334,6 @@ const checkSvConfigProperty = (
 
 	if (key === 'compoundSlots') {
 		checkCompoundEntries(context, prop.value, true, slotNames);
-		return;
-	}
-
-	if (key !== null) {
-		svConfigValueCheckers.get(key)?.(context, prop.value);
 	}
 };
 

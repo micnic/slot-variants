@@ -30,7 +30,7 @@ type JsxOpeningElement = {
 	attributes: ReadonlyArray<JsxAttribute | { type: 'JSXSpreadAttribute' }>;
 };
 
-export type SvelteLiteral = {
+type SvelteLiteral = {
 	type: 'SvelteLiteral';
 	range: [number, number];
 };
@@ -64,7 +64,7 @@ type SvelteStartTag = {
 // A component element names its import (`<Button>`); a host element and a
 // special one (`<svelte:head>`) carry a `SvelteName`, and a dotted component
 // (`<Foo.Bar>`) a member name that never resolves to a same-file binding.
-export type SvelteElement = {
+type SvelteElement = {
 	type: 'SvelteElement';
 	kind: 'component' | 'html' | 'special';
 	name:
@@ -75,7 +75,7 @@ export type SvelteElement = {
 
 type VIdentifier = { type: 'VIdentifier'; name: string };
 
-export type VLiteral = { type: 'VLiteral'; range: [number, number] };
+type VLiteral = { type: 'VLiteral'; range: [number, number] };
 
 type VExpressionContainer = {
 	type: 'VExpressionContainer';
@@ -94,7 +94,7 @@ export type VAttribute = {
 	value: VLiteral | VExpressionContainer | null;
 };
 
-export type VElement = {
+type VElement = {
 	type: 'VElement';
 	rawName: string;
 	startTag: { attributes: ReadonlyArray<VAttribute> };

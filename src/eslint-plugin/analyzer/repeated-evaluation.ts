@@ -152,18 +152,15 @@ export const findRepeatedEvaluation = (
 	const ancestors = sourceCode.getAncestors(node);
 	let child: Node = node;
 
-	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
-		const ancestor = ancestors[index];
+	// `getAncestors` returns a fresh array, so reversing it in place is safe.
+	for (const ancestor of ancestors.reverse()) {
+		const reason = getAncestorReason(ancestor, child);
 
-		if (ancestor !== undefined) {
-			const reason = getAncestorReason(ancestor, child);
-
-			if (reason !== null) {
-				return reason;
-			}
-
-			child = ancestor;
+		if (reason !== null) {
+			return reason;
 		}
+
+		child = ancestor;
 	}
 
 	// `<script setup>` holds every other reason, so it's the outermost one.

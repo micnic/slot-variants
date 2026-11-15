@@ -7,11 +7,11 @@ import {
 	analyzeSharedTokens,
 	type SharedTokensCall
 } from '../analyzer/shared-tokens.ts';
-import type { StyledContext } from '../analyzer/styled-values.ts';
 import {
-	createTrackedCallListeners,
-	getFactoryCall
-} from '../analyzer/tracked-calls.ts';
+	resolveCalleeCall,
+	type StyledContext
+} from '../analyzer/styled-values.ts';
+import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
 const NO_DEFAULTS: ReadonlyMap<string, Node> = new Map();
 
@@ -21,7 +21,8 @@ const getInheritedDefaults = (
 	ctx: StyledContext,
 	node: CallExpression
 ): ReadonlyMap<string, Node> | null => {
-	const factory = getFactoryCall(ctx, node);
+	// The `createSV(...)` call the callee is bound to; none for `sv` itself.
+	const factory = resolveCalleeCall(node.callee, ctx);
 
 	if (factory === null) {
 		return NO_DEFAULTS;

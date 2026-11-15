@@ -1,5 +1,5 @@
 import type { Scope, SourceCode } from 'eslint';
-import type { ArrayExpression, Node } from 'estree';
+import type { ArrayExpression, Identifier, Node } from 'estree';
 
 // A node that only wraps another expression without changing its value.
 type TransparentWrapper = Node & { expression: Node };
@@ -79,9 +79,6 @@ const findTemplateContainer = (
 	return null;
 };
 
-// The innermost scope the program node owns — the module scope holding the
-// file's own bindings, rather than the global one `getScope()` hands back for
-// a Program.
 export const getModuleScope = (sourceCode: SourceCode): Scope.Scope =>
 	/* c8 ignore next -- a Program node always owns a scope */
 	sourceCode.scopeManager.acquire(sourceCode.ast, true) ??
@@ -134,6 +131,25 @@ export const findVariable = (
 
 	return null;
 };
+
+// The variable an identifier reads, looked up as `getLookupScope` describes.
+// Null when nothing binds it, or a Vue template does.
+export const findLookupVariable = (
+	node: Identifier,
+	sourceCode: SourceCode
+): Scope.Variable | null => {
+	const scope = getLookupScope(node, sourceCode);
+
+	if (scope === null) {
+		return null;
+	}
+
+	return findVariable(scope, node.name);
+};
+
+// The innermost scope the program node owns — the module scope holding the
+// file's own bindings, rather than the global one `getScope()` hands back for
+// a Program.
 
 // The one definition `name` resolves to, with the scope it's declared in, or
 // null when it's unbound or declared more than once.

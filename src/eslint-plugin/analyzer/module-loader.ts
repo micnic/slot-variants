@@ -1,11 +1,14 @@
 import { readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
-import type { Linter, Rule, Scope } from 'eslint';
-import type { Program } from 'estree';
+import type { Linter, Rule } from 'eslint';
 import { getOrCreate } from '../map-utils.ts';
 import { type Component, resolveComponentBinding } from './components.ts';
-import { createForwardingScan, type ForwardedStyles } from './forwarding.ts';
+import {
+	createForwardingScan,
+	type ForwardedStyles,
+	type ModuleScan
+} from './forwarding.ts';
 import { collectExportTable, type ExportTarget } from './module-exports.ts';
 import { type AliasMap, resolveModulePath } from './module-paths.ts';
 import { DEFAULT_EXPORT } from './module-syntax.ts';
@@ -28,13 +31,6 @@ type ModuleAnalysis = {
 	exports: ReadonlyMap<string, ReadonlyArray<ExportStep>>;
 	starSources: ReadonlyArray<string>;
 	self: ForwardedStyles | null;
-};
-
-/** A file's scan, as the cache analyzes it. */
-export type ModuleScan = {
-	ast: Program;
-	moduleScope: Scope.Scope;
-	forwarded: ReadonlyMap<Component, ForwardedStyles>;
 };
 
 type DiskModule = { mtimeMs: number; text: string };
@@ -225,12 +221,8 @@ const analyzeScan = (scan: ModuleScan): ModuleAnalysis => {
 const createCollector = (collected: Collected): Rule.RuleModule => ({
 	create(context) {
 		const scan = createForwardingScan(context, {
-			onExit() {
-				collected.analysis = analyzeScan({
-					ast: context.sourceCode.ast,
-					moduleScope: scan.moduleScope(),
-					forwarded: scan.forwarded
-				});
+			onExit(moduleScan) {
+				collected.analysis = analyzeScan(moduleScan);
 			}
 		});
 
@@ -475,8 +467,8 @@ export const resolveImportedComponent = (
 	exportName: string,
 	fromFile: string,
 	moduleContext: ModuleContext,
-	seen: Set<string>,
-	depth: number
+	seen = new Set<string>(),
+	depth = 0
 ): ForwardedStyles | null => {
 	if (depth >= MAX_MODULE_HOPS) {
 		return null;

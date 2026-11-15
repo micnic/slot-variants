@@ -128,9 +128,7 @@ export const noRestyle: Rule.RuleModule = {
 						specifier,
 						exportName,
 						context.physicalFilename,
-						moduleContext,
-						new Set(),
-						0
+						moduleContext
 					)
 			);
 		};
@@ -149,12 +147,8 @@ export const noRestyle: Rule.RuleModule = {
 			},
 			// A later file importing this one reads the scan from the cache
 			// rather than parsing the file again.
-			onExit() {
-				cacheLintedModule(context, {
-					ast: context.sourceCode.ast,
-					moduleScope: scan.moduleScope(),
-					forwarded: scan.forwarded
-				});
+			onExit(moduleScan) {
+				cacheLintedModule(context, moduleScan);
 			}
 		});
 

@@ -5,6 +5,7 @@ import type {
 	MemberExpression,
 	Node,
 	ObjectPattern,
+	Program,
 	VariableDeclarator
 } from 'estree';
 import {
@@ -13,7 +14,7 @@ import {
 	isComponentFunction
 } from './components.ts';
 import { getKeyName } from './config-keys.ts';
-import { findVariable, getModuleScope } from './const-bindings.ts';
+import { getModuleScope } from './const-bindings.ts';
 import {
 	CLASS_ATTRIBUTES,
 	getJsxAttributeName,
@@ -55,9 +56,16 @@ export type ComponentSite = {
 	scope: Scope.Scope;
 };
 
+/** A file's scan, as the module cache analyzes it. */
+export type ModuleScan = {
+	ast: Program;
+	moduleScope: Scope.Scope;
+	forwarded: ReadonlyMap<Component, ForwardedStyles>;
+};
+
 type PositionHandlers = {
 	onPosition?: (parts: ClassParts, site: ComponentSite | null) => void;
-	onExit?: () => void;
+	onExit?: (scan: ModuleScan) => void;
 };
 
 /**
@@ -67,7 +75,6 @@ type PositionHandlers = {
  * it bare over an imported module.
  */
 type ForwardingScan = {
-	moduleScope: () => Scope.Scope;
 	forwarded: ReadonlyMap<Component, ForwardedStyles>;
 	listener: Rule.RuleListener;
 };
@@ -80,8 +87,12 @@ type PropRead = { component: Component; prop: string };
 // `<script>`) has been seen by then.
 type PendingPosition = {
 	site: ComponentSite | null;
-	run: (emit: (parts: ClassParts) => void) => void;
+	run: (emit: PartsCallback) => void;
 };
+
+// Receives a position's class parts: filled by a collector, or read by an
+// emitter.
+type PartsCallback = (parts: ClassParts) => void;
 
 // A pending position once its walk has run: the class parts it produced.
 type CollectedPosition = Omit<PendingPosition, 'run'> & { parts: ClassParts };
@@ -96,20 +107,13 @@ const PROPS_SOURCES = new Set([
 	'useAttrs'
 ]);
 
-// What `bindings` holds for the variable `name` refers to from `scope`.
-// A null scope is a name a Vue template binds itself (`v-for`, `v-slot`),
-// which no script binding stands for.
+// What `bindings` holds for a variable. A null one is unbound, or a name a
+// Vue template binds itself (`v-for`, `v-slot`), which no script binding
+// stands for.
 const lookupBinding = <T>(
 	bindings: ReadonlyMap<Scope.Variable, T>,
-	scope: Scope.Scope | null,
-	name: string
+	variable: Scope.Variable | null
 ): T | null => {
-	if (scope === null) {
-		return null;
-	}
-
-	const variable = findVariable(scope, name);
-
 	if (variable === null) {
 		return null;
 	}
@@ -162,6 +166,14 @@ const getClassPropBindings = (pattern: ObjectPattern): Map<string, string> => {
 	return bindings;
 };
 
+// Emits the parts `collect` gathers into a fresh class list.
+const emitCollected = (emit: PartsCallback, collect: PartsCallback) => {
+	const parts = emptyParts();
+
+	collect(parts);
+	emit(parts);
+};
+
 const makeSite = (
 	component: string | null,
 	prop: string,
@@ -191,17 +203,11 @@ export const createForwardingScan = (
 
 	const moduleScope = (): Scope.Scope => getModuleScope(sourceCode);
 
-	const deferParts = (
-		site: ComponentSite | null,
-		collect: (parts: ClassParts) => void
-	) => {
+	const deferParts = (site: ComponentSite | null, collect: PartsCallback) => {
 		pending.push({
 			site,
 			run(emit) {
-				const parts = emptyParts();
-
-				collect(parts);
-				emit(parts);
+				emitCollected(emit, collect);
 			}
 		});
 	};
@@ -256,7 +262,7 @@ export const createForwardingScan = (
 
 	// The component whose props object a name refers to.
 	const getPropsObjectComponent = (node: Identifier): Component | null =>
-		lookupBinding(propsObjects, sourceCode.getScope(node), node.name);
+		lookupBinding(propsObjects, ctx.variableOf(node));
 
 	// The component whose props a call yields: the module, for a props source
 	// like `$props()`; the owner of a props object the call is handed, for a
@@ -336,11 +342,7 @@ export const createForwardingScan = (
 			return null;
 		}
 
-		const component = lookupBinding(
-			propsObjects,
-			ctx.scopeOf(node.object),
-			node.object.name
-		);
+		const component = getPropsObjectComponent(node.object);
 
 		if (component === null) {
 			return null;
@@ -355,7 +357,7 @@ export const createForwardingScan = (
 			return readMemberProp(node);
 		}
 
-		return lookupBinding(propBindings, ctx.scopeOf(node), node.name);
+		return lookupBinding(propBindings, ctx.variableOf(node));
 	};
 
 	// What a forwarded prop is merged with at this position. Inside a `cn()`
@@ -398,10 +400,9 @@ export const createForwardingScan = (
 			site: null,
 			run(emit) {
 				if (isClassListCall(node, ctx)) {
-					const parts = emptyParts();
-
-					collectCallParts(node, ctx, parts);
-					emit(parts);
+					emitCollected(emit, (parts) => {
+						collectCallParts(node, ctx, parts);
+					});
 
 					return;
 				}
@@ -477,12 +478,8 @@ export const createForwardingScan = (
 				registerFunctionProps(node);
 			}
 		},
-		VariableDeclarator(node: VariableDeclarator) {
-			visitDeclarator(node);
-		},
-		CallExpression(node: CallExpression) {
-			visitCall(node);
-		},
+		VariableDeclarator: visitDeclarator,
+		CallExpression: visitCall,
 		JSXOpeningElement(node: MarkupNode) {
 			/* c8 ignore next 3 -- the selector only matches this type */
 			if (node.type !== 'JSXOpeningElement') {
@@ -549,16 +546,18 @@ export const createForwardingScan = (
 				handlers.onPosition?.(position.parts, position.site);
 			}
 
-			handlers.onExit?.();
+			handlers.onExit?.({
+				ast: sourceCode.ast,
+				moduleScope: moduleScope(),
+				forwarded
+			});
 		}
 	};
 
 	// Template expressions are only ever walked by the template visitor, so a
 	// call written inside a `:class` binding is picked up here.
 	const templateVisitors = {
-		CallExpression(node: CallExpression) {
-			visitCall(node);
-		},
+		CallExpression: visitCall,
 		VElement(node: MarkupNode) {
 			/* c8 ignore next 3 -- the selector only matches this type */
 			if (node.type !== 'VElement') {
@@ -595,5 +594,5 @@ export const createForwardingScan = (
 		});
 	}
 
-	return { moduleScope, forwarded, listener };
+	return { forwarded, listener };
 };

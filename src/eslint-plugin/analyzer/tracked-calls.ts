@@ -6,7 +6,6 @@ import type {
 	Node
 } from 'estree';
 import { type CallMatch, matchSvCall } from './call-matching.ts';
-import { findVariable } from './const-bindings.ts';
 import { getExportName } from './module-syntax.ts';
 import { createStyledContext, type StyledContext } from './styled-values.ts';
 
@@ -53,17 +52,10 @@ const identifierResolvesToImport = (
 	{ ctx }: MatchContext,
 	identifier: Identifier
 ): boolean => {
-	const scope = ctx.scopeOf(identifier);
+	const variable = ctx.variableOf(identifier);
 
 	// Bound by a Vue template (`v-for="cn in list"`), not by the import.
-	if (scope === null) {
-		return false;
-	}
-
-	const variable = findVariable(scope, identifier.name);
-
-	/* c8 ignore next 3 -- a tracked name always resolves to a binding */
-	if (!variable) {
+	if (variable === null) {
 		return false;
 	}
 
@@ -217,27 +209,6 @@ const matchTrackedCall = (
 	}
 
 	return matchExportCall(match, node, exportName);
-};
-
-/**
- * The `createSV(...)` call a tracked `sv()` call's callee is bound to, or null
- * when the callee names `sv` itself.
- */
-export const getFactoryCall = (
-	ctx: StyledContext,
-	node: CallExpression
-): CallExpression | null => {
-	if (node.callee.type !== 'Identifier') {
-		return null;
-	}
-
-	const resolved = ctx.resolve(node.callee);
-
-	if (resolved.type !== 'CallExpression') {
-		return null;
-	}
-
-	return resolved;
 };
 
 // Every import of the file, read up front rather than as the traversal meets
