@@ -72,10 +72,8 @@ type BooleanKeys<K> = [Extract<K, 'true' | 'false'>] extends [never]
 // is a boolean shorthand.
 type VariantPropType<T> =
 	T extends Record<string | number, unknown>
-		? [Extract<keyof T, number>] extends [never]
-			? StringKeyof<T> extends 'true' | 'false'
-				? boolean
-				: KeyValue<StringKeyof<T>> | BooleanKeys<StringKeyof<T>>
+		? [keyof T] extends ['true' | 'false']
+			? boolean
 			:
 					| KeyValue<StringKeyof<T>>
 					| Extract<keyof T, number>

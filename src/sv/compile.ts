@@ -176,7 +176,7 @@ export const getOwn = <T>(record: Record<string, T>, key: string) => {
 };
 
 // A record's own value for `key`, or the given error when there is none.
-const getOwnOrThrow = <T>(
+export const getOwnOrThrow = <T>(
 	record: Record<string, T>,
 	key: string,
 	errorMessage: string
@@ -248,9 +248,6 @@ const isPlainObject = <T>(
 	value: T
 ): value is Exclude<Extract<T, object>, readonly unknown[]> =>
 	value !== null && typeof value === 'object' && !isArray(value);
-
-const hasOnlySlotKeys = (value: object, targetKeys: ReadonlySet<string>) =>
-	keys(value).every((key) => targetKeys.has(key));
 
 const isBooleanVariantRecord = (variantValue: NormalizedVariantValues) =>
 	keys(variantValue).every((key) => key === 'true' || key === 'false');
@@ -610,7 +607,7 @@ export const isSlotObjectValue = <T>(
 	value: SlotValue<Slots, undefined, T>,
 	targetKeys: ReadonlySet<string>
 ): value is Partial<Record<string, T>> =>
-	isPlainObject(value) && hasOnlySlotKeys(value, targetKeys);
+	isPlainObject(value) && keys(value).every((key) => targetKeys.has(key));
 
 const pushSlotObjectValue = (
 	slotClasses: SlotClasses,
@@ -655,24 +652,6 @@ export const toFragment = (className: string) => {
 };
 
 /**
- * Collects what a config value adds to each slot, on its own.
- */
-const collectSlotClasses = (
-	slotEntries: readonly SlotEntry[],
-	apply: ApplySlotClasses
-) => {
-	const slotClasses: SlotClasses = {};
-
-	for (const [key] of slotEntries) {
-		slotClasses[key] = [];
-	}
-
-	apply(slotClasses);
-
-	return slotClasses;
-};
-
-/**
  * Lists, per slot, the fragment each config value adds to it on its own. Each
  * fragment can be concatenated with the others to rebuild that slot's `cn()`
  * output.
@@ -681,9 +660,17 @@ export const getSlotFragmentTables = (
 	slotEntries: readonly SlotEntry[],
 	applies: readonly ApplySlotClasses[]
 ): string[][] => {
-	const valueClasses = applies.map((apply) =>
-		collectSlotClasses(slotEntries, apply)
-	);
+	const valueClasses = applies.map((apply) => {
+		const slotClasses: SlotClasses = {};
+
+		for (const [key] of slotEntries) {
+			slotClasses[key] = [];
+		}
+
+		apply(slotClasses);
+
+		return slotClasses;
+	});
 
 	return slotEntries.map(([key]) =>
 		valueClasses.map((slotClasses) => toFragment(cn(slotClasses[key])))
@@ -698,10 +685,11 @@ const getCompoundFragments = (
 	apply: ApplySlotClasses
 ) => {
 	const fragments: CompoundSlotFragment[] = [];
-	const slotClasses = collectSlotClasses(slotEntries, apply);
+	const tables = getSlotFragmentTables(slotEntries, [apply]);
 
-	slotEntries.forEach(([key], slot) => {
-		const fragment = toFragment(cn(slotClasses[key]));
+	tables.forEach((table, slot) => {
+		// A one-value table: joining reads its only fragment
+		const fragment = table.join('');
 
 		if (fragment !== '') {
 			fragments.push({ slot, fragment });

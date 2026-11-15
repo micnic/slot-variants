@@ -3,6 +3,7 @@ import {
 	applyValueToSlotClasses,
 	coerceVariantKeyValue,
 	getOwn,
+	getOwnOrThrow,
 	getSlotFragmentTables,
 	getTargetSlots,
 	isSlotObjectValue,
@@ -129,11 +130,7 @@ const resolvePresetValues = (
 		return undefined;
 	}
 
-	if (!hasOwn(presets, presetName)) {
-		throw new Error(`Invalid preset "${presetName}"`);
-	}
-
-	return presets[presetName];
+	return getOwnOrThrow(presets, presetName, `Invalid preset "${presetName}"`);
 };
 
 // Props and presets are plain objects, so a variant named like an
@@ -255,7 +252,7 @@ const applyPostProcess = (
 	return result;
 };
 
-const mergeSlotObjectIntoResult = (
+export const mergeSlotObjectIntoResult = (
 	baseResult: Record<string, string>,
 	classProp: Partial<Record<string, ClassValue>>,
 	groups: CompiledGroups

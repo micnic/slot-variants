@@ -2,17 +2,15 @@ import { cn, type ClassValue } from './cn.ts';
 import {
 	coerceVariantKeyValue,
 	compileConfig,
-	getTargetSlots,
 	isConfig,
 	isReservedProp,
 	isSlotObjectValue
 } from './sv/compile.ts';
-import { createRun } from './sv/run.ts';
+import { createRun, mergeSlotObjectIntoResult } from './sv/run.ts';
 import {
 	type AnyFn,
 	type CacheValue,
 	type CompiledConfig,
-	type CompiledGroups,
 	type Config,
 	type MaybeGroups,
 	type MaybeIntrospection,
@@ -42,23 +40,6 @@ type RuntimeVariantFn = (props?: RuntimeProps) => CacheValue | MultiSlotResult;
 
 const { assign, entries, hasOwn, keys } = Object;
 
-const hasGroupKey = (
-	classProp: Record<string, ClassValue>,
-	groups: CompiledGroups
-) => {
-	if (groups.size === 0) {
-		return false;
-	}
-
-	for (const key of keys(classProp)) {
-		if (groups.has(key)) {
-			return true;
-		}
-	}
-
-	return false;
-};
-
 const mergeMultiSlotClass = (
 	config: CompiledConfig,
 	outerClass: RuntimeClassValue | undefined,
@@ -66,29 +47,15 @@ const mergeMultiSlotClass = (
 	slotKey: string
 ): RuntimeClassValue => {
 	const { targetKeys, groups } = config;
-	const merged: Record<string, ClassValue> = {};
+	let merged: Record<string, ClassValue> = {};
 
-	if (!isSlotObjectValue(outerClass, targetKeys)) {
+	if (isSlotObjectValue(outerClass, targetKeys)) {
+		// Expanding groups gathers every outer class per slot, in order, so
+		// the inner class appended below follows all of them.
+		merged = mergeSlotObjectIntoResult({}, outerClass, groups);
+	} else if (outerClass !== undefined) {
 		// A `base: undefined` key would only add a no-op merge step
-		if (outerClass !== undefined) {
-			merged.base = outerClass;
-		}
-	} else if (!hasGroupKey(outerClass, groups)) {
-		assign(merged, outerClass);
-	} else {
-		// A slot's own key holds only the classes written for it, while a
-		// group key written later still reaches it. Expanding groups gathers
-		// every outer class per slot, in order, so the inner class appended
-		// below follows all of them.
-		for (const [targetKey, value] of entries(outerClass)) {
-			for (const slot of getTargetSlots(groups, targetKey)) {
-				if (hasOwn(merged, slot)) {
-					merged[slot] = cn(merged[slot], value);
-				} else {
-					merged[slot] = value;
-				}
-			}
-		}
+		merged.base = outerClass;
 	}
 
 	merged[slotKey] = cn(merged[slotKey], innerClass);
