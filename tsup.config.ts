@@ -29,6 +29,9 @@ const packageVersionOnly: EsbuildPlugin = {
 };
 
 export default defineConfig({
+	entry: ['src/index.ts', 'src/eslint-plugin.ts'],
+	clean: true,
+	tsconfig: 'tsconfig.build.json',
 	dts: true,
 	format: ['cjs', 'esm'],
 	esbuildPlugins: [packageVersionOnly]

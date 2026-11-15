@@ -13,8 +13,12 @@ import {
 	docsUrl,
 	getKeyName
 } from '../analyzer/config-keys.ts';
-import { resolveStaticValue } from '../analyzer/const-bindings.ts';
-import { hasCommentInRange, removeFromList } from '../analyzer/list-fix.ts';
+import { isWithinNode, resolveContainer } from '../analyzer/const-bindings.ts';
+import {
+	removeFromList,
+	removeRangeKeepingComments
+} from '../analyzer/list-fix.ts';
+import { getProperties } from '../analyzer/properties.ts';
 import { isStaticStringNode } from '../analyzer/static-predicates.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
@@ -202,15 +206,12 @@ const getSlotsObject = (
 	configNode: ObjectExpression,
 	sourceCode: SourceCode
 ): ObjectExpression | null => {
-	const slotsProp = findProperty(configNode, 'slots');
+	const slots = resolveContainer(
+		getProperties(configNode).get('slots'),
+		sourceCode
+	);
 
-	if (!slotsProp) {
-		return null;
-	}
-
-	const slots = resolveStaticValue(slotsProp.value, sourceCode);
-
-	if (slots.type === 'ObjectExpression') {
+	if (slots !== undefined && slots.type === 'ObjectExpression') {
 		return slots;
 	}
 
@@ -225,22 +226,17 @@ const touchesHoistedSlots = (
 	source: BaseSource,
 	insertInto: ObjectExpression | null
 ): boolean => {
-	const [configStart, configEnd] = sourceCode.getRange(configNode);
-	const edited = [insertInto];
-
-	if ('container' in source) {
-		edited.push(source.container);
+	if (
+		insertInto !== null &&
+		!isWithinNode(sourceCode, insertInto, configNode)
+	) {
+		return true;
 	}
 
-	return edited.some((node) => {
-		if (node === null) {
-			return false;
-		}
-
-		const [start, end] = sourceCode.getRange(node);
-
-		return start < configStart || end > configEnd;
-	});
+	return (
+		'container' in source &&
+		!isWithinNode(sourceCode, source.container, configNode)
+	);
 };
 
 const detectBaseSources = (
@@ -309,11 +305,11 @@ const removePropertyFix = (
 	}
 
 	// The only property: no comma to take along, so remove just the property.
-	if (hasCommentInRange(sourceCode, sourceCode.getRange(prop))) {
-		return null;
-	}
-
-	return fixer.remove(prop);
+	return removeRangeKeepingComments(
+		fixer,
+		sourceCode,
+		sourceCode.getRange(prop)
+	);
 };
 
 const insertAsFirstPropertyFix = (
@@ -474,11 +470,10 @@ const canFixBaseStyle = (
 		return false;
 	}
 
-	if (source.style === 'separateArg') {
-		return isBareLeadingArgument(sourceCode, source.node, configNode);
-	}
-
-	return true;
+	return (
+		source.style !== 'separateArg' ||
+		isBareLeadingArgument(sourceCode, source.node, configNode)
+	);
 };
 
 const checkBaseStyle = (

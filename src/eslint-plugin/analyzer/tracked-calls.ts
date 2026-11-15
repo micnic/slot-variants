@@ -5,6 +5,7 @@ import type {
 	ImportDeclaration,
 	Node
 } from 'estree';
+import { getOrCreate } from '../map-utils.ts';
 import { type CallMatch, matchSvCall } from './call-matching.ts';
 import { getExportName } from './module-syntax.ts';
 import { createStyledContext, type StyledContext } from './styled-values.ts';
@@ -283,17 +284,10 @@ export const createTrackedCallResolver = (
 			return null;
 		}
 
-		const cached = matchedCalls.get(node);
-
-		if (cached !== undefined) {
-			return cached;
-		}
-
-		const call = matchTrackedCall(match, node);
-
-		matchedCalls.set(node, call);
-
-		return call;
+		// A cached null, for a call that isn't tracked, is still a hit.
+		return getOrCreate(matchedCalls, node, () =>
+			matchTrackedCall(match, node)
+		);
 	});
 	// Read lazily by the classifier above, so it is set before any call.
 	const match: MatchContext = { names, ctx };

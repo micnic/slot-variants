@@ -50,7 +50,7 @@
 	},
 	"scripts": {
 		"bench": "node bench/cn.ts && node bench/cva.ts && node bench/tv.ts",
-		"build": "rm -rf dist && tsup src/index.ts src/eslint-plugin.ts --tsconfig tsconfig.build.json",
+		"build": "tsup",
 		"check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build && npm run test:package",
 		"fallow": "npm t && tap report json && node scripts/sanitize-tap-coverage.mjs && fallow health --coverage .tap/report/coverage-final.json",
 		"format": "oxfmt",

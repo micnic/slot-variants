@@ -57,7 +57,7 @@ const isLineEnd = (text: string, index: number): boolean => {
 
 // Whether any comment lies within `[start, end]`, so removing that range would
 // silently delete it.
-export const hasCommentInRange = (
+const hasCommentInRange = (
 	sourceCode: SourceCode,
 	[start, end]: AST.Range
 ): boolean =>
@@ -68,7 +68,7 @@ export const hasCommentInRange = (
 	});
 
 // Removes `range` unless a comment would go with it.
-const removeRangeKeepingComments = (
+export const removeRangeKeepingComments = (
 	fixer: Rule.RuleFixer,
 	sourceCode: SourceCode,
 	range: AST.Range
