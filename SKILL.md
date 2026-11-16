@@ -8,7 +8,7 @@
 import { cn, createSV, sv, type VariantProps } from 'slot-variants';
 ```
 
-`sv()` is a drop-in replacement for CVA (`cva` → `sv`) and covers the core feature set of tailwind-variants (`tv`) with a simpler API. Slots return strings directly by default, or reconfigurable functions (like in `tv`) when listed in `multiSlots`. Features not in CVA/TV: `requiredVariants`, `presets`, `groups`, `cacheSize`, `introspection`, `postProcess`, function-based `defaultVariants`, variadic base args, and `null`-to-unset variant props. `tailwind-merge` is opt-in via `postProcess` rather than always on, and `extend`-style config composition is not supported.
+`sv()` is a drop-in replacement for CVA (`cva` → `sv`) and covers the core feature set of tailwind-variants (`tv`) with a simpler API. Slots return strings directly by default, or reconfigurable functions (like in `tv`) when listed in `multiSlots`. Features not in CVA/TV: `requiredVariants`, `presets`, `groups`, `cacheSize`, `introspection`, `postProcess`, function-based `defaultVariants`, variadic base args, and `null`-to-unset variant props. `tailwind-merge` is opt-in via `postProcess` rather than always on. `extend` builds on other `sv()` components like `tv`'s: classes are appended after the parent's (never replaced), so add `postProcess: twMerge` when a child must override parent classes.
 
 Without `slots`, the returned function returns a `string` (or `{ base }` with a `base` function when `multiSlots` is `true` or lists `base`). With `slots`, it returns a `Record<string, string>` keyed by `base` plus each slot name (or a function for slots in `multiSlots`).
 
@@ -282,6 +282,7 @@ The table lists the options in the canonical key order enforced by the opt-in `s
 
 | Option             | Type                                 | Description                                                                                 |
 | ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `extend`           | `sv()` component or array of them    | Components to build on; their config is merged in first, classes appended after theirs      |
 | `base`             | `string \| string[]`                 | Additional base classes                                                                     |
 | `slots`            | `Record<string, string \| string[]>` | Named slot definitions                                                                      |
 | `groups`           | `Record<string, string[]>`           | Named sets of slot names                                                                    |
@@ -304,7 +305,7 @@ The table lists the options in the canonical key order enforced by the opt-in `s
 
 `slot-variants/eslint-plugin` (ESLint v9+ flat config, or oxlint via `jsPlugins`) catches issues in `sv()`/`cn()` calls before runtime: conflicting/duplicate classes, non-static (dynamic) class values, empty classes, non-canonical whitespace, tokens repeated across every variant value that belong in `base` instead, `sv()` calls with a config object placed outside module scope, and class names passed to a component or element that conflict with the classes its config already applies (JSX, Svelte and Vue class attributes included). If a project has this plugin enabled, prefer static, deduplicated class strings and module-level `sv()` calls so generated code doesn't trip these rules.
 
-An opt-in `sv-config-style` rule additionally enforces a canonical config key order — `base`, `slots`, `groups`, `multiSlots`, `variants`, `presets`, `compoundSlots`, `compoundVariants`, `defaultVariants`, `requiredVariants`, `cacheSize`, `introspection`, `postProcess` — and a single way of expressing base classes. Follow that order when writing configs; it is a safe default whether or not the rule is enabled.
+An opt-in `sv-config-style` rule additionally enforces a canonical config key order — `extend`, `base`, `slots`, `groups`, `multiSlots`, `variants`, `presets`, `compoundSlots`, `compoundVariants`, `defaultVariants`, `requiredVariants`, `cacheSize`, `introspection`, `postProcess` — and a single way of expressing base classes. Follow that order when writing configs; it is a safe default whether or not the rule is enabled.
 
 ## Exported Types
 

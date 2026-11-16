@@ -7,6 +7,7 @@ import type { Property } from 'estree';
  * it so the two can't drift apart.
  */
 export const CONFIG_KEY_ORDER: readonly string[] = [
+	'extend',
 	'base',
 	'slots',
 	'groups',

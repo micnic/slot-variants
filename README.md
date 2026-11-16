@@ -689,6 +689,52 @@ result.label({ preset: 'plain' }); // 'font-medium text-gray-900'
 result.label({ tone: 'neutral' }); // 'font-medium text-gray-900'
 ```
 
+### Extending Components
+
+`extend` builds a component on top of one or more existing `sv()` components. The child gets everything the parent defines, and its own config is merged in on top:
+
+```typescript
+const baseButton = sv('btn font-medium', {
+  variants: {
+    size: { sm: 'text-sm', lg: 'text-lg' }
+  },
+  defaultVariants: { size: 'sm' }
+});
+
+const iconButton = sv({
+  extend: baseButton,
+  base: 'inline-flex gap-2',
+  variants: {
+    size: { sm: 'p-1', xl: 'text-xl p-4' },
+    round: { true: 'rounded-full' }
+  }
+});
+
+iconButton();
+// 'btn font-medium inline-flex gap-2 text-sm p-1'
+
+iconButton({ size: 'xl', round: true });
+// 'btn font-medium inline-flex gap-2 text-xl p-4 rounded-full'
+```
+
+How each option is merged:
+
+- **Classes** (`base`, `slots`, and the classes of a variant value both define) are appended after the parent's — a child adds classes but never removes them. Add `postProcess: twMerge` to let a child's classes override conflicting parent ones.
+- **`variants`** — new variants and new values are added; a value both define gets both sets of classes.
+- **`defaultVariants`** — the child's defaults win.
+- **`compoundVariants` / `compoundSlots`** — the child's entries run after the parent's.
+- **`groups` / `presets`** — combined; a group or preset both define gets the slots, or the variant values, of both, the child's values winning.
+- **`requiredVariants` / `multiSlots`** — combined. A child default for a variant the parent requires makes it optional.
+- **`postProcess`, `cacheSize`, `introspection`** — inherited unless the child sets its own.
+
+The child's types follow: it accepts the parent's variants, slots and presets everywhere its own are accepted, and its props and result include them.
+
+Pass a list to extend several components; they are merged left to right, then the child on top:
+
+```typescript
+const card = sv({ extend: [surface, interactive], base: 'p-4' });
+```
+
 ### Class Override at Runtime
 
 Append additional classes at call time using `class` or `className`:
@@ -1036,6 +1082,7 @@ Options are listed in the order enforced by the opt-in [`sv-config-style`](#slot
 
 | Option             | Type                                                                    | Description                                                                                                                                              |
 | ------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `extend`           | `sv()` component or array of them                                       | `sv()` components whose config this one [builds on](#extending-components)                                                                               |
 | `base`             | `string \| string[]`                                                    | Additional base classes merged with the base argument and `slots.base`                                                                                   |
 | `slots`            | `Record<string, string \| string[]>`                                    | Named slot definitions for multi-element components                                                                                                      |
 | `groups`           | `Record<string, string[]>`                                              | Named sets of slot names, usable anywhere a slot name is accepted                                                                                        |
@@ -1582,7 +1629,7 @@ Key differences to be aware of:
 | Feature                | tailwind-variants                          | slot-variants                                                  |
 | ---------------------- | ------------------------------------------ | -------------------------------------------------------------- |
 | Slot return type       | Always functions: `slot({ class: '...' })` | Strings by default; functions for slots listed in `multiSlots` |
-| `extend` (composition) | Supported                                  | Not supported                                                  |
+| `extend` (composition) | Supported                                  | Supported, append-only like `tv`; see below                    |
 | Built-in `twMerge`     | Enabled by default                         | Use `postProcess: twMerge`, globally via `createSV`            |
 
 **Slot return type** is the most significant difference. In `tv()`, each slot returns a function that can accept additional props. In `sv()`, slots resolve to strings directly — use the `class` prop with a slot object for per-slot overrides, or list a slot in [`multiSlots`](#multi-slots) to expose it as a `tv`-style reconfigurable function:
@@ -1596,6 +1643,8 @@ base({ class: 'extra' }); // slot is a function
 const { base, icon } = component({ size: 'sm', class: { base: 'extra' } });
 base; // slot is a string
 ```
+
+**`extend`** merges configs the same way `tv` does. As `tv` resolves the resulting class conflicts with its built-in `twMerge`, add `postProcess: twMerge` to a parent (children inherit it) to get the same output.
 
 **tailwind-merge** is not built in but can be added via `postProcess`, or applied globally with [`createSV()`](#shared-defaults-with-createsv) — the closest equivalent to `tv`'s default `twMerge`:
 

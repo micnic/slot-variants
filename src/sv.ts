@@ -7,6 +7,7 @@ import {
 	isSlotObjectValue
 } from './sv/compile.ts';
 import { createExplain } from './sv/explain.ts';
+import { hasParents, recordConfig, resolveExtend } from './sv/extend.ts';
 import {
 	createRun,
 	createRunPlan,
@@ -17,6 +18,11 @@ import {
 	type CacheValue,
 	type CompiledConfig,
 	type Config,
+	type ExtendedGroups,
+	type ExtendedSlots,
+	type ExtendedVariantFn,
+	type ExtendedVariants,
+	type ExtendInput,
 	type MaybeGroups,
 	type MaybeIntrospection,
 	type MaybePresets,
@@ -27,13 +33,12 @@ import {
 	type NormalizedVariants,
 	type RawConfig,
 	type RequiredVariants,
-	type ResolvedIntrospection,
 	type RunFn,
 	type RuntimeClassValue,
 	type RuntimeProps,
+	type StringKeyof,
 	type SV,
-	type SVDefaults,
-	type VariantFn
+	type SVDefaults
 } from './sv/types.ts';
 
 type MultiSlotResult = Record<
@@ -42,6 +47,8 @@ type MultiSlotResult = Record<
 >;
 
 type RuntimeVariantFn = (props?: RuntimeProps) => CacheValue | MultiSlotResult;
+
+type ResolvedCall = { baseArgs: ClassValue[]; config: RawConfig };
 
 const { assign, entries, hasOwn, keys } = Object;
 
@@ -235,6 +242,72 @@ const mergeConfig = (defaults: RawConfig | undefined, config: RawConfig) => {
 };
 
 /**
+ * Resolves what a call compiles: its base args and its config over the
+ * factory defaults, with the configs of the components it extends merged in
+ * first. Base args then count as the config's own `base`, so they follow the
+ * inherited base classes.
+ */
+const resolveCall = (
+	defaults: RawConfig | undefined,
+	baseArgs: ClassValue[],
+	config: RawConfig
+): ResolvedCall => {
+	const { extend } = config;
+
+	if (!hasParents(extend)) {
+		return { baseArgs, config: mergeConfig(defaults, config) };
+	}
+
+	const own: RawConfig = { ...config };
+
+	if (baseArgs.length > 0) {
+		own.base = cn(...baseArgs, config.base);
+	}
+
+	// These two are joined with the inherited ones rather than replacing
+	// them, so their defaults belong to the config's own side.
+	const { requiredVariants, multiSlots } = defaults ?? {};
+	const ownWithDefaults = mergeConfig({ requiredVariants, multiSlots }, own);
+
+	return {
+		baseArgs: [],
+		config: mergeConfig(defaults, resolveExtend(ownWithDefaults, extend))
+	};
+};
+
+/**
+ * The config a component extending this one inherits: base args folded into
+ * `base`, and the introspection it resolved to.
+ */
+const toInheritedConfig = ({ baseArgs, config }: ResolvedCall): RawConfig => {
+	const inherited: RawConfig = {
+		...config,
+		introspection: config.introspection ?? false
+	};
+
+	if (baseArgs.length > 0) {
+		inherited.base = cn(...baseArgs, config.base);
+	}
+
+	return inherited;
+};
+
+const buildVariantFn = (
+	defaults: RawConfig | undefined,
+	baseArgs: ClassValue[],
+	config: RawConfig
+) => {
+	const call = resolveCall(defaults, baseArgs, config);
+	const variantFn = createVariantFn(
+		compileConfig(call.baseArgs, call.config)
+	);
+
+	recordConfig(variantFn, toInheritedConfig(call));
+
+	return variantFn;
+};
+
+/**
  * Builds a pre-configured `sv()` function whose `defaults` are applied to every
  * config-based call. The defaults accept `base`, `cacheSize`, `postProcess`,
  * `introspection` and boolean `requiredVariants`/`multiSlots`, and are shallow
@@ -264,15 +337,22 @@ export const createSV = <
 	// against `SV<I>` on return instead of being asserted to it
 	function customSV<
 		S extends MaybeSlots = undefined,
-		G extends MaybeGroups<S> = undefined,
-		V extends MaybeVariants<S, G> = undefined,
-		P extends MaybePresets<S, G, V> = undefined,
-		M extends MultiSlots<S, G> = DM,
-		R extends RequiredVariants<V> = DR,
-		J extends MaybeIntrospection = undefined
+		G extends MaybeGroups<ExtendedSlots<E, S>> = undefined,
+		V extends MaybeVariants<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>> =
+			undefined,
+		P extends MaybePresets<
+			ExtendedSlots<E, S>,
+			ExtendedGroups<E, S, G>,
+			ExtendedVariants<E, S, G, V>
+		> = undefined,
+		M extends MultiSlots<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>> = DM,
+		R extends RequiredVariants<ExtendedVariants<E, S, G, V>> = DR,
+		J extends MaybeIntrospection = undefined,
+		const E extends ExtendInput | undefined = undefined,
+		D extends StringKeyof<ExtendedVariants<E, S, G, V>> = never
 	>(
-		...args: [...ClassValue[], Config<S, G, V, P, M, R, J>]
-	): VariantFn<S, G, V, P, M, R, ResolvedIntrospection<J, I>>;
+		...args: [...ClassValue[], Config<S, G, V, P, M, R, J, E, D>]
+	): ExtendedVariantFn<S, G, V, P, M, R, J, E, D, I>;
 	function customSV<const T extends ClassValue[]>(
 		...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
 	): string;
@@ -285,9 +365,7 @@ export const createSV = <
 			return cn(...args);
 		}
 
-		return createVariantFn(
-			compileConfig(args.slice(0, -1), mergeConfig(defaults, last))
-		);
+		return buildVariantFn(defaults, args.slice(0, -1), last);
 	}
 
 	return customSV;

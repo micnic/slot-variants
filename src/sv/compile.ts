@@ -51,6 +51,7 @@ type ConfigValueCheck =
 	| 'boolean'
 	| 'boolean-or-array'
 	| 'class'
+	| 'component'
 	| 'function'
 	| 'number'
 	| 'object';
@@ -61,6 +62,7 @@ const { entries, hasOwn, keys } = Object;
 const defaultCacheSize = 256;
 
 const configKeysRecord: Record<ConfigKey, ConfigValueCheck> = {
+	extend: 'component',
 	base: 'class',
 	variants: 'object',
 	slots: 'object',
@@ -79,6 +81,14 @@ const configKeysRecord: Record<ConfigKey, ConfigValueCheck> = {
 const configKeyChecks: ReadonlyMap<string, ConfigValueCheck> = new Map(
 	entries(configKeysRecord)
 );
+
+// The checks a value also passes as an array, with the `typeof` it needs
+// otherwise.
+const orArrayTypes: ReadonlyMap<ConfigValueCheck, string> = new Map([
+	['class', 'string'],
+	['boolean-or-array', 'boolean'],
+	['component', 'function']
+]);
 
 const createCache = (cacheSize: number) => {
 	const cache: VariantCache = new Map();
@@ -244,7 +254,7 @@ const compileCompoundMatchers = (
 /**
  * Narrows a value to its object members, excluding `null` and arrays.
  */
-const isPlainObject = <T>(
+export const isPlainObject = <T>(
 	value: T
 ): value is Exclude<Extract<T, object>, readonly unknown[]> =>
 	value !== null && typeof value === 'object' && !isArray(value);
@@ -316,10 +326,6 @@ const matchesConfigValue = (check: ConfigValueCheck, value: unknown) => {
 		return true;
 	}
 
-	if (check === 'class') {
-		return typeof value === 'string' || isArray(value);
-	}
-
 	if (check === 'object') {
 		return isPlainObject(value);
 	}
@@ -328,8 +334,10 @@ const matchesConfigValue = (check: ConfigValueCheck, value: unknown) => {
 		return isArray(value);
 	}
 
-	if (check === 'boolean-or-array') {
-		return typeof value === 'boolean' || isArray(value);
+	const orArrayType = orArrayTypes.get(check);
+
+	if (orArrayType !== undefined) {
+		return typeof value === orArrayType || isArray(value);
 	}
 
 	return typeof value === check;

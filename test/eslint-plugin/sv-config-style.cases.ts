@@ -20,10 +20,31 @@ export const SV_CONFIG_STYLE_ORDER_VALID = [
 		code:
 			IMPORT +
 			"sv({ base: 'flex', slots: { body: 'p-4' }, variants: { size: { sm: 'text-sm' } } });"
+	},
+	{
+		// `extend` comes first.
+		code:
+			IMPORT +
+			"const parent = sv({ base: 'btn' });\nsv({ extend: parent, base: 'flex', variants: { size: { sm: 'text-sm' } } });"
 	}
 ];
 
 export const SV_CONFIG_STYLE_ORDER_INVALID = [
+	{
+		// `extend` placed after another key moves to the front.
+		code:
+			IMPORT +
+			"const parent = sv({ base: 'btn' });\nsv({ base: 'flex', extend: parent });",
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'extend', before: 'base' }
+			}
+		],
+		output:
+			IMPORT +
+			"const parent = sv({ base: 'btn' });\nsv({ extend: parent, base: 'flex' });"
+	},
 	{
 		// A hoisted config shared by several calls is reported once.
 		code: IMPORT + "const c = { variants: {}, base: 'x' };\nsv(c);\nsv(c);",

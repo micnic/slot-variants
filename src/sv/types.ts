@@ -1,5 +1,8 @@
 import { type ClassValue } from '../cn.ts';
 
+// Keys the type-only record of a component's maps, read by `extend`.
+declare const componentTypes: unique symbol;
+
 type Prettify<T> = {
 	[K in keyof T]: T[K];
 } & {};
@@ -8,7 +11,7 @@ type PartialNullable<T> = {
 	[K in keyof T]?: T[K] | null | undefined;
 };
 
-type StringKeyof<T> = Extract<keyof T, string>;
+export type StringKeyof<T> = Extract<keyof T, string>;
 
 export type ConfigClassValue = string | string[] | undefined;
 
@@ -381,6 +384,189 @@ type RequiredDefaultCollision<
 	]?: 'Required variant must not have a default';
 };
 
+// Infers the keys a config's `defaultVariants` names.
+type DefaultKeys<D extends string> = { [K in D]?: unknown };
+
+// What a component records about itself for the components extending it.
+type ComponentTypes = {
+	slots: MaybeSlots;
+	groups: RuntimeGroups | undefined;
+	variants: object | undefined;
+	presets: object | undefined;
+	required: string;
+	multi: string;
+	defaulted: string;
+	introspection: boolean;
+};
+
+type EmptyComponentTypes = {
+	slots: undefined;
+	groups: undefined;
+	variants: undefined;
+	presets: undefined;
+	required: never;
+	multi: never;
+	defaulted: never;
+	introspection: false;
+};
+
+type ExtendTarget = AnyFn & { readonly [componentTypes]: ComponentTypes };
+
+export type ExtendInput = ExtendTarget | readonly ExtendTarget[];
+
+// An `extend` value that inherits nothing.
+type NoParents = undefined | readonly [];
+
+type MergedKeys<A, B> = StringKeyof<A> | StringKeyof<B>;
+
+type MergeSlots<A extends MaybeSlots, B extends MaybeSlots> = [A] extends [
+	undefined
+]
+	? B
+	: [B] extends [undefined]
+		? A
+		: Record<MergedKeys<A, B>, ConfigClassValue>;
+
+type GroupEntry<G, K> = K extends keyof G
+	? G[K] extends readonly (infer U extends string)[]
+		? U
+		: never
+	: never;
+
+type MergeGroups<A, B> = [A] extends [undefined]
+	? B
+	: [B] extends [undefined]
+		? A
+		: {
+				[K in MergedKeys<A, B>]: readonly (
+					| GroupEntry<A, K>
+					| GroupEntry<B, K>
+				)[];
+			};
+
+// A variant's value keys; a boolean shorthand stands for `true`.
+type VariantValueKeys<T> =
+	T extends Record<string | number, unknown> ? keyof T : 'true';
+
+type MergeVariantValues<A, B> = Record<
+	VariantValueKeys<A> | VariantValueKeys<B>,
+	ConfigClassValue
+>;
+
+type MergeVariants<A, B> = [A] extends [undefined]
+	? B
+	: [B] extends [undefined]
+		? A
+		: {
+				[K in MergedKeys<A, B>]: K extends keyof A
+					? K extends keyof B
+						? MergeVariantValues<A[K], B[K]>
+						: A[K]
+					: K extends keyof B
+						? B[K]
+						: never;
+			};
+
+type MergePresets<A, B> = [A] extends [undefined]
+	? B
+	: [B] extends [undefined]
+		? A
+		: Record<MergedKeys<A, B>, Record<never, never>>;
+
+type MergeComponentTypes<A extends ComponentTypes, B extends ComponentTypes> = {
+	slots: MergeSlots<A['slots'], B['slots']>;
+	groups: MergeGroups<A['groups'], B['groups']>;
+	variants: MergeVariants<A['variants'], B['variants']>;
+	presets: MergePresets<A['presets'], B['presets']>;
+	required: Exclude<A['required'], B['defaulted']> | B['required'];
+	multi: A['multi'] | B['multi'];
+	defaulted: A['defaulted'] | B['defaulted'];
+	introspection: B['introspection'];
+};
+
+type TypesOf<T> = T extends {
+	readonly [componentTypes]: infer X extends ComponentTypes;
+}
+	? X
+	: EmptyComponentTypes;
+
+type FoldParents<E, Acc extends ComponentTypes> = E extends readonly [
+	infer H,
+	...infer Rest
+]
+	? FoldParents<Rest, MergeComponentTypes<Acc, TypesOf<H>>>
+	: Acc;
+
+/** The merged maps of every component `E` extends, left to right. */
+type ParentTypes<E> = E extends readonly unknown[]
+	? FoldParents<E, EmptyComponentTypes>
+	: TypesOf<E>;
+
+/** A config's slots together with the ones it inherits. */
+export type ExtendedSlots<E, S extends MaybeSlots> = Extract<
+	MergeSlots<ParentTypes<E>['slots'], S>,
+	MaybeSlots
+>;
+
+export type ExtendedGroups<E, S extends MaybeSlots, G> = Extract<
+	MergeGroups<ParentTypes<E>['groups'], G>,
+	MaybeGroups<ExtendedSlots<E, S>>
+>;
+
+export type ExtendedVariants<E, S extends MaybeSlots, G, V> = Extract<
+	MergeVariants<ParentTypes<E>['variants'], V>,
+	MaybeVariants<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>>
+>;
+
+type ExtendedPresets<E, S extends MaybeSlots, G, V, P> = Extract<
+	MergePresets<ParentTypes<E>['presets'], P>,
+	MaybePresets<
+		ExtendedSlots<E, S>,
+		ExtendedGroups<E, S, G>,
+		ExtendedVariants<E, S, G, V>
+	>
+>;
+
+// Inherited required variants, minus the ones this config gives a default.
+type ExtendedRequired<E, S extends MaybeSlots, G, V, R, D extends string> = [
+	E
+] extends [NoParents]
+	? R
+	: readonly Extract<
+			| Exclude<ParentTypes<E>['required'], D>
+			| RequiredVariantKeys<
+					ExtendedVariants<E, S, G, V>,
+					Extract<R, RequiredVariants<ExtendedVariants<E, S, G, V>>>
+			  >,
+			StringKeyof<ExtendedVariants<E, S, G, V>>
+		>[];
+
+type ExtendedMultiSlots<E, S extends MaybeSlots, G, M> = [E] extends [NoParents]
+	? M
+	: readonly Extract<
+			| ParentTypes<E>['multi']
+			| MultiSlotKeys<
+					ExtendedSlots<E, S>,
+					ExtendedGroups<E, S, G>,
+					Extract<
+						M,
+						MultiSlots<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>>
+					>
+			  >,
+			SlotTarget<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>>
+		>[];
+
+/** A config's introspection: its own, the last parent's, or the default. */
+type ExtendedIntrospection<
+	E,
+	I extends MaybeIntrospection,
+	B extends boolean
+> = [I] extends [undefined]
+	? [E] extends [NoParents]
+		? B
+		: ParentTypes<E>['introspection']
+	: Exclude<I, undefined>;
+
 type VariantPropsWithRequired<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
@@ -416,21 +602,23 @@ type Props<
 // `undefined` is inferred as such instead of widening to `boolean`.
 export type MaybeIntrospection = boolean | undefined;
 
-/** The introspection a config gets: its own, or the default `D` if unset. */
-export type ResolvedIntrospection<
-	I extends MaybeIntrospection,
-	D extends boolean
-> = [I] extends [undefined] ? D : Exclude<I, undefined>;
-
 export type Config<
 	S extends MaybeSlots,
-	G extends MaybeGroups<S>,
-	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, G, V>,
-	M extends MultiSlots<S, G>,
-	R extends RequiredVariants<V>,
-	I extends MaybeIntrospection = false
+	G extends MaybeGroups<ExtendedSlots<E, S>>,
+	V extends MaybeVariants<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>>,
+	P extends MaybePresets<
+		ExtendedSlots<E, S>,
+		ExtendedGroups<E, S, G>,
+		ExtendedVariants<E, S, G, V>
+	>,
+	M extends MultiSlots<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>>,
+	R extends RequiredVariants<ExtendedVariants<E, S, G, V>>,
+	I extends MaybeIntrospection = false,
+	E extends ExtendInput | undefined = undefined,
+	D extends StringKeyof<ExtendedVariants<E, S, G, V>> = never
 > = {
+	/** Components whose config this one builds on, appending to theirs. */
+	extend?: E;
 	/** Classes always applied, alongside matched variant/compound classes. */
 	base?: ConfigClassValue;
 	/** Named variants, each mapping its values to the classes they apply. */
@@ -440,19 +628,43 @@ export type Config<
 	/** Named slot sets usable as slot names; must not reuse a slot name. */
 	groups?: G | undefined;
 	/** Classes for a variant combination, also matched by `preset`. */
-	compoundVariants?: CompoundVariants<S, G, V, P> | undefined;
+	compoundVariants?:
+		| CompoundVariants<
+				ExtendedSlots<E, S>,
+				ExtendedGroups<E, S, G>,
+				ExtendedVariants<E, S, G, V>,
+				ExtendedPresets<E, S, G, V, P>
+		  >
+		| undefined;
 	/** Per-slot classes for a variant combination, also matched by `preset`. */
-	compoundSlots?: CompoundSlots<S, G, V, P> | undefined;
+	compoundSlots?:
+		| CompoundSlots<
+				ExtendedSlots<E, S>,
+				ExtendedGroups<E, S, G>,
+				ExtendedVariants<E, S, G, V>,
+				ExtendedPresets<E, S, G, V, P>
+		  >
+		| undefined;
 	/** Variant values used when the caller doesn't pass one. */
 	defaultVariants?:
-		| (DefaultVariants<S, G, V, P, R> & RequiredDefaultCollision<V, R>)
+		| (DefaultVariants<
+				ExtendedSlots<E, S>,
+				ExtendedGroups<E, S, G>,
+				ExtendedVariants<E, S, G, V>,
+				ExtendedPresets<E, S, G, V, P>,
+				R
+		  > &
+				RequiredDefaultCollision<ExtendedVariants<E, S, G, V>, R> &
+				DefaultKeys<D>)
 		| undefined;
 	/** Variants the caller must always pass, so their props lose the `?`. */
 	requiredVariants?: R | undefined;
 	/** Slots whose class function takes variant props, for repeated slots. */
 	multiSlots?: M | undefined;
 	/** Named bundles of variant values, picked with the `preset` prop. */
-	presets?: (P & PresetNameCollision<V, P>) | undefined;
+	presets?:
+		| (P & PresetNameCollision<ExtendedVariants<E, S, G, V>, P>)
+		| undefined;
 	/** How many prop combinations' classes are cached. Defaults to 256. */
 	cacheSize?: number | undefined;
 	/** Exposes variant metadata and cache controls on the returned function. */
@@ -607,9 +819,21 @@ export type VariantFn<
 	P extends MaybePresets<S, G, V>,
 	M extends MultiSlots<S, G>,
 	R extends RequiredVariants<V>,
-	I extends boolean
+	I extends boolean,
+	D extends string = never
 > = {
 	(...args: VariantFnArgs<S, G, V, P, R>): ReturnValue<S, G, V, P, M>;
+	/** Type-only: the maps a component extending this one inherits. */
+	readonly [componentTypes]: {
+		slots: S;
+		groups: G;
+		variants: V;
+		presets: P;
+		required: RequiredVariantKeys<V, R>;
+		multi: MultiSlotKeys<S, G, M>;
+		defaulted: D;
+		introspection: I;
+	};
 } & (I extends true ? IntrospectionValues<S, G, V, P, M, R> : unknown);
 
 export type NonConfigClassArg<T> =
@@ -619,19 +843,36 @@ export type NonConfigClassArg<T> =
 			: T
 		: T;
 
-export type RawConfig = Config<
-	MaybeSlots,
-	MaybeGroups<MaybeSlots>,
-	MaybeVariants<MaybeSlots, MaybeGroups<MaybeSlots>>,
-	MaybePresets<
-		MaybeSlots,
-		MaybeGroups<MaybeSlots>,
-		MaybeVariants<MaybeSlots, MaybeGroups<MaybeSlots>>
-	>,
-	MultiSlots<MaybeSlots, MaybeGroups<MaybeSlots>>,
-	RequiredVariants<AnyVariants>,
-	MaybeIntrospection
->;
+// The widest config the runtime handles, every name typed as a string.
+type RuntimeVariants = Variants<Slots, RuntimeGroups>;
+
+type RuntimePresets = Record<string, ResolvedVariantState>;
+
+export type RawConfig = {
+	extend?: ExtendInput | undefined;
+	base?: ConfigClassValue;
+	variants?: RuntimeVariants | undefined;
+	slots?: Slots | undefined;
+	groups?: RuntimeGroups | undefined;
+	compoundVariants?:
+		| CompoundVariants<
+				Slots,
+				RuntimeGroups,
+				RuntimeVariants,
+				RuntimePresets
+		  >
+		| undefined;
+	compoundSlots?:
+		| CompoundSlots<Slots, RuntimeGroups, RuntimeVariants, RuntimePresets>
+		| undefined;
+	defaultVariants?: Record<string, RuntimeDefaultVariant> | undefined;
+	requiredVariants?: RequiredVariants<RuntimeVariants> | undefined;
+	multiSlots?: MultiSlots<Slots, RuntimeGroups> | undefined;
+	presets?: RuntimePresets | undefined;
+	cacheSize?: number | undefined;
+	introspection?: MaybeIntrospection;
+	postProcess?: ((className: string) => string) | undefined;
+};
 
 type RawCompoundVariants = NonNullable<RawConfig['compoundVariants']>;
 
@@ -673,15 +914,55 @@ type ConfigCall<
 	C extends ClassValue[]
 > = <
 	S extends MaybeSlots = undefined,
-	G extends MaybeGroups<S> = undefined,
-	V extends MaybeVariants<S, G> = undefined,
-	P extends MaybePresets<S, G, V> = undefined,
-	M extends MultiSlots<S, G> = DM,
-	R extends RequiredVariants<V> = DR,
-	I extends MaybeIntrospection = undefined
+	G extends MaybeGroups<ExtendedSlots<E, S>> = undefined,
+	V extends MaybeVariants<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>> =
+		undefined,
+	P extends MaybePresets<
+		ExtendedSlots<E, S>,
+		ExtendedGroups<E, S, G>,
+		ExtendedVariants<E, S, G, V>
+	> = undefined,
+	M extends MultiSlots<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>> = DM,
+	R extends RequiredVariants<ExtendedVariants<E, S, G, V>> = DR,
+	I extends MaybeIntrospection = undefined,
+	const E extends ExtendInput | undefined = undefined,
+	D extends StringKeyof<ExtendedVariants<E, S, G, V>> = never
 >(
-	...args: [...C, Config<S, G, V, P, M, R, I>]
-) => VariantFn<S, G, V, P, M, R, ResolvedIntrospection<I, B>>;
+	...args: [...C, Config<S, G, V, P, M, R, I, E, D>]
+) => ExtendedVariantFn<S, G, V, P, M, R, I, E, D, B>;
+
+/** The variant function a config builds, with what it inherits merged in. */
+export type ExtendedVariantFn<
+	S extends MaybeSlots,
+	G extends MaybeGroups<ExtendedSlots<E, S>>,
+	V extends MaybeVariants<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>>,
+	P extends MaybePresets<
+		ExtendedSlots<E, S>,
+		ExtendedGroups<E, S, G>,
+		ExtendedVariants<E, S, G, V>
+	>,
+	M extends MultiSlots<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>>,
+	R extends RequiredVariants<ExtendedVariants<E, S, G, V>>,
+	I extends MaybeIntrospection,
+	E extends ExtendInput | undefined,
+	D extends string,
+	B extends boolean
+> = VariantFn<
+	ExtendedSlots<E, S>,
+	ExtendedGroups<E, S, G>,
+	ExtendedVariants<E, S, G, V>,
+	ExtendedPresets<E, S, G, V, P>,
+	Extract<
+		ExtendedMultiSlots<E, S, G, M>,
+		MultiSlots<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>>
+	>,
+	Extract<
+		ExtendedRequired<E, S, G, V, R, D>,
+		RequiredVariants<ExtendedVariants<E, S, G, V>>
+	>,
+	ExtendedIntrospection<E, I, B>,
+	ParentTypes<E>['defaulted'] | D
+>;
 
 type ClassCall = <const T extends ClassValue[]>(
 	...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
