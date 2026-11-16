@@ -1,5 +1,5 @@
 import { cn } from '../cn.ts';
-import { getOwn, isPlainObject } from './compile.ts';
+import { getOwn, isPlainObject, resolveNames } from './compile.ts';
 import {
 	type AnyFn,
 	type ConfigClassValue,
@@ -17,11 +17,8 @@ type RawVariantValue = RawVariantRecord[string];
 
 type RawSlotRecord = Exclude<RawVariantValue, ConfigClassValue>;
 
-type NameList = boolean | readonly string[] | undefined;
-
 type MergeValue<T> = (inherited: T, own: T) => T;
 
-const { isArray } = Array;
 const { entries, hasOwn, keys } = Object;
 
 // Each config-based `sv()` result, mapped to the config it was built from.
@@ -157,19 +154,6 @@ const mergePresetValues = <T extends object>(inherited: T, own: T) => ({
 	...inherited,
 	...own
 });
-
-// `true` names every one of `all`, `false` or unset none.
-const resolveNames = (names: NameList, all: readonly string[]) => {
-	if (names === true) {
-		return all;
-	}
-
-	if (isArray(names)) {
-		return names;
-	}
-
-	return [];
-};
 
 const getSlotNames = (slots: RawConfig['slots']) => [
 	'base',

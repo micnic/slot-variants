@@ -41,6 +41,8 @@ type VariantLayout = {
 	maxEntries: number;
 };
 
+type NameList = boolean | readonly string[] | undefined;
+
 type CompoundEntry = Record<string, unknown> & {
 	preset?: string | undefined;
 };
@@ -427,19 +429,20 @@ const createVariantData = (
 	return { variantData, combinationCount: stride, maxEntries };
 };
 
-const resolveRequiredVariants = (
-	requiredVariants: readonly string[] | boolean,
-	normalizedVariants: NormalizedVariants
-): readonly string[] => {
-	if (requiredVariants === true) {
-		return keys(normalizedVariants);
+/**
+ * The names a name list stands for: `true` names every one of `all`, `false`
+ * or unset none.
+ */
+export const resolveNames = (names: NameList, all: readonly string[]) => {
+	if (names === true) {
+		return all;
 	}
 
-	if (requiredVariants === false) {
-		return [];
+	if (isArray(names)) {
+		return names;
 	}
 
-	return requiredVariants;
+	return [];
 };
 
 /**
@@ -477,22 +480,6 @@ const expandSlotTargets = (
 	}
 
 	return result;
-};
-
-const resolveMultiSlots = (
-	multiSlots: readonly string[] | boolean,
-	groups: CompiledGroups,
-	slotKeys: ReadonlySet<string>
-): ReadonlySet<string> => {
-	if (multiSlots === true) {
-		return slotKeys;
-	}
-
-	if (multiSlots === false) {
-		return new Set();
-	}
-
-	return expandSlotTargets(multiSlots, groups, slotKeys, 'Multi slot');
 };
 
 const assertValidRequiredVariantConfig = (
@@ -742,9 +729,9 @@ export const compileConfig = (
 	]);
 
 	const normalizedVariants = createNormalizedVariants(variants);
-	const resolvedRequiredVariants = resolveRequiredVariants(
+	const resolvedRequiredVariants = resolveNames(
 		requiredVariants,
-		normalizedVariants
+		keys(normalizedVariants)
 	);
 	const { variantData, combinationCount, maxEntries } = createVariantData(
 		normalizedVariants,
@@ -752,10 +739,11 @@ export const compileConfig = (
 		resolvedRequiredVariants
 	);
 
-	const resolvedMultiSlots = resolveMultiSlots(
-		multiSlots,
+	const resolvedMultiSlots = expandSlotTargets(
+		resolveNames(multiSlots, [...slotKeys]),
 		resolvedGroups,
-		slotKeys
+		slotKeys,
+		'Multi slot'
 	);
 
 	assertValidRequiredVariantConfig(
