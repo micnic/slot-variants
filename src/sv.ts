@@ -3,16 +3,11 @@ import {
 	coerceVariantKeyValue,
 	compileConfig,
 	isConfig,
-	isReservedProp,
-	isSlotObjectValue
+	isReservedProp
 } from './sv/compile.ts';
 import { createExplain } from './sv/explain.ts';
 import { hasParents, recordConfig, resolveExtend } from './sv/extend.ts';
-import {
-	createRun,
-	createRunPlan,
-	mergeSlotObjectIntoResult
-} from './sv/run.ts';
+import { createRun, createRunPlan, getClassBySlot } from './sv/run.ts';
 import {
 	type AnyFn,
 	type CacheValue,
@@ -58,17 +53,9 @@ const mergeMultiSlotClass = (
 	innerClass: RuntimeClassValue,
 	slotKey: string
 ): RuntimeClassValue => {
-	const { targetKeys, groups } = config;
-	let merged: Record<string, ClassValue> = {};
-
-	if (isSlotObjectValue(outerClass, targetKeys)) {
-		// Expanding groups gathers every outer class per slot, in order, so
-		// the inner class appended below follows all of them.
-		merged = mergeSlotObjectIntoResult({}, outerClass, groups);
-	} else if (outerClass !== undefined) {
-		// A `base: undefined` key would only add a no-op merge step
-		merged.base = outerClass;
-	}
+	// Expanding groups gathers every outer class per slot, in order, so the
+	// inner class appended below follows all of them.
+	const merged = getClassBySlot(config, outerClass);
 
 	merged[slotKey] = cn(merged[slotKey], innerClass);
 

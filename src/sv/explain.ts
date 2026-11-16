@@ -1,12 +1,11 @@
 import { cn } from '../cn.ts';
-import { isSlotObjectValue } from './compile.ts';
 import {
 	applyPostProcess,
 	assertResolvedVariants,
 	buildRaw,
+	getClassBySlot,
 	matchCompounds,
 	mergeClassPropIntoResult,
-	mergeSlotObjectIntoResult,
 	readVariantState,
 	resolvePresetValues,
 	resolveVariants,
@@ -19,7 +18,6 @@ import {
 	type ExplainedSlot,
 	type ExplainedVariant,
 	type ResolvedVariantState,
-	type RuntimeClassValue,
 	type RuntimeProps,
 	type RuntimeVariantValue,
 	type VariantData,
@@ -86,24 +84,6 @@ const getExplainedCompound = (
 		index: compound - variantCount,
 		class: className
 	};
-};
-
-/**
- * Lists, per slot, the classes the call's `class`/`className` adds to it.
- */
-const getClassBySlot = (
-	config: CompiledConfig,
-	classProp: RuntimeClassValue | undefined
-): Record<string, string> => {
-	if (!classProp) {
-		return {};
-	}
-
-	if (isSlotObjectValue(classProp, config.targetKeys)) {
-		return mergeSlotObjectIntoResult({}, classProp, config.groups);
-	}
-
-	return { base: cn(classProp) };
 };
 
 const toSlotRecord = (value: CacheValue): Record<string, string> => {

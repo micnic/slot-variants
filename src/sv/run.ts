@@ -268,6 +268,24 @@ export const mergeSlotObjectIntoResult = (
 	return result;
 };
 
+/**
+ * Lists, per slot, the classes a `class`/`className` prop adds to it.
+ */
+export const getClassBySlot = (
+	config: CompiledConfig,
+	classProp: RuntimeClassValue | undefined
+): Record<string, string> => {
+	if (!classProp) {
+		return {};
+	}
+
+	if (isSlotObjectValue(classProp, config.targetKeys)) {
+		return mergeSlotObjectIntoResult({}, classProp, config.groups);
+	}
+
+	return { base: cn(classProp) };
+};
+
 export const mergeClassPropIntoResult = (
 	config: CompiledConfig,
 	baseResult: CacheValue,
