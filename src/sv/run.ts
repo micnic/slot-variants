@@ -714,14 +714,14 @@ const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 };
 
 /**
- * The interpreted counterpart of `getVariantSource`, for every variant.
+ * The interpreted counterpart of `getVariantSource`, for every variant, given
+ * the values of the call's preset.
  */
 export const resolveVariants = (
-	config: CompiledConfig,
 	plan: RunPlan,
-	props: RuntimeProps
+	props: RuntimeProps,
+	presetValues: ResolvedVariantState | undefined
 ): ResolvedVariant[] => {
-	const presetValues = resolvePresetValues(config.presets, props.preset);
 	const defaultProps = createDefaultProps(plan, props, presetValues);
 
 	return plan.variants.map((variant) => {
@@ -864,7 +864,11 @@ const getEntry = (
  */
 const createInterpretedRun =
 	(config: CompiledConfig, plan: RunPlan) => (props: RuntimeProps) => {
-		const resolved = resolveVariants(config, plan, props);
+		const resolved = resolveVariants(
+			plan,
+			props,
+			resolvePresetValues(config.presets, props.preset)
+		);
 
 		assertResolvedVariants(plan, resolved);
 

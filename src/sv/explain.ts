@@ -117,11 +117,11 @@ const getDroppedClasses = (raw: string, result: string) => {
 export const createExplain =
 	(config: CompiledConfig, plan: RunPlan) =>
 	(props: RuntimeProps = {}): RuntimeExplanation => {
-		const resolved = resolveVariants(config, plan, props);
+		const presetValues = resolvePresetValues(config.presets, props.preset);
+		const resolved = resolveVariants(plan, props, presetValues);
 
 		assertResolvedVariants(plan, resolved);
 
-		const presetValues = resolvePresetValues(config.presets, props.preset);
 		const variants: RuntimeExplanation['variants'] = {};
 
 		for (const { variant, value } of resolved) {
