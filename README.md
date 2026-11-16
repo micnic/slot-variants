@@ -863,6 +863,7 @@ button.compoundSlots;               // [] — none configured
 button.getVariantValues('size');    // ['sm', 'lg']
 button.getVariantValues('intent');  // ['primary', 'danger']
 button.splitProps(props);           // [variantProps, restProps]
+button.explain(props);              // where each class of the call comes from
 button.getMaxEntries();             // 6 — distinct variant combinations
 button.getCacheSize();              // current number of cached entries
 button.clearCache();                // clear all cached entries
@@ -893,6 +894,45 @@ const Button = (props: ButtonProps) => {
   return <button className={button(variantProps)} {...rest} />;
 };
 ```
+
+#### Explaining a Call
+
+`explain()` takes the same props as the function and shows where each class of that call comes from: each variant's value and its source (`'prop'`, `'preset'`, `'default'` or `'unset'`), then, per slot, the slot's own classes, what each variant added, the matched compound entries, the `class`/`className` classes, the classes before and after `postProcess`, and the ones `postProcess` dropped:
+
+```typescript
+const button = sv('btn', {
+  variants: {
+    size: { sm: 'text-sm', lg: 'text-lg' },
+    intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+  },
+  compoundVariants: [
+    { size: 'lg', intent: 'primary', class: 'uppercase' }
+  ],
+  defaultVariants: { intent: 'primary' },
+  introspection: true
+});
+
+button.explain({ size: 'lg', class: 'mt-2' });
+// {
+//   variants: {
+//     size: { value: 'lg', from: 'prop' },
+//     intent: { value: 'primary', from: 'default' }
+//   },
+//   slots: {
+//     base: {
+//       base: 'btn',
+//       variants: { size: 'text-lg', intent: 'bg-blue-500' },
+//       compounds: [{ kind: 'compoundVariants', index: 0, class: 'uppercase' }],
+//       class: 'mt-2',
+//       raw: 'btn text-lg bg-blue-500 uppercase mt-2',
+//       result: 'btn text-lg bg-blue-500 uppercase mt-2',
+//       dropped: []
+//     }
+//   }
+// }
+```
+
+A component without slots is reported under `slots.base`. A compound entry's `kind` and `index` point into `compoundVariants` or `compoundSlots`. With `postProcess: twMerge`, `dropped` lists the classes it removed. Invalid props throw like a call does, and the cache is left untouched.
 
 ### Errors & Validation
 

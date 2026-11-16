@@ -12,6 +12,7 @@ import './sv/compound-variants.test.ts';
 import './sv/config-only.test.ts';
 import './sv/create-sv.test.ts';
 import './sv/default-variants.test.ts';
+import './sv/explain.test.ts';
 import './sv/function-defaults.test.ts';
 import './sv/groups.test.ts';
 import './sv/introspection.test.ts';

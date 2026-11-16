@@ -66,7 +66,7 @@ type RequiredVariantPlan = { key: string; index: number };
  * tests, and each compound entry's fragments. The generated code and the
  * interpreter both run from it.
  */
-type RunPlan = {
+export type RunPlan = {
 	slots: readonly SlotPlan[];
 	variants: readonly VariantPlan[];
 	tables: readonly FragmentTable[];
@@ -122,7 +122,7 @@ const createInvalidValueError = (
 	value: RuntimeVariantValue | undefined
 ) => new Error(`Invalid value "${value}" for variant "${variant}"`);
 
-const resolvePresetValues = (
+export const resolvePresetValues = (
 	presets: Record<string, ResolvedVariantState>,
 	presetName: string | undefined
 ) => {
@@ -135,7 +135,7 @@ const resolvePresetValues = (
 
 // Props and presets are plain objects, so a variant named like an
 // `Object.prototype` member (`toString`) is read as an own property only.
-const readVariantState = <T>(
+export const readVariantState = <T>(
 	state: Record<string, T>,
 	variant: VariantData
 ): T | undefined => {
@@ -231,7 +231,7 @@ const resolveVariantValue = (
 	return defaultValue;
 };
 
-const applyPostProcess = (
+export const applyPostProcess = (
 	postProcess: ((className: string) => string) | undefined,
 	value: CacheValue
 ) => {
@@ -268,7 +268,7 @@ export const mergeSlotObjectIntoResult = (
 	return result;
 };
 
-const mergeClassPropIntoResult = (
+export const mergeClassPropIntoResult = (
 	config: CompiledConfig,
 	baseResult: CacheValue,
 	classProp: RuntimeClassValue
@@ -377,7 +377,7 @@ const createVariantPlan = (
 	return { data: variant, undefinedId, tables, tests };
 };
 
-const createRunPlan = (config: CompiledConfig): RunPlan => {
+export const createRunPlan = (config: CompiledConfig): RunPlan => {
 	const { slotEntries, variantData, compounds, requiredVariants } = config;
 	const required = new Set(requiredVariants);
 	const tables: FragmentTable[] = [];
@@ -698,7 +698,7 @@ const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 /**
  * The interpreted counterpart of `getVariantSource`, for every variant.
  */
-const resolveVariants = (
+export const resolveVariants = (
 	config: CompiledConfig,
 	plan: RunPlan,
 	props: RuntimeProps
@@ -727,7 +727,7 @@ const resolveVariants = (
 /**
  * The interpreted counterpart of `getValidationSource`.
  */
-const assertResolvedVariants = (
+export const assertResolvedVariants = (
 	plan: RunPlan,
 	resolved: readonly ResolvedVariant[]
 ) => {
@@ -745,9 +745,29 @@ const assertResolvedVariants = (
 };
 
 /**
+ * Tells, per compound entry, whether the resolved variants match it.
+ */
+export const matchCompounds = (
+	plan: RunPlan,
+	resolved: readonly ResolvedVariant[]
+): boolean[] => {
+	const matched = plan.compounds.map(() => true);
+
+	for (const { variant, id } of resolved) {
+		for (const { compound, ids } of variant.tests) {
+			if (!ids.has(id)) {
+				matched[compound] = false;
+			}
+		}
+	}
+
+	return matched;
+};
+
+/**
  * The interpreted counterpart of `getBuildSource`.
  */
-const buildRaw = (
+export const buildRaw = (
 	plan: RunPlan,
 	resolved: readonly ResolvedVariant[]
 ): CacheValue => {
@@ -756,17 +776,11 @@ const buildRaw = (
 
 		return { key, parts };
 	});
-	const matched = plan.compounds.map(() => true);
+	const matched = matchCompounds(plan, resolved);
 
 	for (const { variant, id } of resolved) {
 		for (const { slot, fragments } of variant.tables) {
 			slots[slot]?.parts.push(fragments[id]);
-		}
-
-		for (const { compound, ids } of variant.tests) {
-			if (!ids.has(id)) {
-				matched[compound] = false;
-			}
 		}
 	}
 
@@ -852,8 +866,7 @@ const createInterpretedRun =
  * runtime code generation is not allowed, like under a strict CSP, the same
  * plan is interpreted on each call instead.
  */
-export const createRun = (config: CompiledConfig): RunFn => {
-	const plan = createRunPlan(config);
+export const createRun = (config: CompiledConfig, plan: RunPlan): RunFn => {
 	const source = getRunSource(config, plan);
 
 	const context: CompiledRunContext = {

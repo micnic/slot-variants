@@ -6,7 +6,12 @@ import {
 	isReservedProp,
 	isSlotObjectValue
 } from './sv/compile.ts';
-import { createRun, mergeSlotObjectIntoResult } from './sv/run.ts';
+import { createExplain } from './sv/explain.ts';
+import {
+	createRun,
+	createRunPlan,
+	mergeSlotObjectIntoResult
+} from './sv/run.ts';
 import {
 	type AnyFn,
 	type CacheValue,
@@ -168,7 +173,8 @@ const splitVariantProps = (
 };
 
 const createVariantFn = (config: CompiledConfig) => {
-	const variantFn = createRuntimeVariantFn(config, createRun(config));
+	const plan = createRunPlan(config);
+	const variantFn = createRuntimeVariantFn(config, createRun(config, plan));
 
 	// Conditionally add introspection properties if enabled in config
 	if (!config.introspection) {
@@ -192,6 +198,7 @@ const createVariantFn = (config: CompiledConfig) => {
 		compoundSlots: config.originalCompoundSlots,
 		splitProps: (props: Record<string, unknown>) =>
 			splitVariantProps(config.normalizedVariants, props),
+		explain: createExplain(config, plan),
 		getVariantValues: (key: string) =>
 			keys(config.normalizedVariants[key] ?? {}).map(
 				coerceVariantKeyValue

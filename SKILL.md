@@ -211,7 +211,7 @@ button({ size: null });      // no size classes at all, default and preset skipp
 
 ### 15. Use Introspection for Single Source of Truth
 
-Set `introspection: true` to expose configuration and cache members on the returned function (off by default): `base` (merged base classes), `variantKeys`, `variants`, `slotKeys`, `slots`, `groupKeys`, `groups`, `defaultVariants`, `requiredVariants`, `multiSlots`, `presetKeys`, `presets`, `compoundVariants`, `compoundSlots`, `getVariantValues(key)`, `splitProps(props)`, `getMaxEntries()`, `getCacheSize()`, and `clearCache()`. `splitProps(props)` returns `[variantProps, restProps]`, so the rest can be forwarded to an element.
+Set `introspection: true` to expose configuration and cache members on the returned function (off by default): `base` (merged base classes), `variantKeys`, `variants`, `slotKeys`, `slots`, `groupKeys`, `groups`, `defaultVariants`, `requiredVariants`, `multiSlots`, `presetKeys`, `presets`, `compoundVariants`, `compoundSlots`, `getVariantValues(key)`, `splitProps(props)`, `explain(props)`, `getMaxEntries()`, `getCacheSize()`, and `clearCache()`. `splitProps(props)` returns `[variantProps, restProps]`, so the rest can be forwarded to an element. `explain(props)` reports where each class of that call comes from (variant values and their source, then per slot: base, variant, compound and `class` classes, the result before/after `postProcess`, and the classes it dropped) — use it to debug a missing or unexpected class.
 
 ## Common Patterns
 

@@ -484,6 +484,70 @@ type SplitProps<V extends AnyVariants> = <const T extends object>(
 	Prettify<Omit<T, VariantPropKeys<V>>>
 ];
 
+// The call's arguments: `props` is optional unless a variant is required.
+type VariantFnArgs<
+	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
+	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, G, V>,
+	R extends RequiredVariants<V>
+> = [RequiredVariantKeys<V, R>] extends [never]
+	? [props?: Prettify<Props<S, G, V, P, R>> | undefined]
+	: [props: Prettify<Props<S, G, V, P, R>>];
+
+/** Where an explained variant value came from. */
+export type VariantSource = 'prop' | 'preset' | 'default' | 'unset';
+
+/** A variant's value in an explained call, and where it came from. */
+export type ExplainedVariant<T> = {
+	/** The value the call used, or `undefined` if the variant was unset. */
+	value: T | undefined;
+	/** Whether the value was passed, came from the preset or the defaults. */
+	from: VariantSource;
+};
+
+/** A compound entry that matched an explained call. */
+export type ExplainedCompound = {
+	/** The config array the entry is in. */
+	kind: 'compoundVariants' | 'compoundSlots';
+	/** The entry's position in that array. */
+	index: number;
+	/** The classes the entry added to the slot. */
+	class: string;
+};
+
+/** Where each class of one slot came from in an explained call. */
+export type ExplainedSlot<K extends string> = {
+	/** The slot's own classes. */
+	base: string;
+	/** The classes each variant added, for variants that added any. */
+	variants: Partial<Record<K, string>>;
+	/** The matched compound entries that added classes, in config order. */
+	compounds: ExplainedCompound[];
+	/** The classes the call's `class`/`className` added. */
+	class: string;
+	/** All of the slot's classes, before `postProcess`. */
+	raw: string;
+	/** The slot's classes as the call returns them. */
+	result: string;
+	/** Classes in `raw` that `postProcess` removed from `result`. */
+	dropped: string[];
+};
+
+/** Where every class of a call came from, as returned by `explain()`. */
+type Explanation<
+	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
+	V extends MaybeVariants<S, G>
+> = {
+	/** Each variant's value and where it came from. */
+	variants: {
+		[K in StringKeyof<V>]: ExplainedVariant<VariantPropType<V[K]>>;
+	};
+	/** Each slot's classes, broken down by where they came from. */
+	slots: Record<SlotKey<S>, ExplainedSlot<StringKeyof<V>>>;
+};
+
 type IntrospectionValues<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
@@ -522,6 +586,8 @@ type IntrospectionValues<
 	compoundSlots: CompoundSlots<S, G, V, P>;
 	/** Splits props into this function's own and the rest, to forward on. */
 	splitProps: SplitProps<V>;
+	/** Shows where each class of a call with these props came from. */
+	explain: (...args: VariantFnArgs<S, G, V, P, R>) => Explanation<S, G, V>;
 	/** Lists every valid value for a given variant. */
 	getVariantValues: V extends undefined
 		? (key: never) => never[]
@@ -543,11 +609,7 @@ export type VariantFn<
 	R extends RequiredVariants<V>,
 	I extends boolean
 > = {
-	(
-		...args: [RequiredVariantKeys<V, R>] extends [never]
-			? [props?: Prettify<Props<S, G, V, P, R>> | undefined]
-			: [props: Prettify<Props<S, G, V, P, R>>]
-	): ReturnValue<S, G, V, P, M>;
+	(...args: VariantFnArgs<S, G, V, P, R>): ReturnValue<S, G, V, P, M>;
 } & (I extends true ? IntrospectionValues<S, G, V, P, M, R> : unknown);
 
 export type NonConfigClassArg<T> =
