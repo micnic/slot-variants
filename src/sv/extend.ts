@@ -61,7 +61,15 @@ export const hasParents = (
 ): extend is ExtendInput =>
 	extend !== undefined && toParentList(extend).length > 0;
 
-const mergeClass = (inherited: ConfigClassValue, own: ConfigClassValue) => {
+/**
+ * Merges two values that may be missing: a missing side yields the other,
+ * otherwise `merge` joins them, inherited value first.
+ */
+const mergeOptional = <T extends string | object>(
+	inherited: T | undefined,
+	own: T | undefined,
+	merge: MergeValue<T>
+) => {
 	if (inherited === undefined) {
 		return own;
 	}
@@ -70,50 +78,32 @@ const mergeClass = (inherited: ConfigClassValue, own: ConfigClassValue) => {
 		return inherited;
 	}
 
-	return cn(inherited, own);
+	return merge(inherited, own);
 };
 
 /**
- * Merges two records key by key: a key on one side only is kept, a key on
- * both is merged with `mergeValue`, inherited value first.
+ * Builds a merge of two records key by key: a key on one side only is kept,
+ * a key on both is merged with `mergeValue`, inherited value first.
  */
-const mergeRecords = <T>(
-	inherited: Readonly<Record<string, T>>,
-	own: Readonly<Record<string, T>>,
-	mergeValue: MergeValue<T>
-) => {
-	const result: Record<string, T> = { ...inherited };
+const mergeRecords =
+	<T>(mergeValue: MergeValue<T>): MergeValue<Readonly<Record<string, T>>> =>
+	(inherited, own) => {
+		const result: Record<string, T> = { ...inherited };
 
-	for (const [key, ownValue] of entries(own)) {
-		// Read as an own key, so names like `toString` are not inherited
-		const inheritedValue = getOwn(result, key);
+		for (const [key, ownValue] of entries(own)) {
+			// Read as an own key, so names like `toString` are not inherited
+			const inheritedValue = getOwn(result, key);
 
-		// An `undefined` value on either side adds nothing to merge
-		if (inheritedValue === undefined) {
-			result[key] = ownValue;
-		} else if (ownValue !== undefined) {
-			result[key] = mergeValue(inheritedValue, ownValue);
+			// An `undefined` value on either side adds nothing to merge
+			if (inheritedValue === undefined) {
+				result[key] = ownValue;
+			} else if (ownValue !== undefined) {
+				result[key] = mergeValue(inheritedValue, ownValue);
+			}
 		}
-	}
 
-	return result;
-};
-
-const mergeOptionalRecords = <T>(
-	inherited: Readonly<Record<string, T>> | undefined,
-	own: Readonly<Record<string, T>> | undefined,
-	mergeValue: MergeValue<T>
-) => {
-	if (inherited === undefined) {
-		return own;
-	}
-
-	if (own === undefined) {
-		return inherited;
-	}
-
-	return mergeRecords(inherited, own, mergeValue);
-};
+		return result;
+	};
 
 const toSlotRecord = (value: RawVariantValue): RawSlotRecord => {
 	if (isPlainObject(value)) {
@@ -135,7 +125,10 @@ const mergeVariantValue = (
 		return cn(inherited, own);
 	}
 
-	return mergeRecords(toSlotRecord(inherited), toSlotRecord(own), mergeClass);
+	return mergeRecords<ConfigClassValue>(cn)(
+		toSlotRecord(inherited),
+		toSlotRecord(own)
+	);
 };
 
 // A boolean shorthand stands for its `true` value.
@@ -148,10 +141,9 @@ const toVariantRecord = (variant: RawVariant): RawVariantRecord => {
 };
 
 const mergeVariant = (inherited: RawVariant, own: RawVariant): RawVariant =>
-	mergeRecords(
+	mergeRecords(mergeVariantValue)(
 		toVariantRecord(inherited),
-		toVariantRecord(own),
-		mergeVariantValue
+		toVariantRecord(own)
 	);
 
 const joinUnique = (
@@ -165,17 +157,6 @@ const mergePresetValues = <T extends object>(inherited: T, own: T) => ({
 	...inherited,
 	...own
 });
-
-const concatOptional = <T>(
-	inherited: readonly T[] | undefined,
-	own: readonly T[] | undefined
-) => {
-	if (inherited === undefined && own === undefined) {
-		return undefined;
-	}
-
-	return [...(inherited ?? []), ...(own ?? [])];
-};
 
 // `true` names every one of `all`, `false` or unset none.
 const resolveNames = (names: NameList, all: readonly string[]) => {
@@ -244,36 +225,46 @@ const mergeMultiSlots = (
  * behaviour options win when set.
  */
 const mergeConfigs = (inherited: RawConfig, own: RawConfig): RawConfig => {
-	const variants = mergeOptionalRecords(
+	const variants = mergeOptional(
 		inherited.variants,
 		own.variants,
-		mergeVariant
+		mergeRecords(mergeVariant)
 	);
-	const slots = mergeOptionalRecords(inherited.slots, own.slots, mergeClass);
+	const slots = mergeOptional(
+		inherited.slots,
+		own.slots,
+		mergeRecords<ConfigClassValue>(cn)
+	);
 
 	return {
-		base: mergeClass(inherited.base, own.base),
+		base: mergeOptional(inherited.base, own.base, cn),
 		slots,
-		groups: mergeOptionalRecords(inherited.groups, own.groups, joinUnique),
+		groups: mergeOptional(
+			inherited.groups,
+			own.groups,
+			mergeRecords(joinUnique)
+		),
 		multiSlots: mergeMultiSlots(inherited, own, slots),
 		variants,
-		presets: mergeOptionalRecords(
+		presets: mergeOptional(
 			inherited.presets,
 			own.presets,
-			mergePresetValues
+			mergeRecords(mergePresetValues)
 		),
-		compoundSlots: concatOptional(
+		compoundSlots: mergeOptional(
 			inherited.compoundSlots,
-			own.compoundSlots
+			own.compoundSlots,
+			(inheritedList, ownList) => [...inheritedList, ...ownList]
 		),
-		compoundVariants: concatOptional(
+		compoundVariants: mergeOptional(
 			inherited.compoundVariants,
-			own.compoundVariants
+			own.compoundVariants,
+			(inheritedList, ownList) => [...inheritedList, ...ownList]
 		),
-		defaultVariants: mergeOptionalRecords(
+		defaultVariants: mergeOptional(
 			inherited.defaultVariants,
 			own.defaultVariants,
-			keepOwn
+			mergeRecords(keepOwn)
 		),
 		requiredVariants: mergeRequiredVariants(inherited, own, variants),
 		cacheSize: own.cacheSize ?? inherited.cacheSize,
