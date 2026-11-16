@@ -242,6 +242,17 @@ const mergeConfig = (defaults: RawConfig | undefined, config: RawConfig) => {
 };
 
 /**
+ * Folds the base args into the config's `base`, ahead of its own classes.
+ */
+const foldBaseArgs = (baseArgs: ClassValue[], config: RawConfig): RawConfig => {
+	if (baseArgs.length === 0) {
+		return config;
+	}
+
+	return { ...config, base: cn(...baseArgs, config.base) };
+};
+
+/**
  * Resolves what a call compiles: its base args and its config over the
  * factory defaults, with the configs of the components it extends merged in
  * first. Base args then count as the config's own `base`, so they follow the
@@ -258,11 +269,7 @@ const resolveCall = (
 		return { baseArgs, config: mergeConfig(defaults, config) };
 	}
 
-	const own: RawConfig = { ...config };
-
-	if (baseArgs.length > 0) {
-		own.base = cn(...baseArgs, config.base);
-	}
+	const own = foldBaseArgs(baseArgs, config);
 
 	// These two are joined with the inherited ones rather than replacing
 	// them, so their defaults belong to the config's own side.
@@ -279,18 +286,10 @@ const resolveCall = (
  * The config a component extending this one inherits: base args folded into
  * `base`, and the introspection it resolved to.
  */
-const toInheritedConfig = ({ baseArgs, config }: ResolvedCall): RawConfig => {
-	const inherited: RawConfig = {
-		...config,
-		introspection: config.introspection ?? false
-	};
-
-	if (baseArgs.length > 0) {
-		inherited.base = cn(...baseArgs, config.base);
-	}
-
-	return inherited;
-};
+const toInheritedConfig = ({ baseArgs, config }: ResolvedCall): RawConfig => ({
+	...foldBaseArgs(baseArgs, config),
+	introspection: config.introspection ?? false
+});
 
 const buildVariantFn = (
 	defaults: RawConfig | undefined,
