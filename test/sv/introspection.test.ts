@@ -213,6 +213,107 @@ t.test('requiredVariants is empty array when none required', (t) => {
 	t.end();
 });
 
+t.test('base merges base args, base field and slots.base', (t) => {
+	const card = sv('border', ['rounded-lg'], {
+		base: 'shadow',
+		slots: {
+			base: 'p-4',
+			header: 'font-bold'
+		},
+		introspection: true
+	});
+
+	t.equal(card.base, 'border rounded-lg shadow p-4', 'merged base classes');
+
+	t.end();
+});
+
+t.test('base is empty string when no base classes', (t) => {
+	const box = sv({
+		variants: {
+			size: { sm: 'text-sm' }
+		},
+		introspection: true
+	});
+
+	t.equal(box.base, '', 'empty base');
+
+	t.end();
+});
+
+t.test('base is not post-processed', (t) => {
+	const button = sv('btn', {
+		postProcess: (className) => className.toUpperCase(),
+		introspection: true
+	});
+
+	t.equal(button.base, 'btn', 'raw base classes');
+	t.equal(button(), 'BTN', 'call result still post-processed');
+
+	t.end();
+});
+
+t.test('compoundVariants exposes the compoundVariants config', (t) => {
+	const compoundVariants = [
+		{ intent: 'primary', size: 'lg', class: 'uppercase' },
+		{ intent: ['primary', 'danger'], className: 'font-bold' }
+	] as const;
+
+	const button = sv('btn', {
+		variants: {
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' },
+			size: { sm: 'text-sm', lg: 'text-lg' }
+		},
+		compoundVariants,
+		introspection: true
+	});
+
+	t.equal(
+		button.compoundVariants,
+		compoundVariants,
+		'same array as passed in'
+	);
+
+	t.end();
+});
+
+t.test('compoundSlots exposes the compoundSlots config', (t) => {
+	const compoundSlots = [
+		{ slots: ['header', 'body'], class: 'px-6' },
+		{ size: 'sm', slots: ['body'], class: 'text-sm' }
+	] as const;
+
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold',
+			body: 'py-4'
+		},
+		variants: {
+			size: { sm: 'p-2', lg: 'p-6' }
+		},
+		compoundSlots,
+		introspection: true
+	});
+
+	t.equal(card.compoundSlots, compoundSlots, 'same array as passed in');
+
+	t.end();
+});
+
+t.test('compound fields are empty arrays when not configured', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm' }
+		},
+		introspection: true
+	});
+
+	t.same(button.compoundVariants, [], 'no compound variants');
+	t.same(button.compoundSlots, [], 'no compound slots');
+
+	t.end();
+});
+
 t.test('introspection with all properties combined', (t) => {
 	const card = sv('rounded-lg', {
 		slots: {
@@ -943,3 +1044,37 @@ void _gvvColsValues;
 void _assertGvvColsValues;
 void _gvvMaxEntries;
 void _assertGvvMaxEntries;
+// --- base and compound type tests ---
+
+const _cmpFn = sv('btn', {
+	slots: {
+		icon: 'size-4'
+	},
+	variants: {
+		size: { sm: 'text-sm', lg: 'text-lg' }
+	},
+	compoundVariants: [{ size: 'lg', class: 'uppercase' }],
+	compoundSlots: [{ size: 'sm', slots: ['icon'], class: 'size-3' }],
+	introspection: true
+});
+
+type AssertCmpBase = typeof _cmpFn.base extends string ? true : false;
+const _assertCmpBase: AssertCmpBase = true;
+
+// Entries keep the config's variant value types
+type CmpVariantSize = (typeof _cmpFn.compoundVariants)[number]['size'];
+type AssertCmpVariantSize = 'lg' extends CmpVariantSize ? true : false;
+const _assertCmpVariantSize: AssertCmpVariantSize = true;
+
+type AssertCmpVariantSizeNarrow = 'xl' extends CmpVariantSize ? true : false;
+const _assertCmpVariantSizeNarrow: AssertCmpVariantSizeNarrow = false;
+
+type CmpSlotTargets = (typeof _cmpFn.compoundSlots)[number]['slots'][number];
+type AssertCmpSlotTargets = 'icon' extends CmpSlotTargets ? true : false;
+const _assertCmpSlotTargets: AssertCmpSlotTargets = true;
+
+void _cmpFn;
+void _assertCmpBase;
+void _assertCmpVariantSize;
+void _assertCmpVariantSizeNarrow;
+void _assertCmpSlotTargets;

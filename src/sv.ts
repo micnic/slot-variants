@@ -176,6 +176,7 @@ const createVariantFn = (config: CompiledConfig) => {
 	}
 
 	return assign(variantFn, {
+		base: config.base,
 		variants: config.originalVariants,
 		variantKeys: keys(config.normalizedVariants),
 		slots: config.slots,
@@ -187,6 +188,8 @@ const createVariantFn = (config: CompiledConfig) => {
 		multiSlots: [...config.multiSlots],
 		presets: config.presets,
 		presetKeys: keys(config.presets),
+		compoundVariants: config.originalCompoundVariants,
+		compoundSlots: config.originalCompoundSlots,
 		splitProps: (props: Record<string, unknown>) =>
 			splitVariantProps(config.normalizedVariants, props),
 		getVariantValues: (key: string) =>

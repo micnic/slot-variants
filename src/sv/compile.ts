@@ -721,10 +721,8 @@ export const compileConfig = (
 
 	const { base: baseSlot, ...otherSlots } = slots;
 
-	const normalizedSlots: Slots = {
-		base: cn(...baseArgs, configBase, baseSlot),
-		...otherSlots
-	};
+	const base = cn(...baseArgs, configBase, baseSlot);
+	const normalizedSlots: Slots = { base, ...otherSlots };
 
 	const slotEntries = entries(normalizedSlots);
 	const slotKeys: ReadonlySet<string> = new Set(keys(normalizedSlots));
@@ -808,6 +806,7 @@ export const compileConfig = (
 	});
 
 	return {
+		base,
 		slots,
 		slotEntries,
 		slotKeys,
@@ -821,6 +820,8 @@ export const compileConfig = (
 		requiredVariants: resolvedRequiredVariants,
 		multiSlots: resolvedMultiSlots,
 		presets,
+		originalCompoundVariants: compoundVariants,
+		originalCompoundSlots: compoundSlots,
 		compounds: [...compiledCompoundVariants, ...compiledCompoundSlots],
 		...createCache(cacheSize),
 		// Every combination needs a safe integer key to be cached.

@@ -320,6 +320,7 @@ export type RuntimeProps = RuntimeVariantState & {
 };
 
 export type CompiledConfig = {
+	base: string;
 	slots: Slots;
 	slotEntries: readonly SlotEntry[];
 	slotKeys: ReadonlySet<string>;
@@ -333,6 +334,8 @@ export type CompiledConfig = {
 	requiredVariants: readonly string[];
 	multiSlots: ReadonlySet<string>;
 	presets: Record<string, ResolvedVariantState>;
+	originalCompoundVariants: RawCompoundVariants;
+	originalCompoundSlots: RawCompoundSlots;
 	compounds: readonly CompiledCompound[];
 	cache: VariantCache;
 	cacheable: boolean;
@@ -489,6 +492,8 @@ type IntrospectionValues<
 	M extends MultiSlots<S, G>,
 	R extends RequiredVariants<V>
 > = {
+	/** Base classes: the base args, `base` and `slots.base`, merged. */
+	base: string;
 	/** The `variants` config passed in, as-is. */
 	variants: V extends undefined ? Record<string, never> : V;
 	/** Names of all declared variants. */
@@ -511,6 +516,10 @@ type IntrospectionValues<
 	presets: P extends undefined ? Record<string, never> : P;
 	/** Names of all declared presets. */
 	presetKeys: P extends undefined ? [] : StringKeyof<P>[];
+	/** The `compoundVariants` config passed in, as-is, or `[]` if unset. */
+	compoundVariants: CompoundVariants<S, G, V, P>;
+	/** The `compoundSlots` config passed in, as-is, or `[]` if unset. */
+	compoundSlots: CompoundSlots<S, G, V, P>;
 	/** Splits props into this function's own and the rest, to forward on. */
 	splitProps: SplitProps<V>;
 	/** Lists every valid value for a given variant. */
@@ -561,6 +570,10 @@ export type RawConfig = Config<
 	RequiredVariants<AnyVariants>,
 	MaybeIntrospection
 >;
+
+type RawCompoundVariants = NonNullable<RawConfig['compoundVariants']>;
+
+type RawCompoundSlots = NonNullable<RawConfig['compoundSlots']>;
 
 /**
  * The options `createSV()` applies to every config-based call. Only options

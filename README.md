@@ -836,6 +836,9 @@ const button = sv('btn', {
   presets: {
     cta: { size: 'lg', intent: 'primary' }
   },
+  compoundVariants: [
+    { size: 'lg', intent: 'danger', class: 'uppercase' }
+  ],
   defaultVariants: {
     size: 'sm'
   },
@@ -843,6 +846,7 @@ const button = sv('btn', {
   introspection: true
 });
 
+button.base;                        // 'btn' — base args, `base` and `slots.base`, merged
 button.variantKeys;                 // ['size', 'intent']
 button.variants;                    // { size: { sm: 'text-sm', lg: 'text-lg' }, intent: { ... } }
 button.slotKeys;                    // ['base', 'icon']
@@ -854,6 +858,8 @@ button.requiredVariants;            // ['intent']
 button.multiSlots;                  // [] — no slots exposed as functions
 button.presetKeys;                  // ['cta']
 button.presets;                     // { cta: { size: 'lg', intent: 'primary' } }
+button.compoundVariants;            // [{ size: 'lg', intent: 'danger', class: 'uppercase' }]
+button.compoundSlots;               // [] — none configured
 button.getVariantValues('size');    // ['sm', 'lg']
 button.getVariantValues('intent');  // ['primary', 'danger']
 button.splitProps(props);           // [variantProps, restProps]
