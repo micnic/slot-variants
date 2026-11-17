@@ -111,3 +111,57 @@ export function createSlotsCardConfig() {
 		}
 	} as const;
 }
+// A child config for `extend` on top of the simple button: it adds base
+// classes, a value to an inherited variant, classes to an inherited value, a
+// new variant and a compound, and overrides a default. No class conflicts with
+// the parent, so the output is the same with or without tailwind-merge.
+export function createExtendedButtonConfig() {
+	return {
+		base: 'inline-flex gap-2',
+		variants: {
+			color: {
+				primary: 'text-white',
+				danger: 'bg-red-500'
+			},
+			size: {
+				xl: 'text-xl'
+			},
+			rounded: {
+				none: 'rounded-none',
+				full: 'rounded-full'
+			}
+		},
+		compoundVariants: [
+			{ color: 'danger', rounded: 'full', class: 'ring-2' }
+		],
+		defaultVariants: {
+			size: 'sm',
+			rounded: 'none'
+		}
+	} as const;
+}
+
+// A child config for `extend` on top of the slots card: it adds a slot, classes
+// to inherited slots and values, and a new variant. It redefines every parent
+// variant, as tailwind-variants orders a child's variants before parent-only
+// ones. Not `as const`: under `extend`, tailwind-variants' types reject
+// readonly slot class objects.
+export function createExtendedSlotsCardConfig() {
+	return {
+		slots: {
+			header: 'flex items-center',
+			icon: 'card-icon shrink-0'
+		},
+		variants: {
+			size: {
+				lg: { icon: 'size-6', footer: 'text-lg' }
+			},
+			variant: {
+				filled: { footer: 'border-gray-300' }
+			},
+			elevated: {
+				true: { base: 'shadow-md', footer: 'bg-white' }
+			}
+		}
+	};
+}

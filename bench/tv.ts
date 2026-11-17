@@ -12,6 +12,8 @@ import {
 } from './compare.ts';
 import {
 	createCompoundButtonConfig,
+	createExtendedButtonConfig,
+	createExtendedSlotsCardConfig,
 	createSimpleButtonConfig,
 	createSlotsCardConfig
 } from './fixtures.ts';
@@ -26,11 +28,29 @@ type TvCompetitors<S, V> = {
 	tv: V;
 };
 
-type TvSlots = {
+// The props a card slot function is called with in the per-slot cases.
+type CardSlotProps = {
+	size?: 'sm' | 'md' | 'lg';
+	variant?: 'outlined' | 'filled';
+};
+
+type CardSlotFn = (props?: CardSlotProps) => string;
+
+// A card result whose slots are all functions: every tailwind-variants slots
+// result, and an sv() one built with `multiSlots: true`.
+type CardSlotFns = {
+	base: CardSlotFn;
+	header: CardSlotFn;
+	body: CardSlotFn;
+	footer: CardSlotFn;
+};
+
+type ExtendedCardSlotFns = {
 	base: () => string;
 	header: () => string;
 	body: () => string;
 	footer: () => string;
+	icon: () => string;
 };
 
 const tvNoMerge = createTV({ twMerge: false });
@@ -39,13 +59,22 @@ const bench = new Bench({ warmupIterations: 1000 });
 
 const compoundButtonConfig = createCompoundButtonConfig();
 
-// Materializes a tailwind-variants slots result into a plain record of strings,
-// the shape sv's slot output already has, so both do the same work.
-const materializeTvSlots = (slots: TvSlots) => ({
+// Materializes a slot-functions result into a plain record of strings, the
+// shape sv's default slot output already has, so both do the same work.
+// `props` is passed to every slot function call.
+const materializeSlots = (slots: CardSlotFns, props?: CardSlotProps) => ({
+	base: slots.base(props),
+	header: slots.header(props),
+	body: slots.body(props),
+	footer: slots.footer(props)
+});
+
+const materializeExtendedSlots = (slots: ExtendedCardSlotFns) => ({
 	base: slots.base(),
 	header: slots.header(),
 	body: slots.body(),
-	footer: slots.footer()
+	footer: slots.footer(),
+	icon: slots.icon()
 });
 
 // The competitors for one config: `createSv` builds it with sv(), `createTv`
@@ -134,14 +163,103 @@ addTvComparison(
 	'slots defaults',
 	slots,
 	(fn) => fn(),
-	(fn) => materializeTvSlots(fn())
+	(fn) => materializeSlots(fn())
 );
 
 addTvComparison(
 	'slots with props',
 	slots,
 	(fn) => fn({ size: 'lg', variant: 'filled' }),
-	(fn) => materializeTvSlots(fn({ size: 'lg', variant: 'filled' }))
+	(fn) => materializeSlots(fn({ size: 'lg', variant: 'filled' }))
+);
+
+// --- Multi slots (every sv() slot a function, like tailwind-variants) ---
+
+const multiSlots = createCompetitors(
+	(options) =>
+		sv('card', {
+			...createSlotsCardConfig(),
+			multiSlots: true,
+			...options
+		}),
+	(build) => build({ base: 'card', ...createSlotsCardConfig() })
+);
+
+addTvComparison(
+	'multi slots defaults',
+	multiSlots,
+	(fn) => materializeSlots(fn()),
+	(fn) => materializeSlots(fn())
+);
+
+addTvComparison(
+	'multi slots with props',
+	multiSlots,
+	(fn) => materializeSlots(fn({ size: 'lg', variant: 'filled' })),
+	(fn) => materializeSlots(fn({ size: 'lg', variant: 'filled' }))
+);
+
+addTvComparison(
+	'multi slots with slot props',
+	multiSlots,
+	(fn) => materializeSlots(fn(), { size: 'lg', variant: 'filled' }),
+	(fn) => materializeSlots(fn(), { size: 'lg', variant: 'filled' })
+);
+
+// --- Extend ---
+
+const extended = createCompetitors(
+	(options) =>
+		sv({
+			extend: sv('btn', { ...createSimpleButtonConfig(), ...options }),
+			...createExtendedButtonConfig()
+		}),
+	(build) => {
+		const parent = build({ base: 'btn', ...createSimpleButtonConfig() });
+
+		return build({
+			extend: parent,
+			...createExtendedButtonConfig(),
+			compoundVariants: [...createExtendedButtonConfig().compoundVariants]
+		});
+	}
+);
+
+addTvComparison(
+	'extend defaults',
+	extended,
+	(fn) => fn(),
+	(fn) => fn()
+);
+
+addTvComparison(
+	'extend with props',
+	extended,
+	(fn) => fn({ color: 'danger', size: 'lg', rounded: 'full' }),
+	(fn) => fn({ color: 'danger', size: 'lg', rounded: 'full' })
+);
+
+const extendedSlots = createCompetitors(
+	(options) =>
+		sv({
+			extend: sv('card', { ...createSlotsCardConfig(), ...options }),
+			...createExtendedSlotsCardConfig()
+		}),
+	(build) => {
+		const parent = build({ base: 'card', ...createSlotsCardConfig() });
+
+		return build({ extend: parent, ...createExtendedSlotsCardConfig() });
+	}
+);
+
+addTvComparison(
+	'extend slots with props',
+	extendedSlots,
+	(fn) => fn({ size: 'lg', variant: 'filled', elevated: true }),
+	(fn) =>
+		materializeExtendedSlots(
+			fn({ size: 'lg', variant: 'filled', elevated: true })
+		)
 );
 
 await bench.run();
