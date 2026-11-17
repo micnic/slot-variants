@@ -79,6 +79,9 @@ const findTemplateContainer = (
 	return null;
 };
 
+// The innermost scope the program node owns — the module scope holding the
+// file's own bindings, rather than the global one `getScope()` hands back for
+// a Program.
 export const getModuleScope = (sourceCode: SourceCode): Scope.Scope =>
 	/* c8 ignore next -- a Program node always owns a scope */
 	sourceCode.scopeManager.acquire(sourceCode.ast, true) ??
@@ -146,10 +149,6 @@ export const findLookupVariable = (
 
 	return findVariable(scope, node.name);
 };
-
-// The innermost scope the program node owns — the module scope holding the
-// file's own bindings, rather than the global one `getScope()` hands back for
-// a Program.
 
 // The one definition `name` resolves to, with the scope it's declared in, or
 // null when it's unbound or declared more than once.

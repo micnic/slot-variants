@@ -76,24 +76,6 @@ const resolveNamespaceExportName = (
 	return property.name;
 };
 
-// The export an alias-resolved callee identifier names, when it's a tracked
-// named import rather than a local binding shadowing one.
-const resolveIdentifierExportName = (
-	match: MatchContext,
-	identifier: Identifier
-): string | null => {
-	const exportName = match.names.exportByLocal.get(identifier.name);
-
-	if (
-		exportName === undefined ||
-		!identifierResolvesToImport(match, identifier)
-	) {
-		return null;
-	}
-
-	return exportName;
-};
-
 // The export a call names, either as a namespace member (`SV.sv(…)`) or through
 // a named import read via same-file `const` aliases (`const cx = cn; cx(…)`).
 // A callee bound to a `createSV(...)` call is a pre-configured `sv()`, so it
@@ -123,8 +105,19 @@ const resolveExportName = (
 
 	const resolved = match.ctx.resolve(node.callee);
 
+	// An alias-resolved identifier names an export only as a tracked named
+	// import, not as a local binding shadowing one.
 	if (resolved.type === 'Identifier') {
-		return resolveIdentifierExportName(match, resolved);
+		const exportName = match.names.exportByLocal.get(resolved.name);
+
+		if (
+			exportName === undefined ||
+			!identifierResolvesToImport(match, resolved)
+		) {
+			return null;
+		}
+
+		return exportName;
 	}
 
 	if (

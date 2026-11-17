@@ -330,16 +330,6 @@ export const literalStyles = (
 	matchers: EMPTY_MATCHERS
 });
 
-const cnStyles = (
-	call: CallMatch,
-	sourceCode: SourceCode,
-	node: CallExpression
-): InternalStyles => {
-	return getOrCreate(stylesCache, node, () =>
-		buildLiteralStyles(collectCnEntries(call.args, sourceCode))
-	);
-};
-
 /**
  * Reads an already resolved node as a class-valued slot-variants expression: a
  * `cn()` call, a config-less `sv()` call, a slotless variant function's result,
@@ -365,7 +355,11 @@ export const readStyledClasses = (
 	// function, so `resolveInvocation` yields null for it.
 	if (direct !== null && isClassListMatch(direct)) {
 		return {
-			styles: cnStyles(direct, ctx.sourceCode, resolved),
+			styles: getOrCreate(stylesCache, resolved, () =>
+				buildLiteralStyles(
+					collectCnEntries(direct.args, ctx.sourceCode)
+				)
+			),
 			slot: 'base',
 			matchers: EMPTY_MATCHERS
 		};
