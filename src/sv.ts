@@ -84,14 +84,30 @@ const mergeSlotFnProps = (
 	return mergedProps;
 };
 
+// Reads one slot's class from a variant function result.
+const readSlot = (result: CacheValue, slotKey: string): string => {
+	if (typeof result === 'string') {
+		return result;
+	}
+
+	return cn(result[slotKey]);
+};
+
+// `outerResult` is the outer call's result, which a slot function called
+// without props reads from instead of running the variant function again.
 const buildSlotFn =
 	(
 		config: CompiledConfig,
 		run: RunFn,
 		outerProps: RuntimeProps,
+		outerResult: CacheValue,
 		slotKey: string
 	) =>
-	(innerProps: RuntimeProps = {}) => {
+	(innerProps?: RuntimeProps) => {
+		if (innerProps === undefined) {
+			return readSlot(outerResult, slotKey);
+		}
+
 		const outerClass = outerProps.class ?? outerProps.className;
 		const innerClass = innerProps.class ?? innerProps.className;
 
@@ -106,13 +122,7 @@ const buildSlotFn =
 			);
 		}
 
-		const result = run(mergedProps);
-
-		if (typeof result === 'string') {
-			return result;
-		}
-
-		return cn(result[slotKey]);
+		return readSlot(run(mergedProps), slotKey);
 	};
 
 const applyMultiSlots = (
@@ -122,14 +132,14 @@ const applyMultiSlots = (
 	result: CacheValue
 ) => {
 	if (typeof result === 'string') {
-		return { base: buildSlotFn(config, run, props, 'base') };
+		return { base: buildSlotFn(config, run, props, result, 'base') };
 	}
 
 	// Overwriting a copied key keeps its place, so slots stay in order.
 	const output: MultiSlotResult = { ...result };
 
 	for (const slotKey of config.multiSlots) {
-		output[slotKey] = buildSlotFn(config, run, props, slotKey);
+		output[slotKey] = buildSlotFn(config, run, props, result, slotKey);
 	}
 
 	return output;

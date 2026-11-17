@@ -243,6 +243,48 @@ t.test('multiSlots slot function merges outer slot-object class', (t) => {
 	t.end();
 });
 
+t.test('multiSlots slot function without props reuses the outer call', (t) => {
+	let runs = 0;
+
+	const card = sv('border', {
+		slots: {
+			header: 'font-bold'
+		},
+		variants: {
+			size: {
+				sm: { base: 'p-2', header: 'text-sm' }
+			}
+		},
+		multiSlots: true,
+		cacheSize: 0,
+		postProcess: (className) => {
+			runs += 1;
+
+			return className;
+		}
+	});
+
+	const result = card({ size: 'sm', class: { header: 'ring' } });
+	const outerRuns = runs;
+
+	t.equal(result.base(), 'border p-2', 'base reads the outer result');
+	t.equal(
+		result.header(),
+		'font-bold text-sm ring',
+		'slot reads the outer result, class included'
+	);
+	t.equal(runs, outerRuns, 'no variant function run after the outer call');
+
+	t.equal(
+		result.header({}),
+		'font-bold text-sm ring',
+		'an empty props object gives the same class'
+	);
+	t.ok(runs > outerRuns, 'slot function with props runs again');
+
+	t.end();
+});
+
 t.test('multiSlots slot function keeps outer props on undefined', (t) => {
 	const card = sv({
 		slots: {
