@@ -1329,17 +1329,8 @@ const isBareNumberValue = (segment: string): boolean =>
 // An untyped CSS-variable shorthand takes the prefix's widest value type —
 // `text-(--x)` is a color, the same bucket a multi-segment value lands in, not
 // the `size` its single segment would suggest.
-const variableCategory = (spec: PrefixSpec): string => {
-	if (spec.variable !== undefined) {
-		return spec.variable;
-	}
-
-	if (spec.long !== undefined) {
-		return spec.long;
-	}
-
-	return spec.fallback;
-};
+const variableCategory = (spec: PrefixSpec): string =>
+	spec.variable ?? spec.long ?? spec.fallback;
 
 // The category an arbitrary value names on its own: from a type hint, from the
 // CSS-variable shorthand rule above, or from a bare number, which carries no

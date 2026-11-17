@@ -333,20 +333,6 @@ const insertAsFirstPropertyFix = (
 	return fixer.insertTextBefore(first, `${text}, `);
 };
 
-// Only made once `isBareLeadingArgument` holds, so nothing but the argument,
-// moved along whole, and its comma is removed.
-const removeLeadingArgFix = (
-	fixer: Rule.RuleFixer,
-	sourceCode: SourceCode,
-	arg: Expression | SpreadElement,
-	configNode: ObjectExpression
-): Rule.Fix => {
-	const [argStart] = sourceCode.getRange(arg);
-	const [configStart] = sourceCode.getRange(configNode);
-
-	return fixer.removeRange([argStart, configStart]);
-};
-
 // The fix removing a base source from where it is now, or null when that
 // would delete a comment.
 const removeBaseSourceFix = (
@@ -356,7 +342,12 @@ const removeBaseSourceFix = (
 	source: BaseSource
 ): Rule.Fix | null => {
 	if (source.style === 'separateArg') {
-		return removeLeadingArgFix(fixer, sourceCode, source.node, configNode);
+		// Only made once `isBareLeadingArgument` holds, so nothing but the
+		// argument, moved along whole, and its comma is removed.
+		const [argStart] = sourceCode.getRange(source.node);
+		const [configStart] = sourceCode.getRange(configNode);
+
+		return fixer.removeRange([argStart, configStart]);
 	}
 
 	return removePropertyFix(fixer, sourceCode, source.container, source.node);

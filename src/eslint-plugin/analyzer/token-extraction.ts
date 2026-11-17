@@ -529,6 +529,24 @@ export const forEachStaticItem = (
 	}
 };
 
+// Visits each statically readable item of the array `node` resolves to, itself
+// resolved. Nothing when `node` is no array.
+const forEachResolvedItem = (
+	node: Node | undefined,
+	sourceCode: SourceCode,
+	visit: NodeVisitor
+) => {
+	const list = resolveArray(node, sourceCode);
+
+	if (list === null) {
+		return;
+	}
+
+	forEachStaticItem(list.elements, (item) => {
+		visit(resolveStaticValue(item, sourceCode));
+	});
+};
+
 // Boolean shorthand when not a plain object; any record is keyed by value.
 export const isBooleanShorthandVariant = (node: Node): boolean =>
 	node.type !== 'ObjectExpression';
@@ -538,16 +556,8 @@ export const forEachStringLiteralElement = (
 	sourceCode: SourceCode,
 	visit: (value: string) => void
 ) => {
-	const list = resolveArray(node, sourceCode);
-
-	if (list === null) {
-		return;
-	}
-
-	forEachStaticItem(list.elements, (element) => {
-		const text = getStaticStringText(
-			resolveStaticValue(element, sourceCode)
-		);
+	forEachResolvedItem(node, sourceCode, (element) => {
+		const text = getStaticStringText(element);
 
 		if (text !== null) {
 			visit(text);
@@ -560,15 +570,7 @@ export const forEachCompoundClass = (
 	sourceCode: SourceCode,
 	visit: (cls: Node, compound: ReadonlyMap<string, Node>) => void
 ) => {
-	const list = resolveArray(node, sourceCode);
-
-	if (list === null) {
-		return;
-	}
-
-	forEachStaticItem(list.elements, (item) => {
-		const element = resolveStaticValue(item, sourceCode);
-
+	forEachResolvedItem(node, sourceCode, (element) => {
 		if (element.type !== 'ObjectExpression') {
 			return;
 		}
@@ -640,15 +642,9 @@ export const getStaticMatcherValues = (
 		return new Set([scalar]);
 	}
 
-	const list = resolveArray(node, sourceCode);
-
-	if (list === null) {
-		return null;
-	}
-
 	const values = new Set<string>();
 
-	forEachStaticItem(list.elements, (element) => {
+	forEachResolvedItem(node, sourceCode, (element) => {
 		const value = getStaticMatcherValue(element, sourceCode);
 
 		if (value !== null) {

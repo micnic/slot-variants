@@ -534,14 +534,11 @@ export const createForwardingScan = (
 			for (const item of pending) {
 				item.run((parts) => {
 					positions.push({ parts, site: item.site });
+					trackForwarding(parts);
 				});
 			}
 
 			// Every forward is known before any component site is checked.
-			for (const position of positions) {
-				trackForwarding(position.parts);
-			}
-
 			for (const position of positions) {
 				handlers.onPosition?.(position.parts, position.site);
 			}

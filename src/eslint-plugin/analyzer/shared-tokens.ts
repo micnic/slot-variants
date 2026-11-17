@@ -97,6 +97,13 @@ type SharedTokensFixPlan = {
 
 type SingleMatcher = { key: string; value: Node; cls: Node };
 
+type CompoundKind = 'compoundVariants' | 'compoundSlots';
+
+const COMPOUND_KINDS: readonly CompoundKind[] = [
+	'compoundVariants',
+	'compoundSlots'
+];
+
 const intersectSharedTokensStep = (
 	sharedTokens: SharedEntries,
 	valueMap: TokenEntriesBySlot
@@ -581,16 +588,12 @@ const analyzeVariantSharedTokens = (
 	slotNames: ReadonlySet<string>,
 	scope: SharedTokensScope
 ) => {
-	const variantValue = resolveStaticValue(rawValue, context.sourceCode);
+	const valueEntries = getStrictProperties(
+		resolveStaticValue(rawValue, context.sourceCode)
+	);
 
-	// Boolean shorthand has a single branch — no cross-value comparison.
-	if (isBooleanShorthandVariant(variantValue)) {
-		return;
-	}
-
-	const valueEntries = getStrictProperties(variantValue);
-
-	// A spread or computed key means we can't see every value, so we'd
+	// Boolean shorthand has a single branch — no cross-value comparison. A
+	// spread or computed key means we can't see every value, so we'd
 	// over-flag tokens that may differ in the unseen branches. An empty record
 	// has no tokens to compare and is reported by no-empty-classes instead. A
 	// single value needs no comparison — the variant is covered, so that one
@@ -768,7 +771,7 @@ const getSingleKeyCompoundRemedy = (
 const checkCompoundEntryForSingleKey = (
 	context: Rule.RuleContext,
 	element: ObjectExpression,
-	kind: 'compoundVariants' | 'compoundSlots',
+	kind: CompoundKind,
 	variantsMap: ReadonlyMap<string, Node>,
 	getRemoval: GetEntryRemoval,
 	scope: CompoundScope
@@ -784,14 +787,10 @@ const checkCompoundEntryForSingleKey = (
 		context.sourceCode
 	);
 
-	if (!variantValue) {
-		return;
-	}
-
 	// Boolean shorthand (which includes any non-object value) has only one
 	// branch — there's no "other" value to hold the class for the matcher's
 	// false case, so this isn't the same simplification.
-	if (isBooleanShorthandVariant(variantValue)) {
+	if (!variantValue || isBooleanShorthandVariant(variantValue)) {
 		return;
 	}
 
@@ -849,7 +848,7 @@ const getEntryRemoval = (
 const checkCompoundsForSingleKey = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression,
-	kind: 'compoundVariants' | 'compoundSlots',
+	kind: CompoundKind,
 	variantsMap: ReadonlyMap<string, Node>,
 	scope: CompoundScope
 ) => {
@@ -933,20 +932,12 @@ export const analyzeSharedTokens = (
 
 	const suggestOnly = inheritsPostProcess || config.has('postProcess');
 
-	checkCompoundsForSingleKey(
-		context,
-		configNode,
-		'compoundVariants',
-		variantsMap,
-		{ canEdit, suggestOnly }
-	);
-	checkCompoundsForSingleKey(
-		context,
-		configNode,
-		'compoundSlots',
-		variantsMap,
-		{ canEdit, suggestOnly }
-	);
+	for (const kind of COMPOUND_KINDS) {
+		checkCompoundsForSingleKey(context, configNode, kind, variantsMap, {
+			canEdit,
+			suggestOnly
+		});
+	}
 
 	if (variantsMap.size === 0) {
 		return;

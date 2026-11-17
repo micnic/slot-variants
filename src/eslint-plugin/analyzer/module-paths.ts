@@ -33,11 +33,7 @@ const isFile = (path: string): boolean => {
 	try {
 		const stats = statSync(path, { throwIfNoEntry: false });
 
-		if (stats === undefined) {
-			return false;
-		}
-
-		return stats.isFile();
+		return stats !== undefined && stats.isFile();
 	} catch {
 		return false;
 	}

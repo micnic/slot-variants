@@ -146,22 +146,6 @@ export const createStyledContext = (
 	resolve: (node) => resolveStaticValue(node, sourceCode)
 });
 
-// Later matchers win: a call site's props over the config's `defaultVariants`,
-// and a slot call's own props over the ones already fixed when the result was
-// produced.
-const mergeMatchers = (
-	outer: VariantMatchers,
-	inner: VariantMatchers
-): VariantMatchers => {
-	const merged = new Map(outer);
-
-	for (const [key, values] of inner) {
-		merged.set(key, values);
-	}
-
-	return merged;
-};
-
 // The props object a call site passes, read through `const` bindings. Empty for
 // a missing or spread argument, whose props can't be read statically.
 const getCallProps = (
@@ -175,16 +159,23 @@ const getCallProps = (
 	return getProperties(ctx.resolve(arg));
 };
 
-// The matchers a call applies: `base`, refined by the props it passes.
+// The matchers a call applies: `base`, refined by the props it passes. Later
+// matchers win: a call site's props over the config's `defaultVariants`, and a
+// slot call's own props over the ones already fixed when the result was
+// produced.
 const buildCallMatchers = (
 	arg: Expression | SpreadElement | undefined,
 	base: VariantMatchers,
 	ctx: StyledContext
 ): VariantMatchers =>
-	mergeMatchers(
-		base,
-		readMatchers(getCallProps(arg, ctx), NON_MATCHER_KEYS, ctx.sourceCode)
-	);
+	new Map([
+		...base,
+		...readMatchers(
+			getCallProps(arg, ctx),
+			NON_MATCHER_KEYS,
+			ctx.sourceCode
+		)
+	]);
 
 /**
  * The call a callee names through its `const` binding — the `sv(config)` a

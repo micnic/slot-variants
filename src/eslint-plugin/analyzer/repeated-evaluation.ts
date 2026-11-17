@@ -50,11 +50,9 @@ const SVELTE_MODULE_ATTRIBUTES: ReadonlySet<string> = new Set([
 const isTemplateNode = (node: Node): boolean => {
 	const type: string = node.type;
 
-	if (type === VUE_EXPRESSION_CONTAINER) {
-		return true;
-	}
-
-	return type.startsWith(SVELTE_NODE_PREFIX);
+	return (
+		type === VUE_EXPRESSION_CONTAINER || type.startsWith(SVELTE_NODE_PREFIX)
+	);
 };
 
 const isSvelteScriptElement = (
