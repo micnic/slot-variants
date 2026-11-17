@@ -1,4 +1,5 @@
 import type { Rule } from 'eslint';
+import { getOrCreate } from '../map-utils.ts';
 import {
 	buildExclusiveGroupMap,
 	type ConflictOptions,
@@ -42,26 +43,11 @@ const noOption: ConflictRuleOption = {};
 // the options read from it, and the conflict keys they cache, are reused.
 const readOptions = new WeakMap<ConflictRuleOption, ConflictOptions>();
 
-const createConflictOptions = (
-	option: ConflictRuleOption
-): ConflictOptions => ({
-	exclusiveGroups: buildExclusiveGroupMap(option.exclusiveGroups),
-	prefix: normalizePrefix(option.prefix),
-	conflictKeys: new Map()
-});
-
 export const readConflictOptions = (
 	option: ConflictRuleOption = noOption
-): ConflictOptions => {
-	const cached = readOptions.get(option);
-
-	if (cached !== undefined) {
-		return cached;
-	}
-
-	const options = createConflictOptions(option);
-
-	readOptions.set(option, options);
-
-	return options;
-};
+): ConflictOptions =>
+	getOrCreate(readOptions, option, () => ({
+		exclusiveGroups: buildExclusiveGroupMap(option.exclusiveGroups),
+		prefix: normalizePrefix(option.prefix),
+		conflictKeys: new Map()
+	}));

@@ -1,5 +1,5 @@
 import type { Rule } from 'eslint';
-import type { CallExpression, Node, ObjectExpression } from 'estree';
+import type { CallExpression, ObjectExpression } from 'estree';
 import { type CallMatch, isLastArgument } from '../analyzer/call-matching.ts';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import { getStrictProperties } from '../analyzer/properties.ts';
@@ -13,46 +13,29 @@ import {
 } from '../analyzer/styled-values.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
-const NO_DEFAULTS: ReadonlyMap<string, Node> = new Map();
-
-// The defaults a call inherits from the `createSV()` factory its callee comes
-// from — none for `sv()` itself — or null when they can't be read.
-const getInheritedDefaults = (
-	ctx: StyledContext,
-	node: CallExpression
-): ReadonlyMap<string, Node> | null => {
-	// The `createSV(...)` call the callee is bound to; none for `sv` itself.
-	const factory = resolveCalleeCall(node.callee, ctx);
-
-	if (factory === null) {
-		return NO_DEFAULTS;
-	}
-
-	const [defaults] = factory.arguments;
-
-	if (defaults === undefined) {
-		return NO_DEFAULTS;
-	}
-
-	return getStrictProperties(ctx.resolve(defaults));
-};
-
 // A call through a `createSV()`-derived function takes the factory's `base`
 // unless it passes its own, so one is only created where the factory's
 // defaults are known to have none; any other default may hold a `postProcess`.
+// `sv()` itself, or a factory called without defaults, inherits nothing.
 const getInheritedCall = (
 	ctx: StyledContext,
 	node: CallExpression
 ): Pick<SharedTokensCall, 'canCreateBase' | 'inheritsPostProcess'> => {
-	const defaults = getInheritedDefaults(ctx, node);
+	const defaults = resolveCalleeCall(node.callee, ctx)?.arguments[0];
 
-	if (defaults === null) {
+	if (defaults === undefined) {
+		return { canCreateBase: true, inheritsPostProcess: false };
+	}
+
+	const properties = getStrictProperties(ctx.resolve(defaults));
+
+	if (properties === null) {
 		return { canCreateBase: false, inheritsPostProcess: true };
 	}
 
 	return {
-		canCreateBase: !defaults.has('base'),
-		inheritsPostProcess: defaults.has('postProcess')
+		canCreateBase: !properties.has('base'),
+		inheritsPostProcess: properties.has('postProcess')
 	};
 };
 

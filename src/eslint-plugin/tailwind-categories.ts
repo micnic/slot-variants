@@ -2242,19 +2242,10 @@ const computeConflictKey = (
 export const getConflictKey = (
 	token: string,
 	options: ConflictOptions
-): ConflictKeyInfo | null => {
-	const cached = options.conflictKeys.get(token);
-
-	if (cached !== undefined) {
-		return cached;
-	}
-
-	const info = computeConflictKey(token, options);
-
-	options.conflictKeys.set(token, info);
-
-	return info;
-};
+): ConflictKeyInfo | null =>
+	getOrCreate(options.conflictKeys, token, () =>
+		computeConflictKey(token, options)
+	);
 
 // The pairwise form of the grouping `no-conflicting-classes` does over whole
 // token sets: two tokens collide when they share a conflict key, or when their

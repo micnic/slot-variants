@@ -29,23 +29,6 @@ const TRACKED_EXPORTS = new Set(['sv', 'cn', 'createSV']);
 // the file's AST and scopes, which the rules share, so it is worked out once.
 const matchedCalls = new WeakMap<CallExpression, CallMatch | null>();
 
-const trackNamedImport = (
-	specifier: ImportDeclaration['specifiers'][number],
-	exportByLocal: Map<string, string>
-) => {
-	if (specifier.type !== 'ImportSpecifier') {
-		return;
-	}
-
-	const importedName = getExportName(specifier.imported);
-
-	if (!TRACKED_EXPORTS.has(importedName)) {
-		return;
-	}
-
-	exportByLocal.set(specifier.local.name, importedName);
-};
-
 // A tracked-name identifier could still be a local binding that shadows the
 // import (e.g. a function parameter named `cn`), so confirm it resolves to
 // an import binding.
@@ -175,13 +158,15 @@ const matchFactoryCall = (
 	return { config: null, args: [], isFactoryConfig: true };
 };
 
-// Matches a call by the export its callee names: `sv` and `cn` use their own
-// conventions, and `createSV` names the factory call that validates defaults.
-const matchExportCall = (
+// Classifies a call as sv/cn-style by the export its callee names: `sv` and
+// `cn` use their own conventions, and `createSV` names the factory call that
+// validates defaults. Null for anything untracked.
+const matchTrackedCall = (
 	match: MatchContext,
-	node: CallExpression,
-	exportName: string
+	node: CallExpression
 ): CallMatch | null => {
+	const exportName = resolveExportName(match, node);
+
 	if (exportName === 'sv') {
 		return matchSvCall(node, match.ctx.resolve);
 	}
@@ -195,21 +180,6 @@ const matchExportCall = (
 	}
 
 	return null;
-};
-
-// Classifies a call as sv/cn-style by the export its callee names. Null for
-// anything untracked.
-const matchTrackedCall = (
-	match: MatchContext,
-	node: CallExpression
-): CallMatch | null => {
-	const exportName = resolveExportName(match, node);
-
-	if (exportName === null) {
-		return null;
-	}
-
-	return matchExportCall(match, node, exportName);
 };
 
 // Every import of the file, read up front rather than as the traversal meets
@@ -261,7 +231,15 @@ const collectTrackedNames = (program: AST.Program): TrackedNames => {
 				continue;
 			}
 
-			trackNamedImport(specifier, names.exportByLocal);
+			if (specifier.type !== 'ImportSpecifier') {
+				continue;
+			}
+
+			const importedName = getExportName(specifier.imported);
+
+			if (TRACKED_EXPORTS.has(importedName)) {
+				names.exportByLocal.set(specifier.local.name, importedName);
+			}
 		}
 	}
 
