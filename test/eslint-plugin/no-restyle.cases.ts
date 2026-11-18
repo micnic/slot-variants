@@ -48,7 +48,23 @@ const RESTYLE_PRESET = `const b = sv({
 	presets: { big: { size: 'lg' } }
 });\n`;
 
+// A variant with no default, which a call leaves unset unless it passes it.
+const RESTYLE_OPTIONAL = `const b = sv({
+	base: 'flex',
+	variants: { size: { sm: 'p-2', lg: 'text-lg' }, on: 'm-2' },
+	compoundVariants: [{ size: 'sm', on: true, class: 'gap-2' }],
+	presets: { small: { size: 'sm' } }
+});\n`;
+
 export const RESTYLE_VALID = [
+	// A variant with no default stays unset when a call with readable props
+	// doesn't pass it, so none of its values' classes apply.
+	IMPORT + RESTYLE_OPTIONAL + "b({ class: 'p-4 m-4 gap-4' });",
+	IMPORT + RESTYLE_OPTIONAL + "b({ size: undefined, class: 'p-4' });",
+	IMPORT_SV_CN + RESTYLE_OPTIONAL + "cn(b(), 'p-4 m-4');",
+	IMPORT_SV_CN +
+		RESTYLE_OPTIONAL +
+		"const props = { on: true };\ncn(b(props), 'p-4');",
 	// The two branches of a ternary never render together.
 	IMPORT_SV_CN +
 		"const card = sv({ base: 'p-2' });\nconst c = card();\ncn(on ? c : 'p-4');",
@@ -286,6 +302,52 @@ export const RESTYLE_VUE_VALID = [
 ];
 
 export const RESTYLE_INVALID = [
+	// A variant with no default may still be set: by a prop or a preset, by
+	// props or a preset that can't be read in full, or by a parent in
+	// `extend`.
+	{
+		code: IMPORT + RESTYLE_OPTIONAL + "b({ size: s, class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT + RESTYLE_OPTIONAL + "b({ preset: 'small', class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code: IMPORT + RESTYLE_OPTIONAL + "b({ preset: name, class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code: IMPORT + RESTYLE_OPTIONAL + "b({ ...rest, class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT +
+			"const b = sv({ extend: parent, variants: { size: { sm: 'p-2' } } });\nb({ class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT +
+			"const b = sv({ variants: { size: { sm: 'p-2' } }, defaultVariants: { size: pick() } });\nb({ class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT +
+			"const b = sv({ variants: { size: { sm: 'p-2' } }, defaultVariants: { ...d } });\nb({ class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// The compound needs both values, so it applies once both are passed.
+	{
+		code:
+			IMPORT +
+			RESTYLE_OPTIONAL +
+			"b({ size: 'sm', on: true, class: 'gap-4' });",
+		errors: [restyle('gap-4', 'gap-2')]
+	},
 	// Slots destructured off a result, and a slot read by a string key.
 	{
 		code:

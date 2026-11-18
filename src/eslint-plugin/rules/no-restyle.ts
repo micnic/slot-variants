@@ -53,9 +53,10 @@ import { getOrCreate } from '../map-utils.ts';
  *
  * Classes that can't render together are not flagged: the variant values a
  * call site fixes (directly, through its `preset` or through
- * `defaultVariants`, or unset with `null`) rule out every variant and
- * compound entry that requires a different value, and the two branches of a
- * ternary are never checked against each other.
+ * `defaultVariants`, or unset with `null` or by not passing a variant that
+ * has no default) rule out every variant and compound entry that requires a
+ * different value, and the two branches of a ternary are never checked
+ * against each other.
  *
  * The `exclusiveGroups` and `prefix` options mean exactly what they do in
  * `no-conflicting-classes`.
