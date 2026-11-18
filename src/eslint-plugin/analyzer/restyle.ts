@@ -1,6 +1,7 @@
 import type { Rule } from 'eslint';
 import type {
 	CallExpression,
+	ConditionalExpression,
 	Identifier,
 	MemberExpression,
 	Node
@@ -36,6 +37,20 @@ import {
 } from './token-model.ts';
 
 /**
+ * The side of each ternary a part was written in: `true` for the consequent,
+ * `false` for the alternate.
+ */
+export type BranchPath = ReadonlyMap<ConditionalExpression, boolean>;
+
+// The branch path of each part, by its index; a part outside any ternary has
+// no entry.
+type PartPaths = {
+	styled: BranchPath[];
+	literals: BranchPath[];
+	dynamic: BranchPath[];
+};
+
+/**
  * One class-list position, split into the parts slot-variants produces itself,
  * the literal classes written alongside them, and the values that resolve to
  * neither.
@@ -45,7 +60,15 @@ export type ClassParts = {
 	literals: Entry[];
 	dynamic: Array<Identifier | MemberExpression>;
 	merged: boolean;
+	paths: PartPaths;
 };
+
+// How many parts of each kind a position held before a branch was walked.
+type PartCounts = { styled: number; literals: number; dynamic: number };
+
+// Whether the styled part and the literal at these indexes can render
+// together.
+type CanPair = (styled: number, literal: number) => boolean;
 
 type KeyedToken = { token: string; info: ConflictKeyInfo };
 
@@ -61,15 +84,64 @@ type InternalClasses = {
 
 type LiteralReporter = (
 	styled: ReadonlyArray<StyledClasses>,
-	literals: ReadonlyArray<Entry>
+	literals: ReadonlyArray<Entry>,
+	canPair?: CanPair
 ) => void;
+
+const EMPTY_PATH: BranchPath = new Map();
 
 export const emptyParts = (): ClassParts => ({
 	styled: [],
 	literals: [],
 	dynamic: [],
-	merged: false
+	merged: false,
+	paths: { styled: [], literals: [], dynamic: [] }
 });
+
+/** The branch path of the part at `index`. */
+export const pathAt = (paths: readonly BranchPath[], index: number) =>
+	paths[index] ?? EMPTY_PATH;
+
+/** Whether two parts sit in different branches of one ternary. */
+export const areExclusivePaths = (a: BranchPath, b: BranchPath): boolean => {
+	for (const [node, side] of a) {
+		const other = b.get(node);
+
+		if (other !== undefined && other !== side) {
+			return true;
+		}
+	}
+
+	return false;
+};
+
+/** Whether a position's styled part and literal can render together. */
+export const canPairParts =
+	(parts: ClassParts): CanPair =>
+	(styled, literal) =>
+		!areExclusivePaths(
+			pathAt(parts.paths.styled, styled),
+			pathAt(parts.paths.literals, literal)
+		);
+
+const countParts = (parts: ClassParts): PartCounts => ({
+	styled: parts.styled.length,
+	literals: parts.literals.length,
+	dynamic: parts.dynamic.length
+});
+
+// Adds a ternary's side to the paths of the parts from `from` to `to`.
+const markRange = (
+	paths: BranchPath[],
+	from: number,
+	to: number,
+	node: ConditionalExpression,
+	side: boolean
+) => {
+	for (let index = from; index < to; index += 1) {
+		paths[index] = new Map(pathAt(paths, index)).set(node, side);
+	}
+};
 
 /**
  * A config-less `sv()`/`cn()` call: a class list in its own right, whose
@@ -144,8 +216,8 @@ export const collectParts = (
 	}
 
 	if (resolved.type === 'ConditionalExpression') {
-		collectParts(resolved.consequent, ctx, parts);
-		collectParts(resolved.alternate, ctx, parts);
+		collectBranch(resolved, resolved.consequent, true, ctx, parts);
+		collectBranch(resolved, resolved.alternate, false, ctx, parts);
 
 		return;
 	}
@@ -176,6 +248,34 @@ export const collectParts = (
 	}
 
 	extractCnTokens(resolved, parts.literals, ctx.sourceCode);
+};
+
+/**
+ * Walks one branch of a ternary, marking the parts it adds with its side, so
+ * they are never paired with the other branch's parts.
+ */
+const collectBranch = (
+	node: ConditionalExpression,
+	branch: Node,
+	side: boolean,
+	ctx: StyledContext,
+	parts: ClassParts
+) => {
+	const start = countParts(parts);
+
+	collectParts(branch, ctx, parts);
+
+	const { paths } = parts;
+
+	markRange(paths.styled, start.styled, parts.styled.length, node, side);
+	markRange(
+		paths.literals,
+		start.literals,
+		parts.literals.length,
+		node,
+		side
+	);
+	markRange(paths.dynamic, start.dynamic, parts.dynamic.length, node, side);
 };
 
 /**
@@ -331,7 +431,7 @@ export const createLiteralReporter = (
 ): LiteralReporter => {
 	const reported = new Set<string>();
 
-	return (styled, literals) => {
+	return (styled, literals, canPair = () => true) => {
 		// Nothing to check, or nothing to check against.
 		if (literals.length === 0 || styled.length === 0) {
 			return;
@@ -343,8 +443,12 @@ export const createLiteralReporter = (
 			info: getConflictKey(entry.token, options)
 		}));
 
-		for (const part of styled) {
-			reportAgainstStyled(context, part, keyed, reported, options);
-		}
+		styled.forEach((part, styledIndex) => {
+			const pairable = keyed.filter((_literal, literalIndex) =>
+				canPair(styledIndex, literalIndex)
+			);
+
+			reportAgainstStyled(context, part, pairable, reported, options);
+		});
 	};
 };

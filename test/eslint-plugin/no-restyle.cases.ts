@@ -40,7 +40,29 @@ const RESTYLE_BUTTON = `const button = sv({
 	defaultVariants: { size: 'sm' }
 });\n`;
 
+// A preset and a default that select different values of one variant.
+const RESTYLE_PRESET = `const b = sv({
+	base: 'flex',
+	variants: { size: { sm: 'p-2', lg: 'text-lg' } },
+	defaultVariants: { size: 'sm' },
+	presets: { big: { size: 'lg' } }
+});\n`;
+
 export const RESTYLE_VALID = [
+	// The two branches of a ternary never render together.
+	IMPORT_SV_CN +
+		"const card = sv({ base: 'p-2' });\nconst c = card();\ncn(on ? c : 'p-4');",
+	IMPORT +
+		"const card = sv({ base: 'p-2' });\nconst c = card();\n<div className={on ? c.base : 'p-4'} />;",
+	IMPORT_SV_CN +
+		"const card = sv({ base: 'p-2' });\nconst c = card();\ncn(a ? (b ? c : 'p-4') : 'm-1');",
+	// A forwarded prop that replaces the styled value rather than joining it.
+	IMPORT +
+		'const button = sv({ base: \'p-2\' });\nfunction Button({ className }) { return <button className={className ? className : button()} />; }\n<Button className="p-4" />;',
+	// A preset's value replaces the default, and `null` unsets the variant.
+	IMPORT + RESTYLE_PRESET + "b({ preset: 'big', class: 'p-4' });",
+	IMPORT + RESTYLE_PRESET + "b({ size: null, class: 'p-4' });",
+	IMPORT_SV_CN + RESTYLE_PRESET + "cn(b({ size: null }), 'p-4');",
 	// `defaultVariants` and a call site's props are read through `const`
 	// bindings, so the `lg` compound is known not to apply here.
 	IMPORT_SV_CN +
@@ -221,6 +243,11 @@ export const RESTYLE_VALID = [
 // Svelte: a class attribute with no slot-variants substitution, and a
 // directive rather than a plain attribute.
 export const RESTYLE_SVELTE_VALID = [
+	// Text glued to a substitution is part of the same class name.
+	{
+		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<div class="{c}p-4">y</div><div class="p-4{c}">z</div>`,
+		filename: 'a.svelte'
+	},
 	{
 		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<div class="m-1" id="x" class:active={on}>y</div>`,
 		filename: 'a.svelte'
@@ -246,6 +273,41 @@ export const RESTYLE_VUE_VALID = [
 ];
 
 export const RESTYLE_INVALID = [
+	// A ternary branch still renders with what surrounds the ternary.
+	{
+		code:
+			IMPORT_SV_CN +
+			"const card = sv({ base: 'p-2' });\nconst c = card();\ncn(c, on ? 'p-4' : 'm-1');",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT_SV_CN +
+			"const card = sv({ base: 'p-2' });\nconst c = card();\ncn(on ? [c, 'p-4'] : 'm-1');",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// A preset not known statically leaves the defaults in force.
+	{
+		code: IMPORT + RESTYLE_PRESET + "b({ preset: name, class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code: IMPORT + RESTYLE_PRESET + "b({ preset: 'nope', class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// A preset's value is applied, and a passed prop wins over it.
+	{
+		code:
+			IMPORT + RESTYLE_PRESET + "b({ preset: 'big', class: 'text-xl' });",
+		errors: [restyle('text-xl', 'text-lg')]
+	},
+	{
+		code:
+			IMPORT +
+			RESTYLE_PRESET +
+			"b({ preset: 'big', size: 'sm', class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
 	// The runtime override, against base and against a named slot.
 	{
 		code: IMPORT + RESTYLE_CARD + "card({ class: 'p-4' });",

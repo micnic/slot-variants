@@ -22,18 +22,22 @@ import {
 	getSvelteComponentName,
 	getVueClassAttributeName,
 	getVueComponentName,
+	hasIsolatedSvelteParts,
 	type JsxAttribute,
 	type MarkupNode,
 	pushRawRangeTokens,
 	type VAttribute
 } from './markup.ts';
 import {
+	areExclusivePaths,
+	type BranchPath,
 	type ClassParts,
 	collectCallParts,
 	collectParts,
 	emptyParts,
 	forEachOverrideParts,
-	isClassListCall
+	isClassListCall,
+	pathAt
 } from './restyle.ts';
 import {
 	getOverrideValue,
@@ -360,36 +364,47 @@ export const createForwardingScan = (
 		return lookupBinding(propBindings, ctx.variableOf(node));
 	};
 
-	// What a forwarded prop is merged with at this position. Inside a `cn()`
-	// list the literals count too — `cn('p-2', className)` applies `p-2` just
-	// as a config would.
-	const getForwardTargets = (parts: ClassParts): StyledClasses[] => {
-		if (parts.merged && parts.literals.length > 0) {
-			return [...parts.styled, literalStyles(parts.literals)];
+	// What a forwarded prop, written in `path`, is merged with at this
+	// position: the parts outside the other branches of its ternaries. Inside
+	// a `cn()` list the literals count too — `cn('p-2', className)` applies
+	// `p-2` just as a config would.
+	const getForwardTargets = (
+		parts: ClassParts,
+		path: BranchPath
+	): StyledClasses[] => {
+		const { paths } = parts;
+		const styled = parts.styled.filter(
+			(_part, index) =>
+				!areExclusivePaths(path, pathAt(paths.styled, index))
+		);
+		const literals = parts.literals.filter(
+			(_entry, index) =>
+				!areExclusivePaths(path, pathAt(paths.literals, index))
+		);
+
+		if (parts.merged && literals.length > 0) {
+			return [...styled, literalStyles(literals)];
 		}
 
-		return parts.styled;
+		return styled;
 	};
 
 	// The first position a component forwards its prop into is the one kept.
 	const trackForwarding = (parts: ClassParts) => {
-		if (parts.dynamic.length === 0) {
-			return;
-		}
-
-		const targets = getForwardTargets(parts);
-
-		if (targets.length === 0) {
-			return;
-		}
-
-		for (const node of parts.dynamic) {
+		parts.dynamic.forEach((node, index) => {
 			const read = readProp(node);
 
-			if (read !== null && !forwarded.has(read.component)) {
+			if (read === null || forwarded.has(read.component)) {
+				return;
+			}
+
+			const path = pathAt(parts.paths.dynamic, index);
+			const targets = getForwardTargets(parts, path);
+
+			if (targets.length > 0) {
 				forwarded.set(read.component, { prop: read.prop, targets });
 			}
-		}
+		});
 	};
 
 	// A `cn()` (or config-less `sv()`) call is a class list in its own right,
@@ -505,7 +520,8 @@ export const createForwardingScan = (
 			for (const attribute of node.startTag.attributes) {
 				if (
 					attribute.type !== 'SvelteAttribute' ||
-					!CLASS_ATTRIBUTES.has(attribute.key.name)
+					!CLASS_ATTRIBUTES.has(attribute.key.name) ||
+					!hasIsolatedSvelteParts(attribute)
 				) {
 					continue;
 				}

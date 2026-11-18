@@ -1,5 +1,6 @@
 import type { Rule, SourceCode } from 'eslint';
 import type { Expression, Node } from 'estree';
+import { LEADING_SEPARATOR, TRAILING_SEPARATOR } from './literals.ts';
 import { pushBaseTokensFromText } from './token-extraction.ts';
 import type { Entry } from './token-model.ts';
 
@@ -32,8 +33,11 @@ type JsxOpeningElement = {
 
 type SvelteLiteral = {
 	type: 'SvelteLiteral';
+	value: string;
 	range: [number, number];
 };
+
+type SvelteAttributePart = SvelteLiteral | SvelteMustacheTag;
 
 type SvelteMustacheTag = {
 	type: 'SvelteMustacheTag';
@@ -43,7 +47,7 @@ type SvelteMustacheTag = {
 export type SvelteAttribute = {
 	type: 'SvelteAttribute';
 	key: { name: string };
-	value: ReadonlyArray<SvelteLiteral | SvelteMustacheTag>;
+	value: ReadonlyArray<SvelteAttributePart>;
 };
 
 // Every other attribute kind svelte-eslint-parser emits on a start tag.
@@ -135,6 +139,36 @@ export const pushRawRangeTokens = (
 
 	pushBaseTokensFromText(raw, start, literals);
 };
+
+// Whether whitespace separates a Svelte attribute part from the substitutions
+// beside it, so no class name straddles the boundary.
+const isIsolatedSveltePart = (
+	part: SvelteAttributePart,
+	index: number,
+	parts: ReadonlyArray<SvelteAttributePart>
+): boolean => {
+	const hasLeft = index > 0;
+	const next = parts[index + 1];
+
+	if (part.type === 'SvelteMustacheTag') {
+		// Two substitutions side by side join into one class name.
+		return next === undefined || next.type === 'SvelteLiteral';
+	}
+
+	if (hasLeft && !LEADING_SEPARATOR.test(part.value)) {
+		return false;
+	}
+
+	return next === undefined || TRAILING_SEPARATOR.test(part.value);
+};
+
+/**
+ * The Svelte counterpart of `hasIsolatedQuasis`: every substitution in a
+ * class attribute stands apart from the text around it, so the text's
+ * classes tokenize on their own (`class="{c}p-4"` is one class, `p-2p-4`).
+ */
+export const hasIsolatedSvelteParts = (attribute: SvelteAttribute): boolean =>
+	attribute.value.every(isIsolatedSveltePart);
 
 /** A JSX attribute's name, or null for a namespaced one (`xlink:href`). */
 export const getJsxAttributeName = (node: JsxAttribute): string | null => {

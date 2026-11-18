@@ -26,6 +26,7 @@ import {
 	collectCnEntries,
 	collectConfigEntries,
 	forEachStringLiteralElement,
+	getStaticMatcherValue,
 	NON_MATCHER_KEYS,
 	readMatchers
 } from './token-extraction.ts';
@@ -42,6 +43,7 @@ type InternalStyles = {
 	bySlot: TokenEntriesBySlot;
 	slotNames: ReadonlySet<string>;
 	defaults: VariantMatchers;
+	presets: ReadonlyMap<string, VariantMatchers>;
 	groupSlots: GroupSlots;
 	slotGroups: ReadonlyMap<string, ReadonlyArray<string>>;
 };
@@ -77,6 +79,11 @@ const EMPTY_GROUPS: GroupSlots = new Map();
 
 const NO_SKIP: ReadonlySet<string> = new Set();
 
+const NO_PRESETS: ReadonlyMap<string, VariantMatchers> = new Map();
+
+// A variant left unset matches the value "undefined", as it does at runtime.
+const UNSET_MATCHER: ReadonlySet<string> = new Set(['undefined']);
+
 const stylesCache = new WeakMap<Node, InternalStyles>();
 
 const readGroups = (
@@ -100,6 +107,22 @@ const readGroups = (
 	return { groupSlots, slotGroups };
 };
 
+// Each preset's variant values, by preset name.
+const readPresets = (
+	presets: ReadonlyMap<string, Node>,
+	sourceCode: SourceCode
+): Map<string, VariantMatchers> => {
+	const result = new Map<string, VariantMatchers>();
+
+	for (const [name, value] of presets) {
+		const values = getProperties(resolveContainer(value, sourceCode));
+
+		result.set(name, readMatchers(values, NO_SKIP, sourceCode));
+	}
+
+	return result;
+};
+
 const buildStyles = (
 	configNode: ObjectExpression,
 	args: ReadonlyArray<Expression | SpreadElement>,
@@ -112,6 +135,7 @@ const buildStyles = (
 		sourceCode
 	);
 	const groups = resolveContainer(config.get('groups'), sourceCode);
+	const presets = resolveContainer(config.get('presets'), sourceCode);
 
 	return {
 		bySlot: indexEntriesBySlotAndToken(
@@ -119,6 +143,7 @@ const buildStyles = (
 		),
 		slotNames,
 		defaults: readMatchers(getProperties(defaults), NO_SKIP, sourceCode),
+		presets: readPresets(getProperties(presets), sourceCode),
 		...readGroups(getProperties(groups), sourceCode)
 	};
 };
@@ -159,23 +184,64 @@ const getCallProps = (
 	return getProperties(ctx.resolve(arg));
 };
 
+const isNullLiteral = (node: Node): boolean =>
+	node.type === 'Literal' && node.value === null;
+
+// The variant values a call's props pass, with a `null` one left unset.
+const readPropMatchers = (
+	props: ReadonlyMap<string, Node>,
+	ctx: StyledContext
+): Map<string, ReadonlySet<string>> => {
+	const matchers = readMatchers(props, NON_MATCHER_KEYS, ctx.sourceCode);
+
+	for (const [key, value] of props) {
+		if (!NON_MATCHER_KEYS.has(key) && isNullLiteral(ctx.resolve(value))) {
+			matchers.set(key, UNSET_MATCHER);
+		}
+	}
+
+	return matchers;
+};
+
+// The variant values of the preset a call's props name, if it is known.
+const readPresetMatchers = (
+	props: ReadonlyMap<string, Node>,
+	presets: ReadonlyMap<string, VariantMatchers>,
+	ctx: StyledContext
+): VariantMatchers => {
+	const preset = props.get('preset');
+
+	if (preset === undefined) {
+		return EMPTY_MATCHERS;
+	}
+
+	const name = getStaticMatcherValue(preset, ctx.sourceCode);
+
+	if (name === null) {
+		return EMPTY_MATCHERS;
+	}
+
+	return presets.get(name) ?? EMPTY_MATCHERS;
+};
+
 // The matchers a call applies: `base`, refined by the props it passes. Later
-// matchers win: a call site's props over the config's `defaultVariants`, and a
-// slot call's own props over the ones already fixed when the result was
-// produced.
+// matchers win: a call site's props over its preset's values, those over the
+// config's `defaultVariants`, and a slot call's own props over the ones
+// already fixed when the result was produced.
 const buildCallMatchers = (
 	arg: Expression | SpreadElement | undefined,
 	base: VariantMatchers,
+	presets: ReadonlyMap<string, VariantMatchers>,
 	ctx: StyledContext
-): VariantMatchers =>
-	new Map([
+): VariantMatchers => {
+	const props = getCallProps(arg, ctx);
+
+	return new Map([
 		...base,
-		...readMatchers(
-			getCallProps(arg, ctx),
-			NON_MATCHER_KEYS,
-			ctx.sourceCode
-		)
+		...readPresetMatchers(props, presets, ctx),
+		...readPropMatchers(props, ctx)
 	]);
+};
 
 /**
  * The call a callee names through its `const` binding — the `sv(config)` a
@@ -258,6 +324,7 @@ export const resolveInvocation = (
 			matchers: buildCallMatchers(
 				node.arguments[0],
 				slotFn.matchers,
+				NO_PRESETS,
 				ctx
 			),
 			slot: slotFn.slot
@@ -272,7 +339,12 @@ export const resolveInvocation = (
 
 	return {
 		styles,
-		matchers: buildCallMatchers(node.arguments[0], styles.defaults, ctx),
+		matchers: buildCallMatchers(
+			node.arguments[0],
+			styles.defaults,
+			styles.presets,
+			ctx
+		),
 		slot: null
 	};
 };
@@ -313,6 +385,7 @@ const buildLiteralStyles = (entries: ReadonlyArray<Entry>): InternalStyles => ({
 	bySlot: indexEntriesBySlotAndToken(entries),
 	slotNames: EMPTY_SLOT_NAMES,
 	defaults: EMPTY_MATCHERS,
+	presets: NO_PRESETS,
 	groupSlots: EMPTY_GROUPS,
 	slotGroups: EMPTY_GROUPS
 });

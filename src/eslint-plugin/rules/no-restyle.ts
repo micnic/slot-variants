@@ -16,7 +16,7 @@ import {
 	resolveImportedComponent
 } from '../analyzer/module-loader.ts';
 import { buildAliasMap } from '../analyzer/module-paths.ts';
-import { createLiteralReporter } from '../analyzer/restyle.ts';
+import { canPairParts, createLiteralReporter } from '../analyzer/restyle.ts';
 import { getOrCreate } from '../map-utils.ts';
 
 /**
@@ -52,8 +52,10 @@ import { getOrCreate } from '../map-utils.ts';
  * the `alias` option to map its prefix to a directory.
  *
  * Classes that can't render together are not flagged: the variant values a
- * call site fixes (directly or through `defaultVariants`) rule out every
- * variant and compound entry that requires a different value.
+ * call site fixes (directly, through its `preset` or through
+ * `defaultVariants`, or unset with `null`) rule out every variant and
+ * compound entry that requires a different value, and the two branches of a
+ * ternary are never checked against each other.
  *
  * The `exclusiveGroups` and `prefix` options mean exactly what they do in
  * `no-conflicting-classes`.
@@ -143,7 +145,11 @@ export const noRestyle: Rule.RuleModule = {
 					}
 				}
 
-				reportLiterals(parts.styled, parts.literals);
+				reportLiterals(
+					parts.styled,
+					parts.literals,
+					canPairParts(parts)
+				);
 			},
 			// A later file importing this one reads the scan from the cache
 			// rather than parsing the file again.
