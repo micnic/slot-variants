@@ -19,7 +19,7 @@ type RawSlotRecord = Exclude<RawVariantValue, ConfigClassValue>;
 
 type MergeValue<T> = (inherited: T, own: T) => T;
 
-const { entries, hasOwn, keys } = Object;
+const { entries, fromEntries, hasOwn, keys } = Object;
 
 // Each config-based `sv()` result, mapped to the config it was built from.
 const configs = new WeakMap<AnyFn, RawConfig>();
@@ -167,7 +167,7 @@ const getSlotNames = (slots: RawConfig['slots']) => [
 const mergeRequiredVariants = (
 	inherited: RawConfig,
 	own: RawConfig,
-	variants: RawConfig['variants']
+	ownRequired: readonly string[]
 ) => {
 	if (
 		inherited.requiredVariants === undefined &&
@@ -182,10 +182,43 @@ const mergeRequiredVariants = (
 		keys(inherited.variants ?? {})
 	).filter((name) => !hasOwn(ownDefaults, name));
 
-	return joinUnique(
-		inheritedNames,
-		resolveNames(own.requiredVariants, keys(variants ?? {}))
+	return joinUnique(inheritedNames, ownRequired);
+};
+
+/**
+ * The inherited default variants, without the ones the own config requires,
+ * as a required variant has no default.
+ */
+const getInheritedDefaults = (
+	inherited: RawConfig,
+	ownRequired: readonly string[]
+): RawConfig['defaultVariants'] => {
+	const { defaultVariants } = inherited;
+
+	if (defaultVariants === undefined) {
+		return undefined;
+	}
+
+	return fromEntries(
+		entries(defaultVariants).filter(([key]) => !ownRequired.includes(key))
 	);
+};
+
+/**
+ * Moves the own base classes to the front of the own base slot when the
+ * inherited config has a base slot, so they follow it: base classes are
+ * otherwise placed ahead of the base slot.
+ */
+const placeOwnBase = (inherited: RawConfig, own: RawConfig): RawConfig => {
+	if (inherited.slots?.base === undefined || own.base === undefined) {
+		return own;
+	}
+
+	return {
+		...own,
+		base: undefined,
+		slots: { ...own.slots, base: cn(own.base, own.slots?.base) }
+	};
 };
 
 const mergeMultiSlots = (
@@ -208,7 +241,8 @@ const mergeMultiSlots = (
  * inherited ones, records are merged and lists joined, and the own
  * behaviour options win when set.
  */
-const mergeConfigs = (inherited: RawConfig, own: RawConfig): RawConfig => {
+const mergeConfigs = (inherited: RawConfig, config: RawConfig): RawConfig => {
+	const own = placeOwnBase(inherited, config);
 	const variants = mergeOptional(
 		inherited.variants,
 		own.variants,
@@ -218,6 +252,10 @@ const mergeConfigs = (inherited: RawConfig, own: RawConfig): RawConfig => {
 		inherited.slots,
 		own.slots,
 		mergeRecords<ConfigClassValue>(cn)
+	);
+	const ownRequired = resolveNames(
+		own.requiredVariants,
+		keys(variants ?? {})
 	);
 
 	return {
@@ -246,11 +284,11 @@ const mergeConfigs = (inherited: RawConfig, own: RawConfig): RawConfig => {
 			(inheritedList, ownList) => [...inheritedList, ...ownList]
 		),
 		defaultVariants: mergeOptional(
-			inherited.defaultVariants,
+			getInheritedDefaults(inherited, ownRequired),
 			own.defaultVariants,
 			mergeRecords(keepOwn)
 		),
-		requiredVariants: mergeRequiredVariants(inherited, own, variants),
+		requiredVariants: mergeRequiredVariants(inherited, own, ownRequired),
 		cacheSize: own.cacheSize ?? inherited.cacheSize,
 		introspection: own.introspection ?? inherited.introspection,
 		postProcess: own.postProcess ?? inherited.postProcess

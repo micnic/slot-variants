@@ -724,7 +724,7 @@ How each option is merged:
 - **`defaultVariants`** — the child's defaults win.
 - **`compoundVariants` / `compoundSlots`** — the child's entries run after the parent's.
 - **`groups` / `presets`** — combined; a group or preset both define gets the slots, or the variant values, of both, the child's values winning.
-- **`requiredVariants` / `multiSlots`** — combined. A child default for a variant the parent requires makes it optional.
+- **`requiredVariants` / `multiSlots`** — combined. A child default for a variant the parent requires makes it optional, and a child requirement drops the parent's default.
 - **`postProcess`, `cacheSize`, `introspection`** — inherited unless the child sets its own.
 
 The child's types follow: it accepts the parent's variants, slots and presets everywhere its own are accepted, and its props and result include them.

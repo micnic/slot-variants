@@ -21,6 +21,29 @@ t.test('child base args follow the parent base classes', (t) => {
 	t.end();
 });
 
+t.test('child base classes follow the parent base slot', (t) => {
+	const parent = sv({ base: 'p-base', slots: { base: 'p-slot', icon: 'i' } });
+
+	t.equal(
+		sv({ extend: parent, base: 'c-base' })().base,
+		'p-base p-slot c-base',
+		'child base field after the parent base slot'
+	);
+	t.equal(
+		sv('c-arg', { extend: parent })().base,
+		'p-base p-slot c-arg',
+		'child base args after the parent base slot'
+	);
+	t.equal(
+		sv({ extend: parent, base: 'c-base', slots: { base: 'c-slot' } })()
+			.base,
+		'p-base p-slot c-base c-slot',
+		'child base field then child base slot'
+	);
+
+	t.end();
+});
+
 t.test('keeps the parent base when the child has none', (t) => {
 	const parent = sv('btn', {});
 	const child = sv({ extend: parent });
@@ -375,6 +398,65 @@ t.test('a child default lifts an inherited requirement', (t) => {
 	});
 
 	t.equal(child(), 'btn bg-red-500', 'default used, no longer required');
+
+	t.end();
+});
+
+t.test('a child requirement drops an inherited default', (t) => {
+	const parent = sv('btn', {
+		variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+		defaultVariants: { size: 'sm' }
+	});
+	const child = sv({ extend: parent, requiredVariants: ['size'] });
+
+	t.throws(
+		// @ts-expect-error - size is required by the child
+		() => child(),
+		{ message: 'Missing required variant: "size"' },
+		'no longer defaulted'
+	);
+	t.equal(child({ size: 'lg' }), 'btn text-lg', 'passed value used');
+
+	t.end();
+});
+
+t.test('a later parent requirement drops an earlier default', (t) => {
+	const defaulted = sv('btn', {
+		variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+		defaultVariants: { size: 'sm' }
+	});
+	const required = sv({
+		variants: { size: { sm: 'p-1', lg: 'p-4' } },
+		requiredVariants: ['size']
+	});
+	const child = sv({ extend: [defaulted, required] });
+
+	t.throws(
+		// @ts-expect-error - size is required by the later parent
+		() => child(),
+		{ message: 'Missing required variant: "size"' },
+		'the later requirement wins'
+	);
+	t.equal(child({ size: 'lg' }), 'btn text-lg p-4', 'passed value used');
+
+	t.end();
+});
+
+t.test('createSV requiredVariants: true drops inherited defaults', (t) => {
+	const strict = createSV({ requiredVariants: true });
+	const parent = sv('btn', {
+		variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+		defaultVariants: { size: 'sm' }
+	});
+	const child = strict({ extend: parent });
+
+	t.throws(
+		// @ts-expect-error - every variant is required by the factory default
+		() => child(),
+		{ message: 'Missing required variant: "size"' },
+		'factory requirement wins over the parent default'
+	);
+	t.equal(child({ size: 'lg' }), 'btn text-lg', 'passed value used');
 
 	t.end();
 });
