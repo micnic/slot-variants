@@ -47,6 +47,9 @@ type ResolvedCall = { baseArgs: ClassValue[]; config: RawConfig };
 
 const { assign, entries, hasOwn, keys } = Object;
 
+// The props of a call without any, shared since nothing writes to them.
+const emptyProps: RuntimeProps = {};
+
 const mergeMultiSlotClass = (
 	config: CompiledConfig,
 	outerClass: RuntimeClassValue | undefined,
@@ -125,11 +128,14 @@ const buildSlotFn =
 		return readSlot(run(mergedProps), slotKey);
 	};
 
+// `readSlotsNow` hands each slot function its own class string instead of the
+// whole result, for a result that is reused, so its calls skip the read.
 const applyMultiSlots = (
 	config: CompiledConfig,
 	run: RunFn,
 	props: RuntimeProps,
-	result: CacheValue
+	result: CacheValue,
+	readSlotsNow: boolean
 ) => {
 	if (typeof result === 'string') {
 		return { base: buildSlotFn(config, run, props, result, 'base') };
@@ -139,7 +145,13 @@ const applyMultiSlots = (
 	const output: MultiSlotResult = { ...result };
 
 	for (const slotKey of config.multiSlots) {
-		output[slotKey] = buildSlotFn(config, run, props, result, slotKey);
+		let outerResult: CacheValue = result;
+
+		if (readSlotsNow) {
+			outerResult = readSlot(result, slotKey);
+		}
+
+		output[slotKey] = buildSlotFn(config, run, props, outerResult, slotKey);
 	}
 
 	return output;
@@ -155,7 +167,31 @@ const createRuntimeVariantFn = (
 		return (props = {}) => run(props);
 	}
 
-	return (props = {}) => applyMultiSlots(config, run, props, run(props));
+	// A call without props reuses its last slot functions while `run` returns
+	// the same result, which a cache hit does, so it allocates nothing.
+	let defaultSource: CacheValue | undefined;
+	let defaultResult: MultiSlotResult = {};
+
+	return (props) => {
+		if (props !== undefined) {
+			return applyMultiSlots(config, run, props, run(props), false);
+		}
+
+		const result = run(emptyProps);
+
+		if (result !== defaultSource) {
+			defaultSource = result;
+			defaultResult = applyMultiSlots(
+				config,
+				run,
+				emptyProps,
+				result,
+				true
+			);
+		}
+
+		return defaultResult;
+	};
 };
 
 const splitVariantProps = (

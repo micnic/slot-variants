@@ -285,6 +285,41 @@ t.test('multiSlots slot function without props reuses the outer call', (t) => {
 	t.end();
 });
 
+t.test('multiSlots call without props reuses its cached result', (t) => {
+	const config = {
+		slots: { header: 'font-bold' },
+		variants: { size: { sm: { header: 'text-sm' } } },
+		defaultVariants: { size: 'sm' },
+		multiSlots: true,
+		introspection: true
+	} as const;
+
+	const card = sv('border', config);
+	const first = card();
+
+	t.equal(card(), first, 'a cache hit returns the same result');
+	t.not(card({}), first, 'a call with props builds its own result');
+	t.equal(first.header(), 'font-bold text-sm', 'slot reads the defaults');
+
+	card.clearCache();
+
+	const cleared = card();
+
+	t.not(cleared, first, 'clearing the cache builds a new result');
+	t.equal(cleared.header(), 'font-bold text-sm', 'with the same classes');
+
+	const uncached = sv('border', { ...config, cacheSize: 0 });
+
+	t.not(uncached(), uncached(), 'without a cache every call builds anew');
+
+	const box = sv('box', { multiSlots: true, cacheSize: 0 });
+
+	t.equal(box(), box(), 'an equal class string reuses the result');
+	t.equal(box().base(), 'box', 'base reads the class string');
+
+	t.end();
+});
+
 t.test('multiSlots slot function keeps outer props on undefined', (t) => {
 	const card = sv({
 		slots: {
