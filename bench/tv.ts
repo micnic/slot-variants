@@ -55,6 +55,12 @@ type ExtendedCardSlotFns = {
 
 const tvNoMerge = createTV({ twMerge: false });
 
+// tailwind-variants has no option to turn off its variant cache, but skips it
+// for a call whose props it can't fingerprint, like a function under a key
+// that isn't a variant. Its memo for props matching the defaults can't be
+// skipped, so only cases with other props get uncached tv runs.
+const tvNoCache = { noCache: () => '' };
+
 const bench = new Bench({ warmupIterations: 1000 });
 
 const compoundButtonConfig = createCompoundButtonConfig();
@@ -89,19 +95,44 @@ const createCompetitors = <S, V>(
 	tv: createTv(tv)
 });
 
+// The runs of one tailwind-variants build: `runTv` under `name`, and, when
+// given, `runTvNoCache` under `noCacheName`.
+const tvRuns = <V, T>(
+	fn: V,
+	[name, noCacheName]: readonly [string, string],
+	runTv: (fn: V) => T,
+	runTvNoCache?: (fn: V) => T
+): Record<string, () => T> => {
+	if (runTvNoCache === undefined) {
+		return { [name]: () => runTv(fn) };
+	}
+
+	return {
+		[name]: () => runTv(fn),
+		[noCacheName]: () => runTvNoCache(fn)
+	};
+};
+
 // Benchmarks one case across every competitor: `runSv` calls an sv() build,
 // `runTv` a tailwind-variants one, both returning the same output shape.
+// `runTvNoCache`, when given, calls tailwind-variants so it skips its cache.
 const addTvComparison = <S, V, T>(
 	label: string,
 	{ sv: svFns, svMerge, tvNoMerge, tv: tvFn }: TvCompetitors<S, V>,
 	runSv: (fn: S) => T,
-	runTv: (fn: V) => T
+	runTv: (fn: V) => T,
+	runTvNoCache?: (fn: V) => T
 ) => {
 	addComparison(bench, label, {
 		...runEach(svFns, (fn) => () => runSv(fn)),
-		'tv (no merge)': () => runTv(tvNoMerge),
+		...tvRuns(
+			tvNoMerge,
+			['tv (no merge)', 'tv (no merge, no cache)'],
+			runTv,
+			runTvNoCache
+		),
 		...runEach(svMerge, (fn) => () => runSv(fn)),
-		tv: () => runTv(tvFn)
+		...tvRuns(tvFn, ['tv', 'tv (no cache)'], runTv, runTvNoCache)
 	});
 };
 
@@ -123,7 +154,8 @@ addTvComparison(
 	'simple with props',
 	button,
 	(fn) => fn({ color: 'secondary', size: 'lg' }),
-	(fn) => fn({ color: 'secondary', size: 'lg' })
+	(fn) => fn({ color: 'secondary', size: 'lg' }),
+	(fn) => fn({ color: 'secondary', size: 'lg', ...tvNoCache })
 );
 
 // --- Compound variants ---
@@ -142,14 +174,16 @@ addTvComparison(
 	'compound match',
 	compound,
 	(fn) => fn({ color: 'primary', size: 'lg' }),
-	(fn) => fn({ color: 'primary', size: 'lg' })
+	(fn) => fn({ color: 'primary', size: 'lg' }),
+	(fn) => fn({ color: 'primary', size: 'lg', ...tvNoCache })
 );
 
 addTvComparison(
 	'compound no match',
 	compound,
 	(fn) => fn({ color: 'primary', size: 'sm' }),
-	(fn) => fn({ color: 'primary', size: 'sm' })
+	(fn) => fn({ color: 'primary', size: 'sm' }),
+	(fn) => fn({ color: 'primary', size: 'sm', ...tvNoCache })
 );
 
 // --- Slots ---
@@ -170,7 +204,9 @@ addTvComparison(
 	'slots with props',
 	slots,
 	(fn) => fn({ size: 'lg', variant: 'filled' }),
-	(fn) => materializeSlots(fn({ size: 'lg', variant: 'filled' }))
+	(fn) => materializeSlots(fn({ size: 'lg', variant: 'filled' })),
+	(fn) =>
+		materializeSlots(fn({ size: 'lg', variant: 'filled', ...tvNoCache }))
 );
 
 // --- Multi slots (every sv() slot a function, like tailwind-variants) ---
@@ -196,7 +232,9 @@ addTvComparison(
 	'multi slots with props',
 	multiSlots,
 	(fn) => materializeSlots(fn({ size: 'lg', variant: 'filled' })),
-	(fn) => materializeSlots(fn({ size: 'lg', variant: 'filled' }))
+	(fn) => materializeSlots(fn({ size: 'lg', variant: 'filled' })),
+	(fn) =>
+		materializeSlots(fn({ size: 'lg', variant: 'filled', ...tvNoCache }))
 );
 
 addTvComparison(
@@ -236,7 +274,8 @@ addTvComparison(
 	'extend with props',
 	extended,
 	(fn) => fn({ color: 'danger', size: 'lg', rounded: 'full' }),
-	(fn) => fn({ color: 'danger', size: 'lg', rounded: 'full' })
+	(fn) => fn({ color: 'danger', size: 'lg', rounded: 'full' }),
+	(fn) => fn({ color: 'danger', size: 'lg', rounded: 'full', ...tvNoCache })
 );
 
 const extendedSlots = createCompetitors(
@@ -259,6 +298,10 @@ addTvComparison(
 	(fn) =>
 		materializeExtendedSlots(
 			fn({ size: 'lg', variant: 'filled', elevated: true })
+		),
+	(fn) =>
+		materializeExtendedSlots(
+			fn({ size: 'lg', variant: 'filled', elevated: true, ...tvNoCache })
 		)
 );
 
