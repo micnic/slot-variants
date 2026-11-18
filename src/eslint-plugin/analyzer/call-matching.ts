@@ -12,6 +12,9 @@ export type CallMatch = {
 	config: ObjectExpression | null;
 	args: ReadonlyArray<Expression | SpreadElement>;
 	isFactoryConfig: boolean;
+	// True for an `sv()` class list whose argument before the last reads as a
+	// config: removing the last would turn the call into a config call.
+	keepsLastArg: boolean;
 };
 
 // Reads a node through same-file `const` bindings, from whichever scope the
@@ -37,7 +40,7 @@ export const matchSvCall = (
 	resolve: ResolveNode
 ): CallMatch => {
 	const args = node.arguments;
-	const last = args[args.length - 1];
+	const last = args.at(-1);
 
 	if (last) {
 		const resolved = resolve(last);
@@ -46,12 +49,21 @@ export const matchSvCall = (
 			return {
 				config: resolved,
 				args: args.slice(0, -1),
-				isFactoryConfig: false
+				isFactoryConfig: false,
+				keepsLastArg: false
 			};
 		}
 	}
 
-	return { config: null, args, isFactoryConfig: false };
+	const beforeLast = args.at(-2);
+
+	return {
+		config: null,
+		args,
+		isFactoryConfig: false,
+		keepsLastArg:
+			beforeLast !== undefined && isConfigLike(resolve(beforeLast))
+	};
 };
 
 // An object holding only config keys.

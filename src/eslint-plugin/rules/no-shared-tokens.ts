@@ -118,6 +118,8 @@ export const noSharedTokens: Rule.RuleModule = {
 				'Lift the classes every value of variant "{{variant}}" shares into slot "{{slot}}" (with a merging postProcess, they then come before the classes of the variants after it, which may change which conflicting class wins).',
 			moveCompoundClass:
 				'Move this entry\'s class onto variant "{{key}}"\'s value (with a merging postProcess, it then comes before the classes of the variants after it, which may change which conflicting class wins).',
+			liftSharedInherited:
+				'Lift the classes every value of variant "{{variant}}" shares into slot "{{slot}}" (they then also apply to the values of "{{variant}}" a parent in extend adds).',
 			liftShared:
 				'Lift the classes every value of variant "{{variant}}" shares into slot "{{slot}}" (they then also apply when "{{variant}}" is passed as null).',
 			singleKeyCompound:

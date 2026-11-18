@@ -1,10 +1,11 @@
 import type { Rule } from 'eslint';
+import { isLastArgument } from '../analyzer/call-matching.ts';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import {
 	checkConfigForEmptyClasses,
 	visitForEmptyClasses
 } from '../analyzer/empty-classes.ts';
-import { makeListFix } from '../analyzer/list-fix.ts';
+import { type EmptyFix, makeListFix } from '../analyzer/list-fix.ts';
 import { forEachStaticItem } from '../analyzer/token-extraction.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
@@ -57,13 +58,13 @@ export const noEmptyClasses: Rule.RuleModule = {
 			}
 
 			forEachStaticItem(call.args, (arg) => {
-				visitForEmptyClasses(
-					context,
-					arg,
-					false,
-					makeListFix(context, arg, node.arguments),
-					true
-				);
+				let fix: EmptyFix | undefined;
+
+				if (!call.keepsLastArg || !isLastArgument(node, arg)) {
+					fix = makeListFix(context, arg, node.arguments);
+				}
+
+				visitForEmptyClasses(context, arg, false, fix, true);
 			});
 
 			if (call.config) {

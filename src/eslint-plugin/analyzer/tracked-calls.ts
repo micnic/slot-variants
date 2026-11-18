@@ -144,11 +144,21 @@ const matchFactoryCall = (
 		const resolved = match.ctx.resolve(defaults);
 
 		if (resolved.type === 'ObjectExpression') {
-			return { config: resolved, args: [], isFactoryConfig: true };
+			return {
+				config: resolved,
+				args: [],
+				isFactoryConfig: true,
+				keepsLastArg: false
+			};
 		}
 	}
 
-	return { config: null, args: [], isFactoryConfig: true };
+	return {
+		config: null,
+		args: [],
+		isFactoryConfig: true,
+		keepsLastArg: false
+	};
 };
 
 // Classifies a call as sv/cn-style by the export its callee names: `sv` and
@@ -165,7 +175,12 @@ const matchTrackedCall = (
 	}
 
 	if (exportName === 'cn') {
-		return { config: null, args: node.arguments, isFactoryConfig: false };
+		return {
+			config: null,
+			args: node.arguments,
+			isFactoryConfig: false,
+			keepsLastArg: false
+		};
 	}
 
 	if (exportName === 'createSV') {

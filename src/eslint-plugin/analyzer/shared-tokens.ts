@@ -85,6 +85,9 @@ type SharedTokensScope = {
 	// moving classes earlier may change which one wins: the fixes that do
 	// are then offered as suggestions only.
 	suggestOnly: boolean;
+	// True where a parent in `extend` may add values to a variant, which a
+	// lift would then also reach.
+	inherits: boolean;
 };
 
 // What a single-key compound fix needs from the config's scope.
@@ -353,13 +356,14 @@ const applySharedTokensFixPlan = (
 // tokens leaves every output unchanged and is safe as an autofix. A defaulted
 // one doesn't — `null` skips the default, and the lifted tokens would then
 // apply where they didn't before — so the lift is only offered as a
-// suggestion.
+// suggestion. So is a lift in a config extending others, whose values of the
+// variant it can't see.
 const getSharedTokensRemedy = (
 	plan: SharedTokensFixPlan | null,
 	coverage: VariantCoverage,
 	variantKey: string,
 	slot: string,
-	suggestOnly: boolean
+	{ suggestOnly, inherits }: SharedTokensScope
 ): EntryRemedy => {
 	if (plan === null) {
 		return {};
@@ -371,6 +375,10 @@ const getSharedTokensRemedy = (
 
 	if (coverage === 'default') {
 		return { suggest: [{ messageId: 'liftShared', data, fix }] };
+	}
+
+	if (inherits) {
+		return { suggest: [{ messageId: 'liftSharedInherited', data, fix }] };
 	}
 
 	if (suggestOnly) {
@@ -479,7 +487,7 @@ const reportSharedTokensBySlot = (
 			coverage,
 			variantKey,
 			slot,
-			scope.suggestOnly
+			scope
 		);
 
 		for (const [token, entryLists] of tokens) {
@@ -930,7 +938,10 @@ export const analyzeSharedTokens = (
 		return isWithinNode(sourceCode, node, configNode);
 	};
 
-	const suggestOnly = inheritsPostProcess || config.has('postProcess');
+	// A parent in `extend` may pass on a merging `postProcess` too.
+	const inherits = config.has('extend');
+	const suggestOnly =
+		inheritsPostProcess || inherits || config.has('postProcess');
 
 	for (const kind of COMPOUND_KINDS) {
 		checkCompoundsForSingleKey(context, configNode, kind, variantsMap, {
@@ -997,6 +1008,6 @@ export const analyzeSharedTokens = (
 		variantsMap,
 		collectVariantCoverage(config, variantsMap, sourceCode),
 		slotNames,
-		{ getTarget, canEdit, suggestOnly }
+		{ getTarget, canEdit, suggestOnly, inherits }
 	);
 };

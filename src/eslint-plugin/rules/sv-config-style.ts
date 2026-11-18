@@ -239,6 +239,27 @@ const touchesHoistedSlots = (
 	);
 };
 
+// Whether a base-style fix would move a base into or out of a `slots` record
+// with a spread, whose own `base` may override the moved one or join it.
+const touchesSpreadSlots = (
+	slotsObj: ObjectExpression | null,
+	source: BaseSource,
+	insertInto: ObjectExpression | null
+): boolean => {
+	if (slotsObj === null) {
+		return false;
+	}
+
+	const isTouched = insertInto === slotsObj || source.style === 'slotsBase';
+
+	return (
+		isTouched &&
+		slotsObj.properties.some(
+			(property) => property.type === 'SpreadElement'
+		)
+	);
+};
+
 const detectBaseSources = (
 	configNode: ObjectExpression,
 	slotsObj: ObjectExpression | null,
@@ -521,7 +542,8 @@ const checkBaseStyle = (
 			configNode,
 			onlySource,
 			insertInto
-		)
+		) &&
+		!touchesSpreadSlots(slotsObj, onlySource, insertInto)
 	) {
 		fix = buildBaseStyleFix(
 			context.sourceCode,

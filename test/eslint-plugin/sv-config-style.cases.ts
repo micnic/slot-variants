@@ -240,6 +240,50 @@ export const SV_CONFIG_STYLE_BASE_VALID = [
 
 export const SV_CONFIG_STYLE_BASE_INVALID = [
 	{
+		// A spread in `slots` may hold a `base` the moved one would override.
+		code: IMPORT + "sv({ base: 'y', slots: { ...s, icon: 'x' } });",
+		options: [{ baseStyle: 'slotsBase' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" entry in "slots"',
+					found: 'a "base" field in the config'
+				}
+			}
+		],
+		output: null
+	},
+	{
+		// The same holds for a leading argument moved into `slots`.
+		code: IMPORT + "sv('y', { slots: { ...s, icon: 'x' } });",
+		options: [{ baseStyle: 'slotsBase' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" entry in "slots"',
+					found: 'a separate leading argument'
+				}
+			}
+		],
+		output: null
+	},
+	{
+		// A `base` moved out of `slots` would join one a spread there may hold.
+		code: IMPORT + "sv({ slots: { ...s, base: 'y', icon: 'x' } });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a "base" entry in "slots"'
+				}
+			}
+		],
+		output: null
+	},
+	{
 		// A comment beside the base being moved would be lost, so there's no
 		// fix — whether it trails a leading argument or a `base` property.
 		code: IMPORT + "sv('flex' /* primary */, { variants: {} });",

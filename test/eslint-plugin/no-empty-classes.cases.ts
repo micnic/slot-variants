@@ -191,6 +191,25 @@ export const NO_EMPTY_CLASSES_VALID = [
 
 export const NO_EMPTY_CLASSES_INVALID = [
 	{
+		// Removing the last argument would leave an object of config keys
+		// last, turning the class list into a config call: no fix.
+		code: IMPORT + "sv({ base: 'x' }, '');",
+		errors: [{ messageId: 'emptyString' }],
+		output: null
+	},
+	{
+		// An object of other keys stays a class record once last.
+		code: IMPORT + "sv({ flex: true }, '');",
+		errors: [{ messageId: 'emptyString' }],
+		output: IMPORT + 'sv({ flex: true });'
+	},
+	{
+		// `cn()` never reads a config, so its last argument is removed.
+		code: IMPORT_CN + "cn({ base: 'x' }, '');",
+		errors: [{ messageId: 'emptyString' }],
+		output: IMPORT_CN + "cn({ base: 'x' });"
+	},
+	{
 		// A comment in the removed range would be lost, so there's no fix.
 		code: IMPORT_CN + "cn('flex', '' /* keep */, 'block');",
 		output: null,

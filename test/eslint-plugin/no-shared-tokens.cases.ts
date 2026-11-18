@@ -1281,5 +1281,50 @@ export const NO_SHARED_TOKENS_INVALID = [
 				]
 			});`,
 		errors: [singleKeyCompound('compoundVariants', 'variant', 'someVar')]
+	},
+	{
+		// A parent in `extend` may add values to the variant that lack the
+		// shared tokens, so the lift is offered as a suggestion only.
+		code:
+			IMPORT +
+			"const parent = sv({ variants: { size: { xl: 'text-xl' } } }); sv({ extend: parent, variants: { size: { sm: 'rounded p-1', lg: 'rounded p-4' } }, requiredVariants: ['size'] });",
+		output: null,
+		errors: repeat(
+			{
+				...shared('rounded', 'size'),
+				suggestions: [
+					{
+						messageId: 'liftSharedInherited',
+						data: { variant: 'size', slot: 'base' },
+						output:
+							IMPORT +
+							"const parent = sv({ variants: { size: { xl: 'text-xl' } } }); sv({ base: 'rounded', extend: parent, variants: { size: { sm: 'p-1', lg: 'p-4' } }, requiredVariants: ['size'] });"
+					}
+				]
+			},
+			2
+		)
+	},
+	{
+		// A parent in `extend` may pass on a merging `postProcess`, so moving
+		// the compound's class ahead of the later variant's is a suggestion.
+		code:
+			IMPORT +
+			"sv({ extend: parent, variants: { size: { sm: 'a', md: 'b' }, pad: { x: 'p-4' } }, compoundVariants: [{ size: 'sm', class: 'p-2' }, { size: 'md', pad: 'x', class: 'c' }] });",
+		output: null,
+		errors: [
+			{
+				...singleKeyCompound('compoundVariants', 'size', "'sm'"),
+				suggestions: [
+					{
+						messageId: 'moveCompoundClass',
+						data: { key: 'size' },
+						output:
+							IMPORT +
+							"sv({ extend: parent, variants: { size: { sm: 'a p-2', md: 'b' }, pad: { x: 'p-4' } }, compoundVariants: [{ size: 'md', pad: 'x', class: 'c' }] });"
+					}
+				]
+			}
+		]
 	}
 ];
