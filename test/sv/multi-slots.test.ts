@@ -312,10 +312,17 @@ t.test('multiSlots call without props reuses its cached result', (t) => {
 
 	t.not(uncached(), uncached(), 'without a cache every call builds anew');
 
-	const box = sv('box', { multiSlots: true, cacheSize: 0 });
+	const box = sv('box', { multiSlots: true });
 
-	t.equal(box(), box(), 'an equal class string reuses the result');
+	t.equal(box(), box(), 'a base-only cache hit reuses the result');
 	t.equal(box().base(), 'box', 'base reads the class string');
+	t.equal(box().base({ class: 'mt-2' }), 'box mt-2', 'base accepts props');
+	t.equal(box({}).base(), 'box', 'a call with props reads the class string');
+
+	const uncachedBox = sv('box', { multiSlots: true, cacheSize: 0 });
+
+	t.not(uncachedBox(), uncachedBox(), 'a base-only call without a cache');
+	t.equal(uncachedBox().base(), 'box', 'still reads the class string');
 
 	t.end();
 });

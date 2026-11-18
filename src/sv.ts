@@ -128,14 +128,11 @@ const buildSlotFn =
 		return readSlot(run(mergedProps), slotKey);
 	};
 
-// `readSlotsNow` hands each slot function its own class string instead of the
-// whole result, for a result that is reused, so its calls skip the read.
 const applyMultiSlots = (
 	config: CompiledConfig,
 	run: RunFn,
 	props: RuntimeProps,
-	result: CacheValue,
-	readSlotsNow: boolean
+	result: CacheValue
 ) => {
 	if (typeof result === 'string') {
 		return { base: buildSlotFn(config, run, props, result, 'base') };
@@ -145,16 +142,67 @@ const applyMultiSlots = (
 	const output: MultiSlotResult = { ...result };
 
 	for (const slotKey of config.multiSlots) {
-		let outerResult: CacheValue = result;
-
-		if (readSlotsNow) {
-			outerResult = readSlot(result, slotKey);
-		}
-
-		output[slotKey] = buildSlotFn(config, run, props, outerResult, slotKey);
+		output[slotKey] = buildSlotFn(config, run, props, result, slotKey);
 	}
 
 	return output;
+};
+
+// A slot function of the reused result of a call without props. Its class is
+// read up front, and calls with props go through a plain slot function, so
+// that one only ever sees whole results.
+const buildDefaultSlotFn = (
+	config: CompiledConfig,
+	run: RunFn,
+	result: CacheValue,
+	slotKey: string
+) => {
+	const slotClass = readSlot(result, slotKey);
+	const withProps = buildSlotFn(config, run, emptyProps, result, slotKey);
+
+	return (innerProps?: RuntimeProps) => {
+		if (innerProps === undefined) {
+			return slotClass;
+		}
+
+		return withProps(innerProps);
+	};
+};
+
+const applyDefaultMultiSlots = (
+	config: CompiledConfig,
+	run: RunFn,
+	result: CacheValue
+): MultiSlotResult => {
+	if (typeof result === 'string') {
+		return { base: buildDefaultSlotFn(config, run, result, 'base') };
+	}
+
+	const output: MultiSlotResult = { ...result };
+
+	for (const slotKey of config.multiSlots) {
+		output[slotKey] = buildDefaultSlotFn(config, run, result, slotKey);
+	}
+
+	return output;
+};
+
+// Gives the result of a call without props, rebuilt only when `run` returns
+// another value than last time, so a cache hit allocates nothing.
+const createDefaultResultGetter = (config: CompiledConfig, run: RunFn) => {
+	let defaultSource: CacheValue | undefined;
+	let defaultResult: MultiSlotResult = {};
+
+	return () => {
+		const result = run(emptyProps);
+
+		if (result !== defaultSource) {
+			defaultSource = result;
+			defaultResult = applyDefaultMultiSlots(config, run, result);
+		}
+
+		return defaultResult;
+	};
 };
 
 // Multi-slot wrapping is decided once here, so plain variant functions skip it
@@ -167,30 +215,20 @@ const createRuntimeVariantFn = (
 		return (props = {}) => run(props);
 	}
 
-	// A call without props reuses its last slot functions while `run` returns
-	// the same result, which a cache hit does, so it allocates nothing.
-	let defaultSource: CacheValue | undefined;
-	let defaultResult: MultiSlotResult = {};
+	// Without a cache `run` never returns the same result twice, so a call
+	// without props has nothing to reuse.
+	if (!config.cacheable) {
+		return (props = {}) => applyMultiSlots(config, run, props, run(props));
+	}
+
+	const getDefaultResult = createDefaultResultGetter(config, run);
 
 	return (props) => {
-		if (props !== undefined) {
-			return applyMultiSlots(config, run, props, run(props), false);
+		if (props === undefined) {
+			return getDefaultResult();
 		}
 
-		const result = run(emptyProps);
-
-		if (result !== defaultSource) {
-			defaultSource = result;
-			defaultResult = applyMultiSlots(
-				config,
-				run,
-				emptyProps,
-				result,
-				true
-			);
-		}
-
-		return defaultResult;
+		return applyMultiSlots(config, run, props, run(props));
 	};
 };
 
