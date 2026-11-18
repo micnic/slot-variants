@@ -200,6 +200,9 @@ const COLOR_KEYWORDS = ['inherit', 'current', 'transparent', 'black', 'white'];
 // they never read as a named color and reach the `short` bucket on their own.
 const SIZE_KEYWORDS = ['xs', 'sm', 'md', 'lg', 'xl'];
 const SIDES = ['t', 'r', 'b', 'l', 'x', 'y', 's', 'e', 'bs', 'be'];
+// The sides an `x`/`y` axis utility sets, physical and logical alike.
+const INLINE_SIDES = ['r', 'l', 's', 'e'];
+const BLOCK_SIDES = ['t', 'b', 'bs', 'be'];
 const CORNERS = [
 	't',
 	'r',
@@ -332,11 +335,13 @@ const colorSpec: PrefixSpec = {
 };
 
 // Gradient color stops (`from`/`via`/`to`): a color, or a `%`/number stop
-// position, which is a distinct property that composes with the color.
+// position, which is a distinct property that composes with the color. A
+// single word (`from-brand`) is a custom color, never a position.
 const gradientStopSpec: PrefixSpec = {
 	keywords: categoryMap([['color', COLOR_KEYWORDS]]),
 	short: 'position',
 	long: 'color',
+	namedColors: true,
 	fallback: 'color'
 };
 
@@ -413,6 +418,7 @@ const maskStopSpec: PrefixSpec = {
 	keywords: categoryMap([['color', COLOR_KEYWORDS]]),
 	short: 'pos',
 	long: 'color',
+	namedColors: true,
 	fallback: 'pos'
 };
 
@@ -650,8 +656,10 @@ const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
 				['repeat', ['repeat']],
 				['image', ['none']]
 			]),
-			// `mask-[url(/a.svg)]` is a mask-image, like the `bg` equivalent.
+			// `mask-[url(/a.svg)]` is a mask-image, like the `bg` equivalent,
+			// and so is an untyped `mask-(--x)`.
 			arbitraryImage: true,
+			variable: 'image',
 			nested: new Map([
 				['linear', maskAngleStopSpec],
 				['conic', maskAngleStopSpec],
@@ -1245,6 +1253,10 @@ const HINT_CATEGORIES: ReadonlyMap<string, ReadonlyArray<string>> = new Map([
 	['angle', ['angle']]
 ]);
 
+// A bracketed value that is nothing but one `var()` (`[var(--x)]`,
+// `[var(--x,red)]`).
+const BRACKETED_VARIABLE = /^\[var\(--[\w-]+(?:,.*)?\)\]$/;
+
 // Every category name a spec can produce. Cached per spec — the specs are
 // module-level constants, and a hinted value would otherwise rebuild the set on
 // every token.
@@ -1277,9 +1289,11 @@ type ArbitraryValue = {
 
 // Parses `[type:value]`, `(type:--var)`, `[value]` and `(--var)`, returning
 // undefined for a value that isn't arbitrary at all. A colon that isn't a type
-// hint (`[url(data:image/png)]`) reads as untyped.
+// hint (`[url(data:image/png)]`) reads as untyped. A lone `[var(--x)]` is what
+// Tailwind expands `(--x)` into, so it counts as the shorthand.
 const parseArbitraryValue = (segment: string): ArbitraryValue | undefined => {
-	const variable = segment.startsWith('(');
+	const variable =
+		segment.startsWith('(') || BRACKETED_VARIABLE.test(segment);
 
 	if (!variable && !segment.startsWith('[')) {
 		return undefined;
@@ -1499,14 +1513,15 @@ const BARE_UTILITIES: ReadonlyMap<string, ReadonlyArray<string>> = new Map(
 // are merged before reporting. Siblings never touch without their shorthand.
 
 // The side nodes of a spacing-style family (`m`, `p`, `scroll-m`, `scroll-p`):
-// the bare prefix covers every side, the axes cover their physical sides. The
-// logical `s`/`e` sides are leaves — they only merge through the bare prefix.
+// the bare prefix covers every side, and each axis covers both its physical
+// and its logical sides — `px-*` sets `padding-inline`, which `ps-*`/`pe-*`
+// are the longhands of, and `py-*` likewise covers `pbs-*`/`pbe-*`.
 const sideOverlapCovers = (
 	prefix: string
 ): ReadonlyArray<readonly [string, ReadonlyArray<string>]> => [
 	[prefix, SIDES.map((side) => `${prefix}${side}`)],
-	[`${prefix}x`, [`${prefix}r`, `${prefix}l`]],
-	[`${prefix}y`, [`${prefix}t`, `${prefix}b`]]
+	[`${prefix}x`, INLINE_SIDES.map((side) => `${prefix}${side}`)],
+	[`${prefix}y`, BLOCK_SIDES.map((side) => `${prefix}${side}`)]
 ];
 
 // An axis family (`gap`, `overflow`, `translate`, …): the bare form sets all
@@ -1542,8 +1557,8 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 			'end'
 		]
 	],
-	['inset-x', ['right', 'left']],
-	['inset-y', ['top', 'bottom']],
+	['inset-x', ['right', 'left', 'start', 'end']],
+	['inset-y', ['top', 'bottom', 'inset-bs', 'inset-be']],
 	axisOverlapCovers('gap'),
 	axisOverlapCovers('overflow'),
 	axisOverlapCovers('overscroll'),
@@ -1563,11 +1578,11 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 	['rounded-s', ['rounded-ss', 'rounded-es']],
 	['rounded-e', ['rounded-se', 'rounded-ee']],
 	['border-w', SIDES.map((side) => `border-w-${side}`)],
-	['border-w-x', ['border-w-r', 'border-w-l']],
-	['border-w-y', ['border-w-t', 'border-w-b']],
+	['border-w-x', INLINE_SIDES.map((side) => `border-w-${side}`)],
+	['border-w-y', BLOCK_SIDES.map((side) => `border-w-${side}`)],
 	['border-color', SIDES.map((side) => `border-color-${side}`)],
-	['border-color-x', ['border-color-r', 'border-color-l']],
-	['border-color-y', ['border-color-t', 'border-color-b']],
+	['border-color-x', INLINE_SIDES.map((side) => `border-color-${side}`)],
+	['border-color-y', BLOCK_SIDES.map((side) => `border-color-${side}`)],
 	['touch', ['touch-x', 'touch-y', 'touch-pz']],
 	// Only a modifier-bearing font size reaches `leading` — a plain one reads
 	// its line-height through `--tw-leading`, which `leading-*` sets, so the
@@ -2016,6 +2031,10 @@ const splitVariantPrefix = (
 
 const CONTAINER_TYPE_PREFIX = '@container';
 
+// The property name of an arbitrary property: a CSS property, vendor-prefixed
+// or not, or a custom property (`color`, `-webkit-line-clamp`, `--x`).
+const ARBITRARY_PROPERTY_NAME = /^-{0,2}[a-z][\w-]*$/i;
+
 // `@container`/`@container-normal`/`@container-size` all set one property
 // (`container-type`), so they conflict directly regardless of keyword — unlike
 // every other prefix here, they don't split into further categories. A `/name`
@@ -2045,6 +2064,36 @@ const getContainerConflictKey = (
 		key: `${variantPrefix}|container|${hasName ? 'named' : 'type'}`,
 		variantPrefix,
 		overlap: hasName ? 'container-named' : 'container-type'
+	};
+};
+
+// An arbitrary property (`[mask-type:alpha]`, `[--x:1]`) sets exactly the CSS
+// property it names, so two of them conflict when they name the same one.
+// Null for anything else.
+const getArbitraryPropertyKey = (
+	bare: string,
+	variantPrefix: string
+): ConflictKeyInfo | null => {
+	if (!bare.startsWith('[') || !bare.endsWith(']')) {
+		return null;
+	}
+
+	const colonIndex = bare.indexOf(':');
+
+	if (colonIndex === -1) {
+		return null;
+	}
+
+	const property = bare.slice(1, colonIndex);
+
+	if (!ARBITRARY_PROPERTY_NAME.test(property)) {
+		return null;
+	}
+
+	return {
+		key: `${variantPrefix}|[${property}]`,
+		variantPrefix,
+		overlap: null
 	};
 };
 
@@ -2192,6 +2241,12 @@ const computeConflictKey = (
 			variantPrefix,
 			overlap: ownKeyOverlap
 		};
+	}
+
+	const arbitraryProperty = getArbitraryPropertyKey(bare, variantPrefix);
+
+	if (arbitraryProperty !== null) {
+		return arbitraryProperty;
 	}
 
 	const [firstSegment, ...value] = splitOutsideBrackets(bare, '-');

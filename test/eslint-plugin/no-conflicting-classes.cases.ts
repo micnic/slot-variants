@@ -695,8 +695,10 @@ export const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'mt-2 mr-2 mb-2 ml-2' });",
 	IMPORT + "sv({ base: 'mx-2 my-2' });",
 	IMPORT + "sv({ base: 'px-4 pt-2' });",
-	// Logical spacing sides are leaves — they only merge through the bare form.
-	IMPORT + "sv({ base: 'px-4 ps-2' });",
+	// An inline axis doesn't reach the block sides, nor a block axis the
+	// inline ones.
+	IMPORT + "sv({ base: 'mx-2 mbs-2' });",
+	IMPORT + "sv({ base: 'py-4 ps-2' });",
 	// `inset-x` covers left/right only, not top.
 	IMPORT + "sv({ base: 'inset-x-0 top-0' });",
 	// `translate-z` has its own overlap node, but it's only reachable through
@@ -720,7 +722,7 @@ export const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'border-x-2 border-t-4' });",
 	// A border width doesn't overlap a per-side border color.
 	IMPORT + "sv({ base: 'border-2 border-t-red-500' });",
-	// Logical block sides are leaves — they only merge through the bare form.
+	// A logical side and a physical side only meet through a shorthand.
 	IMPORT + "sv({ base: 'border-bs-2 border-t-4' });",
 	IMPORT + "sv({ base: 'mbs-2 mt-2' });",
 	// `inset-x` still covers left/right only, not the logical block sides.
@@ -1078,7 +1080,22 @@ export const NO_CONFLICTING_NS_VALID = [
 		// of the project's own class names, not a utility.
 		code: IMPORT + "sv({ base: 'card-body card-header' });",
 		options: [{ prefix: 'tw-' }]
-	}
+	},
+	// A gradient stop position composes with a custom single-word color.
+	IMPORT + "sv({ base: 'from-50% from-brand' });",
+	IMPORT + "sv({ base: 'mask-t-from-50% mask-t-from-brand' });",
+	// An untyped `[var(…)]` reads like the `(--x)` shorthand: a color on
+	// `text`/`border`, so it composes with a size or width.
+	IMPORT + "sv({ base: 'text-sm text-[var(--c)]' });",
+	IMPORT + "sv({ base: 'border-2 border-[var(--c)]' });",
+	// Arbitrary properties only conflict when they set the same property under
+	// the same variants.
+	IMPORT + "sv({ base: '[color:red] [padding:1rem]' });",
+	IMPORT + "sv({ base: 'hover:[color:red] [color:blue]' });",
+	IMPORT + "sv({ base: '[--a:1] [--b:2]' });",
+	// A bracketed token naming no property isn't an arbitrary property.
+	IMPORT + "sv({ base: '[a] [b]' });",
+	IMPORT + "sv({ base: '[0:a] [0:b]' });"
 ];
 
 export const NO_CONFLICTING_NS_INVALID = [
@@ -2593,5 +2610,73 @@ export const NO_CONFLICTING_NS_INVALID = [
 		code: IMPORT_CN + "cn('card-body', 'card-body');",
 		options: [{ prefix: 'tw-' }],
 		errors: repeat(dupCn('card-body'), 2)
+	},
+	{
+		// An inline/block axis covers its logical sides too.
+		code: IMPORT_CN + "cn('px-4', 'ps-2');",
+		errors: repeat(conflictCn('ps-2, px-4'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('my-2', 'mbe-1');",
+		errors: repeat(conflictCn('mbe-1, my-2'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('scroll-px-2', 'scroll-pe-4');",
+		errors: repeat(conflictCn('scroll-pe-4, scroll-px-2'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('border-x-2', 'border-s-4');",
+		errors: repeat(conflictCn('border-s-4, border-x-2'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('border-y-red-500', 'border-bs-blue-500');",
+		errors: repeat(conflictCn('border-bs-blue-500, border-y-red-500'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('inset-x-0', 'start-2');",
+		errors: repeat(conflictCn('inset-x-0, start-2'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('inset-y-0', 'inset-bs-4');",
+		errors: repeat(conflictCn('inset-bs-4, inset-y-0'), 2)
+	},
+	{
+		// A single-word custom color on a gradient or mask stop is a color.
+		code: IMPORT_CN + "cn('from-red-500', 'from-brand');",
+		errors: repeat(conflictCn('from-brand, from-red-500'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('mask-t-from-red-500', 'mask-t-from-brand');",
+		errors: repeat(conflictCn('mask-t-from-brand, mask-t-from-red-500'), 2)
+	},
+	{
+		// An untyped mask variable is a mask image.
+		code: IMPORT_CN + "cn('mask-none', 'mask-(--x)');",
+		errors: repeat(conflictCn('mask-(--x), mask-none'), 2)
+	},
+	{
+		// An untyped `[var(…)]` is the same as the `(--x)` shorthand.
+		code: IMPORT_CN + "cn('text-red-500', 'text-[var(--c)]');",
+		errors: repeat(conflictCn('text-[var(--c)], text-red-500'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('shadow-lg', 'shadow-[var(--s)]');",
+		errors: repeat(conflictCn('shadow-[var(--s)], shadow-lg'), 2)
+	},
+	{
+		// Two arbitrary properties setting the same property conflict.
+		code: IMPORT_CN + "cn('[color:red]', '[color:blue]');",
+		errors: repeat(conflictCn('[color:blue], [color:red]'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('hover:[--x:1]', 'hover:[--x:2]');",
+		errors: repeat(conflictCn('hover:[--x:1], hover:[--x:2]'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn('[mask-type:alpha]!', '[mask-type:luminance]');",
+		errors: repeat(
+			conflictCn('[mask-type:alpha]!, [mask-type:luminance]'),
+			2
+		)
 	}
 ];
