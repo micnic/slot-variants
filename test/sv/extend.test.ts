@@ -544,6 +544,50 @@ t.test('extends several parents left to right', (t) => {
 	t.end();
 });
 
+t.test('merges a shared ancestor once', (t) => {
+	const root = sv('a', {
+		variants: { s: { x: 'ax' } },
+		compoundVariants: [{ s: 'x', class: 'cmp' }]
+	});
+	const left = sv({ extend: root, base: 'b' });
+	const right = sv({ extend: root, base: 'c' });
+
+	t.equal(
+		sv({ extend: [left, right] })({ s: 'x' }),
+		'a b c ax cmp',
+		'diamond'
+	);
+	t.equal(
+		sv({ extend: [root, left] })({ s: 'x' }),
+		'a b ax cmp',
+		'a parent that also extends an earlier one'
+	);
+	t.equal(
+		sv({ extend: [root, root] })({ s: 'x' }),
+		'a ax cmp',
+		'the same parent twice'
+	);
+
+	t.end();
+});
+
+t.test('a parent requiring every variant keeps to its own', (t) => {
+	const toned = sv({ variants: { tone: { soft: 'opacity-80' } } });
+	const sized = sv({
+		variants: { size: { sm: 'text-sm' } },
+		slots: { icon: 'size-4' },
+		requiredVariants: true,
+		multiSlots: true
+	});
+	const child = sv({ extend: [toned, sized] });
+	const { base, icon } = child({ size: 'sm' });
+
+	t.equal(base(), 'text-sm', 'tone stays optional');
+	t.equal(icon(), 'size-4', 'slots of the parent are multi slots');
+
+	t.end();
+});
+
 t.test('an empty extend list is the same as none', (t) => {
 	const button = sv('btn', {
 		extend: [],

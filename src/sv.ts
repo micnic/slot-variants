@@ -6,7 +6,13 @@ import {
 	isReservedProp
 } from './sv/compile.ts';
 import { createExplain } from './sv/explain.ts';
-import { hasParents, recordConfig, resolveExtend } from './sv/extend.ts';
+import {
+	getParentLayers,
+	hasParents,
+	mergeLayers,
+	recordLayers,
+	toLayer
+} from './sv/extend.ts';
 import { createRun, createRunPlan, getClassBySlot } from './sv/run.ts';
 import {
 	type AnyFn,
@@ -43,7 +49,12 @@ type MultiSlotResult = Record<
 
 type RuntimeVariantFn = (props?: RuntimeProps) => CacheValue | MultiSlotResult;
 
-type ResolvedCall = { baseArgs: ClassValue[]; config: RawConfig };
+// What a call compiles, and the layers a component extending it merges.
+type ResolvedCall = {
+	baseArgs: ClassValue[];
+	config: RawConfig;
+	layers: readonly RawConfig[];
+};
 
 const { assign, entries, hasOwn, keys } = Object;
 
@@ -313,6 +324,24 @@ const mergeConfig = (defaults: RawConfig | undefined, config: RawConfig) => {
 };
 
 /**
+ * The factory defaults no layer sets, which fill those options in.
+ */
+const getUnsetDefaults = <T extends object>(
+	defaults: T | undefined,
+	resolved: T
+): Partial<T> => {
+	const unset: Partial<T> = {};
+
+	for (const key in defaults) {
+		if (resolved[key] === undefined) {
+			unset[key] = defaults[key];
+		}
+	}
+
+	return unset;
+};
+
+/**
  * Folds the base args into the config's `base`, ahead of its own classes.
  */
 const foldBaseArgs = (baseArgs: ClassValue[], config: RawConfig): RawConfig => {
@@ -325,7 +354,7 @@ const foldBaseArgs = (baseArgs: ClassValue[], config: RawConfig): RawConfig => {
 
 /**
  * Resolves what a call compiles: its base args and its config over the
- * factory defaults, with the configs of the components it extends merged in
+ * factory defaults, with the layers of the components it extends merged in
  * first. Base args then count as the config's own `base`, so they follow the
  * inherited base classes.
  */
@@ -337,7 +366,10 @@ const resolveCall = (
 	const { extend } = config;
 
 	if (!hasParents(extend)) {
-		return { baseArgs, config: mergeConfig(defaults, config) };
+		const merged = mergeConfig(defaults, config);
+		const own = foldBaseArgs(baseArgs, merged);
+
+		return { baseArgs, config: merged, layers: [toLayer(own, own)] };
 	}
 
 	const own = foldBaseArgs(baseArgs, config);
@@ -346,21 +378,22 @@ const resolveCall = (
 	// them, so their defaults belong to the config's own side.
 	const { requiredVariants, multiSlots } = defaults ?? {};
 	const ownWithDefaults = mergeConfig({ requiredVariants, multiSlots }, own);
+	const parentLayers = getParentLayers(extend);
+	const resolved = mergeLayers([...parentLayers, ownWithDefaults]);
+	const merged = mergeConfig(defaults, resolved);
 
+	// The factory defaults sit below the parents, filling only what no layer
+	// sets, so they are merged first.
 	return {
 		baseArgs: [],
-		config: mergeConfig(defaults, resolveExtend(ownWithDefaults, extend))
+		config: merged,
+		layers: [
+			getUnsetDefaults(defaults, resolved),
+			...parentLayers,
+			toLayer(ownWithDefaults, merged)
+		]
 	};
 };
-
-/**
- * The config a component extending this one inherits: base args folded into
- * `base`, and the introspection it resolved to.
- */
-const toInheritedConfig = ({ baseArgs, config }: ResolvedCall): RawConfig => ({
-	...foldBaseArgs(baseArgs, config),
-	introspection: config.introspection ?? false
-});
 
 const buildVariantFn = (
 	defaults: RawConfig | undefined,
@@ -372,7 +405,7 @@ const buildVariantFn = (
 		compileConfig(call.baseArgs, call.config)
 	);
 
-	recordConfig(variantFn, toInheritedConfig(call));
+	recordLayers(variantFn, call.layers);
 
 	return variantFn;
 };

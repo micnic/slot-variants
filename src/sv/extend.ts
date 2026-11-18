@@ -19,27 +19,33 @@ type RawSlotRecord = Exclude<RawVariantValue, ConfigClassValue>;
 
 type MergeValue<T> = (inherited: T, own: T) => T;
 
+type NameList = RawConfig['requiredVariants'] | RawConfig['multiSlots'];
+
 const { entries, fromEntries, hasOwn, keys } = Object;
 
-// Each config-based `sv()` result, mapped to the config it was built from.
-const configs = new WeakMap<AnyFn, RawConfig>();
+// Each config-based `sv()` result, mapped to the layers it was built from:
+// the own configs of its ancestors, in merge order, then its own.
+const layersByFn = new WeakMap<AnyFn, readonly RawConfig[]>();
 
 /**
- * Remembers the config a variant function was built from, so that other
+ * Remembers the layers a variant function was built from, so that other
  * configs can extend it.
  */
-export const recordConfig = (variantFn: AnyFn, config: RawConfig) => {
-	configs.set(variantFn, config);
+export const recordLayers = (
+	variantFn: AnyFn,
+	layers: readonly RawConfig[]
+) => {
+	layersByFn.set(variantFn, layers);
 };
 
-const getParentConfig = (parent: AnyFn) => {
-	const config = configs.get(parent);
+const getLayers = (parent: AnyFn) => {
+	const layers = layersByFn.get(parent);
 
-	if (config === undefined) {
+	if (layers === undefined) {
 		throw new Error('extend must be an sv() component');
 	}
 
-	return config;
+	return layers;
 };
 
 const toParentList = (extend: ExtendInput): readonly AnyFn[] => {
@@ -296,18 +302,53 @@ const mergeConfigs = (inherited: RawConfig, config: RawConfig): RawConfig => {
 };
 
 /**
- * Merges the configs of the components a config extends, left to right,
- * then the config itself on top, into one config that extends nothing.
+ * The layers of the components a config extends, left to right, each layer
+ * once: an ancestor two parents share is merged where it first appears.
  */
-export const resolveExtend = (
-	config: RawConfig,
-	extend: ExtendInput
-): RawConfig => {
-	let merged: RawConfig = {};
+export const getParentLayers = (extend: ExtendInput): RawConfig[] => {
+	const layers = new Set<RawConfig>();
 
 	for (const parent of toParentList(extend)) {
-		merged = mergeConfigs(merged, getParentConfig(parent));
+		for (const layer of getLayers(parent)) {
+			layers.add(layer);
+		}
 	}
 
-	return mergeConfigs(merged, config);
+	return [...layers];
 };
+
+/**
+ * Merges layers in order into one config that extends nothing.
+ */
+export const mergeLayers = (layers: readonly RawConfig[]): RawConfig => {
+	let merged: RawConfig = {};
+
+	for (const layer of layers) {
+		merged = mergeConfigs(merged, layer);
+	}
+
+	return merged;
+};
+
+const resolveOwnNames = (names: NameList, all: readonly string[]) => {
+	if (names === undefined) {
+		return undefined;
+	}
+
+	return resolveNames(names, all);
+};
+
+/**
+ * A config as a layer other configs merge: its `true` required variants and
+ * multi slots named, as they cover only what it had, and its introspection
+ * resolved.
+ */
+export const toLayer = (own: RawConfig, resolved: RawConfig): RawConfig => ({
+	...own,
+	requiredVariants: resolveOwnNames(
+		own.requiredVariants,
+		keys(resolved.variants ?? {})
+	),
+	multiSlots: resolveOwnNames(own.multiSlots, getSlotNames(resolved.slots)),
+	introspection: resolved.introspection ?? false
+});
