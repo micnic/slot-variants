@@ -1,11 +1,15 @@
 import type { Scope, SourceCode } from 'eslint';
 import type { ArrayExpression, Identifier, Node } from 'estree';
+import { getKeyName } from './config-keys.ts';
 
 // A node that only wraps another expression without changing its value.
 type TransparentWrapper = Node & { expression: Node };
 
 // A name's single definition, and the scope that declares it.
 type SingleBinding = { def: Scope.Definition; scope: Scope.Scope };
+
+/** A name destructured off a value: the value, and the key it reads. */
+export type DestructuredRead = { object: Node; key: string };
 
 // A name a Vue template expression reads, as vue-eslint-parser records it on
 // the expression's container: the identifier, and the template variable
@@ -192,6 +196,57 @@ export const getConstDefInit = (def: Scope.Definition): Node | null => {
 	}
 
 	return unwrapExpression(init);
+};
+
+/**
+ * The value and key a `const { key: name } = value` definition binds `name`
+ * to. Null for any other definition, and for a name a nested pattern, a
+ * default value, a rest element or a computed key binds.
+ */
+export const getDestructuredRead = (
+	node: Identifier,
+	sourceCode: SourceCode
+): DestructuredRead | null => {
+	const scope = getLookupScope(node, sourceCode);
+
+	if (scope === null) {
+		return null;
+	}
+
+	const binding = findSingleBinding(scope, node.name);
+
+	if (binding === null) {
+		return null;
+	}
+
+	const { def } = binding;
+
+	if (
+		def.type !== 'Variable' ||
+		def.parent.kind !== 'const' ||
+		def.node.id.type !== 'ObjectPattern' ||
+		!def.node.init
+	) {
+		return null;
+	}
+
+	for (const property of def.node.id.properties) {
+		if (
+			property.type === 'Property' &&
+			property.value.type === 'Identifier' &&
+			property.value.name === node.name
+		) {
+			const key = getKeyName(property);
+
+			if (key === null) {
+				return null;
+			}
+
+			return { object: unwrapExpression(def.node.init), key };
+		}
+	}
+
+	return null;
 };
 
 // Follows `const` bindings so a hoisted constant (`const base = 'flex'`) is

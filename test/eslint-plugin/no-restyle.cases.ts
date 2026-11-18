@@ -112,8 +112,21 @@ export const RESTYLE_VALID = [
 	IMPORT_SV_CN + "class A { #s = 'p-2'; m() { return cn(this.#s, 'p-4'); } }",
 	// A method call is not a variant-function call.
 	IMPORT_SV_CN + RESTYLE_BUTTON + "console.log('p-4');",
-	IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c['header'], 'px-8');",
 	IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c[key], 'px-8');",
+	// Destructured names that aren't a plain read of one slot: a computed key,
+	// a default value, a rest element, and a `let` binding.
+	IMPORT_SV_CN +
+		RESTYLE_CARD +
+		"const { [key]: h } = card();\ncn(h, 'px-8');",
+	IMPORT_SV_CN +
+		RESTYLE_CARD +
+		"const { header = 'x' } = card();\ncn(header, 'px-8');",
+	IMPORT_SV_CN +
+		RESTYLE_CARD +
+		"const { ...rest } = card();\ncn(rest, 'px-8');",
+	IMPORT_SV_CN +
+		RESTYLE_CARD +
+		"let { header } = card();\ncn(header, 'px-8');",
 	// A slotted result carries no classes of its own until a slot is read.
 	IMPORT_SV_CN + RESTYLE_CARD + "cn(card(), 'p-4');",
 	// A member read off something that isn't a call.
@@ -273,6 +286,29 @@ export const RESTYLE_VUE_VALID = [
 ];
 
 export const RESTYLE_INVALID = [
+	// Slots destructured off a result, and a slot read by a string key.
+	{
+		code:
+			IMPORT_SV_CN +
+			"const card = sv('p-2', { slots: { header: 'font-bold' } });\nconst { base, header: title } = card();\ncn(title, 'font-normal');\ncn(base, 'p-4');",
+		errors: [
+			restyle('font-normal', 'font-bold', 'header'),
+			restyle('p-4', 'p-2')
+		]
+	},
+	{
+		code:
+			IMPORT_SV_CN +
+			"const card = sv({ slots: { header: 'font-bold' } });\nconst c = card();\ncn(c['header'], 'font-normal');",
+		errors: [restyle('font-normal', 'font-bold', 'header')]
+	},
+	// A multi-slot function destructured off a result.
+	{
+		code:
+			IMPORT +
+			"const list = sv({ slots: { item: 'px-2' }, multiSlots: ['item'] });\nconst { item } = list();\nitem({ class: 'px-4' });",
+		errors: [restyle('px-4', 'px-2', 'item')]
+	},
 	// A ternary branch still renders with what surrounds the ternary.
 	{
 		code:

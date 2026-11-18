@@ -11,6 +11,12 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 		const card = sv({ slots: { header: 'px-4' } });
 		const classes = card();
 		cn(classes.header, 'font-bold');`,
+	// Slots destructured off a result, renamed or not, and a slot read by a
+	// string key, are another call's output too.
+	`import { cn, sv } from 'slot-variants';
+		const card = sv('p-2', { slots: { header: 'font-bold' } });
+		const { base, header: title } = card();
+		cn(base, title, card()['header']);`,
 	// Static base in config.
 	IMPORT + "sv({ base: 'flex' });",
 	// Array of static class values.

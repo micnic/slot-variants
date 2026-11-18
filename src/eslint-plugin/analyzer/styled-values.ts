@@ -11,10 +11,13 @@ import type {
 import { getOrCreate } from '../map-utils.ts';
 import { type CallMatch, isClassListMatch } from './call-matching.ts';
 import {
+	type DestructuredRead,
 	findLookupVariable,
+	getDestructuredRead,
 	resolveContainer,
 	resolveStaticValue
 } from './const-bindings.ts';
+import { getStaticStringText } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
 	getClassValue,
@@ -289,6 +292,20 @@ const resolveVariantFnStyles = (
 	return getConfigStyles(resolved, match.config, match.args, ctx.sourceCode);
 };
 
+// The slot function a callee names, as a slot read off a result, if it is
+// one.
+const readSlotFn = (
+	callee: Node,
+	ctx: StyledContext,
+	visited: Set<CallExpression>
+): StyledClasses | null => {
+	if (callee.type === 'MemberExpression' || callee.type === 'Identifier') {
+		return resolveStyledRead(callee, ctx, visited);
+	}
+
+	return null;
+};
+
 /**
  * Classifies `node` as a call of a compiled variant function, directly
  * (`button(props)`) or through a multi-slot slot function
@@ -308,14 +325,9 @@ export const resolveInvocation = (
 	visited.add(node);
 
 	const { callee } = node;
+	const slotFn = readSlotFn(callee, ctx, visited);
 
-	if (callee.type === 'MemberExpression') {
-		const slotFn = resolveStyledMember(callee, ctx, visited);
-
-		if (slotFn === null) {
-			return null;
-		}
-
+	if (slotFn !== null) {
 		// The result's matchers already carry `defaultVariants`, so only the
 		// props this slot call passes refine them — applying the defaults again
 		// would override the values the result was produced with.
@@ -331,6 +343,7 @@ export const resolveInvocation = (
 		};
 	}
 
+	// A member read that is no slot names no variant function either.
 	const styles = resolveVariantFnStyles(callee, ctx);
 
 	if (styles === null) {
@@ -349,17 +362,56 @@ export const resolveInvocation = (
 	};
 };
 
-// `classes.header` — a slot read off a variant function's result.
-const resolveStyledMember = (
+// The slot key a member read names: `classes.header`, or a static key like
+// `classes['header']`.
+const getMemberKey = (
 	node: MemberExpression,
-	ctx: StyledContext,
-	visited: Set<CallExpression> = new Set()
-): StyledClasses | null => {
-	if (node.computed || node.property.type !== 'Identifier') {
+	ctx: StyledContext
+): string | null => {
+	if (node.computed) {
+		return getStaticStringText(ctx.resolve(node.property));
+	}
+
+	if (node.property.type !== 'Identifier') {
 		return null;
 	}
 
-	const object = ctx.resolve(node.object);
+	return node.property.name;
+};
+
+// The value and key a slot read takes: a member read, or a name destructured
+// off the value.
+const getSlotRead = (
+	node: MemberExpression | Identifier,
+	ctx: StyledContext
+): DestructuredRead | null => {
+	if (node.type === 'Identifier') {
+		return getDestructuredRead(node, ctx.sourceCode);
+	}
+
+	const key = getMemberKey(node, ctx);
+
+	if (key === null) {
+		return null;
+	}
+
+	return { object: node.object, key };
+};
+
+// `classes.header`, `classes['header']`, or a `header` destructured off
+// `classes` — a slot read off a variant function's result.
+const resolveStyledRead = (
+	node: MemberExpression | Identifier,
+	ctx: StyledContext,
+	visited: Set<CallExpression> = new Set()
+): StyledClasses | null => {
+	const read = getSlotRead(node, ctx);
+
+	if (read === null) {
+		return null;
+	}
+
+	const object = ctx.resolve(read.object);
 
 	if (object.type !== 'CallExpression') {
 		return null;
@@ -371,7 +423,7 @@ const resolveStyledMember = (
 		return null;
 	}
 
-	const slot = node.property.name;
+	const slot = read.key;
 
 	if (slot !== 'base' && !invocation.styles.slotNames.has(slot)) {
 		return null;
@@ -414,8 +466,11 @@ export const readStyledClasses = (
 	resolved: Node,
 	ctx: StyledContext
 ): StyledClasses | null => {
-	if (resolved.type === 'MemberExpression') {
-		return resolveStyledMember(resolved, ctx);
+	if (
+		resolved.type === 'MemberExpression' ||
+		resolved.type === 'Identifier'
+	) {
+		return resolveStyledRead(resolved, ctx);
 	}
 
 	if (resolved.type !== 'CallExpression') {
