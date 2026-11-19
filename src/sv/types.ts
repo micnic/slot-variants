@@ -151,27 +151,29 @@ type SlotResult<
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
 	P extends MaybePresets<S, G, V>,
-	M extends MultiSlots<S, G>
+	M extends MultiSlots<S, G>,
+	R extends RequiredVariants<V>
 > = Prettify<{
 	readonly [K in SlotKey<S>]: K extends MultiSlotKeys<S, G, M>
-		? (props?: MultiSlotFnProps<S, G, V, P>) => string
+		? (props?: MultiSlotFnProps<S, G, V, P, R>) => string
 		: string;
 }>;
 
-// Without slots the result is the class string, unless `multiSlots` makes
-// `base` a function — then it's the same `{ base }` object a slotted config
-// returns.
+// With no slot besides `base` the result is the class string, unless
+// `multiSlots` makes `base` a function — then it's the same `{ base }` object
+// a slotted config returns.
 type ReturnValue<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
 	P extends MaybePresets<S, G, V>,
-	M extends MultiSlots<S, G>
-> = S extends undefined
+	M extends MultiSlots<S, G>,
+	R extends RequiredVariants<V>
+> = [Exclude<StringKeyof<S>, 'base'>] extends [never]
 	? [MultiSlotKeys<S, G, M>] extends [never]
 		? string
-		: SlotResult<S, G, V, P, M>
-	: SlotResult<S, G, V, P, M>;
+		: SlotResult<S, G, V, P, M, R>
+	: SlotResult<S, G, V, P, M, R>;
 
 type SlotRecord<S extends MaybeSlots, G extends MaybeGroups<S>, V> =
 	| Partial<Record<SlotTarget<S, G>, V>>
@@ -232,7 +234,7 @@ type CompoundVariants<
 	V extends MaybeVariants<S, G>,
 	P extends MaybePresets<S, G, V>
 > = readonly (CompoundConditions<S, G, V, P> &
-	EitherClassProp<SlotValue<S, G, ConfigClassValue>>)[];
+	EitherClassProp<Exclude<SlotValue<S, G, ConfigClassValue>, undefined>>)[];
 
 type CompoundSlots<
 	S extends MaybeSlots,
@@ -242,7 +244,7 @@ type CompoundSlots<
 > = readonly ({
 	slots: readonly [SlotTarget<S, G>, ...SlotTarget<S, G>[]];
 } & CompoundConditions<S, G, V, P> &
-	EitherClassProp<ConfigClassValue>)[];
+	EitherClassProp<Exclude<ConfigClassValue, undefined>>)[];
 
 type VariantPropsInternal<
 	S extends MaybeSlots,
@@ -252,21 +254,72 @@ type VariantPropsInternal<
 	[K in StringKeyof<V>]: VariantPropType<V[K]>;
 };
 
+// Variant props where the `K` variants must be passed and the `L` ones may be
+// left out but not unset with `null`, as something else gives them a value.
+type VariantPropsFor<
+	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
+	V extends MaybeVariants<S, G>,
+	K extends StringKeyof<V>,
+	L extends StringKeyof<V>
+> = Pick<VariantPropsInternal<S, G, V>, K> & {
+	[X in L]?: VariantPropsInternal<S, G, V>[X] | undefined;
+} & Omit<PartialNullable<VariantPropsInternal<S, G, V>>, K | L>;
+
+type PresetProp<P> = P extends undefined
+	? unknown
+	: { preset?: StringKeyof<P> | undefined };
+
+// The props of a call naming preset `K`: the required variants it doesn't set
+// still have to be passed.
+type NamedPresetProps<
+	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
+	V extends MaybeVariants<S, G>,
+	P extends MaybePresets<S, G, V>,
+	R extends StringKeyof<V>,
+	K extends StringKeyof<P>
+> = VariantPropsFor<S, G, V, Exclude<R, keyof P[K]>, Extract<R, keyof P[K]>> & {
+	preset: K;
+};
+
+// Every variant is optional when none is required. Otherwise, a call passes
+// each required variant, or names a preset that sets it.
 type PresetVariantProps<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, G, V>
-> = PartialNullable<VariantPropsInternal<S, G, V>> & {
-	preset?: StringKeyof<P> | undefined;
-};
+	P extends MaybePresets<S, G, V>,
+	R extends RequiredVariants<V>
+> = [RequiredVariantKeys<V, R>] extends [never]
+	? PartialNullable<VariantPropsInternal<S, G, V>> & PresetProp<P>
+	:
+			| (VariantPropsFor<S, G, V, RequiredVariantKeys<V, R>, never> & {
+					preset?: undefined;
+			  })
+			| {
+					[K in StringKeyof<P>]: NamedPresetProps<
+						S,
+						G,
+						V,
+						P,
+						RequiredVariantKeys<V, R>,
+						K
+					>;
+			  }[StringKeyof<P>];
 
+// A slot function's props: every variant is optional, as the call that made
+// the result already resolved them, but a required one can't be unset.
 type MultiSlotFnProps<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, G, V>
-> = VariantArgs<S, G, V, P, false> & EitherClassProp<ClassValue, true>;
+	P extends MaybePresets<S, G, V>,
+	R extends RequiredVariants<V>
+> = Prettify<
+	VariantPropsFor<S, G, V, never, RequiredVariantKeys<V, R>> & PresetProp<P>
+> &
+	EitherClassProp<ClassValue, true>;
 
 // A function default reads the call's variant props, with a passed preset's
 // values filled in where the props leave a variant unset.
@@ -587,7 +640,7 @@ type VariantArgs<
 > = Prettify<
 	P extends undefined
 		? VariantPropsWithRequired<S, G, V, R>
-		: PresetVariantProps<S, G, V, P>
+		: PresetVariantProps<S, G, V, P, R>
 >;
 
 type Props<
@@ -822,7 +875,7 @@ export type VariantFn<
 	I extends boolean,
 	D extends string = never
 > = {
-	(...args: VariantFnArgs<S, G, V, P, R>): ReturnValue<S, G, V, P, M>;
+	(...args: VariantFnArgs<S, G, V, P, R>): ReturnValue<S, G, V, P, M, R>;
 	/** Type-only: the maps a component extending this one inherits. */
 	readonly [componentTypes]: {
 		slots: S;

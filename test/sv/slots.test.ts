@@ -109,6 +109,18 @@ t.test('empty slots object returns string not record', (t) => {
 	t.end();
 });
 
+t.test('a base-only slots object is typed as a string result', (t) => {
+	const empty: string = sv('border', { slots: {} })();
+	const baseOnly: string = sv({ slots: { base: 'border' } })();
+	const { base } = sv({ slots: { base: 'border' }, multiSlots: true })();
+
+	t.equal(empty, 'border', 'empty slots');
+	t.equal(baseOnly, 'border', 'only a base slot');
+	t.equal(base(), 'border', 'a multi base slot is still a function');
+
+	t.end();
+});
+
 t.test('slots return record with base + slot keys', (t) => {
 	const card = sv('border rounded-lg shadow-md', {
 		slots: {

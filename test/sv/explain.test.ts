@@ -366,6 +366,7 @@ t.test('explain throws the same errors as a call', (t) => {
 	});
 
 	t.throws(
+		// @ts-expect-error - intent is required, to test the runtime error
 		() => button.explain({ size: 'sm' }),
 		{ message: 'Missing required variant: "intent"' },
 		'missing required variant'

@@ -172,6 +172,51 @@ t.test('preset satisfies required variants', (t) => {
 	t.end();
 });
 
+t.test('a required variant is required unless the preset sets it', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			intent: { primary: 'bg-blue-500', danger: 'bg-red-500' }
+		},
+		requiredVariants: ['intent'],
+		presets: {
+			cta: { size: 'lg', intent: 'primary' },
+			small: { size: 'sm' }
+		}
+	});
+
+	t.throws(
+		// @ts-expect-error - intent is required without a preset
+		() => button({}),
+		{ message: 'Missing required variant: "intent"' },
+		'no preset'
+	);
+	t.throws(
+		// @ts-expect-error - the preset doesn't set intent
+		() => button({ preset: 'small' }),
+		{ message: 'Missing required variant: "intent"' },
+		'a preset that leaves it out'
+	);
+	t.throws(
+		// @ts-expect-error - null skips the preset's intent
+		() => button({ preset: 'cta', intent: null }),
+		{ message: 'Missing required variant: "intent"' },
+		'null over the preset'
+	);
+	t.equal(
+		button({ preset: 'small', intent: 'danger' }),
+		'btn text-sm bg-red-500',
+		'passed beside the preset'
+	);
+	t.equal(
+		button({ preset: 'cta', intent: undefined }),
+		'btn text-lg bg-blue-500',
+		'undefined keeps the preset value'
+	);
+
+	t.end();
+});
+
 t.test('throws for invalid preset name', (t) => {
 	const button = sv('btn', {
 		variants: {
@@ -706,6 +751,34 @@ t.test('compound variant without class or className throws', (t) => {
 				compoundVariants: [{ size: 'lg' }]
 			}),
 		/"class" or "className"/
+	);
+
+	t.end();
+});
+
+t.test('a compound class left undefined throws', (t) => {
+	t.throws(
+		() =>
+			sv('btn', {
+				variants: { size: { sm: 'text-sm' } },
+				// @ts-expect-error - class must be defined
+				compoundVariants: [{ size: 'sm', class: undefined }]
+			}),
+		/"class" or "className"/,
+		'compound variant'
+	);
+	t.throws(
+		() =>
+			sv('btn', {
+				slots: { icon: 'size-4' },
+				variants: { size: { sm: 'text-sm' } },
+				compoundSlots: [
+					// @ts-expect-error - className must be defined
+					{ slots: ['icon'], size: 'sm', className: undefined }
+				]
+			}),
+		/"class" or "className"/,
+		'compound slot'
 	);
 
 	t.end();

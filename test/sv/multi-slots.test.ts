@@ -560,3 +560,28 @@ t.test('multiSlots is exposed via introspection', (t) => {
 
 	t.end();
 });
+
+t.test('a slot function keeps a required variant from being unset', (t) => {
+	const list = sv({
+		slots: { item: 'px-2' },
+		variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+		requiredVariants: ['size'],
+		multiSlots: ['item']
+	});
+	const { item } = list({ size: 'sm' });
+
+	t.throws(
+		// @ts-expect-error - a required variant can't be unset
+		() => item({ size: null }),
+		{ message: 'Missing required variant: "size"' },
+		'null unsets it'
+	);
+	t.equal(
+		item({ size: undefined }),
+		'px-2',
+		'undefined keeps the outer value'
+	);
+	t.equal(item({ size: 'lg' }), 'px-2', 'a value overrides it');
+
+	t.end();
+});
