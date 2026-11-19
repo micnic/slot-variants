@@ -20,7 +20,7 @@ import {
 	getProperties,
 	getStrictProperties
 } from './properties.ts';
-import { isUndefinedIdentifier } from './static-predicates.ts';
+import { isUndefinedValue } from './static-predicates.ts';
 import {
 	COMPOUND_NON_MATCHER_KEYS,
 	extractTokens,
@@ -663,7 +663,7 @@ const getSingleCompoundMatcher = (
 	let matcher: SingleMatcher | null = null;
 
 	for (const [key, value] of properties) {
-		if (isUndefinedIdentifier(resolveStaticValue(value, sourceCode))) {
+		if (isUndefinedValue(resolveStaticValue(value, sourceCode))) {
 			continue;
 		}
 

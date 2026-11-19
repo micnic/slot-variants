@@ -17,7 +17,7 @@ import {
 import {
 	isStaticStringNode,
 	isStaticTernaryTemplate,
-	isUndefinedIdentifier
+	isUndefinedValue
 } from './static-predicates.ts';
 import { forEachCnBranch } from './token-extraction.ts';
 
@@ -110,7 +110,7 @@ const checkClassValueIsStatic = (
 ) => {
 	node = resolveStaticValue(node, context.sourceCode);
 
-	if (options.allowUndefined && isUndefinedIdentifier(node)) {
+	if (options.allowUndefined && isUndefinedValue(node)) {
 		return;
 	}
 
@@ -345,11 +345,7 @@ const checkSvConfigProperty = (
 	slotNames: ReadonlySet<string>
 ) => {
 	// A key left `undefined` is one the config doesn't set.
-	if (
-		isUndefinedIdentifier(
-			resolveStaticValue(prop.value, context.sourceCode)
-		)
-	) {
+	if (isUndefinedValue(resolveStaticValue(prop.value, context.sourceCode))) {
 		return;
 	}
 

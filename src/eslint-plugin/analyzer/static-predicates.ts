@@ -5,18 +5,28 @@ import {
 	TRAILING_SEPARATOR
 } from './literals.ts';
 
+// Reads a node through same-file `const` bindings.
+export type ResolveNode = (node: Node) => Node;
+
 export const isStaticStringNode = (node: Node): boolean =>
 	getStaticStringText(node) !== null;
 
 // `undefined`, or a `void` of a literal (`void 0`), which always evaluates to
 // it.
-export const isUndefinedIdentifier = (node: Node): boolean => {
+export const isUndefinedValue = (node: Node): boolean => {
 	if (node.type === 'UnaryExpression') {
 		return node.operator === 'void' && node.argument.type === 'Literal';
 	}
 
 	return node.type === 'Identifier' && node.name === 'undefined';
 };
+
+// A value present and not `undefined` once read: a property left `undefined`
+// is one that isn't set.
+export const isDefinedValue = (
+	node: Node | undefined,
+	resolve: ResolveNode
+): boolean => node !== undefined && !isUndefinedValue(resolve(node));
 
 // A ternary whose every (possibly nested) branch is a static string — safe as
 // a template-literal substitution, unlike a logical-AND (stringifies to

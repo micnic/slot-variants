@@ -6,7 +6,7 @@ import type {
 	SpreadElement
 } from 'estree';
 import { getSpreadProperties } from './properties.ts';
-import { isUndefinedIdentifier } from './static-predicates.ts';
+import { isDefinedValue, type ResolveNode } from './static-predicates.ts';
 
 export type CallMatch = {
 	config: ObjectExpression | null;
@@ -19,7 +19,6 @@ export type CallMatch = {
 
 // Reads a node through same-file `const` bindings, from whichever scope the
 // caller's context assigns it.
-type ResolveNode = (node: Node) => Node;
 
 /** Which of the keys that make an object `sv()`'s config it defines. */
 export type ConfigMarkers = { slots: boolean; variants: boolean };
@@ -80,11 +79,8 @@ export const getConfigMarkers = (
 	resolve: ResolveNode
 ): ConfigMarkers => {
 	const properties = getSpreadProperties(node, resolve);
-	const defines = (key: string) => {
-		const value = properties.get(key);
-
-		return value !== undefined && !isUndefinedIdentifier(resolve(value));
-	};
+	const defines = (key: string) =>
+		isDefinedValue(properties.get(key), resolve);
 
 	return { slots: defines('slots'), variants: defines('variants') };
 };

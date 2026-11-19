@@ -3,11 +3,9 @@ import type { Node, ObjectExpression, Property, SpreadElement } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { getKeyName } from './config-keys.ts';
 import { resolveContainer } from './const-bindings.ts';
+import type { ResolveNode } from './static-predicates.ts';
 
 type KeyPredicate = (key: string) => boolean;
-
-// Reads a node through same-file `const` bindings.
-type ResolveNode = (node: Node) => Node;
 
 export type GroupSlots = ReadonlyMap<string, ReadonlyArray<string>>;
 

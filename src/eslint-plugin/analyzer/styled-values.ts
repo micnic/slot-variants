@@ -18,7 +18,11 @@ import {
 	resolveStaticValue
 } from './const-bindings.ts';
 import { getStaticStringText } from './literals.ts';
-import { isUndefinedIdentifier } from './static-predicates.ts';
+import {
+	isDefinedValue,
+	isUndefinedValue,
+	type ResolveNode
+} from './static-predicates.ts';
 import {
 	collectSlotKeyedProperties,
 	getClassValue,
@@ -86,7 +90,7 @@ export type StyledContext = {
 	sourceCode: SourceCode;
 	matchCall: (node: CallExpression) => CallMatch | null;
 	variableOf: (node: Identifier) => Scope.Variable | null;
-	resolve: (node: Node) => Node;
+	resolve: ResolveNode;
 };
 
 /**
@@ -230,14 +234,10 @@ const readOptionalVariants = (
 	}
 
 	const optional = new Set<string>();
+	const resolve: ResolveNode = (node) => resolveStaticValue(node, sourceCode);
 
 	for (const key of variants.keys()) {
-		const value = defaults.get(key);
-
-		if (
-			value === undefined ||
-			isUndefinedIdentifier(resolveStaticValue(value, sourceCode))
-		) {
+		if (!isDefinedValue(defaults.get(key), resolve)) {
 			optional.add(key);
 		}
 	}
@@ -340,7 +340,7 @@ const readPresetMatchers = (
 	if (
 		preset === undefined ||
 		presets.size === 0 ||
-		isUndefinedIdentifier(ctx.resolve(preset))
+		isUndefinedValue(ctx.resolve(preset))
 	) {
 		return NO_PRESET;
 	}
@@ -386,11 +386,10 @@ const readUnsetMatchers = (
 	const unset = new Map<string, ReadonlySet<string>>();
 
 	for (const key of optional) {
-		const value = props.get(key);
-		const isPassed =
-			value !== undefined && !isUndefinedIdentifier(ctx.resolve(value));
-
-		if (!isPassed && !preset.matchers.has(key)) {
+		if (
+			!isDefinedValue(props.get(key), ctx.resolve) &&
+			!preset.matchers.has(key)
+		) {
 			unset.set(key, UNSET_MATCHER);
 		}
 	}
@@ -422,7 +421,7 @@ const isUnreadProp = (
 ): boolean =>
 	!NON_MATCHER_KEYS.has(key) &&
 	!read.has(key) &&
-	!isUndefinedIdentifier(ctx.resolve(value));
+	!isUndefinedValue(ctx.resolve(value));
 
 // The matchers a call applies: `base`, refined by the props it passes. Later
 // matchers win: a call site's props over its preset's values, those over the
