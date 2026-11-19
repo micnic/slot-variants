@@ -342,20 +342,49 @@ const svEmptyConfigValueCheckers: ReadonlyMap<string, EmptyConfigChecker> =
 	]);
 
 // An empty `slots` or `variants` is what makes the object a config while it's
-// the only one of the two the config defines, so it isn't reported then.
-const isSoleEmptyMarker = (
-	context: Rule.RuleContext,
-	key: string,
-	value: Node,
-	{ slots, variants }: ConfigMarkers
-): boolean => {
-	const isSole =
-		(key === 'slots' && !variants) || (key === 'variants' && !slots);
+// the only one of the two the config defines, so it isn't reported then. When
+// both are defined and `slots` is empty, `variants` is the one to keep:
+// removing every marker would turn the config into a class record.
+const getMarkerToKeep = (
+	{ slots, variants }: ConfigMarkers,
+	emptyKeys: ReadonlySet<string>
+): string | null => {
+	if (!variants) {
+		return 'slots';
+	}
 
-	return (
-		isSole &&
-		isEmptyContainer(resolveStaticValue(value, context.sourceCode))
+	if (!slots || emptyKeys.has('slots')) {
+		return 'variants';
+	}
+
+	return null;
+};
+
+// The empty marker left unreported, if any.
+const getKeptMarker = (
+	context: Rule.RuleContext,
+	config: ObjectExpression
+): string | null => {
+	const resolve = (node: Node) =>
+		resolveStaticValue(node, context.sourceCode);
+	const emptyKeys = new Set<string>();
+
+	for (const [key, value] of getProperties(config)) {
+		if (isEmptyContainer(resolve(value))) {
+			emptyKeys.add(key);
+		}
+	}
+
+	const marker = getMarkerToKeep(
+		getConfigMarkers(config, resolve),
+		emptyKeys
 	);
+
+	if (marker !== null && emptyKeys.has(marker)) {
+		return marker;
+	}
+
+	return null;
 };
 
 // A `createSV()` factory config may carry a spread or computed key (reported
@@ -366,9 +395,7 @@ export const checkConfigForEmptyClasses = (
 	context: Rule.RuleContext,
 	config: ObjectExpression
 ) => {
-	const markers = getConfigMarkers(config, (node) =>
-		resolveStaticValue(node, context.sourceCode)
-	);
+	const keptMarker = getKeptMarker(context, config);
 
 	for (const prop of config.properties) {
 		if (prop.type !== 'Property') {
@@ -383,7 +410,7 @@ export const checkConfigForEmptyClasses = (
 
 		const checker = svEmptyConfigValueCheckers.get(key);
 
-		if (checker && !isSoleEmptyMarker(context, key, prop.value, markers)) {
+		if (checker && key !== keptMarker) {
 			checker(
 				context,
 				prop.value,

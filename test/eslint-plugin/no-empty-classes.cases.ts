@@ -290,6 +290,18 @@ export const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyConfig', data: { key: 'defaultVariants' } }]
 	},
 	{
+		// With both markers empty, `variants` is kept to leave the object a
+		// config rather than a class record.
+		code: IMPORT + "sv({ slots: {}, base: 'p-2', variants: {} });",
+		output: IMPORT + "sv({ base: 'p-2', variants: {} });",
+		errors: [{ messageId: 'emptyObject' }]
+	},
+	{
+		code: IMPORT + "sv({ variants: {}, base: 'p-2', slots: {} });",
+		output: IMPORT + "sv({ variants: {}, base: 'p-2' });",
+		errors: [{ messageId: 'emptyObject' }]
+	},
+	{
 		// Empty string as cn-style sv argument.
 		code: IMPORT + "sv('');",
 		errors: [{ messageId: 'emptyString' }]
