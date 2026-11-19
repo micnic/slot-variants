@@ -12,7 +12,7 @@ import { resolveStaticValue } from './const-bindings.ts';
 import {
 	collectSlotKeyedProperties,
 	getConfigSlotNames,
-	getSpreadProperties
+	getConfigProperties
 } from './properties.ts';
 import {
 	isStaticStringNode,
@@ -385,14 +385,14 @@ export const checkSvConfig = (
 	configNode: ObjectExpression
 ) => {
 	const { sourceCode } = context;
-	const slotNames = getConfigSlotNames(
-		getSpreadProperties(configNode, (node) =>
-			resolveStaticValue(node, sourceCode)
-		),
-		sourceCode
-	);
+	const properties = getConfigProperties(configNode, sourceCode);
+	const effective = new Set(properties.values());
+	const slotNames = getConfigSlotNames(properties, sourceCode);
+	// A spread object's key that a later one overrides is never read.
 	const visit: PropertyVisitor = (prop) => {
-		checkSvConfigProperty(context, prop, slotNames);
+		if (effective.has(prop.value)) {
+			checkSvConfigProperty(context, prop, slotNames);
+		}
 	};
 
 	forEachConfigProperty(context, configNode, visit, new Set());

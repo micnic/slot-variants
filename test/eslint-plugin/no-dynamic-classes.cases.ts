@@ -276,6 +276,9 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 		"const common = { base: 'p-1', variants: { s: { x: 'b' } } };\nsv({ ...common, slots: { a: 'p-2' } });",
 	IMPORT +
 		"const common = { slots: { a: 'p-1' } };\nsv({ ...common, variants: { v: { x: { a: 'p-2' } } } });",
+	// A spread object's key the config overrides is never read.
+	IMPORT +
+		"const shared = { variants: { a: { x: dyn } } };\nsv({ ...shared, variants: { a: { x: 'p-1' } } });",
 	// An object that spreads itself is read once.
 	IMPORT + "const c = { ...c, variants: { v: { a: 'x' } } };\nsv(c);"
 ];
