@@ -374,7 +374,10 @@ const getKeptMarker = (
 
 		return value !== undefined && isEmptyContainer(resolve(value));
 	};
-	const marker = getMarkerToKeep(getConfigMarkers(config, resolve), isEmpty);
+	const marker = getMarkerToKeep(
+		getConfigMarkers(config, context.sourceCode),
+		isEmpty
+	);
 
 	if (marker !== null && isEmpty(marker)) {
 		return marker;

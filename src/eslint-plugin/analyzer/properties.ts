@@ -3,7 +3,6 @@ import type { Node, ObjectExpression, Property, SpreadElement } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { getKeyName } from './config-keys.ts';
 import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
-import type { ResolveNode } from './static-predicates.ts';
 
 export type GroupSlots = ReadonlyMap<string, ReadonlyArray<string>>;
 
@@ -64,11 +63,11 @@ const isSpreadElement = (prop: Property | SpreadElement): boolean =>
 	prop.type === 'SpreadElement';
 
 // Sets each property of `obj` in `merged`, in source order, entering each
-// spread `resolve` reads as an object literal. `seen` stops an object that
-// spreads itself (`const a = { ...a }`).
+// spread that reads as an object literal through same-file `const` bindings.
+// `seen` stops an object that spreads itself (`const a = { ...a }`).
 const mergeSpreadProperties = (
 	obj: ObjectExpression,
-	resolve: ResolveNode,
+	sourceCode: SourceCode,
 	merged: Map<string, Node>,
 	seen: Set<ObjectExpression>
 ) => {
@@ -85,44 +84,35 @@ const mergeSpreadProperties = (
 			continue;
 		}
 
-		const spread = resolve(prop.argument);
+		const spread = resolveStaticValue(prop.argument, sourceCode);
 
 		if (spread.type === 'ObjectExpression' && !seen.has(spread)) {
-			mergeSpreadProperties(spread, resolve, merged, seen);
+			mergeSpreadProperties(spread, sourceCode, merged, seen);
 		}
 	}
 };
 
 /**
- * An object's properties with those of each object it spreads merged in, a
- * later key winning as at runtime. A spread `resolve` can't read as an object
+ * A config's properties with those of each object it spreads merged in, a
+ * later key winning as at runtime. A spread that doesn't read as an object
  * literal adds nothing.
  */
-export const getSpreadProperties = (
-	obj: ObjectExpression,
-	resolve: ResolveNode
+export const getConfigProperties = (
+	config: ObjectExpression,
+	sourceCode: SourceCode
 ): ReadonlyMap<string, Node> => {
-	if (!obj.properties.some(isSpreadElement)) {
-		return getProperties(obj);
+	if (!config.properties.some(isSpreadElement)) {
+		return getProperties(config);
 	}
 
-	// `resolve` reads the file `obj` is in, so its result depends on `obj`
-	// alone.
-	return getOrCreate(spreadPropertiesCache, obj, () => {
+	return getOrCreate(spreadPropertiesCache, config, () => {
 		const merged = new Map<string, Node>();
 
-		mergeSpreadProperties(obj, resolve, merged, new Set());
+		mergeSpreadProperties(config, sourceCode, merged, new Set());
 
 		return merged;
 	});
 };
-
-/** A config's properties, with those of the objects it spreads merged in. */
-export const getConfigProperties = (
-	config: ObjectExpression,
-	sourceCode: SourceCode
-): ReadonlyMap<string, Node> =>
-	getSpreadProperties(config, (node) => resolveStaticValue(node, sourceCode));
 
 export const getStrictProperties = (
 	obj: Node | undefined

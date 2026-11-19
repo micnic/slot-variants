@@ -171,7 +171,7 @@ const matchTrackedCall = (
 	const exportName = resolveExportName(match, node);
 
 	if (exportName === 'sv') {
-		return matchSvCall(node, match.ctx.resolve);
+		return matchSvCall(node, match.ctx.sourceCode);
 	}
 
 	if (exportName === 'cn') {

@@ -1,3 +1,4 @@
+import type { SourceCode } from 'eslint';
 import type {
 	CallExpression,
 	Expression,
@@ -5,8 +6,9 @@ import type {
 	ObjectExpression,
 	SpreadElement
 } from 'estree';
-import { getSpreadProperties } from './properties.ts';
-import { isDefinedValue, type ResolveNode } from './static-predicates.ts';
+import { resolveStaticValue } from './const-bindings.ts';
+import { getConfigProperties } from './properties.ts';
+import { isDefinedValue } from './static-predicates.ts';
 
 export type CallMatch = {
 	config: ObjectExpression | null;
@@ -36,15 +38,16 @@ export const isClassListMatch = (call: CallMatch): boolean =>
 // call rather than a cn-style argument list.
 export const matchSvCall = (
 	node: CallExpression,
-	resolve: ResolveNode
+	sourceCode: SourceCode
 ): CallMatch => {
+	const resolve = (value: Node) => resolveStaticValue(value, sourceCode);
 	const args = node.arguments;
 	const last = args.at(-1);
 
 	if (last) {
 		const resolved = resolve(last);
 
-		if (isConfigLike(resolved, resolve)) {
+		if (isConfigLike(resolved, sourceCode)) {
 			return {
 				config: resolved,
 				args: args.slice(0, -1),
@@ -62,7 +65,7 @@ export const matchSvCall = (
 		isFactoryConfig: false,
 		keepsLastArg:
 			beforeLast !== undefined &&
-			isConfigLike(resolve(beforeLast), resolve)
+			isConfigLike(resolve(beforeLast), sourceCode)
 	};
 };
 
@@ -73,11 +76,13 @@ export const matchSvCall = (
  */
 export const getConfigMarkers = (
 	node: ObjectExpression,
-	resolve: ResolveNode
+	sourceCode: SourceCode
 ): ConfigMarkers => {
-	const properties = getSpreadProperties(node, resolve);
+	const properties = getConfigProperties(node, sourceCode);
 	const defines = (key: string) =>
-		isDefinedValue(properties.get(key), resolve);
+		isDefinedValue(properties.get(key), (value) =>
+			resolveStaticValue(value, sourceCode)
+		);
 
 	return { slots: defines('slots'), variants: defines('variants') };
 };
@@ -86,13 +91,13 @@ export const getConfigMarkers = (
 // from a class record.
 const isConfigLike = (
 	node: Node,
-	resolve: ResolveNode
+	sourceCode: SourceCode
 ): node is ObjectExpression => {
 	if (node.type !== 'ObjectExpression') {
 		return false;
 	}
 
-	const { slots, variants } = getConfigMarkers(node, resolve);
+	const { slots, variants } = getConfigMarkers(node, sourceCode);
 
 	return slots || variants;
 };
