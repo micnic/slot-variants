@@ -93,16 +93,26 @@ writeFixture(
 	`
 );
 
-// Own exports declared through binding patterns and TypeScript value
-// declarations shadow `export *` too; a type-only one doesn't.
+// Own exports declared through binding patterns and TypeScript values shadow
+// `export *` too; type-only and erased ones don't.
 writeFixture(
 	'ui/shadowing-declarations.ts',
 	`export const { Button, ...rest } = lib;
 	export const [, Badge = 1, ...others] = list;
 	export enum Card { A }
-	export namespace Tag {}
+	export namespace Tag { export const x = 1; }
 	export declare function Chip(): void;
 	export type Pill = string;
+	export const enum Ghost { A }
+	export namespace Phantom {
+		type T = 1;
+		export interface I {}
+		export { T };
+		namespace Inner {}
+		declare const y: number;
+	}
+	export type { Shade } from './padded.tsx';
+	export { type Mist } from './padded.tsx';
 
 	export * from './button.tsx';
 	export * from './badge.tsx';
@@ -110,26 +120,19 @@ writeFixture(
 	`
 );
 
-// Components the declarations above shadow, all but `Pill`.
+// Components the declarations above may shadow.
 writeFixture(
 	'ui/padded.tsx',
 	`${IMPORT}const padded = sv({ base: 'p-2', variants: {} });
 
-	export function Card({ className }) {
+	${['Card', 'Tag', 'Chip', 'Pill', 'Ghost', 'Phantom', 'Shade', 'Mist']
+		.map(
+			(name) =>
+				`export function ${name}({ className }) {
 		return <i className={padded({ class: className })} />;
-	}
-
-	export function Tag({ className }) {
-		return <i className={padded({ class: className })} />;
-	}
-
-	export function Chip({ className }) {
-		return <i className={padded({ class: className })} />;
-	}
-
-	export function Pill({ className }) {
-		return <i className={padded({ class: className })} />;
-	}
+	}`
+		)
+		.join('\n\n\t')}
 	`
 );
 

@@ -1,4 +1,10 @@
-import type { ExportNamedDeclaration, Node, Pattern, Program } from 'estree';
+import type {
+	ExportNamedDeclaration,
+	ExportSpecifier,
+	Node,
+	Pattern,
+	Program
+} from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { type ComponentFunction, findWrappedComponent } from './components.ts';
 import {
@@ -24,12 +30,65 @@ type ExportTable = {
 
 type AddTarget = (name: string, target: ExportTarget) => void;
 
+// A TypeScript `namespace` and the block holding its statements, which only a
+// `declare module 'x';` (erased anyway) goes without.
+type NamespaceDeclaration = {
+	type: string;
+	body: { body: ReadonlyArray<Node> };
+};
+
 // TypeScript declarations that name only a type, which leave a value of the
 // same name to an `export *`.
 const TYPE_ONLY_DECLARATIONS: ReadonlySet<string> = new Set([
 	'TSInterfaceDeclaration',
 	'TSTypeAliasDeclaration'
 ]);
+
+// A TypeScript export of a type alone (`export type { A }`), which the
+// compiled module doesn't hold.
+const isTypeOnlyExport = (node: Node | ExportSpecifier): boolean =>
+	'exportKind' in node && node.exportKind === 'type';
+
+const isNamespaceDeclaration = (
+	node: Node
+): node is Node & NamespaceDeclaration => {
+	const type: string = node.type;
+
+	return type === 'TSModuleDeclaration';
+};
+
+// A declaration the compiled module holds no value for: a type, anything
+// `declare`d or a `const enum`, and a namespace of only those.
+const isErasedDeclaration = (node: Node): boolean => {
+	const type: string = node.type;
+
+	if (TYPE_ONLY_DECLARATIONS.has(type)) {
+		return true;
+	}
+
+	if ('declare' in node && node.declare === true) {
+		return true;
+	}
+
+	if (type === 'TSEnumDeclaration') {
+		return 'const' in node && node.const === true;
+	}
+
+	if (!isNamespaceDeclaration(node)) {
+		return false;
+	}
+
+	return node.body.body.every(isErasedStatement);
+};
+
+// A namespace statement the compiled namespace holds nothing for.
+const isErasedStatement = (node: Node): boolean => {
+	if (node.type !== 'ExportNamedDeclaration') {
+		return isErasedDeclaration(node);
+	}
+
+	return !node.declaration || isErasedDeclaration(node.declaration);
+};
 
 // Every name a binding pattern declares (`{ a, b: [c] }` declares a and c).
 const forEachPatternName = (
@@ -80,7 +139,7 @@ const collectFromDeclaration = (
 	declaration: Node | null | undefined,
 	add: AddTarget
 ) => {
-	if (!declaration) {
+	if (!declaration || isErasedDeclaration(declaration)) {
 		return;
 	}
 
@@ -115,15 +174,9 @@ const collectFromDeclaration = (
 		return;
 	}
 
-	// A TypeScript `enum`, `namespace` or `declare function`: no component,
-	// but a value name of the module's own.
-	const type: string = declaration.type;
-
-	if (
-		!TYPE_ONLY_DECLARATIONS.has(type) &&
-		'id' in declaration &&
-		declaration.id?.type === 'Identifier'
-	) {
+	// A TypeScript `enum` or `namespace`: no component, but a value name of
+	// the module's own.
+	if ('id' in declaration && declaration.id?.type === 'Identifier') {
 		addLocal(declaration.id.name);
 	}
 };
@@ -139,6 +192,10 @@ const collectFromSpecifiers = (
 	}
 
 	for (const specifier of node.specifiers) {
+		if (isTypeOnlyExport(specifier)) {
+			continue;
+		}
+
 		const exported = getExportName(specifier.exported);
 		const local = getExportName(specifier.local);
 
@@ -212,7 +269,7 @@ export const collectExportTable = (ast: Program): ExportTable => {
 
 		collectDefaultExport(node, add);
 
-		if (node.type === 'ExportNamedDeclaration') {
+		if (node.type === 'ExportNamedDeclaration' && !isTypeOnlyExport(node)) {
 			collectFromDeclaration(node.declaration, add);
 			collectFromSpecifiers(node, add);
 		}

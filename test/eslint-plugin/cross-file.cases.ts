@@ -275,7 +275,7 @@ export const TS_CROSS_FILE_VALID = [
 	{
 		// A module's own export declared through a binding pattern, or as a
 		// TypeScript value, shadows `export *` too.
-		code: `import { Button, Badge, Card, Tag, Chip } from './ui/shadowing-declarations.ts';\n<><Button className="p-4" /><Badge className="px-4" /><Card className="p-4" /><Tag className="p-4" /><Chip className="p-4" /></>;`,
+		code: `import { Button, Badge, Card, Tag } from './ui/shadowing-declarations.ts';\n<><Button className="p-4" /><Badge className="px-4" /><Card className="p-4" /><Tag className="p-4" /></>;`,
 		filename: join(fixtureDir, 'page.tsx'),
 		languageOptions: { parser: tsParser }
 	}
@@ -283,11 +283,11 @@ export const TS_CROSS_FILE_VALID = [
 
 export const TS_CROSS_FILE_INVALID = [
 	{
-		// A type-only export leaves the value to `export *`.
-		code: `import { Pill } from './ui/shadowing-declarations.ts';\n<Pill className="p-4" />;`,
+		// A type-only or erased export leaves the value to `export *`.
+		code: `import { Chip, Pill, Ghost, Phantom, Shade, Mist } from './ui/shadowing-declarations.ts';\n<><Chip className="p-4" /><Pill className="p-4" /><Ghost className="p-4" /><Phantom className="p-4" /><Shade className="p-4" /><Mist className="p-4" /></>;`,
 		filename: join(fixtureDir, 'page.tsx'),
 		languageOptions: { parser: tsParser },
-		errors: [restyle('p-4', 'p-2')]
+		errors: Array.from({ length: 6 }, () => restyle('p-4', 'p-2'))
 	}
 ];
 
