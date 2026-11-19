@@ -5,8 +5,6 @@ import { getKeyName } from './config-keys.ts';
 import { resolveContainer } from './const-bindings.ts';
 import type { ResolveNode } from './static-predicates.ts';
 
-type KeyPredicate = (key: string) => boolean;
-
 export type GroupSlots = ReadonlyMap<string, ReadonlyArray<string>>;
 
 type SlotTargetOverlap = { slot: string; other: string };
@@ -128,28 +126,9 @@ export const getStrictProperties = (
 	return getProperties(obj);
 };
 
-// The strict properties of a non-empty object whose every key passes
-// `isAllowed`. Null for anything else, including an object with a spread,
-// computed or disallowed key.
-const getStrictPropertiesWithKeys = (
-	node: Node | undefined,
-	isAllowed: KeyPredicate
-): ReadonlyMap<string, Node> | null => {
-	const properties = getStrictProperties(node);
-
-	if (!properties || properties.size === 0) {
-		return null;
-	}
-
-	for (const key of properties.keys()) {
-		if (!isAllowed(key)) {
-			return null;
-		}
-	}
-
-	return properties;
-};
-
+// The strict properties of a non-empty object keyed only by `base` and the
+// given slot names. Null for anything else, including an object with a
+// spread, computed or other key.
 export const collectSlotKeyedProperties = (
 	node: Node,
 	slotNames: ReadonlySet<string>
@@ -158,10 +137,19 @@ export const collectSlotKeyedProperties = (
 		return null;
 	}
 
-	return getStrictPropertiesWithKeys(
-		node,
-		(key) => key === 'base' || slotNames.has(key)
-	);
+	const properties = getStrictProperties(node);
+
+	if (!properties || properties.size === 0) {
+		return null;
+	}
+
+	for (const key of properties.keys()) {
+		if (key !== 'base' && !slotNames.has(key)) {
+			return null;
+		}
+	}
+
+	return properties;
 };
 
 // Every name a per-slot object may be keyed by: the declared slots plus the
