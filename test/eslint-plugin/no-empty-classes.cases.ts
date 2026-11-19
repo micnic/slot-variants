@@ -220,6 +220,34 @@ export const NO_EMPTY_CLASSES_INVALID = [
 		output: IMPORT_CN + "cn({ base: 'x' });"
 	},
 	{
+		// The parentheses around an element are removed with it.
+		code: IMPORT_CN + "cn('a', (''), 'b');",
+		output: IMPORT_CN + "cn('a', 'b');",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('a', (''));",
+		output: IMPORT_CN + "cn('a');",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn(((''  )), 'a');",
+		output: IMPORT_CN + "cn('a');",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// The last element before a trailing comma takes the whitespace
+		// around its comma.
+		code: IMPORT_CN + "cn('a', '',);",
+		output: IMPORT_CN + "cn('a',);",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT + "sv({ base: ['a', '' , ], variants: {} });",
+		output: IMPORT + "sv({ base: ['a',], variants: {} });",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
 		// A comment in the removed range would be lost, so there's no fix.
 		code: IMPORT_CN + "cn('flex', '' /* keep */, 'block');",
 		output: null,

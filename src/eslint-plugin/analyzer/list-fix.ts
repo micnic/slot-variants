@@ -7,6 +7,14 @@ export type ListItems = ReadonlyArray<Node | null>;
 // for a config property.
 export type EmptyFix = (fixer: Rule.RuleFixer) => Rule.Fix | null;
 
+// A list element as written: its range with any parentheses wrapping it, and
+// the tokens on either side of that.
+type ListElement = {
+	range: AST.Range;
+	before: AST.Token | null;
+	after: AST.Token | null;
+};
+
 // `charAt` returns '' past either end of the string, so neither of the walks
 // below needs a bounds check.
 const isSpaceOrTab = (char: string): boolean => char === ' ' || char === '\t';
@@ -53,6 +61,33 @@ const isLineEnd = (text: string, index: number): boolean => {
 	const char = text.charAt(index);
 
 	return char === '\n' || char === '\r';
+};
+
+// Whether `index` is where the list closes, right after a trailing comma.
+const isListEnd = (text: string, index: number): boolean => {
+	const char = text.charAt(index);
+
+	return char === ')' || char === ']';
+};
+
+const isToken = (token: AST.Token | null, value: string): token is AST.Token =>
+	token !== null && token.value === value;
+
+// `node` with the parentheses wrapping it, which go with it when it's removed.
+// An element of a list with others always has a comma on one side, so a `(`
+// and a `)` around it are its own.
+const getListElement = (sourceCode: SourceCode, node: Node): ListElement => {
+	let range = sourceCode.getRange(node);
+	let before = sourceCode.getTokenBefore(node);
+	let after = sourceCode.getTokenAfter(node);
+
+	while (isToken(before, '(') && isToken(after, ')')) {
+		range = [before.range[0], after.range[1]];
+		before = sourceCode.getTokenBefore(before);
+		after = sourceCode.getTokenAfter(after);
+	}
+
+	return { range, before, after };
 };
 
 // Whether any comment lies within `[start, end]`, so removing that range would
@@ -108,10 +143,13 @@ export const removeFromList = (
 	}
 
 	const source = sourceCode.getText();
-	const [start, end] = sourceCode.getRange(node);
-	const after = sourceCode.getTokenAfter(node);
+	const {
+		range: [start, end],
+		before,
+		after
+	} = getListElement(sourceCode, node);
 
-	if (after && after.value === ',') {
+	if (isToken(after, ',')) {
 		const ownLine = startOfOwnLine(source, start);
 
 		// An own-line element takes the line break and indentation that
@@ -125,12 +163,13 @@ export const removeFromList = (
 
 		const spacesEnd = skipSpacesAndTabs(source, after.range[1]);
 
-		// The last element of its line takes the whitespace before it
-		// instead of after it, so the line doesn't end in a trailing space.
-		if (isLineEnd(source, spacesEnd)) {
+		// The last element of its line, or of the list before a trailing
+		// comma, takes the whitespace on both sides of it, so no space is
+		// left trailing.
+		if (isLineEnd(source, spacesEnd) || isListEnd(source, spacesEnd)) {
 			return removeRangeKeepingComments(fixer, sourceCode, [
 				skipSpacesAndTabsBack(source, start),
-				after.range[1]
+				spacesEnd
 			]);
 		}
 
@@ -140,10 +179,8 @@ export const removeFromList = (
 		]);
 	}
 
-	const before = sourceCode.getTokenBefore(node);
-
 	/* c8 ignore next 3 -- a trailing element always has a comma before it */
-	if (!before || before.value !== ',') {
+	if (!isToken(before, ',')) {
 		return null;
 	}
 
