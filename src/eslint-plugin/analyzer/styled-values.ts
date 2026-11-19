@@ -106,6 +106,10 @@ const UNSET_MATCHER: ReadonlySet<string> = new Set(['undefined']);
 
 const stylesCache = new WeakMap<Node, InternalStyles>();
 
+// The classes of a call through a `createSV()` factory whose `base` it takes,
+// kept apart from the call's own: other rules read those without it.
+const factoryStylesCache = new WeakMap<Node, InternalStyles>();
+
 const readGroups = (
 	groups: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
@@ -197,11 +201,10 @@ const readOptionalVariants = (
 };
 
 const buildStyles = (
-	configNode: ObjectExpression,
+	config: ReadonlyMap<string, Node>,
 	args: ReadonlyArray<Expression | SpreadElement>,
 	sourceCode: SourceCode
 ): InternalStyles => {
-	const config = getProperties(configNode);
 	const slotNames = getConfigSlotNames(config, sourceCode);
 	const defaults = resolveContainer(
 		config.get('defaultVariants'),
@@ -233,7 +236,9 @@ export const getConfigStyles = (
 	args: ReadonlyArray<Expression | SpreadElement>,
 	sourceCode: SourceCode
 ): InternalStyles =>
-	getOrCreate(stylesCache, node, () => buildStyles(config, args, sourceCode));
+	getOrCreate(stylesCache, node, () =>
+		buildStyles(getProperties(config), args, sourceCode)
+	);
 
 export const createStyledContext = (
 	sourceCode: SourceCode,
@@ -368,18 +373,15 @@ const buildCallMatchers = (
 };
 
 /**
- * The call a callee names through its `const` binding — the `sv(config)` a
- * variant function came from, or the `createSV(...)` an `sv` alias did. Null
- * for a callee that isn't an identifier bound to a call.
+ * The call a callee names, itself or through its `const` binding and any
+ * type-only wrapper — the `sv(config)` a variant function came from, or the
+ * `createSV(...)` an `sv` alias did. Null for a callee that resolves to
+ * anything but a call.
  */
 export const resolveCalleeCall = (
 	callee: Node,
 	ctx: StyledContext
 ): CallExpression | null => {
-	if (callee.type !== 'Identifier') {
-		return null;
-	}
-
 	const resolved = ctx.resolve(callee);
 
 	if (resolved.type !== 'CallExpression') {
@@ -387,6 +389,39 @@ export const resolveCalleeCall = (
 	}
 
 	return resolved;
+};
+
+// The `base` a `createSV()` factory gives a call through it whose config sets
+// none: one with neither `base` nor `extend`, whose parents' would take its
+// place. Null for any other call, or a config that can't be read in full.
+const getFactoryBase = (
+	call: CallExpression,
+	config: ObjectExpression,
+	ctx: StyledContext
+): Node | null => {
+	const properties = getStrictProperties(config);
+
+	if (
+		properties === null ||
+		properties.has('base') ||
+		properties.has('extend')
+	) {
+		return null;
+	}
+
+	const factory = resolveCalleeCall(call.callee, ctx);
+
+	if (factory === null) {
+		return null;
+	}
+
+	const match = ctx.matchCall(factory);
+
+	if (match === null || match.config === null || !match.isFactoryConfig) {
+		return null;
+	}
+
+	return getProperties(match.config).get('base') ?? null;
 };
 
 // The `sv(config)` call a compiled variant function came from, reached through
@@ -410,7 +445,20 @@ const resolveVariantFnStyles = (
 		return null;
 	}
 
-	return getConfigStyles(resolved, match.config, match.args, ctx.sourceCode);
+	const { config, args } = match;
+	const factoryBase = getFactoryBase(resolved, config, ctx);
+
+	if (factoryBase === null) {
+		return getConfigStyles(resolved, config, args, ctx.sourceCode);
+	}
+
+	return getOrCreate(factoryStylesCache, resolved, () =>
+		buildStyles(
+			new Map([...getProperties(config), ['base', factoryBase]]),
+			args,
+			ctx.sourceCode
+		)
+	);
 };
 
 // The slot function a callee names, as a slot read off a result, if it is
@@ -445,7 +493,8 @@ export const resolveInvocation = (
 
 	visited.add(node);
 
-	const { callee } = node;
+	// Read through `const` bindings and type-only wrappers (`b!`, `b as F`)
+	const callee = ctx.resolve(node.callee);
 	const slotFn = readSlotFn(callee, ctx, visited);
 
 	if (slotFn !== null) {

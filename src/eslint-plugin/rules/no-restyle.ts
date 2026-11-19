@@ -1,5 +1,5 @@
 import type { Rule } from 'eslint';
-import { resolveComponentBinding } from '../analyzer/components.ts';
+import { resolveTagBinding } from '../analyzer/components.ts';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import {
 	conflictOptionProperties,
@@ -111,7 +111,7 @@ export const noRestyle: Rule.RuleModule = {
 		const resolveSiteComponent = (
 			site: ComponentSite
 		): ForwardedStyles | null => {
-			const binding = resolveComponentBinding(site.component, site.scope);
+			const binding = resolveTagBinding(site.component, site.scope);
 
 			if (binding === null) {
 				return null;

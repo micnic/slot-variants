@@ -25,9 +25,16 @@ export type JsxAttribute = {
 	value: Node | JsxExpressionContainer | null;
 };
 
+// `<UI.Button>`: a member read off a name, possibly off another member.
+type JsxMemberName = {
+	type: 'JSXMemberExpression';
+	object: JsxIdentifier | { type: 'JSXMemberExpression' };
+	property: JsxIdentifier;
+};
+
 type JsxOpeningElement = {
 	type: 'JSXOpeningElement';
-	name: JsxIdentifier | { type: 'JSXMemberExpression' | 'JSXNamespacedName' };
+	name: JsxIdentifier | JsxMemberName | { type: 'JSXNamespacedName' };
 	attributes: ReadonlyArray<JsxAttribute | { type: 'JSXSpreadAttribute' }>;
 };
 
@@ -65,15 +72,25 @@ type SvelteStartTag = {
 	attributes: ReadonlyArray<SvelteAttribute | SvelteOtherAttribute>;
 };
 
-// A component element names its import (`<Button>`); a host element and a
-// special one (`<svelte:head>`) carry a `SvelteName`, and a dotted component
-// (`<Foo.Bar>`) a member name that never resolves to a same-file binding.
+// `<UI.Button>`: a member read off a name, possibly off another member.
+type SvelteMemberName = {
+	type: 'SvelteMemberExpressionName';
+	object:
+		| { type: 'Identifier'; name: string }
+		| { type: 'SvelteMemberExpressionName' };
+	property: { name: string };
+};
+
+// A component element names its import (`<Button>`) or a member of one
+// (`<UI.Button>`); a host element and a special one (`<svelte:head>`) carry a
+// `SvelteName`.
 type SvelteElement = {
 	type: 'SvelteElement';
 	kind: 'component' | 'html' | 'special';
 	name:
 		| { type: 'Identifier'; name: string }
-		| { type: 'SvelteName' | 'SvelteMemberExpressionName' };
+		| SvelteMemberName
+		| { type: 'SvelteName' };
 	startTag: SvelteStartTag;
 };
 
@@ -170,6 +187,20 @@ const isIsolatedSveltePart = (
 export const hasIsolatedSvelteParts = (attribute: SvelteAttribute): boolean =>
 	attribute.value.every(isIsolatedSveltePart);
 
+// `UI.Button` for a member read off a name, null for one read off another
+// member: only a namespace import's direct members are resolved.
+const getDottedName = (
+	node: JsxMemberName | SvelteMemberName
+): string | null => {
+	const { object, property } = node;
+
+	if (object.type !== 'JSXIdentifier' && object.type !== 'Identifier') {
+		return null;
+	}
+
+	return `${object.name}.${property.name}`;
+};
+
 /** A JSX attribute's name, or null for a namespaced one (`xlink:href`). */
 export const getJsxAttributeName = (node: JsxAttribute): string | null => {
 	if (node.name.type !== 'JSXIdentifier') {
@@ -182,9 +213,14 @@ export const getJsxAttributeName = (node: JsxAttribute): string | null => {
 /**
  * The component name a JSX element opens, or null for a host element. A
  * lowercase first character marks a DOM tag in every JSX dialect, and a
- * dotted or namespaced name never resolves to a same-file binding.
+ * member read off a name (`<UI.Button>`) is always a component, named as
+ * written; a deeper member or a namespaced name names none.
  */
 export const getJsxComponentName = (node: JsxOpeningElement): string | null => {
+	if (node.name.type === 'JSXMemberExpression') {
+		return getDottedName(node.name);
+	}
+
 	if (node.name.type !== 'JSXIdentifier') {
 		return null;
 	}
@@ -199,13 +235,21 @@ export const getJsxComponentName = (node: JsxOpeningElement): string | null => {
 	return name;
 };
 
-/** The component a Svelte element renders, or null for a host element. */
+/**
+ * The component a Svelte element renders, named as written (`Button`,
+ * `UI.Button`), or null for a host element or a deeper member.
+ */
 export const getSvelteComponentName = (node: SvelteElement): string | null => {
-	if (node.kind !== 'component' || node.name.type !== 'Identifier') {
+	// A component's name is never a `SvelteName`, which narrows it here.
+	if (node.kind !== 'component' || node.name.type === 'SvelteName') {
 		return null;
 	}
 
-	return node.name.name;
+	if (node.name.type === 'Identifier') {
+		return node.name.name;
+	}
+
+	return getDottedName(node.name);
 };
 
 const capitalize = (word: string): string =>

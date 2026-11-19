@@ -254,6 +254,11 @@ writeFixture(
 );
 
 writeFixture(
+	'ui/vue-barrel.js',
+	"export { default as Button } from './Button.vue';\n"
+);
+
+writeFixture(
 	'ui/Plain.vue',
 	'<script setup>defineProps({ id: String });</script>\n<template><i /></template>'
 );

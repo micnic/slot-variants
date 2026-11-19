@@ -57,6 +57,16 @@ const RESTYLE_OPTIONAL = `const b = sv({
 });\n`;
 
 export const RESTYLE_VALID = [
+	// A config's own `base` replaces the factory's, and a config that extends
+	// another takes the factory's only where no parent sets one.
+	IMPORT_CREATE_SV +
+		"const mySv = createSV({ base: 'p-2' });\nconst b = mySv({ base: 'm-1' });\nb({ class: 'p-4' });",
+	IMPORT_CREATE_SV +
+		"const mySv = createSV({ base: 'p-2' });\nconst b = mySv({ extend: parent });\nb({ class: 'p-4' });",
+	IMPORT_CREATE_SV +
+		"const mySv = createSV(defaults);\nconst b = mySv({});\nb({ class: 'p-4' });",
+	IMPORT_CREATE_SV +
+		"const mySv = createSV({ cacheSize: 1 });\nconst b = mySv({});\nb({ class: 'p-4' });",
 	// A variant with no default stays unset when a call with readable props
 	// doesn't pass it, so none of its values' classes apply.
 	IMPORT + RESTYLE_OPTIONAL + "b({ class: 'p-4 m-4 gap-4' });",
@@ -162,7 +172,9 @@ export const RESTYLE_VALID = [
 	IMPORT + '<div {...props} />;',
 	IMPORT + '<div id="p-4" />;',
 	IMPORT + RESTYLE_CARD + '<svg xlink:href="p-4" />;',
-	// A dotted component name never resolves to a same-file binding.
+	// A namespaced tag names no component.
+	IMPORT + RESTYLE_CARD + '<svg:rect className="p-4" />;',
+	// A member of a name that isn't bound names no component.
 	IMPORT + RESTYLE_CARD + '<Foo.Bar className="p-4" />;',
 	// A host element whose class list has no slot-variants part.
 	IMPORT + RESTYLE_CARD + '<div className="p-4 p-2" />;',
@@ -281,7 +293,8 @@ export const RESTYLE_SVELTE_VALID = [
 		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<div class="m-1" id="x" class:active={on}>y</div>`,
 		filename: 'a.svelte'
 	},
-	// A dotted component name and a special element never name an import.
+	// A member of a namespace whose module can't be found, and a special
+	// element, name no component.
 	{
 		code: `<script>import * as UI from './ui/Button.svelte';</script>\n<UI.Button class="p-4" /><svelte:element this="div" class="p-4" />`,
 		filename: 'a.svelte'
@@ -302,6 +315,25 @@ export const RESTYLE_VUE_VALID = [
 ];
 
 export const RESTYLE_INVALID = [
+	// A variant function called where `sv()` returns it.
+	{
+		code: IMPORT + "sv({ base: 'p-2' })({ class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	// A `createSV()` factory's `base` applies where the config sets none, after
+	// the leading class arguments.
+	{
+		code:
+			IMPORT_CREATE_SV +
+			"const mySv = createSV({ base: 'p-2' });\nconst b = mySv({ variants: { on: 'm-2' } });\nb({ class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code:
+			IMPORT_CREATE_SV +
+			"const mySv = createSV({ base: 'p-2' });\nconst b = mySv('flex', {});\nb({ class: 'p-4' });",
+		errors: [restyle('p-4', 'p-2')]
+	},
 	// A variant with no default may still be set: by a prop or a preset, by
 	// props or a preset that can't be read in full, or by a parent in
 	// `extend`.

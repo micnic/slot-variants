@@ -88,7 +88,7 @@ export const findWrappedComponent = (
 };
 
 // The module and export name an import binding reads, or null for a namespace
-// import, whose members are read through a dotted JSX name that is skipped.
+// import, whose members are read through a dotted name instead.
 const getImportSource = (def: ImportDefinition): ImportSource | null => {
 	const value = getModuleSpecifier(def.parent.source);
 
@@ -159,4 +159,42 @@ export const resolveComponentBinding = (
 	}
 
 	return { kind: 'local', fn: wrapped };
+};
+
+/**
+ * What a component tag names: a plain name as `resolveComponentBinding` reads
+ * it, or a member of a namespace import (`UI.Button`), as the import of that
+ * export. Null for a member of anything else.
+ */
+export const resolveTagBinding = (
+	tag: string,
+	scope: Scope.Scope
+): ComponentBinding => {
+	const dot = tag.indexOf('.');
+
+	if (dot === -1) {
+		return resolveComponentBinding(tag, scope);
+	}
+
+	const binding = findSingleBinding(scope, tag.slice(0, dot));
+
+	if (binding === null) {
+		return null;
+	}
+
+	const { def } = binding;
+
+	if (
+		def.type !== 'ImportBinding' ||
+		def.node.type !== 'ImportNamespaceSpecifier'
+	) {
+		return null;
+	}
+
+	const specifier = getModuleSpecifier(def.parent.source);
+
+	return {
+		kind: 'import',
+		source: { specifier, exportName: tag.slice(dot + 1) }
+	};
 };

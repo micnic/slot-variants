@@ -6,6 +6,12 @@ import { dup, restyle } from './helpers.ts';
 
 export const CROSS_FILE_VALID = [
 	{
+		// A dotted name off anything but a namespace import, or nested deeper
+		// than one member, names no import.
+		code: `import { UI } from './ui';\nimport * as NS from './ui';\n<UI.Button className="p-6" />;\n<NS.Button.Inner className="p-6" />;\n<Local.Button className="p-6" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
 		// A module the default parser can't read has no other parser to be
 		// read with, so its component stays unknown.
 		code: `import { Typed } from './ui/typed.ts';\n<Typed className="p-4" />;`,
@@ -67,12 +73,6 @@ export const CROSS_FILE_VALID = [
 		filename: join(fixtureDir, 'page.tsx')
 	},
 	{
-		// A namespace import is read through a dotted name, which never
-		// resolves to a component binding.
-		code: `import * as UI from './ui/button.tsx';\n<UI.Button className="p-4" />;`,
-		filename: join(fixtureDir, 'page.tsx')
-	},
-	{
 		// A namespace binding used as an element name directly names no export.
 		code: `import * as Button from './ui/button.tsx';\n<Button className="p-4" />;`,
 		filename: join(fixtureDir, 'page.tsx')
@@ -119,6 +119,17 @@ export const CROSS_FILE_VALID = [
 ];
 
 export const CROSS_FILE_INVALID = [
+	{
+		// A component read off a namespace import, of its module or a barrel.
+		code: `import * as UI from './ui/button.tsx';\n<UI.Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		code: `import * as UI from './ui';\n<UI.Button className="p-6" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('p-6', 'p-2')]
+	},
 	{
 		// A named import, resolved through the file that declares it.
 		code: `import { Button } from './ui/button.tsx';\n<Button className="p-4 rounded" />;`,
@@ -258,6 +269,12 @@ export const SVELTE_CROSS_FILE_VALID = [
 
 export const SVELTE_CROSS_FILE_INVALID = [
 	{
+		// A component read off a namespace import.
+		code: `<script>import * as UI from './ui/svelte-barrel.js';</script>\n<UI.Button class="p-4" />`,
+		filename: join(fixtureDir, 'page.svelte'),
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
 		// A barrel isn't Svelte markup, so it's read as a plain script: with
 		// the default parser when the config names no script parser…
 		code: `<script>import { Button } from './ui/svelte-barrel.js';</script>\n<Button class="p-4" />`,
@@ -291,6 +308,12 @@ export const VUE_CROSS_FILE_VALID = [
 ];
 
 export const VUE_CROSS_FILE_INVALID = [
+	{
+		// A component read off a namespace import.
+		code: `<script setup>import * as UI from './ui/vue-barrel.js';</script>\n<template><UI.Button class="p-4" /></template>`,
+		filename: join(fixtureDir, 'page.vue'),
+		errors: [restyle('p-4', 'p-2')]
+	},
 	{
 		// A PascalCase tag, a kebab-case one, and a bound literal.
 		code: `<script setup>import Button from './ui/Button.vue';\nimport MyChip from './ui/Chip.vue';\nimport Tag from './ui/Tag.vue';</script>\n<template><Button class="p-4" /><my-chip class="px-4" /><Tag :class="'m-4'" /></template>`,

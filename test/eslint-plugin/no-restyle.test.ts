@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import { utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import t from 'tap';
-import { ESLint, Linter } from 'eslint';
+import { ESLint, Linter, RuleTester } from 'eslint';
 import { parser as tsParser } from 'typescript-eslint';
 import * as vueParser from 'vue-eslint-parser';
 import plugin, { rules } from '../../src/eslint-plugin.ts';
@@ -400,4 +400,35 @@ t.test('no-restyle reuses the scan of a module linted earlier', async (t) => {
 		[],
 		'a file missing from disk lints without errors'
 	);
+});
+// A callee in a type-only wrapper is read through it, like any other value.
+t.test('no-restyle reads callees through type-only wrappers', (t) => {
+	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
+	const button = "const b = sv({ base: 'p-2' });\n";
+	const list =
+		"const list = sv({ slots: { item: 'px-2' }, multiSlots: ['item'] });\nconst classes = list();\n";
+
+	t.doesNotThrow(() => {
+		tsTester.run('no-restyle', rules['no-restyle'], {
+			valid: [],
+			invalid: [
+				{
+					code: IMPORT + button + "b!({ class: 'p-4' });",
+					filename: 'test.ts',
+					errors: [{ messageId: 'conflict' }]
+				},
+				{
+					code: IMPORT + button + "(b as Fn)({ class: 'p-4' });",
+					filename: 'test.ts',
+					errors: [{ messageId: 'conflict' }]
+				},
+				{
+					code: IMPORT + list + "classes.item!({ class: 'px-4' });",
+					filename: 'test.ts',
+					errors: [{ messageId: 'conflict' }]
+				}
+			]
+		});
+	}, 'rule tester passes');
+	t.end();
 });
