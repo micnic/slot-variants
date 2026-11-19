@@ -704,27 +704,66 @@ const getCompoundSource = (
 	return { kind: 'variant', matchers };
 };
 
+// The slots a `compoundSlots` entry targets, each once: `sv()` expands a group
+// to its slots and applies the class to every slot a single time, however
+// many of the targets reach it. A group whose slot list can't be read stays a
+// target of its own.
+const getCompoundSlotTargets = (
+	targets: Node | undefined,
+	groups: ReadonlyMap<string, Node>,
+	sourceCode: SourceCode
+): ReadonlySet<string> => {
+	const slots = new Set<string>();
+
+	forEachStringLiteralElement(targets, sourceCode, (target) => {
+		const group = groups.get(target);
+
+		if (group === undefined || resolveArray(group, sourceCode) === null) {
+			slots.add(target);
+			return;
+		}
+
+		forEachStringLiteralElement(group, sourceCode, (slot) => {
+			slots.add(slot);
+		});
+	});
+
+	return slots;
+};
+
 const extractCompoundTokens = (
-	compoundVariants: Node | undefined,
-	compoundSlots: Node | undefined,
+	config: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode,
 	extract: ExtractFn
 ) => {
-	forEachCompoundClass(compoundVariants, sourceCode, (cls, compound) => {
-		extract(cls, 'base', getCompoundSource(compound, sourceCode));
-	});
+	const groups = getProperties(
+		resolveContainer(config.get('groups'), sourceCode)
+	);
 
-	forEachCompoundClass(compoundSlots, sourceCode, (cls, compound) => {
-		const source = getCompoundSource(compound, sourceCode);
+	forEachCompoundClass(
+		config.get('compoundVariants'),
+		sourceCode,
+		(cls, compound) => {
+			extract(cls, 'base', getCompoundSource(compound, sourceCode));
+		}
+	);
 
-		forEachStringLiteralElement(
-			compound.get('slots'),
-			sourceCode,
-			(slot) => {
+	forEachCompoundClass(
+		config.get('compoundSlots'),
+		sourceCode,
+		(cls, compound) => {
+			const source = getCompoundSource(compound, sourceCode);
+			const targets = getCompoundSlotTargets(
+				compound.get('slots'),
+				groups,
+				sourceCode
+			);
+
+			for (const slot of targets) {
 				extract(cls, slot, source);
 			}
-		);
-	});
+		}
+	);
 };
 
 export const collectConfigEntries = (
@@ -764,12 +803,7 @@ export const collectConfigEntries = (
 		sourceCode,
 		extract
 	);
-	extractCompoundTokens(
-		config.get('compoundVariants'),
-		config.get('compoundSlots'),
-		sourceCode,
-		extract
-	);
+	extractCompoundTokens(config, sourceCode, extract);
 
 	return entries;
 };

@@ -122,6 +122,13 @@ export const NO_CONFLICTING_DUP_VALID = [
 				{ slots: ['body'], size: 'lg', class: 'font-bold' }
 			]
 		});`,
+	// `sv()` applies a compoundSlots class once per slot, however many of its
+	// targets reach that slot: a repeated name, a group and its member, or two
+	// groups sharing a slot.
+	IMPORT +
+		"sv({ slots: { a: 'p-2', b: '' }, variants: { s: { x: { b: 'p-4' } } }, compoundSlots: [{ slots: ['a', 'a'], class: 'm-1' }] });",
+	IMPORT +
+		"sv({ slots: { a: 'p-2', b: '' }, groups: { g: ['a', 'b'], h: ['a'] }, variants: { s: { x: { b: 'p-4' } } }, compoundSlots: [{ slots: ['g', 'a', 'h'], class: 'm-1' }] });",
 	// compoundSlots with non-analyzable or incomplete entries.
 	IMPORT +
 		`sv({
@@ -1177,6 +1184,14 @@ export const NO_CONFLICTING_NS_INVALID = [
 			IMPORT +
 			"sv({ slots: { icon: 'w-4', label: 'p-1' }, groups: { controls: ['icon', 'label'] }, variants: { size: { sm: '', lg: '' } }, compoundSlots: [{ slots: ['controls'], size: 'sm', class: 'w-2' }] });",
 		errors: repeat(conflict('w-2, w-4', 'icon'), 2)
+	},
+	{
+		// A group whose slot list can't be read stays a compoundSlots target
+		// of its own.
+		code:
+			IMPORT +
+			"sv({ slots: { icon: '' }, groups: { controls: dyn }, variants: { size: { sm: '' } }, compoundSlots: [{ slots: ['controls'], class: 'w-2 w-4' }] });",
+		errors: repeat(conflict('w-2, w-4', 'controls'), 2)
 	},
 	{
 		// Two groups naming one slot meet in it.
