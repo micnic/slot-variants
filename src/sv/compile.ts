@@ -625,10 +625,7 @@ const getCompoundFragments = (
 	return fragments;
 };
 
-export const compileConfig = (
-	baseArgs: ClassValue[],
-	config: RawConfig
-): CompiledConfig => {
+export const compileConfig = (config: RawConfig): CompiledConfig => {
 	const {
 		base: configBase,
 		variants = {},
@@ -647,7 +644,7 @@ export const compileConfig = (
 
 	const { base: baseSlot, ...otherSlots } = slots;
 
-	const base = cn(...baseArgs, configBase, baseSlot);
+	const base = cn(configBase, baseSlot);
 	const normalizedSlots: Slots = { base, ...otherSlots };
 
 	const slotEntries = entries(normalizedSlots);

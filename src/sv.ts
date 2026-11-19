@@ -52,7 +52,6 @@ type RuntimeVariantFn = (props?: RuntimeProps) => CacheValue | MultiSlotResult;
 
 // What a call compiles, and the layers a component extending it merges.
 type ResolvedCall = {
-	baseArgs: ClassValue[];
 	config: RawConfig;
 	layers: readonly RawConfig[];
 };
@@ -376,10 +375,9 @@ const withFactoryBase = (
 };
 
 /**
- * Resolves what a call compiles: its base args and its config over the
- * factory defaults, with the layers of the components it extends merged in
- * first. Base args then count as the config's own `base`, so they follow the
- * inherited base classes.
+ * Resolves what a call compiles: its config over the factory defaults, with
+ * the layers of the components it extends merged in first. Base args count as
+ * the config's own `base`, so they follow the inherited base classes.
  */
 const resolveCall = (
 	defaults: RawConfig | undefined,
@@ -392,7 +390,7 @@ const resolveCall = (
 		const merged = mergeConfig(defaults, config);
 		const own = foldBaseArgs(baseArgs, merged);
 
-		return { baseArgs, config: merged, layers: [toLayer(own, own)] };
+		return { config: own, layers: [toLayer(own, own)] };
 	}
 
 	const parentLayers = getParentLayers(extend);
@@ -411,7 +409,6 @@ const resolveCall = (
 	// The factory defaults sit below the parents, filling only what no layer
 	// sets, so they are merged first.
 	return {
-		baseArgs: [],
 		config: merged,
 		layers: [
 			getUnsetDefaults(defaults, resolved),
@@ -427,9 +424,7 @@ const buildVariantFn = (
 	config: RawConfig
 ) => {
 	const call = resolveCall(defaults, baseArgs, config);
-	const variantFn = createVariantFn(
-		compileConfig(call.baseArgs, call.config)
-	);
+	const variantFn = createVariantFn(compileConfig(call.config));
 
 	recordLayers(variantFn, call.layers);
 
