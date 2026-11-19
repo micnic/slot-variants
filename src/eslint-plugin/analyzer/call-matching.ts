@@ -5,7 +5,7 @@ import type {
 	ObjectExpression,
 	SpreadElement
 } from 'estree';
-import { getProperties } from './properties.ts';
+import { getSpreadProperties } from './properties.ts';
 import { isUndefinedIdentifier } from './static-predicates.ts';
 
 export type CallMatch = {
@@ -72,13 +72,14 @@ export const matchSvCall = (
 
 /**
  * Whether an object defines `slots` and `variants`, the keys that make it
- * `sv()`'s config: a property left `undefined` defines nothing.
+ * `sv()`'s config: a property left `undefined` defines nothing, and one an
+ * object literal it spreads holds counts too.
  */
 export const getConfigMarkers = (
 	node: ObjectExpression,
 	resolve: ResolveNode
 ): ConfigMarkers => {
-	const properties = getProperties(node);
+	const properties = getSpreadProperties(node, resolve);
 	const defines = (key: string) => {
 		const value = properties.get(key);
 

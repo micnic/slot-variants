@@ -52,7 +52,12 @@ export const REQUIRE_TOP_LEVEL_CONFIG_VALID = [
 	IMPORT + 'const b = (function () { return sv({ variants: {} }); })();',
 	IMPORT + 'const b = (async () => sv({ variants: {} }))();',
 	// `void 0` is `undefined`: neither key is set, so this is a class list.
-	IMPORT + "function f() { return sv({ slots: void 0, base: 'x' }); }"
+	IMPORT + "function f() { return sv({ slots: void 0, base: 'x' }); }",
+	// A spread no object literal can be read from leaves the call a class
+	// list, as does an object that spreads itself.
+	IMPORT + "function f() { return sv({ ...common, base: 'x' }); }",
+	IMPORT +
+		"function f() { const c = { ...c }; return sv({ ...c, base: 'x' }); }"
 ];
 
 export const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
@@ -231,6 +236,19 @@ export const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
 	{
 		// A function passed to a call isn't invoked where it's written.
 		code: IMPORT + 'list.map(() => sv({ variants: {} }));',
+		errors: [{ messageId: 'nested' }]
+	},
+	{
+		// A config built by spreading one with `slots` or `variants`.
+		code:
+			IMPORT +
+			"const common = { variants: { size: { sm: 'p-1' } } };\nfunction f() { return sv({ ...common }); }",
+		errors: [{ messageId: 'nested' }]
+	},
+	{
+		code:
+			IMPORT +
+			"const inner = { slots: { a: 'p-1' } };\nconst outer = { ...inner };\nfunction f() { return sv({ ...outer, base: 'x' }); }",
 		errors: [{ messageId: 'nested' }]
 	}
 ];

@@ -270,7 +270,14 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 		"sv({ variants: { s: { x: 'b' } }, compoundVariants: undefined, compoundSlots: void 0 });",
 	IMPORT +
 		"const u = undefined;\nsv({ slots: u, variants: { s: { x: 'b' } } });",
-	IMPORT + 'sv({ base: void 0, variants: {} });'
+	IMPORT + 'sv({ base: void 0, variants: {} });',
+	// The config's spread objects are read as part of it, their slots too.
+	IMPORT +
+		"const common = { base: 'p-1', variants: { s: { x: 'b' } } };\nsv({ ...common, slots: { a: 'p-2' } });",
+	IMPORT +
+		"const common = { slots: { a: 'p-1' } };\nsv({ ...common, variants: { v: { x: { a: 'p-2' } } } });",
+	// An object that spreads itself is read once.
+	IMPORT + "const c = { ...c, variants: { v: { a: 'x' } } };\nsv(c);"
 ];
 
 export const NO_DYNAMIC_CLASSES_INVALID = [
@@ -282,6 +289,18 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 	{
 		code: IMPORT + 'sv({ base: !x, variants: {} });',
 		errors: [{ messageId: 'dynamic' }]
+	},
+	{
+		// A config spread no object literal can be read from, and a dynamic
+		// value in one that can.
+		code: IMPORT + 'sv({ ...extra, variants: {} });',
+		errors: [{ messageId: 'dynamic', column: 6 }]
+	},
+	{
+		code:
+			IMPORT +
+			'const common = { base: foo() };\nsv({ ...common, variants: {} });',
+		errors: [{ messageId: 'dynamic', line: 2, column: 24 }]
 	},
 	{
 		// A hoisted value shared by several positions and calls is reported

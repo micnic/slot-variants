@@ -142,6 +142,18 @@ export const SV_CONFIG_STYLE_ORDER_INVALID = [
 		]
 	},
 	{
+		// A config only through the `variants` its spread object defines.
+		code:
+			IMPORT +
+			"const common = { variants: { size: { sm: 'text-sm' } } };\nsv({ ...common, compoundVariants: [], base: 'flex' });",
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'compoundVariants' }
+			}
+		]
+	},
+	{
 		// A spread element inside the config disables the fixer too
 		// — the spread's own keys aren't statically known, so moving
 		// properties across it could change which value wins.

@@ -12,7 +12,7 @@ import { resolveStaticValue } from './const-bindings.ts';
 import {
 	collectSlotKeyedProperties,
 	getConfigSlotNames,
-	getProperties
+	getSpreadProperties
 } from './properties.ts';
 import {
 	isStaticStringNode,
@@ -149,6 +149,19 @@ const checkConfigClassValueIsStatic = (
 	});
 };
 
+const visitStaticProperty = (
+	context: Rule.RuleContext,
+	prop: Property,
+	visit: PropertyVisitor
+) => {
+	if (prop.computed) {
+		reportDynamic(context, prop.key);
+		return;
+	}
+
+	visit(prop);
+};
+
 const forEachStaticProperty = (
 	context: Rule.RuleContext,
 	node: ObjectExpression,
@@ -160,12 +173,37 @@ const forEachStaticProperty = (
 			continue;
 		}
 
-		if (prop.computed) {
-			reportDynamic(context, prop.key);
+		visitStaticProperty(context, prop, visit);
+	}
+};
+
+// Like forEachStaticProperty, but a spread of an object literal is entered, as
+// `sv()` reads the config it builds. `seen` stops an object that spreads
+// itself (`const a = { ...a }`).
+const forEachConfigProperty = (
+	context: Rule.RuleContext,
+	node: ObjectExpression,
+	visit: PropertyVisitor,
+	seen: Set<ObjectExpression>
+) => {
+	seen.add(node);
+
+	for (const prop of node.properties) {
+		if (prop.type === 'Property') {
+			visitStaticProperty(context, prop, visit);
 			continue;
 		}
 
-		visit(prop);
+		const spread = resolveStaticValue(prop.argument, context.sourceCode);
+
+		if (spread.type !== 'ObjectExpression') {
+			reportDynamic(context, prop);
+			continue;
+		}
+
+		if (!seen.has(spread)) {
+			forEachConfigProperty(context, spread, visit, seen);
+		}
 	}
 };
 
@@ -350,14 +388,18 @@ export const checkSvConfig = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression
 ) => {
+	const { sourceCode } = context;
 	const slotNames = getConfigSlotNames(
-		getProperties(configNode),
-		context.sourceCode
+		getSpreadProperties(configNode, (node) =>
+			resolveStaticValue(node, sourceCode)
+		),
+		sourceCode
 	);
-
-	forEachStaticProperty(context, configNode, (prop) => {
+	const visit: PropertyVisitor = (prop) => {
 		checkSvConfigProperty(context, prop, slotNames);
-	});
+	};
+
+	forEachConfigProperty(context, configNode, visit, new Set());
 };
 
 export const checkCnArguments = (
