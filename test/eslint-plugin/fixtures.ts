@@ -93,6 +93,46 @@ writeFixture(
 	`
 );
 
+// Own exports declared through binding patterns and TypeScript value
+// declarations shadow `export *` too; a type-only one doesn't.
+writeFixture(
+	'ui/shadowing-declarations.ts',
+	`export const { Button, ...rest } = lib;
+	export const [, Badge = 1, ...others] = list;
+	export enum Card { A }
+	export namespace Tag {}
+	export declare function Chip(): void;
+	export type Pill = string;
+
+	export * from './button.tsx';
+	export * from './badge.tsx';
+	export * from './padded.tsx';
+	`
+);
+
+// Components the declarations above shadow, all but `Pill`.
+writeFixture(
+	'ui/padded.tsx',
+	`${IMPORT}const padded = sv({ base: 'p-2', variants: {} });
+
+	export function Card({ className }) {
+		return <i className={padded({ class: className })} />;
+	}
+
+	export function Tag({ className }) {
+		return <i className={padded({ class: className })} />;
+	}
+
+	export function Chip({ className }) {
+		return <i className={padded({ class: className })} />;
+	}
+
+	export function Pill({ className }) {
+		return <i className={padded({ class: className })} />;
+	}
+	`
+);
+
 // A barrel that only star-exports a module with a default export, which
 // `export *` doesn't carry over.
 writeFixture('ui/star-only.ts', "export * from './button.tsx';\n");

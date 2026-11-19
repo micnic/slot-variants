@@ -269,6 +269,28 @@ export const CROSS_FILE_INVALID = [
 
 // Single-file components are always another file, so a component usage in
 // Svelte and Vue is cross-file by nature.
+// Cases whose fixture modules only the TypeScript parser reads, which the
+// oxlint tester can't be given.
+export const TS_CROSS_FILE_VALID = [
+	{
+		// A module's own export declared through a binding pattern, or as a
+		// TypeScript value, shadows `export *` too.
+		code: `import { Button, Badge, Card, Tag, Chip } from './ui/shadowing-declarations.ts';\n<><Button className="p-4" /><Badge className="px-4" /><Card className="p-4" /><Tag className="p-4" /><Chip className="p-4" /></>;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		languageOptions: { parser: tsParser }
+	}
+];
+
+export const TS_CROSS_FILE_INVALID = [
+	{
+		// A type-only export leaves the value to `export *`.
+		code: `import { Pill } from './ui/shadowing-declarations.ts';\n<Pill className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		languageOptions: { parser: tsParser },
+		errors: [restyle('p-4', 'p-2')]
+	}
+];
+
 export const SVELTE_CROSS_FILE_VALID = [
 	{
 		// A component that forwards no class prop, and one the module never

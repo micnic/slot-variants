@@ -1,4 +1,4 @@
-import type { ExportNamedDeclaration, Node, Program } from 'estree';
+import type { ExportNamedDeclaration, Node, Pattern, Program } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { type ComponentFunction, findWrappedComponent } from './components.ts';
 import {
@@ -23,6 +23,58 @@ type ExportTable = {
 };
 
 type AddTarget = (name: string, target: ExportTarget) => void;
+
+// TypeScript declarations that name only a type, which leave a value of the
+// same name to an `export *`.
+const TYPE_ONLY_DECLARATIONS: ReadonlySet<string> = new Set([
+	'TSInterfaceDeclaration',
+	'TSTypeAliasDeclaration'
+]);
+
+// Every name a binding pattern declares (`{ a, b: [c] }` declares a and c).
+const forEachPatternName = (
+	pattern: Pattern,
+	visit: (name: string) => void
+): void => {
+	if (pattern.type === 'Identifier') {
+		visit(pattern.name);
+
+		return;
+	}
+
+	if (pattern.type === 'ObjectPattern') {
+		for (const prop of pattern.properties) {
+			if (prop.type === 'RestElement') {
+				forEachPatternName(prop.argument, visit);
+				continue;
+			}
+
+			forEachPatternName(prop.value, visit);
+		}
+
+		return;
+	}
+
+	if (pattern.type === 'ArrayPattern') {
+		for (const element of pattern.elements) {
+			if (element) {
+				forEachPatternName(element, visit);
+			}
+		}
+
+		return;
+	}
+
+	if (pattern.type === 'RestElement') {
+		forEachPatternName(pattern.argument, visit);
+
+		return;
+	}
+
+	if (pattern.type === 'AssignmentPattern') {
+		forEachPatternName(pattern.left, visit);
+	}
+};
 
 const collectFromDeclaration = (
 	declaration: Node | null | undefined,
@@ -51,16 +103,28 @@ const collectFromDeclaration = (
 		return;
 	}
 
-	if (declaration.type !== 'VariableDeclaration') {
+	const addLocal = (name: string) => {
+		add(name, { kind: 'local', name });
+	};
+
+	if (declaration.type === 'VariableDeclaration') {
+		for (const declarator of declaration.declarations) {
+			forEachPatternName(declarator.id, addLocal);
+		}
+
 		return;
 	}
 
-	for (const declarator of declaration.declarations) {
-		if (declarator.id.type === 'Identifier') {
-			const { name } = declarator.id;
+	// A TypeScript `enum`, `namespace` or `declare function`: no component,
+	// but a value name of the module's own.
+	const type: string = declaration.type;
 
-			add(name, { kind: 'local', name });
-		}
+	if (
+		!TYPE_ONLY_DECLARATIONS.has(type) &&
+		'id' in declaration &&
+		declaration.id?.type === 'Identifier'
+	) {
+		addLocal(declaration.id.name);
 	}
 };
 

@@ -11,6 +11,8 @@ import {
 	CROSS_FILE_VALID,
 	SVELTE_CROSS_FILE_INVALID,
 	SVELTE_CROSS_FILE_VALID,
+	TS_CROSS_FILE_INVALID,
+	TS_CROSS_FILE_VALID,
 	VUE_CROSS_FILE_INVALID,
 	VUE_CROSS_FILE_VALID
 } from './cross-file.cases.ts';
@@ -28,8 +30,16 @@ import {
 t.test('no-restyle', (t) => {
 	t.doesNotThrow(() => {
 		jsxTester.run('no-restyle', rules['no-restyle'], {
-			valid: [...RESTYLE_VALID, ...CROSS_FILE_VALID],
-			invalid: [...RESTYLE_INVALID, ...CROSS_FILE_INVALID]
+			valid: [
+				...RESTYLE_VALID,
+				...CROSS_FILE_VALID,
+				...TS_CROSS_FILE_VALID
+			],
+			invalid: [
+				...RESTYLE_INVALID,
+				...CROSS_FILE_INVALID,
+				...TS_CROSS_FILE_INVALID
+			]
 		});
 	}, 'rule tester passes');
 	t.end();
