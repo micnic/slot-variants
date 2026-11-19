@@ -243,6 +243,12 @@ export const NO_SHARED_TOKENS_VALID = [
 			compoundVariants: [{ size: 'sm', preset: 'hero', class: 'q' }],
 			compoundSlots: [{ slots: ['icon'], size: 'sm', preset: 'hero', class: 'r' }]
 		});`,
+	// A matcher left `undefined` is omitted, so this entry has none.
+	IMPORT +
+		`sv({
+			variants: { size: { sm: 'a', lg: 'b' } },
+			compoundVariants: [{ size: undefined, class: 'm-1' }]
+		});`,
 	// No matcher at all — this entry always applies, a different concern than
 	// this check.
 	IMPORT +
@@ -286,6 +292,16 @@ export const NO_SHARED_TOKENS_INVALID = [
 			IMPORT +
 			"const SM = 'sm';\nsv({ variants: { size: { sm: 'p-1 gap-2', lg: 'p-2' } } });",
 		errors: [singleKeyCompound('compoundVariants', 'size', 'SM')]
+	},
+	{
+		// A matcher or `preset` left `undefined` is omitted, leaving one key.
+		code:
+			IMPORT +
+			"sv({ variants: { size: { sm: 'p-1', lg: 'p-2' }, tone: { x: 'c' } }, compoundVariants: [{ size: 'sm', tone: undefined, preset: undefined, class: 'm-1' }] });",
+		output:
+			IMPORT +
+			"sv({ variants: { size: { sm: 'p-1 m-1', lg: 'p-2' }, tone: { x: 'c' } } });",
+		errors: [singleKeyCompound('compoundVariants', 'size', "'sm'")]
 	},
 	{
 		// The same for an element of an array matcher.

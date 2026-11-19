@@ -20,6 +20,7 @@ import {
 	getProperties,
 	getStrictProperties
 } from './properties.ts';
+import { isUndefinedIdentifier } from './static-predicates.ts';
 import {
 	COMPOUND_NON_MATCHER_KEYS,
 	extractTokens,
@@ -642,15 +643,14 @@ const analyzeVariantSharedTokens = (
 // at all, two or more (a `preset` brings its own), or a shape that can't be
 // counted reliably (a spread or computed key might hide another matcher, so the
 // whole entry is skipped rather than risk under-reporting a hidden key as if it
-// weren't there).
+// weren't there). A key left `undefined` is omitted, as `sv()` reads it.
 const getSingleCompoundMatcher = (
-	element: ObjectExpression
+	element: ObjectExpression,
+	sourceCode: SourceCode
 ): SingleMatcher | null => {
 	const properties = getStrictProperties(element);
 
-	// A `preset` matcher adds that preset's variant values as matchers too, so
-	// the entry is combining variants through it.
-	if (!properties || properties.has('preset')) {
+	if (!properties) {
 		return null;
 	}
 
@@ -663,6 +663,16 @@ const getSingleCompoundMatcher = (
 	let matcher: SingleMatcher | null = null;
 
 	for (const [key, value] of properties) {
+		if (isUndefinedIdentifier(resolveStaticValue(value, sourceCode))) {
+			continue;
+		}
+
+		// A `preset` matcher adds that preset's variant values as matchers
+		// too, so the entry is combining variants through it.
+		if (key === 'preset') {
+			return null;
+		}
+
 		if (COMPOUND_NON_MATCHER_KEYS.has(key)) {
 			continue;
 		}
@@ -784,7 +794,7 @@ const checkCompoundEntryForSingleKey = (
 	getRemoval: GetEntryRemoval,
 	scope: CompoundScope
 ) => {
-	const matcher = getSingleCompoundMatcher(element);
+	const matcher = getSingleCompoundMatcher(element, context.sourceCode);
 
 	if (!matcher) {
 		return;
