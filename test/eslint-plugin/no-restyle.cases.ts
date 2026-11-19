@@ -89,6 +89,16 @@ export const RESTYLE_VALID = [
 	IMPORT + RESTYLE_PRESET + "b({ preset: 'big', class: 'p-4' });",
 	IMPORT + RESTYLE_PRESET + "b({ size: null, class: 'p-4' });",
 	IMPORT_SV_CN + RESTYLE_PRESET + "cn(b({ size: null }), 'p-4');",
+	// A preset or variant left `undefined` is not passed, so the default
+	// applies, and a config without presets applies no preset at all.
+	IMPORT + RESTYLE_PRESET + "b({ preset: undefined, class: 'text-xl' });",
+	IMPORT + RESTYLE_BUTTON + "button({ size: undefined, class: 'mt-4' });",
+	IMPORT + RESTYLE_BUTTON + "button({ preset: name, class: 'mt-4' });",
+	// A component forwarding a variant prop: an element that doesn't pass it
+	// leaves the variant to its default.
+	IMPORT +
+		RESTYLE_BUTTON +
+		'function Button({ className, size }) { return <button className={button({ size, class: className })} />; }\n<Button className="mt-4" />;',
 	// `defaultVariants` and a call site's props are read through `const`
 	// bindings, so the `lg` compound is known not to apply here.
 	IMPORT_SV_CN +
@@ -431,11 +441,38 @@ export const RESTYLE_INVALID = [
 			"const card = sv({ base: 'p-2', variants: {} });\nconst c = card();\ncn(on ? [c, 'p-4'] : 'm-1');",
 		errors: [restyle('p-4', 'p-2')]
 	},
-	// A preset not known statically leaves the defaults in force.
+	// A preset not known statically may set any variant value.
 	{
 		code: IMPORT + RESTYLE_PRESET + "b({ preset: name, class: 'p-4' });",
 		errors: [restyle('p-4', 'p-2')]
 	},
+	{
+		code:
+			IMPORT + RESTYLE_PRESET + "b({ preset: name, class: 'text-xl' });",
+		errors: [restyle('text-xl', 'text-lg')]
+	},
+	// So may a variant prop that can't be read, or props with a spread,
+	// rather than falling back to the default.
+	...[
+		"button({ size: dynamic, class: 'mt-4' });",
+		"button({ ...rest, class: 'mt-4' });",
+		"const r = button({ size: dynamic });\n<div className={cn(r, 'mt-4')} />;",
+		"function Button({ size }) { return <button className={button({ size, class: 'mt-4' })} />; }"
+	].map((call) => ({
+		code: IMPORT_SV_CN + RESTYLE_BUTTON + call,
+		errors: [restyle('mt-4', 'mt-8')]
+	})),
+	// The same for a slot call, over the values its result was produced with.
+	...[
+		"r.header({ size: s, class: 'm-4' });",
+		"r.header({ ...s, class: 'm-4' });"
+	].map((call) => ({
+		code:
+			IMPORT +
+			"const card = sv({ slots: { header: '' }, multiSlots: ['header'], variants: { size: { sm: { header: 'p-1' }, lg: { header: 'm-2' } } } });\nconst r = card({ size: 'sm' });\n" +
+			call,
+		errors: [restyle('m-4', 'm-2', 'header')]
+	})),
 	{
 		code: IMPORT + RESTYLE_PRESET + "b({ preset: 'nope', class: 'p-4' });",
 		errors: [restyle('p-4', 'p-2')]

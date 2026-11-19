@@ -367,16 +367,20 @@ export const createForwardingScan = (
 	// What a forwarded prop, written in `path`, is merged with at this
 	// position: the parts outside the other branches of its ternaries. Inside
 	// a `cn()` list the literals count too — `cn('p-2', className)` applies
-	// `p-2` just as a config would.
+	// `p-2` just as a config would. A variant the call can't read is left to
+	// its default, as it is for an element that doesn't pass the component
+	// the prop it's read from.
 	const getForwardTargets = (
 		parts: ClassParts,
 		path: BranchPath
 	): StyledClasses[] => {
 		const { paths } = parts;
-		const styled = parts.styled.filter(
-			(_part, index) =>
-				!areExclusivePaths(path, pathAt(paths.styled, index))
-		);
+		const styled = parts.styled
+			.filter(
+				(_part, index) =>
+					!areExclusivePaths(path, pathAt(paths.styled, index))
+			)
+			.map((part) => ({ ...part, matchers: part.defaultMatchers }));
 		const literals = parts.literals.filter(
 			(_entry, index) =>
 				!areExclusivePaths(path, pathAt(paths.literals, index))

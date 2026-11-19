@@ -289,13 +289,13 @@ export const forEachOverrideParts = (
 	ctx: StyledContext,
 	visit: (parts: ClassParts) => void
 ) => {
-	const { styles, matchers } = invocation;
+	const { styles, matchers, defaultMatchers } = invocation;
 
 	forEachOverrideTarget(value, styles, invocation.slot, (slotKey, node) => {
 		const parts = emptyParts();
 
 		for (const slot of resolveTargetSlots(styles, slotKey)) {
-			parts.styled.push({ styles, slot, matchers });
+			parts.styled.push({ styles, slot, matchers, defaultMatchers });
 		}
 
 		collectParts(node, ctx, parts);

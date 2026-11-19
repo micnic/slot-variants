@@ -63,11 +63,22 @@ type PresetValues = { matchers: VariantMatchers; complete: boolean };
 // variants it leaves unset unless it passes them.
 type CallOptions = Pick<InternalStyles, 'presets' | 'optional'>;
 
+/**
+ * The variant values a call fixes. `matchers` leaves out each variant whose
+ * value the call sets but can't be read, as any of its values may apply;
+ * `defaultMatchers` leaves those to what the call would apply without them,
+ * as an element rendering a component that forwards its props to the call
+ * does when it doesn't pass them.
+ */
+export type CallMatchers = {
+	matchers: VariantMatchers;
+	defaultMatchers: VariantMatchers;
+};
+
 /** A class expression produced by slot-variants, and the slot it feeds. */
-export type StyledClasses = {
+export type StyledClasses = CallMatchers & {
 	styles: InternalStyles;
 	slot: string;
-	matchers: VariantMatchers;
 };
 
 /** Everything the resolver needs from the rule that owns it. */
@@ -82,13 +93,17 @@ export type StyledContext = {
  * A call of a compiled variant function (`button(props)`), or of one of its
  * multi-slot slot functions (`classes.item(props)`).
  */
-export type Invocation = {
+export type Invocation = CallMatchers & {
 	styles: InternalStyles;
-	matchers: VariantMatchers;
 	slot: string | null;
 };
 
 const EMPTY_MATCHERS: VariantMatchers = new Map();
+
+const NO_MATCHERS: CallMatchers = {
+	matchers: EMPTY_MATCHERS,
+	defaultMatchers: EMPTY_MATCHERS
+};
 
 const EMPTY_GROUPS: GroupSlots = new Map();
 
@@ -312,7 +327,9 @@ const readPropMatchers = (
 	return matchers;
 };
 
-// The variant values of the preset a call's props name.
+// The variant values of the preset a call's props name. A config without
+// presets throws on any preset name, and a slot call's preset is read with no
+// presets in hand: neither applies one.
 const readPresetMatchers = (
 	props: ReadonlyMap<string, Node>,
 	presets: ReadonlyMap<string, PresetValues>,
@@ -320,7 +337,11 @@ const readPresetMatchers = (
 ): PresetValues => {
 	const preset = props.get('preset');
 
-	if (preset === undefined) {
+	if (
+		preset === undefined ||
+		presets.size === 0 ||
+		isUndefinedIdentifier(ctx.resolve(preset))
+	) {
 		return NO_PRESET;
 	}
 
@@ -353,13 +374,11 @@ const getKnownCallProps = (
 // The optional variants a call leaves unset: the ones it neither passes nor
 // gets from its preset. None when its props or preset can't be read in full.
 const readUnsetMatchers = (
-	arg: Expression | SpreadElement | undefined,
+	props: ReadonlyMap<string, Node> | null,
 	optional: ReadonlySet<string>,
 	preset: PresetValues,
 	ctx: StyledContext
 ): VariantMatchers => {
-	const props = getKnownCallProps(arg, ctx);
-
 	if (props === null || !preset.complete) {
 		return EMPTY_MATCHERS;
 	}
@@ -379,26 +398,70 @@ const readUnsetMatchers = (
 	return unset;
 };
 
+// The values a call keeps from `base`: all of them, unless its props or
+// preset can't be read in full and so may set any variant.
+const readKeptMatchers = (
+	props: ReadonlyMap<string, Node> | null,
+	base: VariantMatchers,
+	preset: PresetValues
+): VariantMatchers => {
+	if (props === null || !preset.complete) {
+		return EMPTY_MATCHERS;
+	}
+
+	return base;
+};
+
+// A variant prop whose value can't be read: `undefined` leaves the variant to
+// its default, anything else may select any of its values.
+const isUnreadProp = (
+	key: string,
+	value: Node,
+	read: VariantMatchers,
+	ctx: StyledContext
+): boolean =>
+	!NON_MATCHER_KEYS.has(key) &&
+	!read.has(key) &&
+	!isUndefinedIdentifier(ctx.resolve(value));
+
 // The matchers a call applies: `base`, refined by the props it passes. Later
 // matchers win: a call site's props over its preset's values, those over the
 // config's `defaultVariants` or the `optional` variants it leaves unset, and
 // a slot call's own props over the ones already fixed when the result was
-// produced.
+// produced. A variant prop that can't be read leaves `matchers` open for it.
 const buildCallMatchers = (
 	arg: Expression | SpreadElement | undefined,
-	base: VariantMatchers,
+	base: CallMatchers,
 	{ presets, optional }: CallOptions,
 	ctx: StyledContext
-): VariantMatchers => {
+): CallMatchers => {
 	const props = getCallProps(arg, ctx);
+	const knownProps = getKnownCallProps(arg, ctx);
 	const preset = readPresetMatchers(props, presets, ctx);
-
-	return new Map([
-		...base,
-		...readUnsetMatchers(arg, optional, preset, ctx),
+	const propMatchers = readPropMatchers(props, ctx);
+	const unset = readUnsetMatchers(knownProps, optional, preset, ctx);
+	const matchers = new Map([
+		...readKeptMatchers(knownProps, base.matchers, preset),
+		...unset,
 		...preset.matchers,
-		...readPropMatchers(props, ctx)
+		...propMatchers
 	]);
+
+	for (const [key, value] of props) {
+		if (isUnreadProp(key, value, propMatchers, ctx)) {
+			matchers.delete(key);
+		}
+	}
+
+	return {
+		matchers,
+		defaultMatchers: new Map([
+			...base.defaultMatchers,
+			...unset,
+			...preset.matchers,
+			...propMatchers
+		])
+	};
 };
 
 /**
@@ -532,9 +595,9 @@ export const resolveInvocation = (
 		// would override the values the result was produced with.
 		return {
 			styles: slotFn.styles,
-			matchers: buildCallMatchers(
+			...buildCallMatchers(
 				node.arguments[0],
-				slotFn.matchers,
+				slotFn,
 				SLOT_CALL_OPTIONS,
 				ctx
 			),
@@ -549,14 +612,14 @@ export const resolveInvocation = (
 		return null;
 	}
 
+	const defaults = {
+		matchers: styles.defaults,
+		defaultMatchers: styles.defaults
+	};
+
 	return {
 		styles,
-		matchers: buildCallMatchers(
-			node.arguments[0],
-			styles.defaults,
-			styles,
-			ctx
-		),
+		...buildCallMatchers(node.arguments[0], defaults, styles, ctx),
 		slot: null
 	};
 };
@@ -628,7 +691,12 @@ const resolveStyledRead = (
 		return null;
 	}
 
-	return { styles: invocation.styles, slot, matchers: invocation.matchers };
+	return {
+		styles: invocation.styles,
+		slot,
+		matchers: invocation.matchers,
+		defaultMatchers: invocation.defaultMatchers
+	};
 };
 
 // Classes with no config behind them: the literals of a `cn()`-style list.
@@ -652,7 +720,7 @@ export const literalStyles = (
 ): StyledClasses => ({
 	styles: buildLiteralStyles(literals),
 	slot: 'base',
-	matchers: EMPTY_MATCHERS
+	...NO_MATCHERS
 });
 
 /**
@@ -689,7 +757,7 @@ export const readStyledClasses = (
 				)
 			),
 			slot: 'base',
-			matchers: EMPTY_MATCHERS
+			...NO_MATCHERS
 		};
 	}
 
@@ -708,7 +776,8 @@ export const readStyledClasses = (
 	return {
 		styles: invocation.styles,
 		slot: invocation.slot ?? 'base',
-		matchers: invocation.matchers
+		matchers: invocation.matchers,
+		defaultMatchers: invocation.defaultMatchers
 	};
 };
 
