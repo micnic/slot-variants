@@ -354,6 +354,28 @@ const foldBaseArgs = (baseArgs: ClassValue[], config: RawConfig): RawConfig => {
 };
 
 /**
+ * Gives a config with base args the factory `base` when no layer sets one, so
+ * the args folded into its `base` join the factory one instead of replacing
+ * it.
+ */
+const withFactoryBase = (
+	defaults: RawConfig | undefined,
+	baseArgs: ClassValue[],
+	config: RawConfig,
+	parentLayers: readonly RawConfig[]
+): RawConfig => {
+	if (
+		baseArgs.length === 0 ||
+		config.base !== undefined ||
+		parentLayers.some((layer) => layer.base !== undefined)
+	) {
+		return config;
+	}
+
+	return { ...config, base: defaults?.base };
+};
+
+/**
  * Resolves what a call compiles: its base args and its config over the
  * factory defaults, with the layers of the components it extends merged in
  * first. Base args then count as the config's own `base`, so they follow the
@@ -373,13 +395,16 @@ const resolveCall = (
 		return { baseArgs, config: merged, layers: [toLayer(own, own)] };
 	}
 
-	const own = foldBaseArgs(baseArgs, config);
+	const parentLayers = getParentLayers(extend);
+	const own = foldBaseArgs(
+		baseArgs,
+		withFactoryBase(defaults, baseArgs, config, parentLayers)
+	);
 
 	// These two are joined with the inherited ones rather than replacing
 	// them, so their defaults belong to the config's own side.
 	const { requiredVariants, multiSlots } = defaults ?? {};
 	const ownWithDefaults = mergeConfig({ requiredVariants, multiSlots }, own);
-	const parentLayers = getParentLayers(extend);
 	const resolved = mergeLayers([...parentLayers, ownWithDefaults]);
 	const merged = mergeConfig(defaults, resolved);
 

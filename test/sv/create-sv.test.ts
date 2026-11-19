@@ -137,6 +137,35 @@ t.test('createSV default base merges with per-call base args', (t) => {
 	t.end();
 });
 
+t.test('createSV default base merges with base args when extending', (t) => {
+	const factorySv = createSV({ base: 'box' });
+	const plain = sv({ variants: { gap: { sm: 'gap-1' } } });
+	const based = sv('card', { variants: {} });
+
+	t.equal(
+		factorySv('btn', { extend: plain, variants: {} })({ gap: 'sm' }),
+		'btn box gap-1',
+		'default base kept beside the base args'
+	);
+	t.equal(
+		factorySv('btn', { extend: plain, base: 'own', variants: {} })(),
+		'btn own',
+		'own base replaces the default base'
+	);
+	t.equal(
+		factorySv('btn', { extend: based, variants: {} })(),
+		'card btn',
+		'inherited base replaces the default base'
+	);
+	t.equal(
+		sv('btn', { extend: plain, variants: {} })(),
+		'btn',
+		'no default base'
+	);
+
+	t.end();
+});
+
 t.test('createSV default introspection enables it for every component', (t) => {
 	const factorySv = createSV({ introspection: true });
 
