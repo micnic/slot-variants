@@ -77,8 +77,28 @@ writeFixture(
 	'export function Plain({ className }) { return <i className={className} />; }\n'
 );
 
-// Every default-export shape, plus an export declaration that is neither a
-// function nor a variable, and an export name that isn't an identifier.
+// A module whose own exports shadow the components its `export *` sources
+// export under the same names: one forwards its class prop to no sv() call,
+// the other is a class.
+writeFixture(
+	'ui/shadowing.tsx',
+	`export function Button({ className }) {
+		return <i className={className} />;
+	}
+
+	export class Badge {}
+
+	export * from './button.tsx';
+	export * from './badge.tsx';
+	`
+);
+
+// A barrel that only star-exports a module with a default export, which
+// `export *` doesn't carry over.
+writeFixture('ui/star-only.ts', "export * from './button.tsx';\n");
+
+// Every default-export shape, plus a class export, which names no component,
+// and an export name that isn't an identifier.
 writeFixture(
 	'ui/anon.tsx',
 	`${IMPORT}const anon = sv({ base: 'm-1', variants: {} });

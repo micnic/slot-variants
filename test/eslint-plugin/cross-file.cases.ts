@@ -106,6 +106,17 @@ export const CROSS_FILE_VALID = [
 		filename: join(fixtureDir, 'page.tsx')
 	},
 	{
+		// A module's own export shadows the same name its `export *` sources
+		// export.
+		code: `import { Button, Badge } from './ui/shadowing.tsx';\n<><Button className="p-4" /><Badge className="px-4" /></>;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
+		// `export *` never re-exports a default.
+		code: `import Btn from './ui/star-only.ts';\n<Btn className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx')
+	},
+	{
 		// Mutually re-exporting modules terminate instead of looping.
 		code: `import { Looped } from './ui/loop-a.ts';\n<Looped className="p-4" />;`,
 		filename: join(fixtureDir, 'page.tsx')

@@ -43,6 +43,14 @@ const collectFromDeclaration = (
 		return;
 	}
 
+	// No component, but a name of the module's own, which shadows any
+	// `export *` of it.
+	if (declaration.type === 'ClassDeclaration') {
+		add(declaration.id.name, { kind: 'local', name: declaration.id.name });
+
+		return;
+	}
+
 	if (declaration.type !== 'VariableDeclaration') {
 		return;
 	}

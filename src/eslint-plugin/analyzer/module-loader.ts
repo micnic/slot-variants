@@ -520,18 +520,24 @@ export const resolveImportedComponent = (
 		}
 	}
 
+	// A single-file component (Svelte, Vue) declares no export of its own: the
+	// module itself is what a default import receives. `export *` never
+	// re-exports a default.
+	if (exportName === DEFAULT_EXPORT) {
+		return analysis.self;
+	}
+
+	// A name the module exports itself shadows every `export *` of it.
+	if (analysis.exports.has(exportName)) {
+		return null;
+	}
+
 	for (const specifier of analysis.starSources) {
 		const found = follow(specifier, exportName);
 
 		if (found !== null) {
 			return found;
 		}
-	}
-
-	// A single-file component (Svelte, Vue) declares no export of its own: the
-	// module itself is what a default import receives.
-	if (exportName === DEFAULT_EXPORT) {
-		return analysis.self;
 	}
 
 	return null;
