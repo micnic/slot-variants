@@ -152,3 +152,23 @@ t.test('throws for invalid numeric variant value', (t) => {
 
 	t.end();
 });
+
+t.test('quoted numeric keys take their number as well', (t) => {
+	const heading = sv({
+		variants: { level: { '1': 'text-4xl', '2': 'text-2xl', '07': 'x' } },
+		introspection: true
+	});
+	const values: (1 | 2 | '07')[] = heading.getVariantValues('level');
+
+	t.same(values, [1, 2, '07'], 'numbers for the canonical keys');
+	t.equal(heading({ level: 1 }), 'text-4xl', 'a number');
+	t.equal(heading({ level: '2' }), 'text-2xl', 'the key itself');
+	t.throws(
+		// @ts-expect-error - only a canonical key is read as a number
+		() => heading({ level: 7 }),
+		{ message: 'Invalid value "7" for variant "level"' },
+		'a padded key is no number'
+	);
+
+	t.end();
+});

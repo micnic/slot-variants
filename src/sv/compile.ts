@@ -234,7 +234,8 @@ const compileCompoundMatchers = (
 	seedPresetMatchers(matchers, presets, compound.preset);
 
 	for (const [compoundKey, value] of entries(compound)) {
-		if (isReservedKey(compoundKey)) {
+		// A matcher left `undefined` is the same as an omitted one.
+		if (isReservedKey(compoundKey) || value === undefined) {
 			continue;
 		}
 
@@ -494,7 +495,8 @@ const assertValidRequiredVariantConfig = (
 			);
 		}
 
-		if (hasOwn(defaultVariants, variant)) {
+		// A default left `undefined` is the same as no default.
+		if (getOwn(defaultVariants, variant) !== undefined) {
 			throw new Error(
 				`Required variant "${variant}" cannot have a default value`
 			);

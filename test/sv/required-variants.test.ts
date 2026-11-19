@@ -423,3 +423,22 @@ t.test('required boolean shorthand variant', (t) => {
 
 	t.end();
 });
+
+t.test('a required variant may have its default left undefined', (t) => {
+	const button = sv('btn', {
+		variants: { size: { sm: 'text-sm' } },
+		// @ts-expect-error - a required variant has no default
+		defaultVariants: { size: undefined },
+		requiredVariants: ['size']
+	});
+
+	t.throws(
+		// @ts-expect-error - size is required
+		() => button(),
+		{ message: 'Missing required variant: "size"' },
+		'still required'
+	);
+	t.equal(button({ size: 'sm' }), 'btn text-sm', 'passed value used');
+
+	t.end();
+});

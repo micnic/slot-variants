@@ -838,21 +838,23 @@ t.test('compound variant with invalid matcher value type throws', (t) => {
 	t.end();
 });
 
-t.test('compound variant with undefined matcher value throws', (t) => {
-	t.throws(
-		() =>
-			sv('btn', {
-				variants: {
-					size: { sm: 'text-sm', lg: 'text-lg' }
-				},
-				// @ts-expect-error undefined matcher value not assignable
-				compoundVariants: [{ size: undefined, class: 'uppercase' }]
-			}),
-		{
-			message:
-				'Compound matcher for variant "size" has invalid value "undefined"'
-		}
+t.test('a compound matcher left undefined matches any value', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			tone: { a: 'tone-a' }
+		},
+		// @ts-expect-error - undefined matcher value not assignable
+		compoundVariants: [{ size: undefined, tone: 'a', class: 'uppercase' }]
+	});
+
+	t.equal(button({ tone: 'a' }), 'btn tone-a uppercase', 'size unset');
+	t.equal(
+		button({ size: 'lg', tone: 'a' }),
+		'btn text-lg tone-a uppercase',
+		'size set'
 	);
+	t.equal(button(), 'btn', 'the other matcher still applies');
 
 	t.end();
 });

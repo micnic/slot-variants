@@ -41,9 +41,29 @@ export type Slots = Record<string, ConfigClassValue>;
 
 export type MaybeSlots = Slots | undefined;
 
-// The prop value a variant's value key stands for: a `true`/`false` key is
-// matched by that boolean, any other key by itself.
-type KeyValue<K> = K extends 'true' ? true : K extends 'false' ? false : K;
+// A canonical numeric key (`'1'`, `'-2'`, `'1.5'`) as the number the runtime
+// reads it as; never for any other key, including ones that only parse as a
+// number (`'07'`, `'1e3'`).
+type NumericKey<K> = K extends `${infer N extends number}`
+	? number extends N
+		? never
+		: N
+	: never;
+
+// The prop values a variant's value key stands for: a `true`/`false` key is
+// matched by that boolean, a numeric one by its number too, any other key by
+// itself.
+type KeyValue<K> = K extends 'true'
+	? true
+	: K extends 'false'
+		? false
+		: K | NumericKey<K>;
+
+// The value `getVariantValues()` lists for a key: a numeric one as its
+// number, otherwise as for a prop.
+type ListedKeyValue<K> = [NumericKey<K>] extends [never]
+	? KeyValue<K>
+	: NumericKey<K>;
 
 type SlotKey<S extends MaybeSlots> = 'base' | StringKeyof<S>;
 
@@ -79,6 +99,17 @@ type VariantPropType<T> =
 			? boolean
 			:
 					| KeyValue<StringKeyof<T>>
+					| Extract<keyof T, number>
+					| BooleanKeys<StringKeyof<T>>
+		: boolean;
+
+// The values `getVariantValues()` lists for a variant, typed like its props.
+type ListedVariantValue<T> =
+	T extends Record<string | number, unknown>
+		? [keyof T] extends ['true' | 'false']
+			? boolean
+			:
+					| ListedKeyValue<StringKeyof<T>>
 					| Extract<keyof T, number>
 					| BooleanKeys<StringKeyof<T>>
 		: boolean;
@@ -966,7 +997,7 @@ type IntrospectionValues<
 	/** Lists every valid value for a given variant. */
 	getVariantValues: V extends undefined
 		? (key: never) => never[]
-		: <K extends StringKeyof<V>>(key: K) => VariantPropType<V[K]>[];
+		: <K extends StringKeyof<V>>(key: K) => ListedVariantValue<V[K]>[];
 	/** Number of variant combinations: the most cache entries it can hold. */
 	getMaxEntries: () => number;
 	/** Empties the cache of computed class results. */
