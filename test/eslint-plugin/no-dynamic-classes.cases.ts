@@ -261,10 +261,28 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 	IMPORT_CREATE_SV +
 		'function f(createSV) {\n\tconst c = createSV({});\n\treturn c(dynamic);\n}',
 	// A non-object argument to createSV() leaves nothing to analyze.
-	IMPORT_CREATE_SV + 'createSV(dynamic);'
+	IMPORT_CREATE_SV + 'createSV(dynamic);',
+	// A config key left `undefined`, directly, through a binding, or as
+	// `void 0`, is one the config doesn't set.
+	IMPORT + "sv({ slots: undefined, variants: { s: { x: 'b' } } });",
+	IMPORT + "sv({ slots: { a: 'p-1' }, variants: undefined });",
+	IMPORT +
+		"sv({ variants: { s: { x: 'b' } }, compoundVariants: undefined, compoundSlots: void 0 });",
+	IMPORT +
+		"const u = undefined;\nsv({ slots: u, variants: { s: { x: 'b' } } });",
+	IMPORT + 'sv({ base: void 0, variants: {} });'
 ];
 
 export const NO_DYNAMIC_CLASSES_INVALID = [
+	{
+		// Only a `void` of a literal is surely `undefined`.
+		code: IMPORT + 'sv({ base: void f(), variants: {} });',
+		errors: [{ messageId: 'dynamic' }]
+	},
+	{
+		code: IMPORT + 'sv({ base: !x, variants: {} });',
+		errors: [{ messageId: 'dynamic' }]
+	},
 	{
 		// A hoisted value shared by several positions and calls is reported
 		// once.

@@ -41,7 +41,9 @@ export const REQUIRE_TOP_LEVEL_CONFIG_VALID = [
 	// Nor does a cn() call.
 	IMPORT_CN + "class A { c = cn('flex'); }",
 	// A createSV() factory call in an instance field compiles nothing either.
-	IMPORT_CREATE_SV + 'class A { make = createSV({ cacheSize: 512 }); }'
+	IMPORT_CREATE_SV + 'class A { make = createSV({ cacheSize: 512 }); }',
+	// `void 0` is `undefined`: neither key is set, so this is a class list.
+	IMPORT + "function f() { return sv({ slots: void 0, base: 'x' }); }"
 ];
 
 export const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [

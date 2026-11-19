@@ -306,6 +306,15 @@ const checkSvConfigProperty = (
 	prop: Property,
 	slotNames: ReadonlySet<string>
 ) => {
+	// A key left `undefined` is one the config doesn't set.
+	if (
+		isUndefinedIdentifier(
+			resolveStaticValue(prop.value, context.sourceCode)
+		)
+	) {
+		return;
+	}
+
 	const key = getKeyName(prop);
 
 	if (key === 'base') {

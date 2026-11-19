@@ -8,8 +8,15 @@ import {
 export const isStaticStringNode = (node: Node): boolean =>
 	getStaticStringText(node) !== null;
 
-export const isUndefinedIdentifier = (node: Node): boolean =>
-	node.type === 'Identifier' && node.name === 'undefined';
+// `undefined`, or a `void` of a literal (`void 0`), which always evaluates to
+// it.
+export const isUndefinedIdentifier = (node: Node): boolean => {
+	if (node.type === 'UnaryExpression') {
+		return node.operator === 'void' && node.argument.type === 'Literal';
+	}
+
+	return node.type === 'Identifier' && node.name === 'undefined';
+};
 
 // A ternary whose every (possibly nested) branch is a static string — safe as
 // a template-literal substitution, unlike a logical-AND (stringifies to
