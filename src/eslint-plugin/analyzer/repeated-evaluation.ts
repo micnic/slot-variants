@@ -19,6 +19,8 @@ type RepeatedEvaluation =
 // `accessor` field is read as, which ESTree's own node types don't list.
 type ClassField = { type: string; static: boolean; value?: Node | null };
 
+type InvokedCheck = (fn: Node) => boolean;
+
 // svelte-eslint-parser reads every attribute of a `<script>` tag as a plain
 // `SvelteAttribute`, even a shorthand or spread one.
 type SvelteScriptElement = {
@@ -165,27 +167,32 @@ const getInvokedFunction = (callee: Node): Node => {
 	return target;
 };
 
-// The functions the calls around a node invoke right where they're written
-// (`(() => …)()`), whose bodies run once, where the call sits.
-const getInvokedFunctions = (outward: readonly Node[]): ReadonlySet<Node> => {
-	const invoked = new Set<Node>();
+// Whether a function around a node is invoked right where it's written
+// (`(() => …)()`) by one of the calls around it, so its body runs once, where
+// the call sits. Those calls are only gathered once a function is met.
+const createInvokedCheck = (outward: readonly Node[]): InvokedCheck => {
+	let invoked: ReadonlySet<Node> | null = null;
 
-	for (const ancestor of outward) {
-		if (ancestor.type === 'CallExpression') {
-			invoked.add(getInvokedFunction(ancestor.callee));
+	return (fn) => {
+		if (invoked === null) {
+			invoked = new Set(
+				outward
+					.filter((node) => node.type === 'CallExpression')
+					.map((call) => getInvokedFunction(call.callee))
+			);
 		}
-	}
 
-	return invoked;
+		return invoked.has(fn);
+	};
 };
 
 // Why entering `ancestor`, on the way down to `child`, would evaluate the call
-// again, or null when it doesn't. `invoked` holds the functions the calls
+// again, or null when it doesn't. `isInvoked` tells the functions the calls
 // around it invoke on the spot.
 const getAncestorReason = (
 	ancestor: Node,
 	child: Node,
-	invoked: ReadonlySet<Node>
+	isInvoked: InvokedCheck
 ): RepeatedEvaluation => {
 	if (isSvelteScriptElement(ancestor)) {
 		if (isSvelteModuleScript(ancestor)) {
@@ -196,7 +203,7 @@ const getAncestorReason = (
 	}
 
 	if (isComponentFunction(ancestor)) {
-		if (invoked.has(ancestor)) {
+		if (isInvoked(ancestor)) {
 			return null;
 		}
 
@@ -241,11 +248,11 @@ export const findRepeatedEvaluation = (
 	const { sourceCode } = context;
 	// `getAncestors` returns a fresh array, so reversing it in place is safe.
 	const outward = sourceCode.getAncestors(node).reverse();
-	const invoked = getInvokedFunctions(outward);
+	const isInvoked = createInvokedCheck(outward);
 	let child: Node = node;
 
 	for (const ancestor of outward) {
-		const reason = getAncestorReason(ancestor, child, invoked);
+		const reason = getAncestorReason(ancestor, child, isInvoked);
 
 		if (reason !== null) {
 			return reason;
