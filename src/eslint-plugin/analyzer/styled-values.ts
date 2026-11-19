@@ -73,11 +73,14 @@ type CallOptions = Pick<InternalStyles, 'presets' | 'optional'>;
  * value the call sets but can't be read, as any of its values may apply;
  * `defaultMatchers` leaves those to what the call would apply without them,
  * as an element rendering a component that forwards its props to the call
- * does when it doesn't pass them.
+ * does when it doesn't pass them. `explicit` names the variants the call's own
+ * props pass, which a slot call's preset can't change; null when its props
+ * can't be read in full.
  */
 export type CallMatchers = {
 	matchers: VariantMatchers;
 	defaultMatchers: VariantMatchers;
+	explicit: ReadonlySet<string> | null;
 };
 
 /** A class expression produced by slot-variants, and the slot it feeds. */
@@ -105,9 +108,12 @@ export type Invocation = CallMatchers & {
 
 const EMPTY_MATCHERS: VariantMatchers = new Map();
 
+const NO_KEYS: ReadonlySet<string> = new Set();
+
 const NO_MATCHERS: CallMatchers = {
 	matchers: EMPTY_MATCHERS,
-	defaultMatchers: EMPTY_MATCHERS
+	defaultMatchers: EMPTY_MATCHERS,
+	explicit: NO_KEYS
 };
 
 const EMPTY_GROUPS: GroupSlots = new Map();
@@ -125,14 +131,12 @@ const UNKNOWN_PRESET: PresetValues = {
 	complete: false
 };
 
-const NO_KEYS: ReadonlySet<string> = new Set();
-
 // A slot call's result already fixed every variant value but the ones its own
-// props pass, so it names no preset and leaves nothing unset.
-const SLOT_CALL_OPTIONS: CallOptions = {
-	presets: NO_PRESETS,
+// props pass, so it leaves nothing unset.
+const getSlotCallOptions = (styles: InternalStyles): CallOptions => ({
+	presets: styles.presets,
 	optional: NO_KEYS
-};
+});
 
 // A variant left unset matches the value "undefined", as it does at runtime.
 const UNSET_MATCHER: ReadonlySet<string> = new Set(['undefined']);
@@ -329,8 +333,7 @@ const readPropMatchers = (
 };
 
 // The variant values of the preset a call's props name. A config without
-// presets throws on any preset name, and a slot call's preset is read with no
-// presets in hand: neither applies one.
+// presets throws on any preset name, so it applies none.
 const readPresetMatchers = (
 	props: ReadonlyMap<string, Node>,
 	presets: ReadonlyMap<string, PresetValues>,
@@ -398,18 +401,72 @@ const readUnsetMatchers = (
 	return unset;
 };
 
+// The preset values a call applies: those of the variants the props `base`
+// came from left alone, as a slot call's preset sits below the outer call's
+// own props. Unknown when those props can't be read in full.
+const readAppliedPreset = (
+	preset: PresetValues,
+	explicit: ReadonlySet<string> | null
+): PresetValues => {
+	if (preset === NO_PRESET || explicit?.size === 0) {
+		return preset;
+	}
+
+	if (explicit === null) {
+		return UNKNOWN_PRESET;
+	}
+
+	return {
+		matchers: new Map(
+			[...preset.matchers].filter(([key]) => !explicit.has(key))
+		),
+		complete: preset.complete
+	};
+};
+
 // The values a call keeps from `base`: all of them, unless its props or
-// preset can't be read in full and so may set any variant.
+// preset can't be read in full and so may set any variant. A preset can't
+// change the variants the props `base` came from pass.
 const readKeptMatchers = (
 	props: ReadonlyMap<string, Node> | null,
-	base: VariantMatchers,
+	base: CallMatchers,
 	preset: PresetValues
 ): VariantMatchers => {
-	if (props === null || !preset.complete) {
+	if (props === null) {
 		return EMPTY_MATCHERS;
 	}
 
-	return base;
+	if (preset.complete) {
+		return base.matchers;
+	}
+
+	const { explicit } = base;
+
+	if (explicit === null || explicit.size === 0) {
+		return EMPTY_MATCHERS;
+	}
+
+	return new Map([...base.matchers].filter(([key]) => explicit.has(key)));
+};
+
+// The variants a call's own props pass. Null when they can't be read in full.
+const readExplicitKeys = (
+	props: ReadonlyMap<string, Node> | null,
+	ctx: StyledContext
+): ReadonlySet<string> | null => {
+	if (props === null) {
+		return null;
+	}
+
+	const explicit = new Set<string>();
+
+	for (const [key, value] of props) {
+		if (!NON_MATCHER_KEYS.has(key) && isDefinedValue(value, ctx.resolve)) {
+			explicit.add(key);
+		}
+	}
+
+	return explicit;
 };
 
 // A variant prop whose value can't be read: `undefined` leaves the variant to
@@ -437,11 +494,14 @@ const buildCallMatchers = (
 ): CallMatchers => {
 	const props = getCallProps(arg, ctx);
 	const knownProps = getKnownCallProps(arg, ctx);
-	const preset = readPresetMatchers(props, presets, ctx);
+	const preset = readAppliedPreset(
+		readPresetMatchers(props, presets, ctx),
+		base.explicit
+	);
 	const propMatchers = readPropMatchers(props, ctx);
 	const unset = readUnsetMatchers(knownProps, optional, preset, ctx);
 	const matchers = new Map([
-		...readKeptMatchers(knownProps, base.matchers, preset),
+		...readKeptMatchers(knownProps, base, preset),
 		...unset,
 		...preset.matchers,
 		...propMatchers
@@ -460,7 +520,8 @@ const buildCallMatchers = (
 			...unset,
 			...preset.matchers,
 			...propMatchers
-		])
+		]),
+		explicit: readExplicitKeys(knownProps, ctx)
 	};
 };
 
@@ -601,7 +662,7 @@ export const resolveInvocation = (
 			...buildCallMatchers(
 				node.arguments[0],
 				slotFn,
-				SLOT_CALL_OPTIONS,
+				getSlotCallOptions(slotFn.styles),
 				ctx
 			),
 			slot: slotFn.slot
@@ -615,9 +676,10 @@ export const resolveInvocation = (
 		return null;
 	}
 
-	const defaults = {
+	const defaults: CallMatchers = {
 		matchers: styles.defaults,
-		defaultMatchers: styles.defaults
+		defaultMatchers: styles.defaults,
+		explicit: NO_KEYS
 	};
 
 	return {
@@ -698,7 +760,8 @@ const resolveStyledRead = (
 		styles: invocation.styles,
 		slot,
 		matchers: invocation.matchers,
-		defaultMatchers: invocation.defaultMatchers
+		defaultMatchers: invocation.defaultMatchers,
+		explicit: invocation.explicit
 	};
 };
 
@@ -780,7 +843,8 @@ export const readStyledClasses = (
 		styles: invocation.styles,
 		slot: invocation.slot ?? 'base',
 		matchers: invocation.matchers,
-		defaultMatchers: invocation.defaultMatchers
+		defaultMatchers: invocation.defaultMatchers,
+		explicit: invocation.explicit
 	};
 };
 
