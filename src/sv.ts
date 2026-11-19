@@ -223,13 +223,14 @@ const createRuntimeVariantFn = (
 	run: RunFn
 ): RuntimeVariantFn => {
 	if (config.multiSlots.size === 0) {
-		return (props = {}) => run(props);
+		return (props = emptyProps) => run(props);
 	}
 
 	// Without a cache `run` never returns the same result twice, so a call
 	// without props has nothing to reuse.
 	if (!config.cacheable) {
-		return (props = {}) => applyMultiSlots(config, run, props, run(props));
+		return (props = emptyProps) =>
+			applyMultiSlots(config, run, props, run(props));
 	}
 
 	const getDefaultResult = createDefaultResultGetter(config, run);
