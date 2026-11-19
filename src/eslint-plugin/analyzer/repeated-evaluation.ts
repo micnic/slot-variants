@@ -6,7 +6,17 @@ import type { SvelteAttribute, VAttribute } from './markup.ts';
 // Why a call would be evaluated more than once, or null when it runs exactly
 // once at module evaluation. The reasons double as require-top-level-config's
 // messageIds, so the report needs no mapping.
-type RepeatedEvaluation = 'nested' | 'field' | 'template' | 'instance' | null;
+type RepeatedEvaluation =
+	| 'nested'
+	| 'loop'
+	| 'field'
+	| 'template'
+	| 'instance'
+	| null;
+
+// A class field: a `PropertyDefinition`, or the `AccessorProperty` an
+// `accessor` field is read as, which ESTree's own node types don't list.
+type ClassField = { type: string; static: boolean; value?: Node | null };
 
 // svelte-eslint-parser reads every attribute of a `<script>` tag as a plain
 // `SvelteAttribute`, even a shorthand or spread one.
@@ -35,6 +45,11 @@ const SVELTE_SCRIPT_ELEMENT = 'SvelteScriptElement';
 
 // Wraps every Vue template expression: `{{ }}` and directive values alike.
 const VUE_EXPRESSION_CONTAINER = 'VExpressionContainer';
+
+const CLASS_FIELD_TYPES: ReadonlySet<string> = new Set([
+	'PropertyDefinition',
+	'AccessorProperty'
+]);
 
 // `<script module>` (Svelte 5) and `<script context="module">` (Svelte 4) run
 // once per module, unlike the instance script. Any other `context` value is a
@@ -101,9 +116,46 @@ const isInVueScriptSetup = (
 	);
 };
 
+const isClassField = (node: Node): node is Node & ClassField =>
+	CLASS_FIELD_TYPES.has(node.type);
+
+// Whether `child` is a part of the loop `ancestor` that runs again on every
+// iteration: any but a `for` loop's initializer and the object a `for…in` or
+// `for…of` loop iterates.
+const isRepeatedLoopPart = (ancestor: Node, child: Node): boolean => {
+	if (
+		ancestor.type === 'WhileStatement' ||
+		ancestor.type === 'DoWhileStatement'
+	) {
+		return true;
+	}
+
+	if (ancestor.type === 'ForStatement') {
+		return ancestor.init !== child;
+	}
+
+	if (
+		ancestor.type === 'ForInStatement' ||
+		ancestor.type === 'ForOfStatement'
+	) {
+		return ancestor.right !== child;
+	}
+
+	return false;
+};
+
+// Whether the function `fn` is called right where it's written
+// (`(() => …)()`), so its body runs once, where the call sits.
+const isImmediatelyInvoked = (fn: Node, parent: Node): boolean =>
+	parent.type === 'CallExpression' && parent.callee === fn;
+
 // Why entering `ancestor`, on the way down to `child`, would evaluate the call
-// again, or null when it doesn't.
-const getAncestorReason = (ancestor: Node, child: Node): RepeatedEvaluation => {
+// again, or null when it doesn't. `parent` is the node `ancestor` sits in.
+const getAncestorReason = (
+	ancestor: Node,
+	child: Node,
+	parent: Node
+): RepeatedEvaluation => {
 	if (isSvelteScriptElement(ancestor)) {
 		if (isSvelteModuleScript(ancestor)) {
 			return null;
@@ -113,11 +165,19 @@ const getAncestorReason = (ancestor: Node, child: Node): RepeatedEvaluation => {
 	}
 
 	if (isComponentFunction(ancestor)) {
+		if (isImmediatelyInvoked(ancestor, parent)) {
+			return null;
+		}
+
 		return 'nested';
 	}
 
+	if (isRepeatedLoopPart(ancestor, child)) {
+		return 'loop';
+	}
+
 	if (
-		ancestor.type === 'PropertyDefinition' &&
+		isClassField(ancestor) &&
 		ancestor.static === false &&
 		ancestor.value === child
 	) {
@@ -133,26 +193,30 @@ const getAncestorReason = (ancestor: Node, child: Node): RepeatedEvaluation => {
 
 // An `sv()` config call compiles the variant function (and seeds its cache)
 // once; anything that re-enters the call rebuilds and discards that work. A
-// function body re-runs per call, an instance field initializer per `new`, and
-// a template expression per render. A component's instance script runs per
-// instance too: Svelte's `<script>` (unlike its module script) and Vue's
-// `<script setup>` (unlike a plain `<script>`).
+// function body re-runs per call, a loop body per iteration, an instance field
+// initializer per `new`, and a template expression per render. A component's
+// instance script runs per instance too: Svelte's `<script>` (unlike its
+// module script) and Vue's `<script setup>` (unlike a plain `<script>`).
 // A `static` field and a static block both run once with the class definition,
-// and so does any field's computed key, so they're fine on their own — but the
-// class may itself sit inside a function, which is why the walk doesn't stop
-// at them. The innermost reason wins, so the report names what the author can
-// see around the call: the walk goes outwards and stops at the first one.
+// and so does any field's computed key and an immediately invoked function's
+// body, so they're fine on their own — but each may itself sit inside a
+// function, which is why the walk doesn't stop at them. The innermost reason
+// wins, so the report names what the author can see around the call: the walk
+// goes outwards and stops at the first one.
 export const findRepeatedEvaluation = (
 	context: Rule.RuleContext,
 	node: CallExpression
 ): RepeatedEvaluation => {
 	const { sourceCode } = context;
-	const ancestors = sourceCode.getAncestors(node);
+	// `getAncestors` returns a fresh array, so reversing it in place is safe.
+	const outward = sourceCode.getAncestors(node).reverse();
 	let child: Node = node;
 
-	// `getAncestors` returns a fresh array, so reversing it in place is safe.
-	for (const ancestor of ancestors.reverse()) {
-		const reason = getAncestorReason(ancestor, child);
+	for (const [index, ancestor] of outward.entries()) {
+		// The program, last in the walk, sits in nothing: it stands in for
+		// its own parent.
+		const parent = outward[index + 1] ?? ancestor;
+		const reason = getAncestorReason(ancestor, child, parent);
 
 		if (reason !== null) {
 			return reason;

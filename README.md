@@ -1460,7 +1460,7 @@ Move `hover:underline` into `variants.variant.link`.
 
 #### `slot-variants/require-top-level-config`
 
-Flags `sv()` calls with a config that aren't at module top level — inside a function, a class field, a template, or a Svelte `<script>` / Vue `<script setup>` block. Such a call is rebuilt every time it runs and loses its cache.
+Flags `sv()` calls with a config that aren't at module top level — inside a function, a loop, a class field, a template, or a Svelte `<script>` / Vue `<script setup>` block. Such a call is rebuilt every time it runs and loses its cache.
 
 ```typescript
 function createButton() {

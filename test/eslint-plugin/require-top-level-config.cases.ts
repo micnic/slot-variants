@@ -42,6 +42,15 @@ export const REQUIRE_TOP_LEVEL_CONFIG_VALID = [
 	IMPORT_CN + "class A { c = cn('flex'); }",
 	// A createSV() factory call in an instance field compiles nothing either.
 	IMPORT_CREATE_SV + 'class A { make = createSV({ cacheSize: 512 }); }',
+	// A `for` loop's initializer and the object a `for…in`/`for…of` loop
+	// iterates are evaluated once.
+	IMPORT + 'for (let b = sv({ variants: {} }); b; ) {}',
+	IMPORT + 'for (const k in sv({ variants: {} })) {}',
+	IMPORT + 'for (const k of sv({ variants: {} })) {}',
+	// A top-level immediately invoked function runs once.
+	IMPORT + 'const b = (() => sv({ variants: {} }))();',
+	IMPORT + 'const b = (function () { return sv({ variants: {} }); })();',
+	IMPORT + 'const b = (async () => sv({ variants: {} }))();',
 	// `void 0` is `undefined`: neither key is set, so this is a class list.
 	IMPORT + "function f() { return sv({ slots: void 0, base: 'x' }); }"
 ];
@@ -164,6 +173,65 @@ export const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
 			IMPORT +
 			"function f() { return class { [sv({ base: 'flex', variants: {} })] = 1; }; }",
 		errors: [{ messageId: 'nested' }]
+	},
+	{
+		// A loop body re-runs on every iteration, at the top level too.
+		code: IMPORT + 'for (const s of sizes) { sv({ variants: {} }); }',
+		errors: [{ messageId: 'loop' }]
+	},
+	{
+		code: IMPORT + 'for (const k in o) sv({ variants: {} });',
+		errors: [{ messageId: 'loop' }]
+	},
+	{
+		code: IMPORT + 'while (x) { sv({ variants: {} }); }',
+		errors: [{ messageId: 'loop' }]
+	},
+	{
+		code: IMPORT + 'do { sv({ variants: {} }); } while (x);',
+		errors: [{ messageId: 'loop' }]
+	},
+	{
+		code: IMPORT + 'for (let i = 0; i < n; i++) { sv({ variants: {} }); }',
+		errors: [{ messageId: 'loop' }]
+	},
+	{
+		// A loop's test and update re-run on every iteration as well.
+		code: IMPORT + 'for (; sv({ variants: {} }); ) {}',
+		errors: [{ messageId: 'loop' }]
+	},
+	{
+		code: IMPORT + 'for (;; sv({ variants: {} })) {}',
+		errors: [{ messageId: 'loop' }]
+	},
+	{
+		code: IMPORT + 'while (sv({ variants: {} })) {}',
+		errors: [{ messageId: 'loop' }]
+	},
+	{
+		// The innermost reason wins: a loop inside a function, a function
+		// inside a loop.
+		code: IMPORT + 'function f() { while (x) { sv({ variants: {} }); } }',
+		errors: [{ messageId: 'loop' }]
+	},
+	{
+		code: IMPORT + 'while (x) { const f = () => sv({ variants: {} }); }',
+		errors: [{ messageId: 'nested' }]
+	},
+	{
+		// An immediately invoked function inherits where it is called from.
+		code: IMPORT + 'while (x) { (() => sv({ variants: {} }))(); }',
+		errors: [{ messageId: 'loop' }]
+	},
+	{
+		code:
+			IMPORT + 'function f() { return (() => sv({ variants: {} }))(); }',
+		errors: [{ messageId: 'nested' }]
+	},
+	{
+		// A function passed to a call isn't invoked where it's written.
+		code: IMPORT + 'list.map(() => sv({ variants: {} }));',
+		errors: [{ messageId: 'nested' }]
 	}
 ];
 
@@ -244,5 +312,21 @@ export const REQUIRE_TOP_LEVEL_CONFIG_VUE_INVALID = [
 			VUE_SCRIPT +
 			"<template><b>{{ sv({ base: 'p-2', variants: {} })() }}</b></template>",
 		errors: [{ messageId: 'template' }]
+	}
+];
+
+// An `accessor` field, which only the TypeScript parser reads.
+export const REQUIRE_TOP_LEVEL_CONFIG_TS_VALID = [
+	{
+		code: IMPORT + 'class A { static accessor b = sv({ variants: {} }); }',
+		filename: 'test.ts'
+	}
+];
+
+export const REQUIRE_TOP_LEVEL_CONFIG_TS_INVALID = [
+	{
+		code: IMPORT + 'class A { accessor b = sv({ variants: {} }); }',
+		filename: 'test.ts',
+		errors: [{ messageId: 'field' }]
 	}
 ];
