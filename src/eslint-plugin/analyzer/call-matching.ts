@@ -17,9 +17,6 @@ export type CallMatch = {
 	keepsLastArg: boolean;
 };
 
-// Reads a node through same-file `const` bindings, from whichever scope the
-// caller's context assigns it.
-
 /** Which of the keys that make an object `sv()`'s config it defines. */
 export type ConfigMarkers = { slots: boolean; variants: boolean };
 
