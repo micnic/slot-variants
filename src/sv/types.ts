@@ -501,6 +501,12 @@ type RequiredDefaultCollision<
 // Infers the keys a config's `defaultVariants` names.
 type DefaultKeys<D extends string> = { [K in D]?: unknown };
 
+// A default for a variant a parent requires must have a value: an `undefined`
+// one is omitted, so the variant would stay required.
+type InheritedRequiredDefaults<E> = {
+	[K in ParentTypes<E>['required']]?: NonNullable<unknown> | null;
+};
+
 // What a component records about itself for the components extending it.
 type ComponentTypes = {
 	slots: MaybeSlots;
@@ -849,6 +855,7 @@ export type Config<
 				R
 		  > &
 				RequiredDefaultCollision<ExtendedVariants<E, S, G, V>, R> &
+				InheritedRequiredDefaults<E> &
 				DefaultKeys<D>)
 		| undefined;
 	/** Variants the caller must always pass, so their props lose the `?`. */

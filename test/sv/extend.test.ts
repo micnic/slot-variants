@@ -415,6 +415,32 @@ t.test('a child default lifts an inherited requirement', (t) => {
 	t.end();
 });
 
+t.test('an undefined child default keeps an inherited requirement', (t) => {
+	const parent = sv('btn', {
+		variants: { intent: { primary: 'bg-blue-500', danger: 'bg-red-500' } },
+		requiredVariants: ['intent']
+	});
+	const child = sv({
+		extend: parent,
+		variants: { size: { sm: 'text-sm' } },
+		// @ts-expect-error - an undefined default leaves intent required
+		defaultVariants: { intent: undefined, size: 'sm' }
+	});
+
+	t.throws(
+		() => child(),
+		{ message: 'Missing required variant: "intent"' },
+		'still required'
+	);
+	t.equal(
+		child({ intent: 'primary' }),
+		'btn bg-blue-500 text-sm',
+		'passed value used'
+	);
+
+	t.end();
+});
+
 t.test('a child requirement drops an inherited default', (t) => {
 	const parent = sv('btn', {
 		variants: { size: { sm: 'text-sm', lg: 'text-lg' } },

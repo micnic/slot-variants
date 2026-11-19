@@ -21,7 +21,7 @@ type MergeValue<T> = (inherited: T, own: T) => T;
 
 type NameList = RawConfig['requiredVariants'] | RawConfig['multiSlots'];
 
-const { entries, fromEntries, hasOwn, keys } = Object;
+const { entries, fromEntries, keys } = Object;
 
 // Each config-based `sv()` result, mapped to the layers it was built from:
 // the own configs of its ancestors, in merge order, then its own.
@@ -186,7 +186,7 @@ const mergeRequiredVariants = (
 	const inheritedNames = resolveNames(
 		inherited.requiredVariants,
 		keys(inherited.variants ?? {})
-	).filter((name) => !hasOwn(ownDefaults, name));
+	).filter((name) => getOwn(ownDefaults, name) === undefined);
 
 	return joinUnique(inheritedNames, ownRequired);
 };
