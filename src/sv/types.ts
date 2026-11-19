@@ -369,6 +369,36 @@ type ReservedVariantCollision<V> = {
 	[K in Extract<keyof V, ReservedVariantName>]: 'Variant name is reserved';
 };
 
+// A variant named like an inherited preset, typed as the reason it's
+// rejected.
+type InheritedPresetCollision<P, V> = {
+	[
+		K in Extract<keyof V, StringKeyof<P>>
+	]: 'Variant name must not match a preset name';
+};
+
+// The groups that name no slot.
+type EmptyGroupKeys<G> = {
+	[K in keyof G]: G[K] extends readonly never[] ? K : never;
+}[keyof G];
+
+// A group named like a slot (`base` included) or naming no slot, typed as the
+// reason it's rejected.
+type GroupNameCollision<S extends MaybeSlots, G> = {
+	[
+		K in Extract<keyof G, SlotKey<S>>
+	]: 'Group name must not match a slot name';
+} & ([EmptyGroupKeys<G>] extends [never]
+	? unknown
+	: { [K in EmptyGroupKeys<G>]: 'Group must name at least one slot' });
+
+// A slot named like an inherited group, typed as the reason it's rejected.
+type InheritedGroupCollision<G, S> = {
+	[
+		K in Extract<keyof S, StringKeyof<G>>
+	]: 'Slot name must not match a group name';
+};
+
 export type RuntimeProps = RuntimeVariantState & {
 	class?: RuntimeClassValue;
 	className?: RuntimeClassValue;
@@ -501,14 +531,48 @@ type MergeGroups<A, B> = [A] extends [undefined]
 				)[];
 			};
 
-// A variant's value keys; a boolean shorthand stands for `true`.
-type VariantValueKeys<T> =
-	T extends Record<string | number, unknown> ? keyof T : 'true';
+// A variant's value record; a boolean shorthand stands for its `true` value.
+type VariantRecordOf<T> =
+	T extends Record<string | number, unknown> ? T : { true: T };
 
-type MergeVariantValues<A, B> = Record<
-	VariantValueKeys<A> | VariantValueKeys<B>,
-	ConfigClassValue
+// A variant value's per-slot classes; a class value stands for `base`.
+type SlotRecordOf<T> = T extends Record<string, unknown> ? T : { base: T };
+
+// Two class values are joined, otherwise both become per-slot records whose
+// shared slots are joined, as the runtime merges them.
+type MergeVariantValue<A, B> = [A] extends [undefined]
+	? B
+	: [B] extends [undefined]
+		? A
+		: [A] extends [ConfigClassValue]
+			? [B] extends [ConfigClassValue]
+				? string
+				: MergeSlotRecords<A, B>
+			: MergeSlotRecords<A, B>;
+
+type MergeSlotRecords<A, B> = {
+	[K in keyof SlotRecordOf<A> | keyof SlotRecordOf<B>]: ConfigClassValue;
+};
+
+type MergeVariantValues<A, B> = MergeRecords<
+	VariantRecordOf<A>,
+	VariantRecordOf<B>,
+	'variant'
 >;
+
+// Keys on one side keep their value; keys on both are merged as variant
+// values, or as preset values with the own ones winning.
+type MergeRecords<A, B, T extends 'variant' | 'preset'> = {
+	[K in keyof A | keyof B]: K extends keyof A
+		? K extends keyof B
+			? T extends 'variant'
+				? MergeVariantValue<A[K], B[K]>
+				: Prettify<Omit<A[K], keyof B[K]> & B[K]>
+			: A[K]
+		: K extends keyof B
+			? B[K]
+			: never;
+};
 
 type MergeVariants<A, B> = [A] extends [undefined]
 	? B
@@ -528,7 +592,7 @@ type MergePresets<A, B> = [A] extends [undefined]
 	? B
 	: [B] extends [undefined]
 		? A
-		: Record<MergedKeys<A, B>, Record<never, never>>;
+		: MergeRecords<A, B, 'preset'>;
 
 type MergeComponentTypes<A extends ComponentTypes, B extends ComponentTypes> = {
 	slots: MergeSlots<A['slots'], B['slots']>;
@@ -715,11 +779,17 @@ export type Config<
 	/** Classes always applied, alongside matched variant/compound classes. */
 	base?: ConfigClassValue;
 	/** Named variants, each mapping its values to the classes they apply. */
-	variants?: (V & ReservedVariantCollision<V>) | undefined;
+	variants?:
+		| (V &
+				ReservedVariantCollision<V> &
+				InheritedPresetCollision<ParentTypes<E>['presets'], V>)
+		| undefined;
 	/** Named slots with their own classes; the result becomes a slot map. */
-	slots?: S | undefined;
+	slots?:
+		| (S & InheritedGroupCollision<ParentTypes<E>['groups'], S>)
+		| undefined;
 	/** Named slot sets usable as slot names; must not reuse a slot name. */
-	groups?: G | undefined;
+	groups?: (G & GroupNameCollision<ExtendedSlots<E, S>, G>) | undefined;
 	/** Classes for a variant combination, also matched by `preset`. */
 	compoundVariants?:
 		| CompoundVariants<

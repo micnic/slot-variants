@@ -639,6 +639,63 @@ t.test('types merge a shared ancestor once', (t) => {
 	t.end();
 });
 
+t.test('a child name is checked against inherited presets and groups', (t) => {
+	const preset = sv({
+		variants: { size: { sm: 's' } },
+		presets: { tone: { size: 'sm' } }
+	});
+	const grouped = sv({ slots: { a: 'a' }, groups: { g: ['a'] } });
+
+	t.throws(
+		() =>
+			// @ts-expect-error - a variant can't be named like a preset
+			sv({ extend: preset, variants: { tone: { warm: 'w' } } }),
+		{ message: 'Preset "tone" cannot have the same name as a variant' },
+		'a variant named like an inherited preset'
+	);
+	t.throws(
+		() =>
+			// @ts-expect-error - a group can't be named like a slot
+			sv({ extend: grouped, groups: { a: ['a'] } }),
+		{ message: 'Group "a" cannot have the same name as a slot' },
+		'a group named like an inherited slot'
+	);
+	t.throws(
+		() =>
+			// @ts-expect-error - a slot can't be named like a group
+			sv({ extend: grouped, slots: { g: 'g' } }),
+		{ message: 'Group "g" cannot have the same name as a slot' },
+		'a slot named like an inherited group'
+	);
+
+	t.end();
+});
+
+t.test('introspection types follow the merged values', (t) => {
+	const parent = sv({
+		slots: { icon: 'i' },
+		variants: { size: { sm: { icon: 'pi' }, lg: 'pl' } },
+		presets: { cta: { size: 'lg' } }
+	});
+	const child = sv({
+		extend: parent,
+		variants: { size: { sm: 'cs', lg: 'cl' } },
+		presets: { cta: { size: 'sm' }, quiet: { size: 'lg' } },
+		introspection: true
+	});
+	const { sm, lg } = child.variants.size;
+	const icon: string | string[] | undefined = sm.icon;
+	const joined: string = lg;
+	const ctaSize: 'sm' | 'lg' | undefined = child.presets.cta.size;
+
+	t.same(sm, { icon: 'pi', base: 'cs' }, 'a slot record and a class');
+	t.equal(icon, 'pi', 'the inherited slot class');
+	t.equal(joined, 'pl cl', 'two classes joined');
+	t.equal(ctaSize, 'sm', 'a preset both define, the child winning');
+
+	t.end();
+});
+
 t.test('a parent requiring every variant keeps to its own', (t) => {
 	const toned = sv({ variants: { tone: { soft: 'opacity-80' } } });
 	const sized = sv({

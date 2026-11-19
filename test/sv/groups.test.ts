@@ -423,6 +423,7 @@ t.test('group named after a slot throws', (t) => {
 		() =>
 			sv({
 				slots: { header: 'h' },
+				// @ts-expect-error - a group can't be named like a slot
 				groups: { header: ['header'] }
 			}),
 		{ message: 'Group "header" cannot have the same name as a slot' }
@@ -432,6 +433,7 @@ t.test('group named after a slot throws', (t) => {
 		() =>
 			sv({
 				slots: { header: 'h' },
+				// @ts-expect-error - a group can't be named like the base slot
 				groups: { base: ['header'] }
 			}),
 		{ message: 'Group "base" cannot have the same name as a slot' }
@@ -445,6 +447,7 @@ t.test('empty group throws', (t) => {
 		() =>
 			sv({
 				slots: { header: 'h' },
+				// @ts-expect-error - a group names at least one slot
 				groups: { content: [] }
 			}),
 		{ message: 'Group "content" must define at least one slot' }
