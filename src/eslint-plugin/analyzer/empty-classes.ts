@@ -1,5 +1,6 @@
 import type { Rule } from 'eslint';
 import type { ArrayExpression, Node, ObjectExpression } from 'estree';
+import { type ConfigMarkers, getConfigMarkers } from './call-matching.ts';
 import { getKeyName } from './config-keys.ts';
 import { resolveArray, resolveStaticValue } from './const-bindings.ts';
 import { type EmptyFix, makeListFix } from './list-fix.ts';
@@ -340,6 +341,23 @@ const svEmptyConfigValueCheckers: ReadonlyMap<string, EmptyConfigChecker> =
 		['presets', checkEmptyConfigContainer]
 	]);
 
+// An empty `slots` or `variants` is what makes the object a config while it's
+// the only one of the two the config defines, so it isn't reported then.
+const isSoleEmptyMarker = (
+	context: Rule.RuleContext,
+	key: string,
+	value: Node,
+	{ slots, variants }: ConfigMarkers
+): boolean => {
+	const isSole =
+		(key === 'slots' && !variants) || (key === 'variants' && !slots);
+
+	return (
+		isSole &&
+		isEmptyContainer(resolveStaticValue(value, context.sourceCode))
+	);
+};
+
 // A `createSV()` factory config may carry a spread or computed key (reported
 // as dynamic by no-dynamic-classes); those aren't class-bearing, so they're
 // skipped here. Each checker gets the value as written and resolves it, so an
@@ -348,6 +366,10 @@ export const checkConfigForEmptyClasses = (
 	context: Rule.RuleContext,
 	config: ObjectExpression
 ) => {
+	const markers = getConfigMarkers(config, (node) =>
+		resolveStaticValue(node, context.sourceCode)
+	);
+
 	for (const prop of config.properties) {
 		if (prop.type !== 'Property') {
 			continue;
@@ -361,7 +383,7 @@ export const checkConfigForEmptyClasses = (
 
 		const checker = svEmptyConfigValueCheckers.get(key);
 
-		if (checker) {
+		if (checker && !isSoleEmptyMarker(context, key, prop.value, markers)) {
 			checker(
 				context,
 				prop.value,

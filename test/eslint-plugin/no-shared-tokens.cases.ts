@@ -170,7 +170,7 @@ export const NO_SHARED_TOKENS_VALID = [
 			defaultVariants: { size: 'sm' }
 		});`,
 	// Empty config — no variants.
-	IMPORT + 'sv({});',
+	IMPORT + 'sv({ variants: {} });',
 	// `requiredVariants: false` marks nothing required — without a
 	// default the variant is not exhaustive, so the shared token
 	// is not flagged.

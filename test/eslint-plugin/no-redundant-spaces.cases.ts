@@ -6,19 +6,19 @@ export const NO_REDUNDANT_SPACES_VALID = [
 	// Keys named like `Object.prototype` members are no config keys.
 	IMPORT_CREATE_SV + "createSV({ toString: 'x', __defineGetter__: 'y' });",
 	// Single token, no whitespace.
-	IMPORT + "sv({ base: 'flex' });",
+	IMPORT + "sv({ base: 'flex', variants: {} });",
 	// Multiple tokens separated by single spaces.
-	IMPORT + "sv({ base: 'flex items-center gap-2' });",
+	IMPORT + "sv({ base: 'flex items-center gap-2', variants: {} });",
 	// Empty string is allowed (no-op).
-	IMPORT + "sv({ base: '' });",
+	IMPORT + "sv({ base: '', variants: {} });",
 	// Static template literal without expressions.
-	IMPORT + 'sv({ base: `flex items-center` });',
+	IMPORT + 'sv({ base: `flex items-center`, variants: {} });',
 	// Array of clean strings.
-	IMPORT + "sv({ base: ['flex', 'items-center'] });",
+	IMPORT + "sv({ base: ['flex', 'items-center'], variants: {} });",
 	// Sparse hole in array - skipped.
-	IMPORT + "sv({ base: ['flex', , 'gap-2'] });",
+	IMPORT + "sv({ base: ['flex', , 'gap-2'], variants: {} });",
 	// Spread element inside a class array - bailed out.
-	IMPORT + "sv({ base: ['flex', ...rest] });",
+	IMPORT + "sv({ base: ['flex', ...rest], variants: {} });",
 	// Slots and variants with clean strings.
 	IMPORT +
 		`sv({
@@ -43,24 +43,25 @@ export const NO_REDUNDANT_SPACES_VALID = [
 	IMPORT +
 		`sv({
 			base: 'flex',
-			defaultVariants: { size: 'sm', intent: 'primary  danger' },
+			variants: {}, defaultVariants: { size: 'sm', intent: 'primary  danger' },
 			requiredVariants: ['  intent  '],
 			presets: { cta: { size: 'lg' } },
 			cacheSize: 256,
 			introspection: true
 		});`,
 	// Call inside a nested function scope - still resolved to the import.
-	IMPORT + "function f() { return sv({ base: 'flex items-center' }); }",
+	IMPORT +
+		"function f() { return sv({ base: 'flex items-center', variants: {} }); }",
 	// A local binding shadowing the cn import is not analyzed.
 	IMPORT_CN + "function f(cn) { return cn('a  b'); }",
 	// Dynamic identifier - walker skips silently.
-	IMPORT + 'sv({ base: dynamic });',
+	IMPORT + 'sv({ base: dynamic, variants: {} });',
 	// Class-bearing keys with dynamic values - skipped.
 	IMPORT + 'sv({ slots: dynamic, variants: dynamic });',
 	// Non-string literal - walker skips.
-	IMPORT + 'sv({ base: 42 });',
+	IMPORT + 'sv({ base: 42, variants: {} });',
 	// Template with expression - walker skips.
-	IMPORT + 'sv({ base: `flex ${dynamic}` });',
+	IMPORT + 'sv({ base: `flex ${dynamic}`, variants: {} });',
 	// Spread inside the config object - that property skipped, others walked.
 	IMPORT + "sv({ ...rest, base: 'flex' });",
 	// Computed key - that property skipped, others walked.
@@ -75,17 +76,17 @@ export const NO_REDUNDANT_SPACES_VALID = [
 	IMPORT + 'sv();',
 	IMPORT_CN + 'cn();',
 	// Without import - silent.
-	"sv({ base: ' flex  ' });",
+	"sv({ base: ' flex  ', variants: {} });",
 	// Default-imported sv is not tracked.
-	"import sv from 'slot-variants'; sv({ base: ' flex  ' });",
+	"import sv from 'slot-variants'; sv({ base: ' flex  ', variants: {} });",
 	// A namespace member that isn't a tracked export stays untracked.
 	"import * as mod from 'slot-variants'; mod.other({ base: ' flex  ' });",
 	// Side-effect import - no specifiers tracked.
-	"import 'slot-variants'; sv({ base: ' flex  ' });",
+	"import 'slot-variants'; sv({ base: ' flex  ', variants: {} });",
 	// Other named import is ignored.
-	"import { VariantProps } from 'slot-variants'; sv({ base: ' flex  ' });",
+	"import { VariantProps } from 'slot-variants'; sv({ base: ' flex  ', variants: {} });",
 	// Import from a different module is ignored.
-	"import { sv } from 'other'; sv({ base: ' flex  ' });",
+	"import { sv } from 'other'; sv({ base: ' flex  ', variants: {} });",
 	// Member-expression callee is not tracked.
 	IMPORT + "obj.sv({ base: ' flex  ' });",
 	// Unrelated function call mixed with valid sv call.
@@ -105,7 +106,7 @@ export const NO_REDUNDANT_SPACES_VALID = [
 	// A spread in a clsx record is skipped; other keys are still checked.
 	IMPORT_CN + "cn({ ...rest, 'px-2 py-1': cond });",
 	// A clsx record as an sv() cn-style leading argument — key is checked.
-	IMPORT + "sv({ 'px-2 py-1': isActive }, { base: 'flex' });",
+	IMPORT + "sv({ 'px-2 py-1': isActive }, { base: 'flex', variants: {} });",
 	// Clean `&&` right operand.
 	IMPORT_CN + "cn(isActive && 'flex items-center');",
 	// Clean ternary branches.
@@ -132,21 +133,21 @@ export const NO_REDUNDANT_SPACES_INVALID = [
 	},
 	{
 		// A namespace member call is analyzed like the named import.
-		code: IMPORT_NS + "SV.sv({ base: ' flex  ' });",
-		output: IMPORT_NS + "SV.sv({ base: 'flex' });",
+		code: IMPORT_NS + "SV.sv({ base: ' flex  ', variants: {} });",
+		output: IMPORT_NS + "SV.sv({ base: 'flex', variants: {} });",
 		errors: 1
 	},
 	{
 		// Collapsed, the text would hold the literal's own quote unescaped, so
 		// it's reported without a fix.
-		code: IMPORT + "sv({ base: 'a  \\'b' });",
+		code: IMPORT + "sv({ base: 'a  \\'b', variants: {} });",
 		output: null,
 		errors: 1
 	},
 	{
 		// Leading whitespace.
-		code: IMPORT + "sv({ base: ' flex' });",
-		output: IMPORT + "sv({ base: 'flex' });",
+		code: IMPORT + "sv({ base: ' flex', variants: {} });",
+		output: IMPORT + "sv({ base: 'flex', variants: {} });",
 		errors: 1
 	},
 	{
@@ -157,44 +158,44 @@ export const NO_REDUNDANT_SPACES_INVALID = [
 	},
 	{
 		// Trailing whitespace.
-		code: IMPORT + "sv({ base: 'flex ' });",
-		output: IMPORT + "sv({ base: 'flex' });",
+		code: IMPORT + "sv({ base: 'flex ', variants: {} });",
+		output: IMPORT + "sv({ base: 'flex', variants: {} });",
 		errors: 1
 	},
 	{
 		// Multiple consecutive spaces.
-		code: IMPORT + "sv({ base: 'flex  items-center' });",
-		output: IMPORT + "sv({ base: 'flex items-center' });",
+		code: IMPORT + "sv({ base: 'flex  items-center', variants: {} });",
+		output: IMPORT + "sv({ base: 'flex items-center', variants: {} });",
 		errors: 1
 	},
 	{
 		// Tab character between tokens.
-		code: IMPORT + "sv({ base: 'flex\\titems-center' });",
-		output: IMPORT + "sv({ base: 'flex items-center' });",
+		code: IMPORT + "sv({ base: 'flex\\titems-center', variants: {} });",
+		output: IMPORT + "sv({ base: 'flex items-center', variants: {} });",
 		errors: 1
 	},
 	{
 		// Newline whitespace inside template literal.
-		code: IMPORT + 'sv({ base: `flex\nitems-center` });',
-		output: IMPORT + 'sv({ base: `flex items-center` });',
+		code: IMPORT + 'sv({ base: `flex\nitems-center`, variants: {} });',
+		output: IMPORT + 'sv({ base: `flex items-center`, variants: {} });',
 		errors: 1
 	},
 	{
 		// Leading + middle + trailing - single report on the literal.
-		code: IMPORT + "sv({ base: ' flex  items ' });",
-		output: IMPORT + "sv({ base: 'flex items' });",
+		code: IMPORT + "sv({ base: ' flex  items ', variants: {} });",
+		output: IMPORT + "sv({ base: 'flex items', variants: {} });",
 		errors: 1
 	},
 	{
 		// Redundant whitespace inside an array element.
-		code: IMPORT + "sv({ base: ['flex ', 'gap-2'] });",
-		output: IMPORT + "sv({ base: ['flex', 'gap-2'] });",
+		code: IMPORT + "sv({ base: ['flex ', 'gap-2'], variants: {} });",
+		output: IMPORT + "sv({ base: ['flex', 'gap-2'], variants: {} });",
 		errors: 1
 	},
 	{
 		// Redundant whitespace inside a static template literal.
-		code: IMPORT + 'sv({ base: `flex  items-center` });',
-		output: IMPORT + 'sv({ base: `flex items-center` });',
+		code: IMPORT + 'sv({ base: `flex  items-center`, variants: {} });',
+		output: IMPORT + 'sv({ base: `flex items-center`, variants: {} });',
 		errors: 1
 	},
 	{

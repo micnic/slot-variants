@@ -24,7 +24,7 @@ t.test('variantKeys exposes variant key names', (t) => {
 });
 
 t.test('variantKeys is empty array when no variants', (t) => {
-	const box = sv('flex items-center', { introspection: true });
+	const box = sv('flex items-center', { variants: {}, introspection: true });
 
 	t.same(box.variantKeys, [], 'empty array for no variants');
 
@@ -243,6 +243,7 @@ t.test('base is empty string when no base classes', (t) => {
 
 t.test('base is not post-processed', (t) => {
 	const button = sv('btn', {
+		variants: {},
 		postProcess: (className) => className.toUpperCase(),
 		introspection: true
 	});
@@ -585,7 +586,7 @@ t.test('getVariantValues works when slots are defined', (t) => {
 });
 
 t.test('getMaxEntries returns 1 when there are no variants', (t) => {
-	const box = sv('flex', { introspection: true });
+	const box = sv('flex', { variants: {}, introspection: true });
 
 	t.equal(box.getMaxEntries(), 1, 'single empty combination');
 
@@ -842,7 +843,7 @@ t.test('splitProps output feeds back into the variant function', (t) => {
 t.test(
 	'splitProps sends everything to the rest when no variants exist',
 	(t) => {
-		const box = sv('flex', { introspection: true });
+		const box = sv('flex', { variants: {}, introspection: true });
 
 		const [variantProps, rest] = box.splitProps({
 			id: 'box',

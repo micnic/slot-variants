@@ -42,7 +42,7 @@ t.test('className prop appends to base without slots', (t) => {
 });
 
 t.test('class prop with no variants', (t) => {
-	const box = sv('flex items-center', {});
+	const box = sv('flex items-center', { variants: {} });
 
 	t.equal(
 		box({ class: 'gap-4 p-2' }),

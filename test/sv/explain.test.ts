@@ -39,7 +39,7 @@ t.test('explains a component without slots', (t) => {
 });
 
 t.test('explain works without props', (t) => {
-	const box = sv('flex', { introspection: true });
+	const box = sv('flex', { variants: {}, introspection: true });
 
 	t.same(
 		box.explain(),
@@ -238,7 +238,7 @@ t.test('explain shows a string class on the base slot', (t) => {
 });
 
 t.test('explain shows a className on a component without slots', (t) => {
-	const button = sv('btn', { introspection: true });
+	const button = sv('btn', { variants: {}, introspection: true });
 
 	const { slots } = button.explain({ className: 'mt-2' });
 
@@ -273,7 +273,7 @@ t.test('explain splits a slot-object class across slots and groups', (t) => {
 });
 
 t.test('explain handles a slot-object class without slots', (t) => {
-	const button = sv('btn', { introspection: true });
+	const button = sv('btn', { variants: {}, introspection: true });
 
 	const { slots } = button.explain({ class: { base: 'mt-2' } });
 

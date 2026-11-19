@@ -19,6 +19,7 @@ import {
 	type CacheValue,
 	type CompiledConfig,
 	type Config,
+	type ConfigMarker,
 	type ExtendedGroups,
 	type ExtendedSlots,
 	type ExtendedVariantFn,
@@ -454,7 +455,10 @@ export const createSV = <
 		const E extends ExtendInput | undefined = undefined,
 		D extends StringKeyof<ExtendedVariants<E, S, G, V>> = never
 	>(
-		...args: [...ClassValue[], Config<S, G, V, P, M, R, J, E, D>]
+		...args: [
+			...ClassValue[],
+			Config<S, G, V, P, M, R, J, E, D> & ConfigMarker<S, V>
+		]
 	): ExtendedVariantFn<S, G, V, P, M, R, J, E, D, I>;
 	function customSV<const T extends ClassValue[]>(
 		...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }

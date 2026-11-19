@@ -77,7 +77,7 @@ export const getStrictProperties = (
 // The strict properties of a non-empty object whose every key passes
 // `isAllowed`. Null for anything else, including an object with a spread,
 // computed or disallowed key.
-export const getStrictPropertiesWithKeys = (
+const getStrictPropertiesWithKeys = (
 	node: Node | undefined,
 	isAllowed: KeyPredicate
 ): ReadonlyMap<string, Node> | null => {

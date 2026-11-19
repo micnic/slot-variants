@@ -18,7 +18,7 @@ export const NO_CONFLICTING_DUP_VALID = [
 	IMPORT +
 		"sv({ variants: { size: { sm: 'text-sm', lg: 'text-lg' }, intent: { primary: 'bg-blue-500', danger: 'bg-red-500' } } });",
 	IMPORT + "sv('flex', 'items-center');",
-	IMPORT + 'sv({});',
+	IMPORT + 'sv({ variants: {} });',
 	// Same token across values of the same variant — mutually exclusive.
 	IMPORT +
 		"sv({ variants: { state: { on: 'highlight', off: 'highlight' } } });",
@@ -53,7 +53,8 @@ export const NO_CONFLICTING_DUP_VALID = [
 	// Ternary branches with conflicting namespaces are mutually exclusive.
 	IMPORT_CN + "cn(isActive ? 'w-100' : 'w-200');",
 	// Ternary in an sv() cn-style leading argument — branches are exclusive.
-	IMPORT + "sv(isActive ? 'w-100' : 'w-200', { base: 'flex' });",
+	IMPORT +
+		"sv(isActive ? 'w-100' : 'w-200', { base: 'flex', variants: {} });",
 	// Template ternary — branch namespaces are mutually exclusive, quasi
 	// token appears once.
 	IMPORT_CN + "cn(`items-center ${col ? 'w-100' : 'w-200'}`);",
@@ -67,7 +68,7 @@ export const NO_CONFLICTING_DUP_VALID = [
 	// Dynamic base — can't analyze, don't false-flag.
 	IMPORT + "sv({ base: dynamic, variants: { size: { sm: 'text-sm' } } });",
 	// Without the import the rule stays quiet.
-	"sv({ base: 'flex flex' });",
+	"sv({ base: 'flex flex', variants: {} });",
 	// Boolean shorthand distinct from base.
 	IMPORT + "sv({ base: 'btn', variants: { disabled: 'opacity-50' } });",
 	// Spread in a variant record — can't fully enumerate keys.
@@ -140,13 +141,13 @@ export const NO_CONFLICTING_DUP_VALID = [
 			compoundVariants: [42, { size: 'lg', class: 'font-bold' }]
 		});`,
 	// Non-sv call after the import still has to be visited.
-	IMPORT + "console.log('hi'); foo(); sv({ base: 'btn' });",
+	IMPORT + "console.log('hi'); foo(); sv({ base: 'btn', variants: {} });",
 	// Non-string literal and dynamic inputs are safely ignored.
 	IMPORT + 'sv({ base: 42, variants: { size: 123 } });',
 	// Spread arg in a plain call — analyzer skips it.
-	IMPORT + "sv(...extra, { base: 'flex' });",
+	IMPORT + "sv(...extra, { base: 'flex', variants: {} });",
 	// Non-object elements inside a base array are skipped.
-	IMPORT + "sv({ base: ['flex', ...extra, 'gap-2'] });",
+	IMPORT + "sv({ base: ['flex', ...extra, 'gap-2'], variants: {} });",
 	// String-literal property keys — config, variant keys, value keys.
 	IMPORT +
 		"sv({ 'base': 'flex items-center', 'variants': { 'size': { 'sm': 'text-sm', 'lg': 'text-lg' } } });",
@@ -163,11 +164,11 @@ export const NO_CONFLICTING_DUP_VALID = [
 	// Unknown top-level key — not treated as config.
 	IMPORT + "sv({ unknown: 'x', base: 'flex flex' });",
 	// Empty object as base (cn-style record) with no slots.
-	IMPORT + 'sv({ base: {} });',
+	IMPORT + 'sv({ base: {}, variants: {} });',
 	// Empty object as base with slots — still opaque.
 	IMPORT + "sv({ slots: { body: 'x' }, base: {} });",
 	// cn-style record as base, no slots — not analyzed.
-	IMPORT + "sv({ base: { 'some-class': true } });",
+	IMPORT + "sv({ base: { 'some-class': true }, variants: {} });",
 	// cn-style record with a non-slot key — bails out.
 	IMPORT + "sv({ slots: { body: 'x' }, base: { foo: true } });",
 	// Slot-keyed object as base with a spread — bails out.
@@ -175,7 +176,7 @@ export const NO_CONFLICTING_DUP_VALID = [
 	// Slot-keyed object as base with a computed key — bails out.
 	IMPORT + "sv({ slots: { body: 'p-4' }, base: { [k]: 'z' } });",
 	// Template literal with an interpolation — skipped.
-	IMPORT + 'sv({ base: `foo ${dynamic} bar` });',
+	IMPORT + 'sv({ base: `foo ${dynamic} bar`, variants: {} });',
 	// Import tracking and callee resolution (default/namespace/side-effect
 	// imports, foreign modules, member-expression callees) are covered
 	// exhaustively by the no-dynamic-classes suite.
@@ -323,12 +324,14 @@ export const NO_CONFLICTING_DUP_INVALID = [
 	{
 		// Duplicate within a single literal — each occurrence
 		// gets its own report pointing at the token.
-		code: IMPORT + "sv({ base: 'flex flex' });",
+		code: IMPORT + "sv({ base: 'flex flex', variants: {} });",
 		errors: 2
 	},
 	{
 		// A hoisted `const` config is read through and analyzed as a config.
-		code: IMPORT + "const config = { base: 'flex flex' };\nsv(config);",
+		code:
+			IMPORT +
+			"const config = { base: 'flex flex', variants: {} };\nsv(config);",
 		errors: 2
 	},
 	{
@@ -345,7 +348,9 @@ export const NO_CONFLICTING_DUP_INVALID = [
 	},
 	{
 		// A `const` alias of the sv import is tracked through to the config.
-		code: IMPORT + "const styled = sv;\nstyled({ base: 'flex flex' });",
+		code:
+			IMPORT +
+			"const styled = sv;\nstyled({ base: 'flex flex', variants: {} });",
 		errors: 2
 	},
 	{
@@ -560,7 +565,7 @@ export const NO_CONFLICTING_DUP_INVALID = [
 		// A `createSV()`-derived binding's config is analyzed like sv.
 		code:
 			IMPORT_CREATE_SV +
-			"const customSV = createSV({ cacheSize: 512 });\nconst c = customSV({ base: 'flex flex' });",
+			"const customSV = createSV({ cacheSize: 512 });\nconst c = customSV({ base: 'flex flex', variants: {} });",
 		errors: repeat(dup('flex'), 2)
 	},
 	{
@@ -604,7 +609,7 @@ export const NO_CONFLICTING_NS_VALID = [
 	// Class prefixes named like `Object.prototype` members are no known
 	// Tailwind families.
 	IMPORT +
-		"sv({ base: '__defineGetter__-2 toString constructor-4 hasOwnProperty' });",
+		"sv({ base: '__defineGetter__-2 toString constructor-4 hasOwnProperty', variants: {} });",
 	// Project class names share a prefix but name no Tailwind utility, so
 	// nothing says they set the same property.
 	IMPORT_CN + "cn('btn-primary btn-lg');",
@@ -622,117 +627,124 @@ export const NO_CONFLICTING_NS_VALID = [
 	// record or against a `&&`.
 	IMPORT_CN + "cn({ 'w-2': active, 'w-4': !active });",
 	IMPORT_CN + "cn(active && 'w-2', { 'w-4': !active });",
-	IMPORT + "sv({ base: 'card-body card-title card-header-actions' });",
+	IMPORT +
+		"sv({ base: 'card-body card-title card-header-actions', variants: {} });",
 	// Single namespaced utility — nothing to conflict with.
-	IMPORT + "sv({ base: 'w-100' });",
+	IMPORT + "sv({ base: 'w-100', variants: {} });",
 	// Single-word utilities have no namespace and are skipped.
-	IMPORT + "sv({ base: 'flex block' });",
+	IMPORT + "sv({ base: 'flex block', variants: {} });",
 	// Different variant prefixes — not a conflict.
-	IMPORT + "sv({ base: 'w-100 hover:w-200' });",
+	IMPORT + "sv({ base: 'w-100 hover:w-200', variants: {} });",
 	// Same namespace across mutually-exclusive variant values.
 	IMPORT + "sv({ variants: { size: { sm: 'w-100', lg: 'w-200' } } });",
 	// Without the import the rule stays quiet.
-	"sv({ base: 'w-100 w-200' });",
+	"sv({ base: 'w-100 w-200', variants: {} });",
 	// cn() with a dynamic arg — no static entries,
 	// exercises the empty-tokenMap branch.
 	IMPORT_CN + 'cn(dynamic);',
 	// Different namespace prefixes don't conflict.
-	IMPORT + "sv({ base: 'w-100 h-200' });",
+	IMPORT + "sv({ base: 'w-100 h-200', variants: {} });",
 	// A font size and a text color target different properties, so they don't
 	// conflict — even when the color is a single-word keyword.
-	IMPORT + "sv({ base: 'text-sm text-red-500' });",
-	IMPORT + "sv({ base: 'text-lg text-white' });",
+	IMPORT + "sv({ base: 'text-sm text-red-500', variants: {} });",
+	IMPORT + "sv({ base: 'text-lg text-white', variants: {} });",
 	// A single-word color keyword with an opacity modifier still resolves to
 	// `color`, not `size` — the modifier doesn't shadow the keyword match.
-	IMPORT + "sv({ base: 'text-lg text-white/50' });",
+	IMPORT + "sv({ base: 'text-lg text-white/50', variants: {} });",
 	// A one-word theme color (`--color-primary`) is a color, not a font size —
 	// only Tailwind's named sizes (`xs`…`9xl`) read as sizes, the same way
 	// tailwind-merge tells them apart.
-	IMPORT + "sv({ base: 'text-sm text-primary' });",
-	IMPORT + "sv({ base: 'text-base text-foreground/80' });",
-	IMPORT + "sv({ base: 'text-2xl text-destructive' });",
+	IMPORT + "sv({ base: 'text-sm text-primary', variants: {} });",
+	IMPORT + "sv({ base: 'text-base text-foreground/80', variants: {} });",
+	IMPORT + "sv({ base: 'text-2xl text-destructive', variants: {} });",
 	// The same goes for every prefix that is
 	// both a width (or size) and a color.
-	IMPORT + "sv({ base: 'border-2 border-primary' });",
-	IMPORT + "sv({ base: 'border-t-2 border-t-primary' });",
-	IMPORT + "sv({ base: 'ring-2 ring-primary' });",
-	IMPORT + "sv({ base: 'ring-offset-2 ring-offset-background' });",
-	IMPORT + "sv({ base: 'inset-ring-2 inset-ring-primary' });",
-	IMPORT + "sv({ base: 'outline-2 outline-primary' });",
-	IMPORT + "sv({ base: 'stroke-2 stroke-primary' });",
-	IMPORT + "sv({ base: 'decoration-2 decoration-primary' });",
-	IMPORT + "sv({ base: 'shadow-md shadow-primary' });",
-	IMPORT + "sv({ base: 'text-shadow-sm text-shadow-primary' });",
-	IMPORT + "sv({ base: 'inset-shadow-xs inset-shadow-primary' });",
+	IMPORT + "sv({ base: 'border-2 border-primary', variants: {} });",
+	IMPORT + "sv({ base: 'border-t-2 border-t-primary', variants: {} });",
+	IMPORT + "sv({ base: 'ring-2 ring-primary', variants: {} });",
+	IMPORT +
+		"sv({ base: 'ring-offset-2 ring-offset-background', variants: {} });",
+	IMPORT + "sv({ base: 'inset-ring-2 inset-ring-primary', variants: {} });",
+	IMPORT + "sv({ base: 'outline-2 outline-primary', variants: {} });",
+	IMPORT + "sv({ base: 'stroke-2 stroke-primary', variants: {} });",
+	IMPORT + "sv({ base: 'decoration-2 decoration-primary', variants: {} });",
+	IMPORT + "sv({ base: 'shadow-md shadow-primary', variants: {} });",
+	IMPORT +
+		"sv({ base: 'text-shadow-sm text-shadow-primary', variants: {} });",
+	IMPORT +
+		"sv({ base: 'inset-shadow-xs inset-shadow-primary', variants: {} });",
 	// A plain font size reads its line-height through `--tw-leading`, which a
 	// `leading-*` utility sets, so the two compose rather than conflict.
-	IMPORT + "sv({ base: 'text-sm leading-6' });",
+	IMPORT + "sv({ base: 'text-sm leading-6', variants: {} });",
 	// A font size and text alignment don't conflict.
-	IMPORT + "sv({ base: 'text-sm text-center' });",
+	IMPORT + "sv({ base: 'text-sm text-center', variants: {} });",
 	// Border width, style, and color are distinct properties.
-	IMPORT + "sv({ base: 'border-2 border-solid border-red-500' });",
+	IMPORT +
+		"sv({ base: 'border-2 border-solid border-red-500', variants: {} });",
 	// A bare default utility stays clear of siblings on other properties:
 	// `border` is a width, distinct from a border color or style.
-	IMPORT + "sv({ base: 'border border-red-500 border-solid' });",
+	IMPORT +
+		"sv({ base: 'border border-red-500 border-solid', variants: {} });",
 	// Bare `rounded` (border-radius) is unrelated to a shadow.
-	IMPORT + "sv({ base: 'rounded shadow-md' });",
+	IMPORT + "sv({ base: 'rounded shadow-md', variants: {} });",
 	// Bare `outline` is a width, distinct from an outline style or color.
-	IMPORT + "sv({ base: 'outline outline-dashed outline-red-500' });",
+	IMPORT +
+		"sv({ base: 'outline outline-dashed outline-red-500', variants: {} });",
 	// Bare `transition` groups only with its own family, not the separate
 	// transition-duration utility.
-	IMPORT + "sv({ base: 'transition duration-100' });",
+	IMPORT + "sv({ base: 'transition duration-100', variants: {} });",
 	// Distinct filter functions compose, so bare toggles don't cross-conflict.
-	IMPORT + "sv({ base: 'grayscale invert sepia' });",
+	IMPORT + "sv({ base: 'grayscale invert sepia', variants: {} });",
 	// `w-*` and `h-*` are independent axes — they only conflict through a
 	// co-occurring `size-*` shorthand, never with each other.
-	IMPORT + "sv({ base: 'w-4 h-4' });",
+	IMPORT + "sv({ base: 'w-4 h-4', variants: {} });",
 	// `min-w`/`max-w` are their own segments, so `size-*` doesn't overlap them.
-	IMPORT + "sv({ base: 'min-w-0 size-4' });",
+	IMPORT + "sv({ base: 'min-w-0 size-4', variants: {} });",
 	// The shorthand overlap is scoped per variant prefix.
 	IMPORT_CN + "cn('hover:w-4', 'size-4');",
 	IMPORT_CN + "cn('hover:m-4', 'mt-2');",
 	// Spacing sides and axes are independent without their shorthand present.
-	IMPORT + "sv({ base: 'mt-2 mr-2 mb-2 ml-2' });",
-	IMPORT + "sv({ base: 'mx-2 my-2' });",
-	IMPORT + "sv({ base: 'px-4 pt-2' });",
+	IMPORT + "sv({ base: 'mt-2 mr-2 mb-2 ml-2', variants: {} });",
+	IMPORT + "sv({ base: 'mx-2 my-2', variants: {} });",
+	IMPORT + "sv({ base: 'px-4 pt-2', variants: {} });",
 	// An inline axis doesn't reach the block sides, nor a block axis the
 	// inline ones.
-	IMPORT + "sv({ base: 'mx-2 mbs-2' });",
-	IMPORT + "sv({ base: 'py-4 ps-2' });",
+	IMPORT + "sv({ base: 'mx-2 mbs-2', variants: {} });",
+	IMPORT + "sv({ base: 'py-4 ps-2', variants: {} });",
 	// `inset-x` covers left/right only, not top.
-	IMPORT + "sv({ base: 'inset-x-0 top-0' });",
+	IMPORT + "sv({ base: 'inset-x-0 top-0', variants: {} });",
 	// `translate-z` has its own overlap node, but it's only reachable through
 	// `translate-none` — a plain axis value doesn't reach it.
-	IMPORT + "sv({ base: 'translate-x-2 translate-z-10' });",
+	IMPORT + "sv({ base: 'translate-x-2 translate-z-10', variants: {} });",
 	// The bare `translate` shorthand doesn't reach `z` either — only
 	// `translate-none` does (it resets every axis).
-	IMPORT + "sv({ base: 'translate-4 translate-z-10' });",
+	IMPORT + "sv({ base: 'translate-4 translate-z-10', variants: {} });",
 	// Unlike `translate`, `scale` has no `-none` bridge, so its `z` axis
 	// never overlaps the bare shorthand.
-	IMPORT + "sv({ base: 'scale-105 scale-z-10' });",
+	IMPORT + "sv({ base: 'scale-105 scale-z-10', variants: {} });",
 	// Unlike `gap`/`overflow`/`overscroll`/`translate`, tailwind-merge doesn't
 	// treat bare `scale`/`skew` as conflicting with their `-x`/`-y` forms —
 	// they compose as independent per-axis overrides.
-	IMPORT + "sv({ base: 'scale-105 scale-x-110' });",
-	IMPORT + "sv({ base: 'skew-3 skew-x-6' });",
+	IMPORT + "sv({ base: 'scale-105 scale-x-110', variants: {} });",
+	IMPORT + "sv({ base: 'skew-3 skew-x-6', variants: {} });",
 	// Corner sides and sibling corners don't overlap without their shorthand.
-	IMPORT + "sv({ base: 'rounded-t-lg rounded-b-sm' });",
-	IMPORT + "sv({ base: 'rounded-tl-lg rounded-tr-sm' });",
+	IMPORT + "sv({ base: 'rounded-t-lg rounded-b-sm', variants: {} });",
+	IMPORT + "sv({ base: 'rounded-tl-lg rounded-tr-sm', variants: {} });",
 	// `border-x` covers left/right widths only, not the top width.
-	IMPORT + "sv({ base: 'border-x-2 border-t-4' });",
+	IMPORT + "sv({ base: 'border-x-2 border-t-4', variants: {} });",
 	// A border width doesn't overlap a per-side border color.
-	IMPORT + "sv({ base: 'border-2 border-t-red-500' });",
+	IMPORT + "sv({ base: 'border-2 border-t-red-500', variants: {} });",
 	// A logical side and a physical side only meet through a shorthand.
-	IMPORT + "sv({ base: 'border-bs-2 border-t-4' });",
-	IMPORT + "sv({ base: 'mbs-2 mt-2' });",
+	IMPORT + "sv({ base: 'border-bs-2 border-t-4', variants: {} });",
+	IMPORT + "sv({ base: 'mbs-2 mt-2', variants: {} });",
 	// `inset-x` still covers left/right only, not the logical block sides.
-	IMPORT + "sv({ base: 'inset-x-0 inset-bs-4' });",
+	IMPORT + "sv({ base: 'inset-x-0 inset-bs-4', variants: {} });",
 	// Per-side border width vs color are distinct sub-properties — including
 	// the single-word color keywords.
-	IMPORT + "sv({ base: 'border-t-2 border-t-red-500' });",
-	IMPORT + "sv({ base: 'border-t-2 border-t-current' });",
+	IMPORT + "sv({ base: 'border-t-2 border-t-red-500', variants: {} });",
+	IMPORT + "sv({ base: 'border-t-2 border-t-current', variants: {} });",
 	// scroll-behavior is unrelated to the scroll-margin family.
-	IMPORT + "sv({ base: 'scroll-smooth scroll-mt-4' });",
+	IMPORT + "sv({ base: 'scroll-smooth scroll-mt-4', variants: {} });",
 	// A shorthand overlap across mutually-exclusive variant values is fine.
 	IMPORT + "sv({ variants: { pad: { sm: 'p-2', lg: 'pt-8' } } });",
 	// Two siblings from the same variant value (`px-4`/`pb-4`) both bridge
@@ -762,7 +774,7 @@ export const NO_CONFLICTING_NS_VALID = [
 	// can ever co-occur.
 	IMPORT +
 		`sv({
-			compoundVariants: [
+			variants: {}, compoundVariants: [
 				{
 					variant: ['primary', 'secondary', 'tertiary', 'ghost'],
 					size: 'sm',
@@ -813,175 +825,193 @@ export const NO_CONFLICTING_NS_VALID = [
 	// branches stay exclusive to each other.
 	IMPORT_CN + "cn(active && (dense ? 'p-2' : 'p-4'));",
 	// A custom-palette color still classifies as a color (no palette needed).
-	IMPORT + "sv({ base: 'text-brand-500 text-sm' });",
+	IMPORT + "sv({ base: 'text-brand-500 text-sm', variants: {} });",
 	// An arbitrary color value classifies as a color, not a size.
-	IMPORT + "sv({ base: 'text-[#fff] text-sm' });",
+	IMPORT + "sv({ base: 'text-[#fff] text-sm', variants: {} });",
 	// So does a CSS named color, in any letter case, against a font size,
 	// a border width, and a stroke width.
-	IMPORT + "sv({ base: 'text-[red] text-sm' });",
-	IMPORT + "sv({ base: 'text-[RebeccaPurple] text-[14px]' });",
-	IMPORT + "sv({ base: 'text-[currentcolor] text-sm' });",
-	IMPORT + "sv({ base: 'text-[red]/50 text-sm' });",
-	IMPORT + "sv({ base: 'border-[2px] border-[red]' });",
-	IMPORT + "sv({ base: 'stroke-[2px] stroke-[red]' });",
+	IMPORT + "sv({ base: 'text-[red] text-sm', variants: {} });",
+	IMPORT + "sv({ base: 'text-[RebeccaPurple] text-[14px]', variants: {} });",
+	IMPORT + "sv({ base: 'text-[currentcolor] text-sm', variants: {} });",
+	IMPORT + "sv({ base: 'text-[red]/50 text-sm', variants: {} });",
+	IMPORT + "sv({ base: 'border-[2px] border-[red]', variants: {} });",
+	IMPORT + "sv({ base: 'stroke-[2px] stroke-[red]', variants: {} });",
 	// An arbitrary length value stays a size, distinct from a color.
-	IMPORT + "sv({ base: 'text-[16px] text-red-500' });",
+	IMPORT + "sv({ base: 'text-[16px] text-red-500', variants: {} });",
 	// A typed CSS-variable shorthand classifies by its hint, so a color one is
 	// distinct from a font size.
-	IMPORT + "sv({ base: 'text-(color:--brand) text-sm' });",
+	IMPORT + "sv({ base: 'text-(color:--brand) text-sm', variants: {} });",
 	// An untyped CSS-variable shorthand is the prefix's widest value type — a
 	// color here, so it doesn't touch the font size either.
-	IMPORT + "sv({ base: 'text-(--brand) text-sm' });",
+	IMPORT + "sv({ base: 'text-(--brand) text-sm', variants: {} });",
 	// `decoration-(--x)` is the narrower thickness property, not a color.
-	IMPORT + "sv({ base: 'decoration-(--thin) decoration-red-500' });",
+	IMPORT +
+		"sv({ base: 'decoration-(--thin) decoration-red-500', variants: {} });",
 	// v3's `decoration-clone` is box-decoration-break, not a thickness.
-	IMPORT + "sv({ base: 'decoration-clone decoration-2' });",
+	IMPORT + "sv({ base: 'decoration-clone decoration-2', variants: {} });",
 	// `list-item` is a display value, not a list-style-type.
-	IMPORT + "sv({ base: 'list-item list-disc' });",
+	IMPORT + "sv({ base: 'list-item list-disc', variants: {} });",
 	// A length hint is a border width, distinct from the border color.
-	IMPORT + "sv({ base: 'border-(length:--hairline) border-red-500' });",
+	IMPORT +
+		"sv({ base: 'border-(length:--hairline) border-red-500', variants: {} });",
 	// A number hint is a font weight, distinct from the family.
-	IMPORT + "sv({ base: 'font-(number:--bold) font-sans' });",
+	IMPORT + "sv({ base: 'font-(number:--bold) font-sans', variants: {} });",
 	// An unhinted bracketed number is a weight too, so it stays clear of the
 	// family — while a bracketed family name is not.
-	IMPORT + "sv({ base: 'font-[550] font-sans' });",
-	IMPORT + "sv({ base: 'font-[Arial] font-bold' });",
+	IMPORT + "sv({ base: 'font-[550] font-sans', variants: {} });",
+	IMPORT + "sv({ base: 'font-[Arial] font-bold', variants: {} });",
 	// A position hint is background-position, distinct from the color.
-	IMPORT + "sv({ base: 'bg-(position:--spot) bg-red-500' });",
+	IMPORT + "sv({ base: 'bg-(position:--spot) bg-red-500', variants: {} });",
 	// The explicit `bg-size-*`/`bg-position-*` namespaces are two distinct
 	// properties, and neither is the background color.
-	IMPORT + "sv({ base: 'bg-size-[3px_4px] bg-position-[center_top]' });",
-	IMPORT + "sv({ base: 'bg-position-[center_top] bg-red-500' });",
+	IMPORT +
+		"sv({ base: 'bg-size-[3px_4px] bg-position-[center_top]', variants: {} });",
+	IMPORT +
+		"sv({ base: 'bg-position-[center_top] bg-red-500', variants: {} });",
 	// An object-position value doesn't touch the keyword-only object-fit.
-	IMPORT + "sv({ base: 'object-[center_top] object-cover' });",
+	IMPORT + "sv({ base: 'object-[center_top] object-cover', variants: {} });",
 	// Same for their mask counterparts, which also don't touch the mask image.
-	IMPORT + "sv({ base: 'mask-size-[3px] mask-position-[top]' });",
-	IMPORT + "sv({ base: 'mask-position-[top] mask-[url(/a.svg)]' });",
+	IMPORT +
+		"sv({ base: 'mask-size-[3px] mask-position-[top]', variants: {} });",
+	IMPORT +
+		"sv({ base: 'mask-position-[top] mask-[url(/a.svg)]', variants: {} });",
 	// Ring offset width vs ring offset color are distinct sub-properties.
-	IMPORT + "sv({ base: 'ring-offset-2 ring-offset-red-500' });",
+	IMPORT + "sv({ base: 'ring-offset-2 ring-offset-red-500', variants: {} });",
 	// Ring width vs ring offset width are distinct properties.
-	IMPORT + "sv({ base: 'ring-2 ring-offset-2' });",
+	IMPORT + "sv({ base: 'ring-2 ring-offset-2', variants: {} });",
 	// A text-shadow color doesn't conflict with the unrelated text color.
-	IMPORT + "sv({ base: 'text-shadow-red-500 text-blue-500' });",
+	IMPORT + "sv({ base: 'text-shadow-red-500 text-blue-500', variants: {} });",
 	// A text-shadow size doesn't conflict with the unrelated font size.
-	IMPORT + "sv({ base: 'text-shadow-sm text-lg' });",
+	IMPORT + "sv({ base: 'text-shadow-sm text-lg', variants: {} });",
 	// An inset-shadow doesn't conflict with a physical inset offset.
-	IMPORT + "sv({ base: 'inset-shadow-sm inset-4' });",
+	IMPORT + "sv({ base: 'inset-shadow-sm inset-4', variants: {} });",
 	// An inset-ring doesn't conflict with a physical inset offset.
-	IMPORT + "sv({ base: 'inset-ring-2 inset-4' });",
+	IMPORT + "sv({ base: 'inset-ring-2 inset-4', variants: {} });",
 	// Inset-ring width vs inset-ring color are distinct sub-properties.
-	IMPORT + "sv({ base: 'inset-ring-2 inset-ring-red-500' });",
+	IMPORT + "sv({ base: 'inset-ring-2 inset-ring-red-500', variants: {} });",
 	// mask-composite and mask-mode are distinct properties.
-	IMPORT + "sv({ base: 'mask-add mask-luminance' });",
+	IMPORT + "sv({ base: 'mask-add mask-luminance', variants: {} });",
 	// mask-position and mask-size are distinct properties.
-	IMPORT + "sv({ base: 'mask-center mask-cover' });",
+	IMPORT + "sv({ base: 'mask-center mask-cover', variants: {} });",
 	// mask-clip and mask-origin are distinct properties.
-	IMPORT + "sv({ base: 'mask-clip-border mask-origin-padding' });",
+	IMPORT +
+		"sv({ base: 'mask-clip-border mask-origin-padding', variants: {} });",
 	// mask-clip and mask-type are distinct properties.
-	IMPORT + "sv({ base: 'mask-clip-border mask-type-alpha' });",
+	IMPORT + "sv({ base: 'mask-clip-border mask-type-alpha', variants: {} });",
 	// A directional mask gradient's position and color stops compose.
-	IMPORT + "sv({ base: 'mask-t-from-30% mask-t-from-red-500' });",
+	IMPORT +
+		"sv({ base: 'mask-t-from-30% mask-t-from-red-500', variants: {} });",
 	// Different mask gradient directions are distinct properties.
-	IMPORT + "sv({ base: 'mask-t-from-red-500 mask-r-from-blue-500' });",
+	IMPORT +
+		"sv({ base: 'mask-t-from-red-500 mask-r-from-blue-500', variants: {} });",
 	// mask-linear and mask-conic angles are distinct properties.
-	IMPORT + "sv({ base: 'mask-linear-45 mask-conic-90' });",
+	IMPORT + "sv({ base: 'mask-linear-45 mask-conic-90', variants: {} });",
 	// mask-radial shape, size, and position are distinct sub-properties.
 	IMPORT +
-		"sv({ base: 'mask-radial-circle mask-radial-closest-side mask-radial-at-center' });",
+		"sv({ base: 'mask-radial-circle mask-radial-closest-side mask-radial-at-center', variants: {} });",
 	// mask-no-clip and mask-no-repeat are the boolean-off form of distinct
 	// properties, so they don't conflict with each other — even though each one
 	// does conflict with its own positive counterpart.
-	IMPORT + "sv({ base: 'mask-no-clip mask-no-repeat' });",
+	IMPORT + "sv({ base: 'mask-no-clip mask-no-repeat', variants: {} });",
 	// scrollbar-thumb and scrollbar-track colors are distinct properties.
 	IMPORT +
-		"sv({ base: 'scrollbar-thumb-red-500 scrollbar-track-blue-500' });",
+		"sv({ base: 'scrollbar-thumb-red-500 scrollbar-track-blue-500', variants: {} });",
 	// scrollbar-thumb color and the bare scrollbar width are distinct.
-	IMPORT + "sv({ base: 'scrollbar-thumb-red-500 scrollbar-thin' });",
+	IMPORT +
+		"sv({ base: 'scrollbar-thumb-red-500 scrollbar-thin', variants: {} });",
 	// scrollbar-gutter and the bare scrollbar width are distinct.
-	IMPORT + "sv({ base: 'scrollbar-gutter-stable scrollbar-thin' });",
+	IMPORT +
+		"sv({ base: 'scrollbar-gutter-stable scrollbar-thin', variants: {} });",
 	// touch-action pan directions compose, so they don't conflict.
-	IMPORT + "sv({ base: 'touch-pan-x touch-pan-y' });",
+	IMPORT + "sv({ base: 'touch-pan-x touch-pan-y', variants: {} });",
 	// Pan and pinch-zoom also compose.
-	IMPORT + "sv({ base: 'touch-pan-x touch-pinch-zoom' });",
+	IMPORT + "sv({ base: 'touch-pan-x touch-pinch-zoom', variants: {} });",
 	// `touch-pan-left` shares the `x` axis with `touch-pan-x`, but the `y`
 	// axis (`touch-pan-up`) is independent of it.
-	IMPORT + "sv({ base: 'touch-pan-left touch-pan-up' });",
+	IMPORT + "sv({ base: 'touch-pan-left touch-pan-up', variants: {} });",
 	// An unrecognized pan direction has no overlap node at all, so it stays
 	// untracked even alongside a bare touch-action toggle.
-	IMPORT + "sv({ base: 'touch-none touch-pan-diagonal' });",
+	IMPORT + "sv({ base: 'touch-none touch-pan-diagonal', variants: {} });",
 	// A composing `-reverse` flag sits alongside the width, so it doesn't
 	// conflict with it.
-	IMPORT + "sv({ base: 'space-x-2 space-x-reverse' });",
-	IMPORT + "sv({ base: 'divide-x-2 divide-x-reverse' });",
+	IMPORT + "sv({ base: 'space-x-2 space-x-reverse', variants: {} });",
+	IMPORT + "sv({ base: 'divide-x-2 divide-x-reverse', variants: {} });",
 	// A gradient color stop and its position
 	// are distinct, composing properties.
-	IMPORT + "sv({ base: 'from-10% from-red-500' });",
+	IMPORT + "sv({ base: 'from-10% from-red-500', variants: {} });",
 	// background-blend-mode is distinct from background-color.
-	IMPORT + "sv({ base: 'bg-blend-multiply bg-red-500' });",
+	IMPORT + "sv({ base: 'bg-blend-multiply bg-red-500', variants: {} });",
 	// grid-auto-columns vs grid-auto-rows are independent.
-	IMPORT + "sv({ base: 'auto-cols-max auto-rows-min' });",
+	IMPORT + "sv({ base: 'auto-cols-max auto-rows-min', variants: {} });",
 	// Placeholder opacity composes with the placeholder color.
-	IMPORT + "sv({ base: 'placeholder-opacity-50 placeholder-red-500' });",
+	IMPORT +
+		"sv({ base: 'placeholder-opacity-50 placeholder-red-500', variants: {} });",
 	// border-spacing x and y compose into the single border-spacing property.
-	IMPORT + "sv({ base: 'border-spacing-x-2 border-spacing-y-4' });",
+	IMPORT +
+		"sv({ base: 'border-spacing-x-2 border-spacing-y-4', variants: {} });",
 	// table-layout vs a table display value are distinct properties.
-	IMPORT + "sv({ base: 'table-auto table-cell' });",
+	IMPORT + "sv({ base: 'table-auto table-cell', variants: {} });",
 	// v3 opacity utilities compose with their color rather than conflict.
-	IMPORT + "sv({ base: 'bg-opacity-50 bg-red-500' });",
-	IMPORT + "sv({ base: 'ring-opacity-50 ring-red-500' });",
-	IMPORT + "sv({ base: 'divide-opacity-50 divide-red-500' });",
+	IMPORT + "sv({ base: 'bg-opacity-50 bg-red-500', variants: {} });",
+	IMPORT + "sv({ base: 'ring-opacity-50 ring-red-500', variants: {} });",
+	IMPORT + "sv({ base: 'divide-opacity-50 divide-red-500', variants: {} });",
 	// Background color vs background size/position.
-	IMPORT + "sv({ base: 'bg-white bg-cover bg-center' });",
+	IMPORT + "sv({ base: 'bg-white bg-cover bg-center', variants: {} });",
 	// Arbitrary image values are a background-image, not a color — including
 	// when the value contains colons or dashes inside the brackets.
-	IMPORT + "sv({ base: 'bg-[url(data:image/png;base64,abc)] bg-red-500' });",
 	IMPORT +
-		"sv({ base: 'bg-[linear-gradient(to_right,red,blue)] bg-white' });",
-	IMPORT + "sv({ base: 'bg-[image:var(--hero)] bg-red-500' });",
+		"sv({ base: 'bg-[url(data:image/png;base64,abc)] bg-red-500', variants: {} });",
+	IMPORT +
+		"sv({ base: 'bg-[linear-gradient(to_right,red,blue)] bg-white', variants: {} });",
+	IMPORT + "sv({ base: 'bg-[image:var(--hero)] bg-red-500', variants: {} });",
 	// A dashed arbitrary value is one segment, so a hinted `text-[length:…]`
 	// stays in the short (font-size) bucket instead of misreading as a color.
-	IMPORT + "sv({ base: 'text-[length:var(--x-y)] text-red-500' });",
+	IMPORT +
+		"sv({ base: 'text-[length:var(--x-y)] text-red-500', variants: {} });",
 	// Different stacked-variant sets don't conflict in any order.
 	IMPORT_CN + "cn('sm:hover:w-4', 'sm:focus:w-8');",
 	// grow/shrink/basis are independent without a `flex-*` sizing shorthand.
-	IMPORT + "sv({ base: 'grow-0 shrink-0 basis-auto' });",
+	IMPORT + "sv({ base: 'grow-0 shrink-0 basis-auto', variants: {} });",
 	// The v3 `flex-*` spellings of the same three are just as independent.
-	IMPORT + "sv({ base: 'flex-grow-0 flex-shrink-0 flex-basis-auto' });",
+	IMPORT +
+		"sv({ base: 'flex-grow-0 flex-shrink-0 flex-basis-auto', variants: {} });",
 	// A v3 sizing longhand doesn't touch the direction or wrap properties.
-	IMPORT + "sv({ base: 'flex-grow-0 flex-row flex-wrap' });",
+	IMPORT + "sv({ base: 'flex-grow-0 flex-row flex-wrap', variants: {} });",
 	// Flex direction and wrap don't take part in the sizing overlap.
-	IMPORT + "sv({ base: 'flex-row flex-1 flex-wrap' });",
+	IMPORT + "sv({ base: 'flex-row flex-1 flex-wrap', variants: {} });",
 	// `truncate` is unrelated to a font size, and overflow/white-space don't
 	// reach each other without the `truncate` bridge.
-	IMPORT + "sv({ base: 'truncate text-sm' });",
-	IMPORT + "sv({ base: 'overflow-visible whitespace-normal' });",
+	IMPORT + "sv({ base: 'truncate text-sm', variants: {} });",
+	IMPORT +
+		"sv({ base: 'overflow-visible whitespace-normal', variants: {} });",
 	// The truncate overlap is scoped per variant prefix.
 	IMPORT_CN + "cn('hover:truncate', 'overflow-visible');",
 	// `line-through` shares the `line` first segment with `line-clamp-*` but
 	// is an unrelated single-word utility — no bridge between them.
-	IMPORT + "sv({ base: 'line-clamp-3 line-through' });",
+	IMPORT + "sv({ base: 'line-clamp-3 line-through', variants: {} });",
 	// Container queries are unrelated to other utilities without their own
 	// bridge (`line-clamp` doesn't reach `@container`).
-	IMPORT + "sv({ base: '@container flex' });",
+	IMPORT + "sv({ base: '@container flex', variants: {} });",
 	// The container overlap is scoped per variant prefix too.
 	IMPORT_CN + "cn('@container', 'hover:@container-normal');",
 	// Font-variant-numeric styles from different (non-`normal`) categories
 	// compose — only `normal-nums` conflicts with every other value.
-	IMPORT + "sv({ base: 'lining-nums tabular-nums diagonal-fractions' });",
+	IMPORT +
+		"sv({ base: 'lining-nums tabular-nums diagonal-fractions', variants: {} });",
 	// `normal-nums` keeps a conflict key of its own rather than joining a
 	// `normal-*` dash family, so it stays clear of the unrelated `normal-case`.
-	IMPORT + "sv({ base: 'normal-nums normal-case' });",
+	IMPORT + "sv({ base: 'normal-nums normal-case', variants: {} });",
 	// Two display keywords from different dash families are still opt-in only,
 	// even though both now take part in the `line-clamp` overlap.
-	IMPORT + "sv({ base: 'table-cell inline-block' });",
+	IMPORT + "sv({ base: 'table-cell inline-block', variants: {} });",
 	// Axis utilities on independent axes don't conflict.
-	IMPORT + "sv({ base: 'gap-x-4 gap-y-2' });",
+	IMPORT + "sv({ base: 'gap-x-4 gap-y-2', variants: {} });",
 	// Grid columns vs rows.
-	IMPORT + "sv({ base: 'grid-cols-3 grid-rows-2' });",
+	IMPORT + "sv({ base: 'grid-cols-3 grid-rows-2', variants: {} });",
 	// Flex direction vs wrap.
-	IMPORT + "sv({ base: 'flex-col flex-wrap' });",
+	IMPORT + "sv({ base: 'flex-col flex-wrap', variants: {} });",
 	// Font family vs weight.
-	IMPORT + "sv({ base: 'font-sans font-bold' });",
+	IMPORT + "sv({ base: 'font-sans font-bold', variants: {} });",
 	// With grouping on, a grouped utility still doesn't conflict with an
 	// unrelated namespaced utility.
 	{
@@ -1012,50 +1042,54 @@ export const NO_CONFLICTING_NS_VALID = [
 	// Zero-arg call.
 	IMPORT + 'sv();',
 	// A drop-shadow size and a drop-shadow color are distinct sub-properties.
-	IMPORT + "sv({ base: 'drop-shadow-sm drop-shadow-red-500' });",
+	IMPORT +
+		"sv({ base: 'drop-shadow-sm drop-shadow-red-500', variants: {} });",
 	// The bare drop-shadow preset is itself a size, distinct from the color.
-	IMPORT + "sv({ base: 'drop-shadow drop-shadow-red-500' });",
+	IMPORT + "sv({ base: 'drop-shadow drop-shadow-red-500', variants: {} });",
 	// A transform rendering hint and transform-style are distinct properties.
-	IMPORT + "sv({ base: 'transform-gpu transform-3d' });",
-	IMPORT + "sv({ base: 'transform-none transform-flat' });",
+	IMPORT + "sv({ base: 'transform-gpu transform-3d', variants: {} });",
+	IMPORT + "sv({ base: 'transform-none transform-flat', variants: {} });",
 	// scale-3d enables 3D scaling and is independent of the scale factor.
-	IMPORT + "sv({ base: 'scale-150 scale-3d' });",
-	IMPORT + "sv({ base: 'scale-x-50 scale-3d' });",
+	IMPORT + "sv({ base: 'scale-150 scale-3d', variants: {} });",
+	IMPORT + "sv({ base: 'scale-x-50 scale-3d', variants: {} });",
 	// color-scheme is unrelated to background color.
-	IMPORT + "sv({ base: 'scheme-dark bg-red-500' });",
+	IMPORT + "sv({ base: 'scheme-dark bg-red-500', variants: {} });",
 	// A bare perspective value and perspective-origin are distinct properties.
-	IMPORT + "sv({ base: 'perspective-near perspective-origin-center' });",
+	IMPORT +
+		"sv({ base: 'perspective-near perspective-origin-center', variants: {} });",
 	// font-features is distinct from font-stretch and font-family.
 	IMPORT +
-		"sv({ base: 'font-features-[10px] font-stretch-condensed font-sans' });",
+		"sv({ base: 'font-features-[10px] font-stretch-condensed font-sans', variants: {} });",
 	// mix-blend-mode is unrelated to an explicit background color.
-	IMPORT + "sv({ base: 'mix-blend-multiply bg-red-500' });",
+	IMPORT + "sv({ base: 'mix-blend-multiply bg-red-500', variants: {} });",
 	// break-before/after/inside are distinct from the word-break values.
-	IMPORT + "sv({ base: 'break-words break-before-column' });",
+	IMPORT + "sv({ base: 'break-words break-before-column', variants: {} });",
 	// A stroke color and stroke width are distinct sub-properties.
-	IMPORT + "sv({ base: 'stroke-2 stroke-red-500' });",
+	IMPORT + "sv({ base: 'stroke-2 stroke-red-500', variants: {} });",
 	// stroke-none is a color value (not a width), so it doesn't falsely
 	// conflict with an actual stroke width.
-	IMPORT + "sv({ base: 'stroke-none stroke-2' });",
+	IMPORT + "sv({ base: 'stroke-none stroke-2', variants: {} });",
 	// font-stretch is a distinct sub-property from both weight and family.
-	IMPORT + "sv({ base: 'font-stretch-condensed font-bold font-sans' });",
+	IMPORT +
+		"sv({ base: 'font-stretch-condensed font-bold font-sans', variants: {} });",
 	// align-items and align-self are distinct properties.
-	IMPORT + "sv({ base: 'items-center self-end' });",
+	IMPORT + "sv({ base: 'items-center self-end', variants: {} });",
 	// An inline-size value doesn't conflict with the unrelated inline-flex
 	// display keyword, even though both share the `inline` first segment.
-	IMPORT + "sv({ base: 'inline-flex inline-4' });",
-	IMPORT + "sv({ base: 'inline-block inline-full' });",
+	IMPORT + "sv({ base: 'inline-flex inline-4', variants: {} });",
+	IMPORT + "sv({ base: 'inline-block inline-full', variants: {} });",
 	// min-inline-size and min-block-size are distinct properties.
-	IMPORT + "sv({ base: 'min-inline-full min-block-full' });",
+	IMPORT + "sv({ base: 'min-inline-full min-block-full', variants: {} });",
 	// transition-property and transition-behavior are distinct properties.
-	IMPORT + "sv({ base: 'transition-colors transition-discrete' });",
-	IMPORT + "sv({ base: 'transition transition-normal' });",
+	IMPORT +
+		"sv({ base: 'transition-colors transition-discrete', variants: {} });",
+	IMPORT + "sv({ base: 'transition transition-normal', variants: {} });",
 	// overflow-wrap and word-break are distinct properties.
-	IMPORT + "sv({ base: 'wrap-anywhere break-words' });",
+	IMPORT + "sv({ base: 'wrap-anywhere break-words', variants: {} });",
 	// col-start/col-end are distinct from the col-span/auto/bare-integer group.
-	IMPORT + "sv({ base: 'col-start-2 col-span-3' });",
-	IMPORT + "sv({ base: 'col-start-2 col-end-4' });",
-	IMPORT + "sv({ base: 'row-start-2 row-span-3' });",
+	IMPORT + "sv({ base: 'col-start-2 col-span-3', variants: {} });",
+	IMPORT + "sv({ base: 'col-start-2 col-end-4', variants: {} });",
+	IMPORT + "sv({ base: 'row-start-2 row-span-3', variants: {} });",
 	// A whole-module namespace import reaches the same exports, so an untracked
 	// member of it is left alone.
 	IMPORT_NS + "SV.other({ base: 'w-1 w-2' });",
@@ -1064,38 +1098,42 @@ export const NO_CONFLICTING_NS_VALID = [
 	// Nor can a nested member path be a namespace binding.
 	IMPORT_NS + "a.b.sv({ base: 'w-1 w-2' });",
 	// A private-name member is not an export either.
-	IMPORT_NS + "class A { #sv; m() { return SV.#sv({ base: 'w-1 w-2' }); } }",
+	IMPORT_NS +
+		"class A { #sv; m() { return SV.#sv({ base: 'w-1 w-2', variants: {} }); } }",
 	// A local binding shadowing the namespace isn't the import.
-	IMPORT_NS + "function f(SV) { return SV.sv({ base: 'w-1 w-2' }); }",
+	IMPORT_NS +
+		"function f(SV) { return SV.sv({ base: 'w-1 w-2', variants: {} }); }",
 	// A namespace of some other module is unrelated.
 	"import * as X from 'other';\nX.sv({ base: 'w-1 w-2' });",
 	{
 		// A Tailwind v3 `prefix` is stripped, so two different properties stop
 		// looking like one `tw` namespace with a matching dash count.
-		code: IMPORT + "sv({ base: 'tw-w-4 tw-h-4 tw-p-2 tw-text-sm' });",
+		code:
+			IMPORT +
+			"sv({ base: 'tw-w-4 tw-h-4 tw-p-2 tw-text-sm', variants: {} });",
 		options: [{ prefix: 'tw-' }]
 	},
 	{
 		// With a prefix configured, an unprefixed token is one
 		// of the project's own class names, not a utility.
-		code: IMPORT + "sv({ base: 'card-body card-header' });",
+		code: IMPORT + "sv({ base: 'card-body card-header', variants: {} });",
 		options: [{ prefix: 'tw-' }]
 	},
 	// A gradient stop position composes with a custom single-word color.
-	IMPORT + "sv({ base: 'from-50% from-brand' });",
-	IMPORT + "sv({ base: 'mask-t-from-50% mask-t-from-brand' });",
+	IMPORT + "sv({ base: 'from-50% from-brand', variants: {} });",
+	IMPORT + "sv({ base: 'mask-t-from-50% mask-t-from-brand', variants: {} });",
 	// An untyped `[var(…)]` reads like the `(--x)` shorthand: a color on
 	// `text`/`border`, so it composes with a size or width.
-	IMPORT + "sv({ base: 'text-sm text-[var(--c)]' });",
-	IMPORT + "sv({ base: 'border-2 border-[var(--c)]' });",
+	IMPORT + "sv({ base: 'text-sm text-[var(--c)]', variants: {} });",
+	IMPORT + "sv({ base: 'border-2 border-[var(--c)]', variants: {} });",
 	// Arbitrary properties only conflict when they set the same property under
 	// the same variants.
-	IMPORT + "sv({ base: '[color:red] [padding:1rem]' });",
-	IMPORT + "sv({ base: 'hover:[color:red] [color:blue]' });",
-	IMPORT + "sv({ base: '[--a:1] [--b:2]' });",
+	IMPORT + "sv({ base: '[color:red] [padding:1rem]', variants: {} });",
+	IMPORT + "sv({ base: 'hover:[color:red] [color:blue]', variants: {} });",
+	IMPORT + "sv({ base: '[--a:1] [--b:2]', variants: {} });",
 	// A bracketed token naming no property isn't an arbitrary property.
-	IMPORT + "sv({ base: '[a] [b]' });",
-	IMPORT + "sv({ base: '[0:a] [0:b]' });"
+	IMPORT + "sv({ base: '[a] [b]', variants: {} });",
+	IMPORT + "sv({ base: '[0:a] [0:b]', variants: {} });"
 ];
 
 export const NO_CONFLICTING_NS_INVALID = [
@@ -1184,32 +1222,32 @@ export const NO_CONFLICTING_NS_INVALID = [
 	},
 	{
 		// Basic conflict in base.
-		code: IMPORT + "sv({ base: 'w-100 w-200' });",
+		code: IMPORT + "sv({ base: 'w-100 w-200', variants: {} });",
 		errors: repeat(conflict('w-100, w-200'), 2)
 	},
 	{
 		// Important suffix is ignored when computing the conflict key.
-		code: IMPORT + "sv({ base: 'w-100 w-200!' });",
+		code: IMPORT + "sv({ base: 'w-100 w-200!', variants: {} });",
 		errors: 2
 	},
 	{
 		// Leading `!` important marker (Tailwind v3) is ignored too.
-		code: IMPORT + "sv({ base: '!w-100 w-200' });",
+		code: IMPORT + "sv({ base: '!w-100 w-200', variants: {} });",
 		errors: 2
 	},
 	{
 		// Leading `!` on a variant-prefixed, negative utility.
-		code: IMPORT + "sv({ base: 'hover:!-mt-2 hover:mt-4' });",
+		code: IMPORT + "sv({ base: 'hover:!-mt-2 hover:mt-4', variants: {} });",
 		errors: 2
 	},
 	{
 		// Same variant prefix — still a conflict.
-		code: IMPORT + "sv({ base: 'hover:w-100 hover:w-200' });",
+		code: IMPORT + "sv({ base: 'hover:w-100 hover:w-200', variants: {} });",
 		errors: 2
 	},
 	{
 		// Multi-segment namespace conflict (bg-red-500 vs bg-blue-500).
-		code: IMPORT + "sv({ base: 'bg-red-500 bg-blue-500' });",
+		code: IMPORT + "sv({ base: 'bg-red-500 bg-blue-500', variants: {} });",
 		errors: 2
 	},
 	{
@@ -1226,7 +1264,7 @@ export const NO_CONFLICTING_NS_INVALID = [
 	{
 		// A single-word color keyword and a
 		// shaded color both classify as color.
-		code: IMPORT + "sv({ base: 'bg-white bg-red-500' });",
+		code: IMPORT + "sv({ base: 'bg-white bg-red-500', variants: {} });",
 		errors: repeat(conflict('bg-red-500, bg-white'), 2)
 	},
 	{
@@ -1799,7 +1837,8 @@ export const NO_CONFLICTING_NS_INVALID = [
 		)
 	},
 	{
-		code: IMPORT + "sv({ base: 'md:hover:w-4 hover:md:w-8' });",
+		code:
+			IMPORT + "sv({ base: 'md:hover:w-4 hover:md:w-8', variants: {} });",
 		errors: repeat(conflict('hover:md:w-8, md:hover:w-4'), 2)
 	},
 	{
@@ -1986,7 +2025,7 @@ export const NO_CONFLICTING_NS_INVALID = [
 		code:
 			IMPORT +
 			`sv({
-				compoundVariants: [
+				variants: {}, compoundVariants: [
 					{ size: 'sm', class: 'p-2' },
 					{ tone: 'red', class: 'p-4' }
 				]
@@ -1998,7 +2037,7 @@ export const NO_CONFLICTING_NS_INVALID = [
 		code:
 			IMPORT +
 			`sv({
-				compoundVariants: [
+				variants: {}, compoundVariants: [
 					{ size: dyn, class: 'p-2' },
 					{ size: 'lg', class: 'p-4' }
 				]
@@ -2011,7 +2050,7 @@ export const NO_CONFLICTING_NS_INVALID = [
 		code:
 			IMPORT +
 			`sv({
-				compoundVariants: [
+				variants: {}, compoundVariants: [
 					{ size: [dyn], class: 'p-2' },
 					{ size: 'lg', class: 'p-4' }
 				]
@@ -2267,7 +2306,7 @@ export const NO_CONFLICTING_NS_INVALID = [
 	},
 	{
 		// Opt-in grouping is respected inside an sv() config too, per slot.
-		code: IMPORT + "sv({ base: 'absolute fixed' });",
+		code: IMPORT + "sv({ base: 'absolute fixed', variants: {} });",
 		options: [{ exclusiveGroups: true }],
 		errors: repeat(conflict('absolute, fixed'), 2)
 	},
@@ -2279,7 +2318,7 @@ export const NO_CONFLICTING_NS_INVALID = [
 	},
 	{
 		// Negative utility shares namespace with positive sibling.
-		code: IMPORT + "sv({ base: '-mt-2 mt-4' });",
+		code: IMPORT + "sv({ base: '-mt-2 mt-4', variants: {} });",
 		errors: 2
 	},
 	{
@@ -2330,7 +2369,9 @@ export const NO_CONFLICTING_NS_INVALID = [
 	{
 		// Logical-AND string conflict in an sv() cn-style leading argument —
 		// reported against the base slot since the call carries a config.
-		code: IMPORT + "sv('w-100', isLarge && 'w-200', { base: 'flex' });",
+		code:
+			IMPORT +
+			"sv('w-100', isLarge && 'w-200', { base: 'flex', variants: {} });",
 		errors: repeat(conflict('w-100, w-200'), 2)
 	},
 	{
@@ -2549,7 +2590,7 @@ export const NO_CONFLICTING_NS_INVALID = [
 	},
 	{
 		// A namespace member call is analyzed like the named import.
-		code: IMPORT_NS + "SV.sv({ base: 'w-1 w-2' });",
+		code: IMPORT_NS + "SV.sv({ base: 'w-1 w-2', variants: {} });",
 		errors: repeat(conflict('w-1, w-2'), 2)
 	},
 	{
@@ -2558,7 +2599,7 @@ export const NO_CONFLICTING_NS_INVALID = [
 	},
 	{
 		// Optionally-chained too.
-		code: IMPORT_NS + "SV?.sv({ base: 'w-1 w-2' });",
+		code: IMPORT_NS + "SV?.sv({ base: 'w-1 w-2', variants: {} });",
 		errors: repeat(conflict('w-1, w-2'), 2)
 	},
 	{
@@ -2571,36 +2612,36 @@ export const NO_CONFLICTING_NS_INVALID = [
 		code:
 			IMPORT_NS +
 			'const custom = SV.createSV({ cacheSize: 8 });\n' +
-			"custom({ base: 'w-1 w-2' });",
+			"custom({ base: 'w-1 w-2', variants: {} });",
 		errors: repeat(conflict('w-1, w-2'), 2)
 	},
 	{
 		// Two prefixed values of one property still conflict.
-		code: IMPORT + "sv({ base: 'tw-w-4 tw-w-8' });",
+		code: IMPORT + "sv({ base: 'tw-w-4 tw-w-8', variants: {} });",
 		options: [{ prefix: 'tw-' }],
 		errors: repeat(conflict('tw-w-4, tw-w-8'), 2)
 	},
 	{
 		// v3 puts the negative marker before the prefix.
-		code: IMPORT + "sv({ base: '-tw-mt-2 tw-mt-4' });",
+		code: IMPORT + "sv({ base: '-tw-mt-2 tw-mt-4', variants: {} });",
 		options: [{ prefix: 'tw-' }],
 		errors: repeat(conflict('-tw-mt-2, tw-mt-4'), 2)
 	},
 	{
 		// A prefix written without its trailing `-` means the same thing.
-		code: IMPORT + "sv({ base: 'tw-w-4 tw-w-8' });",
+		code: IMPORT + "sv({ base: 'tw-w-4 tw-w-8', variants: {} });",
 		options: [{ prefix: 'tw' }],
 		errors: repeat(conflict('tw-w-4, tw-w-8'), 2)
 	},
 	{
 		// The shorthand/longhand overlaps read the stripped namespace too.
-		code: IMPORT + "sv({ base: 'tw-size-4 tw-w-8' });",
+		code: IMPORT + "sv({ base: 'tw-size-4 tw-w-8', variants: {} });",
 		options: [{ prefix: 'tw-' }],
 		errors: repeat(conflict('tw-size-4, tw-w-8'), 2)
 	},
 	{
 		// So does the exclusive-group lookup, which lists unprefixed utilities.
-		code: IMPORT + "sv({ base: 'tw-flex tw-block' });",
+		code: IMPORT + "sv({ base: 'tw-flex tw-block', variants: {} });",
 		options: [{ prefix: 'tw-', exclusiveGroups: true }],
 		errors: repeat(conflict('tw-block, tw-flex'), 2)
 	},

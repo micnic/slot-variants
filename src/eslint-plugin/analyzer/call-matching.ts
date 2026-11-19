@@ -5,8 +5,8 @@ import type {
 	ObjectExpression,
 	SpreadElement
 } from 'estree';
-import { CONFIG_KEYS } from './config-keys.ts';
-import { getStrictPropertiesWithKeys } from './properties.ts';
+import { getProperties } from './properties.ts';
+import { isUndefinedIdentifier } from './static-predicates.ts';
 
 export type CallMatch = {
 	config: ObjectExpression | null;
@@ -20,6 +20,9 @@ export type CallMatch = {
 // Reads a node through same-file `const` bindings, from whichever scope the
 // caller's context assigns it.
 type ResolveNode = (node: Node) => Node;
+
+/** Which of the keys that make an object `sv()`'s config it defines. */
+export type ConfigMarkers = { slots: boolean; variants: boolean };
 
 /** Whether `node` is the last argument `call` is passed. */
 export const isLastArgument = (call: CallExpression, node: Node): boolean =>
@@ -45,7 +48,7 @@ export const matchSvCall = (
 	if (last) {
 		const resolved = resolve(last);
 
-		if (isConfigLike(resolved)) {
+		if (isConfigLike(resolved, resolve)) {
 			return {
 				config: resolved,
 				args: args.slice(0, -1),
@@ -62,23 +65,40 @@ export const matchSvCall = (
 		args,
 		isFactoryConfig: false,
 		keepsLastArg:
-			beforeLast !== undefined && isConfigLike(resolve(beforeLast))
+			beforeLast !== undefined &&
+			isConfigLike(resolve(beforeLast), resolve)
 	};
 };
 
-// An object holding only config keys.
-const isConfigLike = (node: Node): node is ObjectExpression => {
+/**
+ * Whether an object defines `slots` and `variants`, the keys that make it
+ * `sv()`'s config: a property left `undefined` defines nothing.
+ */
+export const getConfigMarkers = (
+	node: ObjectExpression,
+	resolve: ResolveNode
+): ConfigMarkers => {
+	const properties = getProperties(node);
+	const defines = (key: string) => {
+		const value = properties.get(key);
+
+		return value !== undefined && !isUndefinedIdentifier(resolve(value));
+	};
+
+	return { slots: defines('slots'), variants: defines('variants') };
+};
+
+// An object defining `slots` or `variants`, as `sv()` tells its config apart
+// from a class record.
+const isConfigLike = (
+	node: Node,
+	resolve: ResolveNode
+): node is ObjectExpression => {
 	if (node.type !== 'ObjectExpression') {
 		return false;
 	}
 
-	// An empty object is a config too, as `sv()` reads it at runtime: a
-	// variant function with nothing configured.
-	if (node.properties.length === 0) {
-		return true;
-	}
+	const { slots, variants } = getConfigMarkers(node, resolve);
 
-	const isConfigKey = (key: string) => CONFIG_KEYS.has(key);
-
-	return getStrictPropertiesWithKeys(node, isConfigKey) !== null;
+	return slots || variants;
 };

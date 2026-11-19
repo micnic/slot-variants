@@ -13,7 +13,7 @@ export const SV_CONFIG_STYLE_ORDER_VALID = [
 	},
 	{
 		// Single property stays as-is.
-		code: IMPORT + "sv({ base: 'flex' });"
+		code: IMPORT + "sv({ base: 'flex', variants: {} });"
 	},
 	{
 		// Three properties in order.
@@ -25,7 +25,7 @@ export const SV_CONFIG_STYLE_ORDER_VALID = [
 		// `extend` comes first.
 		code:
 			IMPORT +
-			"const parent = sv({ base: 'btn' });\nsv({ extend: parent, base: 'flex', variants: { size: { sm: 'text-sm' } } });"
+			"const parent = sv({ base: 'btn', variants: {} });\nsv({ extend: parent, base: 'flex', variants: { size: { sm: 'text-sm' } } });"
 	}
 ];
 
@@ -34,7 +34,7 @@ export const SV_CONFIG_STYLE_ORDER_INVALID = [
 		// `extend` placed after another key moves to the front.
 		code:
 			IMPORT +
-			"const parent = sv({ base: 'btn' });\nsv({ base: 'flex', extend: parent });",
+			"const parent = sv({ base: 'btn', variants: {} });\nsv({ base: 'flex', extend: parent, variants: {} });",
 		errors: [
 			{
 				messageId: 'wrongOrder',
@@ -43,7 +43,7 @@ export const SV_CONFIG_STYLE_ORDER_INVALID = [
 		],
 		output:
 			IMPORT +
-			"const parent = sv({ base: 'btn' });\nsv({ extend: parent, base: 'flex' });"
+			"const parent = sv({ base: 'btn', variants: {} });\nsv({ extend: parent, base: 'flex', variants: {} });"
 	},
 	{
 		// A hoisted config shared by several calls is reported once.

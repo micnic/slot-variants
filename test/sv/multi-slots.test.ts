@@ -312,14 +312,18 @@ t.test('multiSlots call without props reuses its cached result', (t) => {
 
 	t.not(uncached(), uncached(), 'without a cache every call builds anew');
 
-	const box = sv('box', { multiSlots: true });
+	const box = sv('box', { multiSlots: true, variants: {} });
 
 	t.equal(box(), box(), 'a base-only cache hit reuses the result');
 	t.equal(box().base(), 'box', 'base reads the class string');
 	t.equal(box().base({ class: 'mt-2' }), 'box mt-2', 'base accepts props');
 	t.equal(box({}).base(), 'box', 'a call with props reads the class string');
 
-	const uncachedBox = sv('box', { multiSlots: true, cacheSize: 0 });
+	const uncachedBox = sv('box', {
+		multiSlots: true,
+		variants: {},
+		cacheSize: 0
+	});
 
 	t.not(uncachedBox(), uncachedBox(), 'a base-only call without a cache');
 	t.equal(uncachedBox().base(), 'box', 'still reads the class string');
@@ -433,14 +437,14 @@ t.test('multiSlots slot function merges outer string class', (t) => {
 });
 
 t.test('multiSlots without a slots config makes base a function', (t) => {
-	const all = sv('btn', { multiSlots: true });
-	const listed = sv('btn', { multiSlots: ['base'] });
+	const all = sv('btn', { multiSlots: true, variants: {} });
+	const listed = sv('btn', { multiSlots: ['base'], variants: {} });
 
 	t.equal(all().base({ class: 'mt-2' }), 'btn mt-2', 'multiSlots: true');
 	t.equal(listed().base(), 'btn', "multiSlots: ['base']");
 
-	const none: string = sv('btn', { multiSlots: [] })();
-	const off: string = sv('btn', { multiSlots: false })();
+	const none: string = sv('btn', { multiSlots: [], variants: {} })();
+	const off: string = sv('btn', { multiSlots: false, variants: {} })();
 
 	t.equal(none, 'btn', 'an empty list keeps the class string');
 	t.equal(off, 'btn', 'multiSlots: false keeps the class string');

@@ -70,54 +70,48 @@ t.test('variadic args like cn()', (t) => {
 	t.end();
 });
 
-t.test('config keys holding non-config values stay class records', (t) => {
-	const base: ClassValue = { base: true };
+t.test('a record without slots or variants is a class record', (t) => {
+	const empty: ClassValue = {};
 
-	t.equal(sv('btn', base), 'btn base', 'boolean "base" is a class name');
+	t.equal(sv('btn', empty), 'btn', 'an empty record');
 
-	const slots: ClassValue = { slots: true, groups: false };
+	const base: ClassValue = { base: 'p-4', extend: true };
 
-	t.equal(sv(slots), 'slots', 'boolean "slots" and "groups" are class names');
+	t.equal(sv('btn', base), 'btn base extend', 'other config key names');
 
-	const variants: ClassValue = { variants: true };
+	const unset: ClassValue = { slots: undefined, variants: undefined };
 
-	t.equal(sv(variants), 'variants', 'boolean "variants" is a class name');
+	t.equal(sv('btn', unset), 'btn', 'slots and variants left undefined');
 
-	const variantsArray: ClassValue = { variants: ['a'] };
+	t.end();
+});
 
-	t.equal(sv(variantsArray), 'variants', 'array "variants" is a class name');
+t.test('the types follow the config rule', (t) => {
+	const classes: string = sv({ base: 'p-4' });
+	const flags: Record<string, boolean> = {};
+	const fromFlags: string = sv('btn', flags);
+	const component = sv({ base: 'btn', variants: {} });
+	const rejected = () => [
+		// @ts-expect-error - a record naming variants is no class value
+		sv('btn', { variants: true }),
+		// @ts-expect-error - nor is one naming slots
+		sv({ slots: 'header' })
+	];
 
-	const compound: ClassValue = { compoundVariants: true };
+	t.equal(classes, 'base', 'a record of other config keys');
+	t.equal(fromFlags, 'btn', 'a record typed with an index signature');
+	t.equal(component(), 'btn', 'variants: {} makes a component');
+	t.equal(typeof rejected, 'function', 'checked by type only');
 
-	t.equal(
-		sv(compound),
-		'compoundVariants',
-		'boolean "compoundVariants" is a class name'
-	);
+	t.end();
+});
 
-	const multi: ClassValue = { multiSlots: 'header' };
+t.test('a record defining slots or variants is a config', (t) => {
+	const variants: ClassValue = { variants: {} };
+	const slots: ClassValue = { slots: {} };
 
-	t.equal(sv(multi), 'multiSlots', 'string "multiSlots" is a class name');
-
-	const cacheSize: ClassValue = { cacheSize: true };
-
-	t.equal(sv(cacheSize), 'cacheSize', 'boolean "cacheSize" is a class name');
-
-	const introspection: ClassValue = { introspection: 'yes' };
-
-	t.equal(
-		sv(introspection),
-		'introspection',
-		'string "introspection" is a class name'
-	);
-
-	const postProcess: ClassValue = { postProcess: true };
-
-	t.equal(
-		sv(postProcess),
-		'postProcess',
-		'boolean "postProcess" is a class name'
-	);
+	t.equal(typeof sv('btn', variants), 'function', 'variants');
+	t.equal(typeof sv('btn', slots), 'function', 'slots');
 
 	t.end();
 });
@@ -125,11 +119,11 @@ t.test('config keys holding non-config values stay class records', (t) => {
 t.test(
 	'config values of the right shape still build a variant function',
 	(t) => {
-		const stringBase = sv({ base: 'btn' });
+		const stringBase = sv({ base: 'btn', variants: {} });
 
 		t.equal(stringBase(), 'btn', 'string base');
 
-		const arrayBase = sv({ base: ['btn', 'px-2'] });
+		const arrayBase = sv({ base: ['btn', 'px-2'], variants: {} });
 
 		t.equal(arrayBase(), 'btn px-2', 'array base');
 
@@ -144,18 +138,23 @@ t.test(
 			'explicit undefined base'
 		);
 
-		const numberCacheSize = sv({ base: 'btn', cacheSize: 0 });
+		const numberCacheSize = sv({ base: 'btn', variants: {}, cacheSize: 0 });
 
 		t.equal(numberCacheSize(), 'btn', 'numeric cacheSize');
 
 		const functionPostProcess = sv({
 			base: 'btn',
+			variants: {},
 			postProcess: (className) => className.toUpperCase()
 		});
 
 		t.equal(functionPostProcess(), 'BTN', 'function postProcess');
 
-		const arrayCompound = sv({ base: 'btn', compoundVariants: [] });
+		const arrayCompound = sv({
+			base: 'btn',
+			variants: {},
+			compoundVariants: []
+		});
 
 		t.equal(arrayCompound(), 'btn', 'array compoundVariants');
 

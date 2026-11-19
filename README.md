@@ -87,6 +87,8 @@ cn('foo', null, undefined, false, 'bar');     // 'foo bar'
 
 ### Class Name Merging (No Config)
 
+The last argument is a config when it defines `slots` or `variants`; anything else is a class value. A component with neither declares `variants: {}`.
+
 When called without a config object, `sv()` works like `cn()` — it accepts any number of class values and returns a merged class string:
 
 ```typescript
@@ -732,7 +734,7 @@ The child's types follow: it accepts the parent's variants, slots and presets ev
 Pass a list to extend several components; they are merged left to right, then the child on top:
 
 ```typescript
-const card = sv({ extend: [surface, interactive], base: 'p-4' });
+const card = sv({ extend: [surface, interactive], base: 'p-4', variants: {} });
 ```
 
 ### Class Override at Runtime
@@ -1319,9 +1321,9 @@ Flags class values that can't be known at lint time (variables, function calls, 
 ```typescript
 const extra = getDynamicClass();
 
-sv({ base: extra });              // dynamic base
-sv({ variants: { [key]: 'x' } }); // computed variant key
-cn(extra, 'flex');                // identifier argument
+sv({ base: extra, variants: {} }); // dynamic base
+sv({ variants: { [key]: 'x' } });  // computed variant key
+cn(extra, 'flex');                 // identifier argument
 ```
 
 Replace dynamic class strings with static ones, or move them to the runtime `class` / `className` prop, which this rule leaves alone. The output of another `sv()`/`cn()` call counts as static:
@@ -1337,9 +1339,9 @@ cn(classes.base, 'p-4'); // allowed — `classes.base` resolves to card()'s base
 Flags empty class values (empty strings, arrays, objects), zero-argument `sv()` / `cn()` calls, and empty compound matcher arrays. Partially auto-fixable.
 
 ```typescript
-sv({ base: '' });                        // empty base
-sv({ variants: { size: { sm: [] } } });  // empty variant value
-sv();                                    // zero-arg call — always produces ''
+sv({ base: '', variants: {} });         // empty base
+sv({ variants: { size: { sm: [] } } }); // empty variant value
+sv();                                   // zero-arg call — always produces ''
 ```
 
 An empty string is allowed as a slot or variant value, since declaring a slot or value with no classes of its own is meaningful:
@@ -1354,8 +1356,8 @@ sv({ variants: { size: { sm: '', lg: 'text-lg' } } });  // allowed
 Flags class strings whose whitespace isn't canonical (leading/trailing space, repeated spaces, tabs, newlines). Auto-fixable.
 
 ```typescript
-sv({ base: ' flex items-center' }); // leading space
-sv({ base: 'flex  items-center' }); // double space
+sv({ base: ' flex items-center', variants: {} }); // leading space
+sv({ base: 'flex  items-center', variants: {} }); // double space
 ```
 
 Run `eslint --fix` to rewrite these to the canonical single-space form.
@@ -1401,7 +1403,7 @@ Components imported from another file are followed to the file that declares the
 
 ```tsx
 // ui/button.tsx
-const button = sv({ base: 'p-2 rounded' });
+const button = sv({ base: 'p-2 rounded', variants: {} });
 
 export function Button({ className }) {
   return <button className={button({ class: className })} />;

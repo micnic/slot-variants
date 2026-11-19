@@ -62,7 +62,7 @@ t.test('no-restyle reparses a module for a different parser', (t) => {
 	writeFixture(
 		'ui/Shared.vue',
 		`<script setup>
-		${IMPORT}const shared = sv({ base: 'p-2' });
+		${IMPORT}const shared = sv({ base: 'p-2', variants: {} });
 		const props = defineProps({ class: String });
 		</script>
 		<template><b :class="shared({ class: props.class })">x</b></template>`
@@ -108,7 +108,7 @@ t.test('no-restyle reparses a module for other parser options', (t) => {
 	writeFixture(
 		'ui/Typed.vue',
 		`<script setup lang="ts">
-		${IMPORT}const typed = sv({ base: 'p-2' });
+		${IMPORT}const typed = sv({ base: 'p-2', variants: {} });
 		const props: { class?: string } = defineProps({ class: String });
 		</script>
 		<template><b :class="typed({ class: props.class })">x</b></template>`
@@ -166,7 +166,7 @@ t.test('no-restyle refreshes a stale module without evicting', async (t) => {
 	const paths = Array.from({ length: moduleCount }, (_value, index) =>
 		writeFixture(
 			`evict/mod${index}.tsx`,
-			`${IMPORT}const mod = sv({ base: 'p-2' });
+			`${IMPORT}const mod = sv({ base: 'p-2', variants: {} });
 
 			export function Mod${index}({ className }) {
 				return <i className={mod({ class: className })} />;
@@ -233,7 +233,7 @@ t.test('no-restyle reads a module outside the typed project', (t) => {
 	);
 	writeFixture(
 		'typed/ui/button.tsx',
-		`${IMPORT}const button = sv({ base: 'p-2' });
+		`${IMPORT}const button = sv({ base: 'p-2', variants: {} });
 
 		export function Button({ className }) {
 			return <button className={button({ class: className })} />;
@@ -293,7 +293,7 @@ t.test('no-restyle reuses the scan of a module linted earlier', async (t) => {
 		}
 	});
 	const component = (name: string) =>
-		`${IMPORT}const styles = sv({ base: 'p-2' });
+		`${IMPORT}const styles = sv({ base: 'p-2', variants: {} });
 
 		export function ${name}({ className }) {
 			return <i className={styles({ class: className })} />;
@@ -308,7 +308,7 @@ t.test('no-restyle reuses the scan of a module linted earlier', async (t) => {
 	const single = writeFixture(
 		'seed/Single.vue',
 		`<script setup>
-		${IMPORT}const single = sv({ base: 'p-2' });
+		${IMPORT}const single = sv({ base: 'p-2', variants: {} });
 		const props = defineProps({ class: String });
 		</script>
 		<template><b :class="single({ class: props.class })">x</b></template>`
@@ -404,7 +404,7 @@ t.test('no-restyle reuses the scan of a module linted earlier', async (t) => {
 // A callee in a type-only wrapper is read through it, like any other value.
 t.test('no-restyle reads callees through type-only wrappers', (t) => {
 	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
-	const button = "const b = sv({ base: 'p-2' });\n";
+	const button = "const b = sv({ base: 'p-2', variants: {} });\n";
 	const list =
 		"const list = sv({ slots: { item: 'px-2' }, multiSlots: ['item'] });\nconst classes = list();\n";
 

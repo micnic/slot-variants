@@ -81,7 +81,7 @@ writeFixture(
 // function nor a variable, and an export name that isn't an identifier.
 writeFixture(
 	'ui/anon.tsx',
-	`${IMPORT}const anon = sv({ base: 'm-1' });
+	`${IMPORT}const anon = sv({ base: 'm-1', variants: {} });
 
 	export class Ignored {}
 
@@ -93,7 +93,7 @@ writeFixture(
 
 writeFixture(
 	'ui/arrow.tsx',
-	`${IMPORT}const arrow = sv({ base: 'm-2' });
+	`${IMPORT}const arrow = sv({ base: 'm-2', variants: {} });
 
 	export default ({ className }) => <i className={arrow({ class: className })} />;
 	`
@@ -101,7 +101,7 @@ writeFixture(
 
 writeFixture(
 	'ui/named-default.tsx',
-	`${IMPORT}const named = sv({ base: 'm-3' });
+	`${IMPORT}const named = sv({ base: 'm-3', variants: {} });
 
 	function Named({ className }) {
 		return <i className={named({ class: className })} />;
@@ -138,7 +138,7 @@ writeFixture('ui/broken.tsx', 'export function Broken( { unclosed\n');
 // Components wrapped in `forwardRef()` / `memo()`, exported both ways.
 writeFixture(
 	'ui/wrapped.tsx',
-	`${IMPORT}const wrapped = sv({ base: 'm-5' });
+	`${IMPORT}const wrapped = sv({ base: 'm-5', variants: {} });
 
 	export const Memoized = memo(function Memoized({ className }) {
 		return <i className={wrapped({ class: className })} />;
@@ -152,7 +152,7 @@ writeFixture(
 writeFixture(
 	'ui/wrapped-by-name.tsx',
 	`${IMPORT}import { Button } from './button.tsx';
-	const named = sv({ base: 'm-7' });
+	const named = sv({ base: 'm-7', variants: {} });
 
 	function Impl({ className }) {
 		return <i className={named({ class: className })} />;
@@ -183,7 +183,7 @@ writeFixture(
 writeFixture(
 	'ui/Button.svelte',
 	`<script>
-	${IMPORT}const button = sv({ base: 'p-2 rounded' });
+	${IMPORT}const button = sv({ base: 'p-2 rounded', variants: {} });
 	let { class: className = '', ...rest } = $props();
 	</script>
 	<button class={button({ class: className })} {...rest}>x</button>`
@@ -194,7 +194,7 @@ writeFixture(
 	'ui/Chip.svelte',
 	`<span class={cn(chip(), props.class)}>x</span>
 	<script>
-	${IMPORT_SV_CN}const chip = sv({ base: 'px-1' });
+	${IMPORT_SV_CN}const chip = sv({ base: 'px-1', variants: {} });
 	const props = $props();
 	</script>`
 );
@@ -207,7 +207,7 @@ writeFixture(
 // TypeScript syntax, which the default parser can't read.
 writeFixture(
 	'ui/typed.ts',
-	`${IMPORT}const typed = sv({ base: 'p-2' });
+	`${IMPORT}const typed = sv({ base: 'p-2', variants: {} });
 
 	export const Typed = ({ className }: { className: string }) =>
 		typed({ class: className });
@@ -238,7 +238,7 @@ writeFixture(
 writeFixture(
 	'ui/Chip.vue',
 	`<script setup>
-	${IMPORT_SV_CN}const chip = sv({ base: 'px-1' });
+	${IMPORT_SV_CN}const chip = sv({ base: 'px-1', variants: {} });
 	const { class: cls } = withDefaults(defineProps(), {});
 	</script>
 	<template><span :class="cn(chip(), cls)">x</span></template>`
@@ -247,7 +247,7 @@ writeFixture(
 writeFixture(
 	'ui/Tag.vue',
 	`<script setup>
-	${IMPORT}const tag = sv({ base: 'm-1' });
+	${IMPORT}const tag = sv({ base: 'm-1', variants: {} });
 	const attrs = useAttrs();
 	</script>
 	<template><span :class="[tag(), attrs.class]">x</span></template>`
@@ -266,7 +266,7 @@ writeFixture(
 // Imported with a `.js` specifier that only exists as `.tsx`.
 writeFixture(
 	'ui/badge.tsx',
-	`${IMPORT}const badge = sv({ base: 'px-1 text-xs' });
+	`${IMPORT}const badge = sv({ base: 'px-1 text-xs', variants: {} });
 
 	export function Badge({ className }) {
 		return <b className={badge({ class: className })} />;
@@ -286,7 +286,7 @@ for (let index = 0; index < HOP_COUNT; index++) {
 
 writeFixture(
 	`hops/hop${HOP_COUNT}.tsx`,
-	`${IMPORT}const hopped = sv({ base: 'p-2' });
+	`${IMPORT}const hopped = sv({ base: 'p-2', variants: {} });
 
 	export function Hopped({ className }) {
 		return <i className={hopped({ class: className })} />;
@@ -305,7 +305,7 @@ export const cacheUsages: string[] = [];
 for (let index = 0; index < CACHED_MODULE_COUNT; index++) {
 	writeFixture(
 		`many/mod${index}.tsx`,
-		`${IMPORT}const mod = sv({ base: 'p-2' });
+		`${IMPORT}const mod = sv({ base: 'p-2', variants: {} });
 
 		export function Mod${index}({ className }) {
 			return <i className={mod({ class: className })} />;

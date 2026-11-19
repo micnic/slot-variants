@@ -5,7 +5,8 @@ import { sv } from '../../src/index.ts';
 
 t.test('base config field merges into final class value', (t) => {
 	const button = sv('flex', {
-		base: 'items-center'
+		base: 'items-center',
+		variants: {}
 	});
 
 	t.equal(button(), 'flex items-center', 'merges base and config base');

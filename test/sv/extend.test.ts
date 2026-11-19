@@ -4,8 +4,8 @@ import { createSV, sv, type VariantProps } from '../../src/index.ts';
 // sv() - extend
 
 t.test('appends base classes after the parent ones', (t) => {
-	const parent = sv('btn', { base: 'font-medium' });
-	const child = sv({ extend: parent, base: 'inline-flex' });
+	const parent = sv('btn', { base: 'font-medium', variants: {} });
+	const child = sv({ extend: parent, base: 'inline-flex', variants: {} });
 
 	t.equal(child(), 'btn font-medium inline-flex', 'parent base first');
 
@@ -13,8 +13,12 @@ t.test('appends base classes after the parent ones', (t) => {
 });
 
 t.test('child base args follow the parent base classes', (t) => {
-	const parent = sv('btn', {});
-	const child = sv('gap-2', ['px-4'], { extend: parent, base: 'flex' });
+	const parent = sv('btn', { variants: {} });
+	const child = sv('gap-2', ['px-4'], {
+		extend: parent,
+		base: 'flex',
+		variants: {}
+	});
 
 	t.equal(child(), 'btn gap-2 px-4 flex', 'base args then base field');
 
@@ -25,12 +29,12 @@ t.test('child base classes follow the parent base slot', (t) => {
 	const parent = sv({ base: 'p-base', slots: { base: 'p-slot', icon: 'i' } });
 
 	t.equal(
-		sv({ extend: parent, base: 'c-base' })().base,
+		sv({ extend: parent, base: 'c-base', variants: {} })().base,
 		'p-base p-slot c-base',
 		'child base field after the parent base slot'
 	);
 	t.equal(
-		sv('c-arg', { extend: parent })().base,
+		sv('c-arg', { extend: parent, variants: {} })().base,
 		'p-base p-slot c-arg',
 		'child base args after the parent base slot'
 	);
@@ -45,8 +49,8 @@ t.test('child base classes follow the parent base slot', (t) => {
 });
 
 t.test('keeps the parent base when the child has none', (t) => {
-	const parent = sv('btn', {});
-	const child = sv({ extend: parent });
+	const parent = sv('btn', { variants: {} });
+	const child = sv({ extend: parent, variants: {} });
 
 	t.equal(child(), 'btn', 'inherited base only');
 
@@ -219,7 +223,11 @@ t.test('child defaults win over parent defaults', (t) => {
 		},
 		defaultVariants: { size: 'sm', intent: 'primary' }
 	});
-	const child = sv({ extend: parent, defaultVariants: { size: 'lg' } });
+	const child = sv({
+		extend: parent,
+		variants: {},
+		defaultVariants: { size: 'lg' }
+	});
 
 	t.equal(child(), 'btn text-lg bg-blue-500', 'merged defaults');
 
@@ -235,6 +243,7 @@ t.test('concatenates compound variants and slots, parent first', (t) => {
 	});
 	const child = sv({
 		extend: parent,
+		variants: {},
 		compoundVariants: [{ size: 'lg', class: 'tracking-wide' }],
 		compoundSlots: [{ size: 'lg', slots: ['header'], class: 'px-6' }]
 	});
@@ -256,10 +265,11 @@ t.test('keeps compound entries when only one side has them', (t) => {
 		variants: { size: { lg: 'text-lg' } },
 		compoundVariants: [{ size: 'lg', class: 'uppercase' }]
 	});
-	const child = sv({ extend: parent });
+	const child = sv({ extend: parent, variants: {} });
 	const plain = sv('btn', { variants: { size: { lg: 'text-lg' } } });
 	const grandchild = sv({
 		extend: plain,
+		variants: {},
 		compoundVariants: [{ size: 'lg', class: 'italic' }]
 	});
 
@@ -276,7 +286,8 @@ t.test('unions groups, joining a group in both', (t) => {
 	});
 	const child = sv({
 		extend: parent,
-		groups: { content: ['body', 'footer'], all: ['base', 'footer'] }
+		groups: { content: ['body', 'footer'], all: ['base', 'footer'] },
+		variants: {}
 	});
 
 	t.same(
@@ -306,6 +317,7 @@ t.test('unions presets, merging a preset in both', (t) => {
 	});
 	const child = sv({
 		extend: parent,
+		variants: {},
 		presets: { cta: { intent: 'danger' }, alert: { intent: 'danger' } }
 	});
 
@@ -378,8 +390,8 @@ t.test('resolves requiredVariants: true on each side', (t) => {
 });
 
 t.test('requiredVariants: true with no variants requires nothing', (t) => {
-	const parent = sv('btn', {});
-	const child = sv({ extend: parent, requiredVariants: true });
+	const parent = sv('btn', { variants: {} });
+	const child = sv({ extend: parent, variants: {}, requiredVariants: true });
 
 	t.equal(child(), 'btn', 'nothing to require');
 
@@ -393,6 +405,7 @@ t.test('a child default lifts an inherited requirement', (t) => {
 	});
 	const child = sv({
 		extend: parent,
+		variants: {},
 		defaultVariants: { intent: 'danger' },
 		requiredVariants: false
 	});
@@ -407,7 +420,11 @@ t.test('a child requirement drops an inherited default', (t) => {
 		variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
 		defaultVariants: { size: 'sm' }
 	});
-	const child = sv({ extend: parent, requiredVariants: ['size'] });
+	const child = sv({
+		extend: parent,
+		variants: {},
+		requiredVariants: ['size']
+	});
 
 	t.throws(
 		// @ts-expect-error - size is required by the child
@@ -429,7 +446,7 @@ t.test('a later parent requirement drops an earlier default', (t) => {
 		variants: { size: { sm: 'p-1', lg: 'p-4' } },
 		requiredVariants: ['size']
 	});
-	const child = sv({ extend: [defaulted, required] });
+	const child = sv({ extend: [defaulted, required], variants: {} });
 
 	t.throws(
 		// @ts-expect-error - size is required by the later parent
@@ -448,7 +465,7 @@ t.test('createSV requiredVariants: true drops inherited defaults', (t) => {
 		variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
 		defaultVariants: { size: 'sm' }
 	});
-	const child = strict({ extend: parent });
+	const child = strict({ extend: parent, variants: {} });
 
 	t.throws(
 		// @ts-expect-error - every variant is required by the factory default
@@ -521,9 +538,10 @@ t.test('inherits behaviour options unless the child sets them', (t) => {
 		introspection: true,
 		postProcess: upper
 	});
-	const child = sv({ extend: parent });
+	const child = sv({ extend: parent, variants: {} });
 	const own = sv({
 		extend: parent,
+		variants: {},
 		cacheSize: 4,
 		introspection: false,
 		postProcess: lower
@@ -552,7 +570,7 @@ t.test('extends several parents left to right', (t) => {
 		},
 		defaultVariants: { size: 'lg' }
 	});
-	const child = sv({ extend: [sized, toned], base: 'gap-2' });
+	const child = sv({ extend: [sized, toned], base: 'gap-2', variants: {} });
 
 	t.equal(child(), 'btn inline-flex gap-2 text-lg px-4', 'later parent wins');
 	t.equal(
@@ -570,21 +588,21 @@ t.test('merges a shared ancestor once', (t) => {
 		variants: { s: { x: 'ax' } },
 		compoundVariants: [{ s: 'x', class: 'cmp' }]
 	});
-	const left = sv({ extend: root, base: 'b' });
-	const right = sv({ extend: root, base: 'c' });
+	const left = sv({ extend: root, base: 'b', variants: {} });
+	const right = sv({ extend: root, base: 'c', variants: {} });
 
 	t.equal(
-		sv({ extend: [left, right] })({ s: 'x' }),
+		sv({ extend: [left, right], variants: {} })({ s: 'x' }),
 		'a b c ax cmp',
 		'diamond'
 	);
 	t.equal(
-		sv({ extend: [root, left] })({ s: 'x' }),
+		sv({ extend: [root, left], variants: {} })({ s: 'x' }),
 		'a b ax cmp',
 		'a parent that also extends an earlier one'
 	);
 	t.equal(
-		sv({ extend: [root, root] })({ s: 'x' }),
+		sv({ extend: [root, root], variants: {} })({ s: 'x' }),
 		'a ax cmp',
 		'the same parent twice'
 	);
@@ -597,11 +615,15 @@ t.test('types merge a shared ancestor once', (t) => {
 		variants: { size: { sm: 's' } },
 		requiredVariants: ['size']
 	});
-	const lifted = sv({ extend: required, defaultVariants: { size: 'sm' } });
-	const plain = sv({ extend: required, base: 'p' });
+	const lifted = sv({
+		extend: required,
+		variants: {},
+		defaultVariants: { size: 'sm' }
+	});
+	const plain = sv({ extend: required, base: 'p', variants: {} });
 
 	t.equal(
-		sv({ extend: [lifted, plain] })(),
+		sv({ extend: [lifted, plain], variants: {} })(),
 		'p s',
 		'a default one parent gives stays'
 	);
@@ -610,10 +632,14 @@ t.test('types merge a shared ancestor once', (t) => {
 		variants: { size: { sm: 's' } },
 		defaultVariants: { size: 'sm' }
 	});
-	const requiring = sv({ extend: defaulted, requiredVariants: ['size'] });
-	const other = sv({ extend: defaulted, base: 'o' });
-	const diamond = sv({ extend: [requiring, other] });
-	const repeated = sv({ extend: [requiring, defaulted] });
+	const requiring = sv({
+		extend: defaulted,
+		variants: {},
+		requiredVariants: ['size']
+	});
+	const other = sv({ extend: defaulted, base: 'o', variants: {} });
+	const diamond = sv({ extend: [requiring, other], variants: {} });
+	const repeated = sv({ extend: [requiring, defaulted], variants: {} });
 
 	t.throws(
 		// @ts-expect-error - the first parent's requirement stays
@@ -629,8 +655,8 @@ t.test('types merge a shared ancestor once', (t) => {
 	);
 
 	const shown = sv({ variants: { size: { sm: 's' } }, introspection: true });
-	const hidden = sv({ extend: shown, introspection: false });
-	const merged = sv({ extend: [hidden, shown] });
+	const hidden = sv({ extend: shown, variants: {}, introspection: false });
+	const merged = sv({ extend: [hidden, shown], variants: {} });
 
 	// @ts-expect-error - introspection stays off
 	void merged.getVariantValues;
@@ -656,7 +682,7 @@ t.test('a child name is checked against inherited presets and groups', (t) => {
 	t.throws(
 		() =>
 			// @ts-expect-error - a group can't be named like a slot
-			sv({ extend: grouped, groups: { a: ['a'] } }),
+			sv({ extend: grouped, groups: { a: ['a'] }, variants: {} }),
 		{ message: 'Group "a" cannot have the same name as a slot' },
 		'a group named like an inherited slot'
 	);
@@ -704,7 +730,7 @@ t.test('a parent requiring every variant keeps to its own', (t) => {
 		requiredVariants: true,
 		multiSlots: true
 	});
-	const child = sv({ extend: [toned, sized] });
+	const child = sv({ extend: [toned, sized], variants: {} });
 	const { base, icon } = child({ size: 'sm' });
 
 	t.equal(base(), 'text-sm', 'tone stays optional');
@@ -782,13 +808,13 @@ t.test('throws when extend names something other than a component', (t) => {
 
 	t.throws(
 		// @ts-expect-error - not an sv() component
-		() => sv({ extend: notComponent }),
+		() => sv({ extend: notComponent, variants: {} }),
 		{ message: 'extend must be an sv() component' },
 		'plain function'
 	);
 	t.throws(
 		// @ts-expect-error - not an sv() component
-		() => sv({ extend: [notComponent] }),
+		() => sv({ extend: [notComponent], variants: {} }),
 		{ message: 'extend must be an sv() component' },
 		'in a list'
 	);
@@ -806,6 +832,7 @@ t.test('validates the merged config', (t) => {
 		() =>
 			sv({
 				extend: parent,
+				variants: {},
 				// @ts-expect-error - own required variant with a default
 				defaultVariants: { size: 'sm' },
 				requiredVariants: ['size']
@@ -821,12 +848,16 @@ t.test('createSV defaults sit below the parents', (t) => {
 	const upper = (className: string) => className.toUpperCase();
 	const lower = (className: string) => className.toLowerCase();
 	const factory = createSV({ base: 'Factory', postProcess: lower });
-	const parent = sv('Btn', { postProcess: upper });
-	const bare = sv({});
+	const parent = sv('Btn', { variants: {}, postProcess: upper });
+	const bare = sv({ variants: {} });
 
-	t.equal(factory({ extend: parent })(), 'BTN', 'parent postProcess kept');
 	t.equal(
-		factory({ extend: bare })(),
+		factory({ extend: parent, variants: {} })(),
+		'BTN',
+		'parent postProcess kept'
+	);
+	t.equal(
+		factory({ extend: bare, variants: {} })(),
 		'factory',
 		'factory fills what nobody sets'
 	);
@@ -862,8 +893,8 @@ t.test('createSV list defaults apply to the child side', (t) => {
 
 t.test('a component built with createSV can be extended', (t) => {
 	const factory = createSV({ postProcess: (value) => `${value}!` });
-	const parent = factory('btn', {});
-	const child = sv({ extend: parent, base: 'flex' });
+	const parent = factory('btn', { variants: {} });
+	const child = sv({ extend: parent, base: 'flex', variants: {} });
 
 	t.equal(child(), 'btn flex!', 'factory postProcess inherited');
 
@@ -944,6 +975,7 @@ const _assertTMultiSlot: AssertTMultiSlot = true;
 // An inherited required variant with a child default is no longer required
 const _tLifted = sv({
 	extend: _tReq,
+	variants: {},
 	defaultVariants: { intent: 'danger' }
 });
 
@@ -954,7 +986,7 @@ const _assertTLifted: AssertTLifted = true;
 
 // Several parents merge their variants
 const _tOther = sv({ variants: { tone: { soft: 'opacity-80' } } });
-const _tMulti = sv({ extend: [_tParent, _tOther] });
+const _tMulti = sv({ extend: [_tParent, _tOther], variants: {} });
 
 type AssertTMulti = 'tone' extends keyof VariantProps<typeof _tMulti>
 	? true
@@ -963,7 +995,7 @@ const _assertTMulti: AssertTMulti = true;
 
 // Introspection is inherited from the last parent
 const _tIntro = sv({ variants: { size: { sm: 'a' } }, introspection: true });
-const _tIntroChild = sv({ extend: _tIntro });
+const _tIntroChild = sv({ extend: _tIntro, variants: {} });
 
 type AssertTIntro = 'variantKeys' extends keyof typeof _tIntroChild
 	? true
@@ -973,11 +1005,13 @@ const _assertTIntro: AssertTIntro = true;
 const _tErrors = () => {
 	sv({
 		extend: _tParent,
+		variants: {},
 		// @ts-expect-error - unknown inherited variant value
 		compoundVariants: [{ size: 'xx', class: 'x' }]
 	});
 	sv({
 		extend: _tParent,
+		variants: {},
 		// @ts-expect-error - unknown variant
 		defaultVariants: { nope: 'x' }
 	});

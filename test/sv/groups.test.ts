@@ -230,7 +230,8 @@ t.test('group class prop works without slots', (t) => {
 	const button = sv('btn', {
 		groups: {
 			everything: ['base']
-		}
+		},
+		variants: {}
 	});
 
 	t.equal(

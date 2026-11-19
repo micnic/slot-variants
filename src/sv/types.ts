@@ -867,14 +867,16 @@ export type Config<
 	postProcess?: ((className: string) => string) | undefined;
 };
 
-export type ConfigKey = keyof Config<
-	undefined,
-	undefined,
-	undefined,
-	undefined,
-	false,
-	[]
->;
+/**
+ * What makes `sv()`'s last argument its config: defining `slots` or
+ * `variants`. Without either, the argument is a class value, so a config
+ * overload doesn't match it.
+ */
+export type ConfigMarker<S, V> = [S] extends [undefined]
+	? [V] extends [undefined]
+		? { variants: object }
+		: unknown
+	: unknown;
 
 /** Props consumed by a variant function rather than forwarded to an element. */
 type VariantPropKeys<V extends AnyVariants> =
@@ -1033,11 +1035,16 @@ export type VariantFn<
 	readonly [componentTypes]: L;
 } & (I extends true ? IntrospectionValues<S, G, V, P, M, R> : unknown);
 
+// A class value `sv()` takes: a record naming `slots` or `variants` would be
+// read as a config, so it's rejected. A record typed with an index signature
+// names no key, so it's taken.
 export type NonConfigClassArg<T> =
 	T extends Record<string, unknown>
-		? Exclude<StringKeyof<T>, ConfigKey> extends never
-			? never
-			: T
+		? string extends keyof T
+			? T
+			: [Extract<keyof T, 'slots' | 'variants'>] extends [never]
+				? T
+				: never
 		: T;
 
 // The widest config the runtime handles, every name typed as a string.
@@ -1125,7 +1132,7 @@ type ConfigCall<
 	const E extends ExtendInput | undefined = undefined,
 	D extends StringKeyof<ExtendedVariants<E, S, G, V>> = never
 >(
-	...args: [...C, Config<S, G, V, P, M, R, I, E, D>]
+	...args: [...C, Config<S, G, V, P, M, R, I, E, D> & ConfigMarker<S, V>]
 ) => ExtendedVariantFn<S, G, V, P, M, R, I, E, D, B>;
 
 /** The variant function a config builds, with what it inherits merged in. */

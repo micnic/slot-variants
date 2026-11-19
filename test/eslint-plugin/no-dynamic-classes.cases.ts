@@ -18,9 +18,9 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 		const { base, header: title } = card();
 		cn(base, title, card()['header']);`,
 	// Static base in config.
-	IMPORT + "sv({ base: 'flex' });",
+	IMPORT + "sv({ base: 'flex', variants: {} });",
 	// Array of static class values.
-	IMPORT + "sv({ base: ['flex', 'gap-2'] });",
+	IMPORT + "sv({ base: ['flex', 'gap-2'], variants: {} });",
 	// Explicit undefined is an allowed no-op config class value.
 	IMPORT +
 		`sv({
@@ -36,9 +36,9 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 			compoundSlots: [{ slots: ['body'], size: 'lg', className: undefined }]
 		});`,
 	// Sparse hole in array — allowed.
-	IMPORT + "sv({ base: ['flex', , 'gap-2'] });",
+	IMPORT + "sv({ base: ['flex', , 'gap-2'], variants: {} });",
 	// Template literal without expressions.
-	IMPORT + 'sv({ base: `flex gap-2` });',
+	IMPORT + 'sv({ base: `flex gap-2`, variants: {} });',
 	// Static slots record.
 	IMPORT + "sv({ slots: { body: 'p-4', header: 'font-bold' } });",
 	// Static value-keyed variants.
@@ -133,7 +133,7 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 	IMPORT +
 		`sv({
 			base: 'flex',
-			defaultVariants: dynamic,
+			variants: {}, defaultVariants: dynamic,
 			cacheSize: someNumber,
 			postProcess: twMerge,
 			introspection: flag,
@@ -164,7 +164,7 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 	// Ternary nested inside a cn array argument.
 	IMPORT_CN + "cn(['flex', isActive ? 'px-4' : 'px-2']);",
 	// Ternary in an sv() cn-style leading argument.
-	IMPORT + "sv(isActive ? 'px-4' : 'px-2', { base: 'flex' });",
+	IMPORT + "sv(isActive ? 'px-4' : 'px-2', { base: 'flex', variants: {} });",
 	// Ternary substitution inside a template literal — whitespace-isolated.
 	IMPORT_CN + "cn(`items-center ${col ? 'flex-col' : 'flex-row'}`);",
 	// Ternary substitution at the start of a template literal.
@@ -198,11 +198,11 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 	// Record nested inside a cn array argument.
 	IMPORT_CN + "cn(['flex', { active: isActive }]);",
 	// Record as an sv() cn-style leading argument.
-	IMPORT + "sv({ active: isActive }, { base: 'flex' });",
+	IMPORT + "sv({ active: isActive }, { base: 'flex', variants: {} });",
 	// Conditional in an sv() cn-style leading argument.
-	IMPORT + "sv(isActive && 'px-4', { base: 'flex' });",
+	IMPORT + "sv(isActive && 'px-4', { base: 'flex', variants: {} });",
 	// Without an import, the rule is silent.
-	'sv({ base: dynamic });',
+	'sv({ base: dynamic, variants: {} });',
 	// Default-imported sv is not tracked.
 	"import sv from 'slot-variants'; sv(dynamic);",
 	// A namespace member that isn't a tracked export stays untracked.
@@ -234,7 +234,7 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 	// A `const` reference nested inside a ternary branch is resolved.
 	IMPORT_CN + "const X = 'px-4';\ncn(cond ? X : 'px-2');",
 	// A hoisted `const` config is read through and validated as a config.
-	IMPORT + "const config = { base: 'flex' };\nsv(config);",
+	IMPORT + "const config = { base: 'flex', variants: {} };\nsv(config);",
 	// A `const` alias of a tracked import stays tracked.
 	IMPORT_CN + "const cx = cn;\ncx('flex');",
 	// An alias of an untracked identifier is ignored.
@@ -243,7 +243,7 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 	IMPORT_CN + "const cx = () => '';\ncx(dynamic);",
 	// A `createSV()`-derived binding is analyzed like `sv` — static config.
 	IMPORT_CREATE_SV +
-		"const customSV = createSV({ cacheSize: 512 });\ncustomSV({ base: 'flex' });",
+		"const customSV = createSV({ cacheSize: 512 });\ncustomSV({ base: 'flex', variants: {} });",
 	// A `createSV()`-derived binding used cn-style is analyzed like `sv`.
 	IMPORT_CREATE_SV +
 		"const customSV = createSV({ cacheSize: 512 });\ncustomSV('flex', 'items-center');",
@@ -270,7 +270,7 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 		// once.
 		code:
 			IMPORT +
-			'const cls = foo();\nsv({ base: cls, variants: { v: { x: cls } } });\nsv({ base: cls });',
+			'const cls = foo();\nsv({ base: cls, variants: { v: { x: cls } } });\nsv({ base: cls, variants: {} });',
 		errors: [{ messageId: 'dynamic', line: 2 }]
 	},
 	{
@@ -316,33 +316,33 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 	},
 	{
 		// Identifier as base value.
-		code: IMPORT + 'sv({ base: dynamic });',
+		code: IMPORT + 'sv({ base: dynamic, variants: {} });',
 		errors: 1
 	},
 	{
 		// Non-string literal as base.
-		code: IMPORT + 'sv({ base: 42 });',
+		code: IMPORT + 'sv({ base: 42, variants: {} });',
 		errors: 1
 	},
 	{
 		// Template literal with expression as base.
-		code: IMPORT + 'sv({ base: `flex ${x}` });',
+		code: IMPORT + 'sv({ base: `flex ${x}`, variants: {} });',
 		errors: 1
 	},
 	{
 		// Identifier element inside base array.
-		code: IMPORT + "sv({ base: ['flex', dynamic] });",
+		code: IMPORT + "sv({ base: ['flex', dynamic], variants: {} });",
 		errors: 1
 	},
 	{
 		// Undefined is only allowed as the whole config class value,
 		// not as an array element.
-		code: IMPORT + "sv({ base: ['flex', undefined] });",
+		code: IMPORT + "sv({ base: ['flex', undefined], variants: {} });",
 		errors: 1
 	},
 	{
 		// Config class arrays must be flat string arrays.
-		code: IMPORT + "sv({ base: ['flex', ['gap-2']] });",
+		code: IMPORT + "sv({ base: ['flex', ['gap-2']], variants: {} });",
 		errors: 1
 	},
 	{
@@ -357,7 +357,7 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 	},
 	{
 		// Spread element inside base array.
-		code: IMPORT + "sv({ base: ['flex', ...rest] });",
+		code: IMPORT + "sv({ base: ['flex', ...rest], variants: {} });",
 		errors: 1
 	},
 	{
@@ -638,7 +638,7 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 	{
 		// Conditional class values are a cn-style affordance only —
 		// an sv() config object stays disallowed.
-		code: IMPORT + "sv({ base: isActive && 'px-4' });",
+		code: IMPORT + "sv({ base: isActive && 'px-4', variants: {} });",
 		errors: 1
 	},
 	{
@@ -653,7 +653,8 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 	},
 	{
 		// Ternary is a cn-style affordance only — disallowed in an sv() config.
-		code: IMPORT + "sv({ base: isActive ? 'px-4' : 'px-2' });",
+		code:
+			IMPORT + "sv({ base: isActive ? 'px-4' : 'px-2', variants: {} });",
 		errors: 1
 	},
 	{
@@ -675,7 +676,7 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 	},
 	{
 		// Template ternary is a cn-style affordance — disallowed in a config.
-		code: IMPORT + "sv({ base: `flex ${c ? 'a' : 'b'}` });",
+		code: IMPORT + "sv({ base: `flex ${c ? 'a' : 'b'}`, variants: {} });",
 		errors: 1
 	},
 	{
@@ -729,13 +730,17 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 	{
 		// A hoisted `const` config is validated as a config — dynamic values
 		// inside it are reported.
-		code: IMPORT + 'const config = { base: dynamic };\nsv(config);',
+		code:
+			IMPORT +
+			'const config = { base: dynamic, variants: {} };\nsv(config);',
 		errors: 1
 	},
 	{
 		// A hoisted config after cn-style leading arguments — the config is
 		// still detached and the dynamic leading argument is reported.
-		code: IMPORT + "const config = { base: 'flex' };\nsv(dynamic, config);",
+		code:
+			IMPORT +
+			"const config = { base: 'flex', variants: {} };\nsv(dynamic, config);",
 		errors: 1
 	},
 	{
@@ -750,14 +755,16 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 	},
 	{
 		// A `const` alias of a tracked sv import is validated as sv.
-		code: IMPORT + 'const styled = sv;\nstyled({ base: dynamic });',
+		code:
+			IMPORT +
+			'const styled = sv;\nstyled({ base: dynamic, variants: {} });',
 		errors: 1
 	},
 	{
 		// A `createSV()`-derived binding is validated as sv (dynamic config).
 		code:
 			IMPORT_CREATE_SV +
-			'const customSV = createSV({ cacheSize: 512 });\ncustomSV({ base: dynamic });',
+			'const customSV = createSV({ cacheSize: 512 });\ncustomSV({ base: dynamic, variants: {} });',
 		errors: 1
 	},
 	{
@@ -771,14 +778,14 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 		// A `createSV` import alias produces a tracked binding.
 		code:
 			"import { createSV as factory } from 'slot-variants';\n" +
-			'const customSV = factory({});\ncustomSV({ base: dynamic });',
+			'const customSV = factory({});\ncustomSV({ base: dynamic, variants: {} });',
 		errors: 1
 	},
 	{
 		// A `const` alias of a `createSV()`-derived binding stays tracked.
 		code:
 			IMPORT_CREATE_SV +
-			'const customSV = createSV({});\nconst cx = customSV;\ncx({ base: dynamic });',
+			'const customSV = createSV({});\nconst cx = customSV;\ncx({ base: dynamic, variants: {} });',
 		errors: 1
 	},
 	{

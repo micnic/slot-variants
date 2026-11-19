@@ -27,6 +27,8 @@ sv({ base: 'btn', variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });
 sv('btn', { variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });
 ```
 
+The last argument is a config only when it defines `slots` or `variants`; otherwise it's a class value. A component with neither (only `base`, `extend`, `postProcess`, …) declares `variants: {}`.
+
 Base classes can come from all three places at once, and they are applied in this order: the leading class arguments, then the `base` config field, then `slots.base`.
 
 ## Best Practices

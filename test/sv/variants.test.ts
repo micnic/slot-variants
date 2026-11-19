@@ -545,7 +545,7 @@ void _assertComplexType;
 void _assertComplexReturn;
 
 // Empty config returns base only as string
-const _typeEmptyConfigFn = sv('flex items-center', {});
+const _typeEmptyConfigFn = sv('flex items-center', { variants: {} });
 
 type EmptyConfigReturn = ReturnType<typeof _typeEmptyConfigFn>;
 type AssertEmptyConfigString = EmptyConfigReturn extends string ? true : false;

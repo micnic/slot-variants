@@ -3,20 +3,24 @@ import { IMPORT, IMPORT_CN, IMPORT_CREATE_SV, IMPORT_NS } from './helpers.ts';
 export const NO_EMPTY_CLASSES_VALID = [
 	// An empty object is an empty config, as `sv()` reads it at runtime, not
 	// an empty class record.
-	IMPORT + 'sv({});',
-	IMPORT + "sv('flex', {});",
+	// An empty `variants` or `slots` is kept while it's what makes the object
+	// a config.
+	IMPORT + 'sv({ variants: {} });',
+	IMPORT + "sv({ base: 'flex', slots: {} });",
+	IMPORT + "const none = {};\nsv({ base: 'a', variants: none });",
+	IMPORT + "sv('flex', { variants: {} });",
 	// Non-empty cn-style call.
 	IMPORT + "sv('flex', 'items-center');",
 	// Non-empty config.
-	IMPORT + "sv({ base: 'flex' });",
+	IMPORT + "sv({ base: 'flex', variants: {} });",
 	// Non-empty array, no empty elements.
-	IMPORT + "sv({ base: ['flex', 'gap-2'] });",
+	IMPORT + "sv({ base: ['flex', 'gap-2'], variants: {} });",
 	// Sparse hole in array — skipped.
-	IMPORT + "sv({ base: ['flex', , 'gap-2'] });",
+	IMPORT + "sv({ base: ['flex', , 'gap-2'], variants: {} });",
 	// Spread element inside array — skipped.
-	IMPORT + "sv({ base: ['flex', ...rest] });",
+	IMPORT + "sv({ base: ['flex', ...rest], variants: {} });",
 	// Non-empty template literal.
-	IMPORT + 'sv({ base: `flex` });',
+	IMPORT + 'sv({ base: `flex`, variants: {} });',
 	// Empty string as a direct slot value — allowed.
 	IMPORT + "sv({ slots: { body: '' } });",
 	// Empty template literal as a direct slot value — allowed.
@@ -32,7 +36,7 @@ export const NO_EMPTY_CLASSES_VALID = [
 	// Variants with non-object value — not analyzed.
 	IMPORT + 'sv({ variants: dynamic });',
 	// Compounds with non-array value — not analyzed.
-	IMPORT + 'sv({ compoundVariants: dynamic });',
+	IMPORT + 'sv({ variants: {}, compoundVariants: dynamic });',
 	// Non-empty variants record.
 	IMPORT + "sv({ variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });",
 	// Boolean shorthand variant with non-empty class.
@@ -121,9 +125,9 @@ export const NO_EMPTY_CLASSES_VALID = [
 			postProcess: noop
 		});`,
 	// A dynamic value can't be seen into.
-	IMPORT + "sv({ base: 'flex', defaultVariants: opts });",
+	IMPORT + "sv({ base: 'flex', variants: {}, defaultVariants: opts });",
 	// A non-empty preset selection is left alone.
-	IMPORT + "sv({ base: 'flex', presets: { fancy: {} } });",
+	IMPORT + "sv({ base: 'flex', variants: {}, presets: { fancy: {} } });",
 	// Spread inside variants — that property is bailed.
 	IMPORT + "sv({ variants: { ...rest, size: { sm: 'text-sm' } } });",
 	// Computed key inside variants — that property is bailed.
@@ -191,11 +195,17 @@ export const NO_EMPTY_CLASSES_VALID = [
 
 export const NO_EMPTY_CLASSES_INVALID = [
 	{
-		// Removing the last argument would leave an object of config keys
+		// Removing the last argument would leave an object defining `variants`
 		// last, turning the class list into a config call: no fix.
-		code: IMPORT + "sv({ base: 'x' }, '');",
+		code: IMPORT + "sv({ base: 'x', variants: {} }, '');",
 		errors: [{ messageId: 'emptyString' }],
 		output: null
+	},
+	{
+		// An object of other config key names stays a class record once last.
+		code: IMPORT + "sv({ base: 'x' }, '');",
+		errors: [{ messageId: 'emptyString' }],
+		output: IMPORT + "sv({ base: 'x' });"
 	},
 	{
 		// An object of other keys stays a class record once last.
@@ -243,36 +253,40 @@ export const NO_EMPTY_CLASSES_INVALID = [
 	{
 		// A config container that holds no class values of its own is
 		// inert when empty, so the property is reported and removed.
-		code: IMPORT + "sv({ base: 'flex', defaultVariants: {} });",
-		output: IMPORT + "sv({ base: 'flex' });",
+		code:
+			IMPORT + "sv({ base: 'flex', variants: {}, defaultVariants: {} });",
+		output: IMPORT + "sv({ base: 'flex', variants: {} });",
 		errors: [{ messageId: 'emptyConfig', data: { key: 'defaultVariants' } }]
 	},
 	{
-		code: IMPORT + "sv({ base: 'flex', requiredVariants: [] });",
-		output: IMPORT + "sv({ base: 'flex' });",
+		code:
+			IMPORT +
+			"sv({ base: 'flex', variants: {}, requiredVariants: [] });",
+		output: IMPORT + "sv({ base: 'flex', variants: {} });",
 		errors: [
 			{ messageId: 'emptyConfig', data: { key: 'requiredVariants' } }
 		]
 	},
 	{
-		code: IMPORT + "sv({ base: 'flex', multiSlots: [] });",
-		output: IMPORT + "sv({ base: 'flex' });",
+		code: IMPORT + "sv({ base: 'flex', multiSlots: [], variants: {} });",
+		output: IMPORT + "sv({ base: 'flex', variants: {} });",
 		errors: [{ messageId: 'emptyConfig', data: { key: 'multiSlots' } }]
 	},
 	{
-		code: IMPORT + "sv({ base: 'flex', presets: {} });",
-		output: IMPORT + "sv({ base: 'flex' });",
+		code: IMPORT + "sv({ base: 'flex', variants: {}, presets: {} });",
+		output: IMPORT + "sv({ base: 'flex', variants: {} });",
 		errors: [{ messageId: 'emptyConfig', data: { key: 'presets' } }]
 	},
 	{
-		code: IMPORT + "sv({ base: 'flex', groups: {} });",
-		output: IMPORT + "sv({ base: 'flex' });",
+		code: IMPORT + "sv({ base: 'flex', groups: {}, variants: {} });",
+		output: IMPORT + "sv({ base: 'flex', variants: {} });",
 		errors: [{ messageId: 'emptyConfig', data: { key: 'groups' } }]
 	},
 	{
-		// As the only property there's nothing left to remove it from, so the
-		// finding stands without a fix.
-		code: IMPORT + 'sv({ defaultVariants: {} });',
+		// The empty container is removed, leaving the `variants` that make the
+		// object a config.
+		code: IMPORT + 'sv({ variants: {}, defaultVariants: {} });',
+		output: IMPORT + 'sv({ variants: {} });',
 		errors: [{ messageId: 'emptyConfig', data: { key: 'defaultVariants' } }]
 	},
 	{
@@ -292,7 +306,8 @@ export const NO_EMPTY_CLASSES_INVALID = [
 	},
 	{
 		// A namespace member call is analyzed like the named import.
-		code: IMPORT_NS + "SV.sv({ base: '' });",
+		code: IMPORT_NS + "SV.sv({ base: '', variants: {} });",
+		output: IMPORT_NS + 'SV.sv({ variants: {} });',
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
@@ -355,29 +370,34 @@ export const NO_EMPTY_CLASSES_INVALID = [
 	},
 	{
 		// Empty string as base.
-		code: IMPORT + "sv({ base: '' });",
+		code: IMPORT + "sv({ base: '', variants: {} });",
+		output: IMPORT + 'sv({ variants: {} });',
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
 		// Empty array as base.
-		code: IMPORT + 'sv({ base: [] });',
+		code: IMPORT + 'sv({ base: [], variants: {} });',
+		output: IMPORT + 'sv({ variants: {} });',
 		errors: [{ messageId: 'emptyArray' }]
 	},
 	{
 		// Empty object as base.
-		code: IMPORT + 'sv({ base: {} });',
+		code: IMPORT + 'sv({ base: {}, variants: {} });',
+		output: IMPORT + 'sv({ variants: {} });',
 		errors: [{ messageId: 'emptyObject' }]
 	},
 	{
 		// Empty string inside a base array.
-		code: IMPORT + "sv({ base: ['', 'flex'] });",
-		output: IMPORT + "sv({ base: ['flex'] });",
+		code: IMPORT + "sv({ base: ['', 'flex'], variants: {} });",
+		output: IMPORT + "sv({ base: ['flex'], variants: {} });",
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
-		// Empty slots object — the whole property is removed.
-		code: IMPORT + "sv({ base: 'flex', slots: {} });",
-		output: IMPORT + "sv({ base: 'flex' });",
+		// Empty slots object beside the variants that make the object a config —
+		// the whole property is removed.
+		code:
+			IMPORT + "sv({ base: 'flex', slots: {}, variants: { on: 'x' } });",
+		output: IMPORT + "sv({ base: 'flex', variants: { on: 'x' } });",
 		errors: [{ messageId: 'emptyObject' }]
 	},
 	{
@@ -404,8 +424,9 @@ export const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
-		// Empty variants object.
-		code: IMPORT + 'sv({ variants: {} });',
+		// Empty variants object beside the slots that make the object a config.
+		code: IMPORT + "sv({ slots: { a: 'x' }, variants: {} });",
+		output: IMPORT + "sv({ slots: { a: 'x' } });",
 		errors: [{ messageId: 'emptyObject' }]
 	},
 	{
@@ -561,8 +582,8 @@ export const NO_EMPTY_CLASSES_INVALID = [
 	},
 	{
 		// Empty string as a base arg with config.
-		code: IMPORT + "sv('', { base: 'flex' });",
-		output: IMPORT + "sv({ base: 'flex' });",
+		code: IMPORT + "sv('', { base: 'flex', variants: {} });",
+		output: IMPORT + "sv({ base: 'flex', variants: {} });",
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
@@ -646,23 +667,26 @@ export const NO_EMPTY_CLASSES_INVALID = [
 		// An empty config container behind a `const`, reported where it's used.
 		code:
 			IMPORT +
-			"const none = {};\nsv({ base: 'a', defaultVariants: none });",
-		output: IMPORT + "const none = {};\nsv({ base: 'a' });",
-		errors: [{ messageId: 'emptyConfig', line: 3, column: 34 }]
+			"const none = {};\nsv({ base: 'a', variants: {}, defaultVariants: none });",
+		output: IMPORT + "const none = {};\nsv({ base: 'a', variants: {} });",
+		errors: [{ messageId: 'emptyConfig', line: 3, column: 48 }]
 	},
 	{
-		// An empty `variants` record behind a `const`.
-		code: IMPORT + "const none = {};\nsv({ base: 'a', variants: none });",
-		output: IMPORT + "const none = {};\nsv({ base: 'a' });",
-		errors: [{ messageId: 'emptyObject', line: 3, column: 27 }]
+		// An empty `variants` record behind a `const`, beside slots.
+		code:
+			IMPORT +
+			"const none = {};\nsv({ base: 'a', slots: { b: 'x' }, variants: none });",
+		output:
+			IMPORT + "const none = {};\nsv({ base: 'a', slots: { b: 'x' } });",
+		errors: [{ messageId: 'emptyObject', line: 3, column: 46 }]
 	},
 	{
 		// An empty compound list behind a `const`.
 		code:
 			IMPORT +
-			"const none = [];\nsv({ base: 'a', compoundVariants: none });",
-		output: IMPORT + "const none = [];\nsv({ base: 'a' });",
-		errors: [{ messageId: 'emptyArray', line: 3, column: 35 }]
+			"const none = [];\nsv({ base: 'a', variants: {}, compoundVariants: none });",
+		output: IMPORT + "const none = [];\nsv({ base: 'a', variants: {} });",
+		errors: [{ messageId: 'emptyArray', line: 3, column: 49 }]
 	},
 	{
 		// Empty variant values and value records behind a `const`.

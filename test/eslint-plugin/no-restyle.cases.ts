@@ -60,13 +60,13 @@ export const RESTYLE_VALID = [
 	// A config's own `base` replaces the factory's, and a config that extends
 	// another takes the factory's only where no parent sets one.
 	IMPORT_CREATE_SV +
-		"const mySv = createSV({ base: 'p-2' });\nconst b = mySv({ base: 'm-1' });\nb({ class: 'p-4' });",
+		"const mySv = createSV({ base: 'p-2' });\nconst b = mySv({ base: 'm-1', variants: {} });\nb({ class: 'p-4' });",
 	IMPORT_CREATE_SV +
-		"const mySv = createSV({ base: 'p-2' });\nconst b = mySv({ extend: parent });\nb({ class: 'p-4' });",
+		"const mySv = createSV({ base: 'p-2' });\nconst b = mySv({ extend: parent, variants: {} });\nb({ class: 'p-4' });",
 	IMPORT_CREATE_SV +
-		"const mySv = createSV(defaults);\nconst b = mySv({});\nb({ class: 'p-4' });",
+		"const mySv = createSV(defaults);\nconst b = mySv({ variants: {} });\nb({ class: 'p-4' });",
 	IMPORT_CREATE_SV +
-		"const mySv = createSV({ cacheSize: 1 });\nconst b = mySv({});\nb({ class: 'p-4' });",
+		"const mySv = createSV({ cacheSize: 1 });\nconst b = mySv({ variants: {} });\nb({ class: 'p-4' });",
 	// A variant with no default stays unset when a call with readable props
 	// doesn't pass it, so none of its values' classes apply.
 	IMPORT + RESTYLE_OPTIONAL + "b({ class: 'p-4 m-4 gap-4' });",
@@ -77,14 +77,14 @@ export const RESTYLE_VALID = [
 		"const props = { on: true };\ncn(b(props), 'p-4');",
 	// The two branches of a ternary never render together.
 	IMPORT_SV_CN +
-		"const card = sv({ base: 'p-2' });\nconst c = card();\ncn(on ? c : 'p-4');",
+		"const card = sv({ base: 'p-2', variants: {} });\nconst c = card();\ncn(on ? c : 'p-4');",
 	IMPORT +
-		"const card = sv({ base: 'p-2' });\nconst c = card();\n<div className={on ? c.base : 'p-4'} />;",
+		"const card = sv({ base: 'p-2', variants: {} });\nconst c = card();\n<div className={on ? c.base : 'p-4'} />;",
 	IMPORT_SV_CN +
-		"const card = sv({ base: 'p-2' });\nconst c = card();\ncn(a ? (b ? c : 'p-4') : 'm-1');",
+		"const card = sv({ base: 'p-2', variants: {} });\nconst c = card();\ncn(a ? (b ? c : 'p-4') : 'm-1');",
 	// A forwarded prop that replaces the styled value rather than joining it.
 	IMPORT +
-		'const button = sv({ base: \'p-2\' });\nfunction Button({ className }) { return <button className={className ? className : button()} />; }\n<Button className="p-4" />;',
+		'const button = sv({ base: \'p-2\', variants: {} });\nfunction Button({ className }) { return <button className={className ? className : button()} />; }\n<Button className="p-4" />;',
 	// A preset's value replaces the default, and `null` unsets the variant.
 	IMPORT + RESTYLE_PRESET + "b({ preset: 'big', class: 'p-4' });",
 	IMPORT + RESTYLE_PRESET + "b({ size: null, class: 'p-4' });",
@@ -98,7 +98,7 @@ export const RESTYLE_VALID = [
 	// A wrapper bound to itself names no component, and lints without looping.
 	IMPORT + 'const Loop = memo(Loop);\n<Loop className="p-4" />;',
 	// No slot-variants import at all — nothing is tracked.
-	"const card = sv({ base: 'p-2' });\ncard({ class: 'p-4' });",
+	"const card = sv({ base: 'p-2', variants: {} });\ncard({ class: 'p-4' });",
 	// A call with no arguments, and one whose props carry no class override.
 	IMPORT + RESTYLE_BUTTON + 'button();',
 	IMPORT + RESTYLE_BUTTON + "button({ size: 'lg' });",
@@ -122,7 +122,8 @@ export const RESTYLE_VALID = [
 	// neither.
 	IMPORT + RESTYLE_BUTTON + "button({ size: dynamic, class: 'gap-1' });",
 	// Single-word utilities have no namespace unless exclusiveGroups says so.
-	IMPORT + "const b = sv({ base: 'flex' });\nb({ class: 'block' });",
+	IMPORT +
+		"const b = sv({ base: 'flex', variants: {} });\nb({ class: 'block' });",
 	// The callee isn't a compiled variant function: a plain call, a config-less
 	// `sv()` (which returns a string), and a `createSV()` factory.
 	IMPORT + "other({ class: 'p-4' });",
@@ -131,7 +132,8 @@ export const RESTYLE_VALID = [
 	// A callee that isn't an identifier at all.
 	IMPORT + RESTYLE_BUTTON + "(0, button)({ class: 'p-4' });",
 	// A `let` binding is never read through.
-	IMPORT + "let card = sv({ base: 'p-2' });\ncard({ class: 'p-4' });",
+	IMPORT +
+		"let card = sv({ base: 'p-2', variants: {} });\ncard({ class: 'p-4' });",
 	// Slot reads that don't name a real slot, or can't be read statically.
 	IMPORT_SV_CN + RESTYLE_CARD + "const c = card();\ncn(c.footer, 'px-8');",
 	// A private field read is a member expression with no readable name.
@@ -286,11 +288,11 @@ export const RESTYLE_VALID = [
 export const RESTYLE_SVELTE_VALID = [
 	// Text glued to a substitution is part of the same class name.
 	{
-		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<div class="{c}p-4">y</div><div class="p-4{c}">z</div>`,
+		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<div class="{c}p-4">y</div><div class="p-4{c}">z</div>`,
 		filename: 'a.svelte'
 	},
 	{
-		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<div class="m-1" id="x" class:active={on}>y</div>`,
+		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<div class="m-1" id="x" class:active={on}>y</div>`,
 		filename: 'a.svelte'
 	},
 	// A member of a namespace whose module can't be found, and a special
@@ -305,11 +307,11 @@ export const RESTYLE_SVELTE_VALID = [
 // directive argument, a `v-if`, and a class object with no styled sibling.
 export const RESTYLE_VUE_VALID = [
 	{
-		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<template><div :id="c" v-if="on" :class="{ 'p-4': on }">a</div></template>`,
+		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<template><div :id="c" v-if="on" :class="{ 'p-4': on }">a</div></template>`,
 		filename: 'a.vue'
 	},
 	{
-		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });</script>\n<template><div :class="" :[key]="c" class>a</div></template>`,
+		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });</script>\n<template><div :class="" :[key]="c" class>a</div></template>`,
 		filename: 'a.vue'
 	}
 ];
@@ -330,7 +332,7 @@ export const RESTYLE_INVALID = [
 	})),
 	// A variant function called where `sv()` returns it.
 	{
-		code: IMPORT + "sv({ base: 'p-2' })({ class: 'p-4' });",
+		code: IMPORT + "sv({ base: 'p-2', variants: {} })({ class: 'p-4' });",
 		errors: [restyle('p-4', 'p-2')]
 	},
 	// A `createSV()` factory's `base` applies where the config sets none, after
@@ -344,7 +346,7 @@ export const RESTYLE_INVALID = [
 	{
 		code:
 			IMPORT_CREATE_SV +
-			"const mySv = createSV({ base: 'p-2' });\nconst b = mySv('flex', {});\nb({ class: 'p-4' });",
+			"const mySv = createSV({ base: 'p-2' });\nconst b = mySv('flex', { variants: {} });\nb({ class: 'p-4' });",
 		errors: [restyle('p-4', 'p-2')]
 	},
 	// A variant with no default may still be set: by a prop or a preset, by
@@ -420,13 +422,13 @@ export const RESTYLE_INVALID = [
 	{
 		code:
 			IMPORT_SV_CN +
-			"const card = sv({ base: 'p-2' });\nconst c = card();\ncn(c, on ? 'p-4' : 'm-1');",
+			"const card = sv({ base: 'p-2', variants: {} });\nconst c = card();\ncn(c, on ? 'p-4' : 'm-1');",
 		errors: [restyle('p-4', 'p-2')]
 	},
 	{
 		code:
 			IMPORT_SV_CN +
-			"const card = sv({ base: 'p-2' });\nconst c = card();\ncn(on ? [c, 'p-4'] : 'm-1');",
+			"const card = sv({ base: 'p-2', variants: {} });\nconst c = card();\ncn(on ? [c, 'p-4'] : 'm-1');",
 		errors: [restyle('p-4', 'p-2')]
 	},
 	// A preset not known statically leaves the defaults in force.
@@ -549,7 +551,8 @@ export const RESTYLE_INVALID = [
 	// Single-word utilities only collide once exclusiveGroups is on.
 	{
 		code:
-			IMPORT + "const b = sv({ base: 'flex' });\nb({ class: 'block' });",
+			IMPORT +
+			"const b = sv({ base: 'flex', variants: {} });\nb({ class: 'block' });",
 		options: [{ exclusiveGroups: true }],
 		errors: [restyle('block', 'flex')]
 	},
@@ -557,7 +560,7 @@ export const RESTYLE_INVALID = [
 	{
 		code:
 			IMPORT +
-			"const b = sv({ base: 'tw-p-2' });\nb({ class: 'tw-p-4' });",
+			"const b = sv({ base: 'tw-p-2', variants: {} });\nb({ class: 'tw-p-4' });",
 		options: [{ prefix: 'tw-' }],
 		errors: [restyle('tw-p-4', 'tw-p-2')]
 	},
@@ -619,7 +622,7 @@ cn(classes.item({ active: true }), 'px-4');`,
 	{
 		code:
 			IMPORT +
-			"const b = sv({ base: 'mt-4' });\nb({ class: 'mt-safe-offset-4' });",
+			"const b = sv({ base: 'mt-4', variants: {} });\nb({ class: 'mt-safe-offset-4' });",
 		errors: [restyle('mt-safe-offset-4', 'mt-4')]
 	},
 	// Classes written next to a slot read, in every shape a class list takes.
@@ -899,7 +902,7 @@ export const RESTYLE_SVELTE_INVALID = [
 	// Svelte: literal runs around a substitution, and a `class` attribute that
 	// is a single substitution beside a static one.
 	{
-		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2 rounded' });\nconst c = card();</script>\n<div class="p-4 {c} rounded">y</div>`,
+		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2 rounded', variants: {} });\nconst c = card();</script>\n<div class="p-4 {c} rounded">y</div>`,
 		filename: 'a.svelte',
 		errors: [restyle('p-4', 'p-2'), dup('rounded')]
 	},
@@ -914,25 +917,25 @@ export const RESTYLE_VUE_INVALID = [
 	// Vue: a static `class` merged with a `:class` binding on one element, an
 	// array binding, a template binding, and a conditional inside one.
 	{
-		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<template><div class="p-4" :class="c">a</div></template>`,
+		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<template><div class="p-4" :class="c">a</div></template>`,
 		filename: 'a.vue',
 		errors: [restyle('p-4', 'p-2')]
 	},
 	{
-		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<template><div :class="[c, 'p-8']">a</div><div :class="\`\${c} p-6\`">b</div></template>`,
+		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<template><div :class="[c, 'p-8']">a</div><div :class="\`\${c} p-6\`">b</div></template>`,
 		filename: 'a.vue',
 		errors: [restyle('p-8', 'p-2'), restyle('p-6', 'p-2')]
 	},
 	// Vue: an identifier the script never binds is left as itself.
 	{
-		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<template><div :class="[c, unknown, 'p-8']">a</div></template>`,
+		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<template><div :class="[c, unknown, 'p-8']">a</div></template>`,
 		filename: 'a.vue',
 		errors: [restyle('p-8', 'p-2')]
 	},
 	// Vue: a `cn()` call and a variant call's override written inside the
 	// template itself.
 	{
-		code: `<script setup>import { cn, sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\nconst c = card();</script>\n<template><div :class="cn(c, 'p-8')">a</div><div :class="card({ class: 'p-6' })">b</div></template>`,
+		code: `<script setup>import { cn, sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<template><div :class="cn(c, 'p-8')">a</div><div :class="card({ class: 'p-6' })">b</div></template>`,
 		filename: 'a.vue',
 		errors: [restyle('p-8', 'p-2'), restyle('p-6', 'p-2')]
 	}

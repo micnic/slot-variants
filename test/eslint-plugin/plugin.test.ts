@@ -105,21 +105,21 @@ t.test('TypeScript wrappers are read through to the value they wrap', (t) => {
 			.verify(`${IMPORT_SV_CN}${code}`, config, { filename })
 			.map(({ ruleId, messageId }) => `${ruleId}:${messageId}`);
 	const forwardRefButton = (cast: string) =>
-		`const button = sv({ base: 'p-2' });\nconst Button = forwardRef(({ className }, ref) => <button ref={ref} className={button({ class: className })} />)${cast};\n<Button className="p-4" />;`;
+		`const button = sv({ base: 'p-2', variants: {} });\nconst Button = forwardRef(({ className }, ref) => <button ref={ref} className={button({ class: className })} />)${cast};\n<Button className="p-4" />;`;
 	const cases = [
 		[
-			"sv({ base: 'p-2 p-4' });",
-			"sv({ base: 'p-2 p-4' } as const);",
+			"sv({ base: 'p-2 p-4', variants: {} });",
+			"sv({ base: 'p-2 p-4', variants: {} } as const);",
 			'test.tsx'
 		],
 		[
-			"const base = 'p-2 p-4';\nsv({ base });",
-			"const base = 'p-2 p-4' as const;\nsv({ base });",
+			"const base = 'p-2 p-4';\nsv({ base, variants: {} });",
+			"const base = 'p-2 p-4' as const;\nsv({ base, variants: {} });",
 			'test.tsx'
 		],
 		[
-			"const config = { base: 'p-2 p-4' };\nsv(config);",
-			"const config = { base: 'p-2 p-4' } satisfies Record<string, string>;\nsv(config);",
+			"const config = { base: 'p-2 p-4', variants: {} };\nsv(config);",
+			"const config = { base: 'p-2 p-4', variants: {} } satisfies Record<string, string>;\nsv(config);",
 			'test.tsx'
 		],
 		[
@@ -128,19 +128,19 @@ t.test('TypeScript wrappers are read through to the value they wrap', (t) => {
 			'test.tsx'
 		],
 		[
-			"const button = sv({ base: 'p-2' });\ncn(button(), 'p-4');",
-			"const button = sv({ base: 'p-2' });\ncn(button()!, 'p-4');",
+			"const button = sv({ base: 'p-2', variants: {} });\ncn(button(), 'p-4');",
+			"const button = sv({ base: 'p-2', variants: {} });\ncn(button()!, 'p-4');",
 			'test.tsx'
 		],
 		[
-			"const button = sv({ base: 'p-2' });\n<div className={button({ class: 'p-4' })} />;",
-			"const button = sv({ base: 'p-2' }) satisfies object;\n<div className={button({ class: 'p-4' })} />;",
+			"const button = sv({ base: 'p-2', variants: {} });\n<div className={button({ class: 'p-4' })} />;",
+			"const button = sv({ base: 'p-2', variants: {} }) satisfies object;\n<div className={button({ class: 'p-4' })} />;",
 			'test.tsx'
 		],
 		[forwardRefButton(''), forwardRefButton(' as typeof Impl'), 'test.tsx'],
 		[
-			"sv({ base: 'p-2 p-4' });",
-			"sv({ base: <string>'p-2 p-4' });",
+			"sv({ base: 'p-2 p-4', variants: {} });",
+			"sv({ base: <string>'p-2 p-4', variants: {} });",
 			'test.ts'
 		]
 	] as const;
@@ -160,7 +160,7 @@ t.test('TypeScript wrappers are read through to the value they wrap', (t) => {
 t.test('an ambient `declare const` is not read through', (t) => {
 	const linter = new Linter({ configType: 'flat' });
 	const messages = linter.verify(
-		`${IMPORT}declare const base: string;\nsv({ base });`,
+		`${IMPORT}declare const base: string;\nsv({ base, variants: {} });`,
 		{
 			files: ['**/*.ts'],
 			plugins: { 'slot-variants': plugin },
@@ -309,7 +309,7 @@ t.test('Svelte and Vue templates are checked like script code', (t) => {
 		`<script setup>\nimport { cn, sv } from 'slot-variants';\n${body}\n</script>\n`;
 	// A config compiled once in a plain `<script>`, read by `<script setup>`.
 	const scripts = (body: string) =>
-		`<script>\nimport { cn, sv } from 'slot-variants';\nconst card = sv({ base: 'p-2' });\n</script>\n<script setup>\n${body}\n</script>\n`;
+		`<script>\nimport { cn, sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\n</script>\n<script setup>\n${body}\n</script>\n`;
 	const cases = [
 		[
 			'Svelte markup written before its <script>',
@@ -511,7 +511,7 @@ t.test('configs.recommended preset', (t) => {
 
 	const linter = new Linter({ configType: 'flat' });
 	const messages = linter.verify(
-		`${IMPORT}sv({ base: 'flex  flex' });`,
+		`${IMPORT}sv({ base: 'flex  flex', variants: {} });`,
 		[
 			recommended as unknown as Linter.Config,
 			{

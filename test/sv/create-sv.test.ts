@@ -89,7 +89,7 @@ t.test('per-call undefined option keeps the factory default', (t) => {
 	t.equal(button({ size: 'lg' }), 'BTN TEXT-LG', 'default postProcess runs');
 	t.equal(button.getCacheSize(), 1, 'default cacheSize bounds the cache');
 
-	const plain = sv('btn', { introspection: undefined });
+	const plain = sv('btn', { variants: {}, introspection: undefined });
 	const plainString: string = plain();
 
 	t.equal(plainString, 'btn', 'sv keeps returning the class string');
