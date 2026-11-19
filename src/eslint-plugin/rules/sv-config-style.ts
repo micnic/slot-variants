@@ -88,9 +88,11 @@ const collectOrderedEntries = (
 
 		const index = ORDER_INDEX.get(key);
 
-		// Reachable through `createSV(defaults)`, which accepts any object
-		// literal — an unrecognized key can't be placed in the canonical order,
-		// so the whole object becomes unfixable while known keys stay checked.
+		// A config only needs `slots` or `variants` to be one, and
+		// `createSV(defaults)` takes any object literal, so other keys may sit
+		// beside them — an unrecognized key can't be placed in the canonical
+		// order, so the whole object becomes unfixable while known keys stay
+		// checked.
 		if (index === undefined) {
 			fixable = false;
 			continue;

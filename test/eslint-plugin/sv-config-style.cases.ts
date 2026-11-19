@@ -93,15 +93,7 @@ export const SV_CONFIG_STYLE_ORDER_INVALID = [
 	{
 		// An unknown/computed key present anywhere in the object disables
 		// the fixer for the whole call, but known-key order is still checked
-		// and reported. Note: this uses createSV(), not sv() — a computed
-		// key in an sv() config argument makes the shared call-matcher
-		// (`matchSvCall` → `isConfigLike` → `getStrictProperties`) refuse to
-		// recognize the object as a config at all (it requires every key to
-		// be statically readable), so `call.config` would be null and this
-		// rule would never see it. `createSV(defaults)` matches its argument
-		// more permissively (`matchFactoryCall` only checks that it's an
-		// `ObjectExpression`), so a computed key there still reaches this
-		// rule — that's the real place this bail-out matters.
+		// and reported.
 		code:
 			IMPORT_CREATE_SV +
 			"const key = 'variants';\ncreateSV({ variants: { size: { sm: 'text-sm' } }, [key]: 1, base: 'flex' });",
@@ -129,11 +121,22 @@ export const SV_CONFIG_STYLE_ORDER_INVALID = [
 	},
 	{
 		// An unknown (but non-computed) key also disables the fixer for
-		// the whole call while known-key order is still reported. Uses
-		// createSV() for the same reason as the computed-key case above.
+		// the whole call while known-key order is still reported.
 		code:
 			IMPORT_CREATE_SV +
 			"createSV({ variants: { size: { sm: 'text-sm' } }, foo: 1, base: 'flex' });",
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		]
+	},
+	{
+		// An sv() config may carry keys beside `variants` too.
+		code:
+			IMPORT +
+			"const key = 'k';\nsv({ variants: { size: { sm: 'text-sm' } }, [key]: 1, foo: 1, base: 'flex' });",
 		errors: [
 			{
 				messageId: 'wrongOrder',

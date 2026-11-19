@@ -2,9 +2,8 @@ import type { Property } from 'estree';
 
 /**
  * Every recognized sv()/createSV() config key, in the project's canonical
- * declaration order (the order documented in the README's config table). The
- * `sv-config-style` rule enforces this order, and `CONFIG_KEYS` is derived from
- * it so the two can't drift apart.
+ * declaration order (the order documented in the README's config table),
+ * which the `sv-config-style` rule enforces.
  */
 export const CONFIG_KEY_ORDER: readonly string[] = [
 	'extend',
@@ -22,8 +21,6 @@ export const CONFIG_KEY_ORDER: readonly string[] = [
 	'introspection',
 	'postProcess'
 ];
-
-export const CONFIG_KEYS = new Set(CONFIG_KEY_ORDER);
 
 // GitHub anchors a `slot-variants/<rule>` README heading as
 // `slot-variants<rule>`, dropping the backticks and the slash.
