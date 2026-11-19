@@ -338,10 +338,24 @@ const resolveOwnNames = (names: NameList, all: readonly string[]) => {
 	return resolveNames(names, all);
 };
 
+// Multi slot names as the slots they cover: a group stands for its slots as
+// they are now, so the slots a later config adds to it aren't covered.
+const resolveMultiSlots = (names: NameList, resolved: RawConfig) => {
+	if (names === undefined) {
+		return undefined;
+	}
+
+	const groups = resolved.groups ?? {};
+
+	return resolveNames(names, getSlotNames(resolved.slots)).flatMap(
+		(name) => getOwn(groups, name) ?? [name]
+	);
+};
+
 /**
  * A config as a layer other configs merge: its `true` required variants and
- * multi slots named, as they cover only what it had, and its introspection
- * resolved.
+ * its multi slots named, as they cover only what it had, and its
+ * introspection resolved.
  */
 export const toLayer = (own: RawConfig, resolved: RawConfig): RawConfig => ({
 	...own,
@@ -349,6 +363,6 @@ export const toLayer = (own: RawConfig, resolved: RawConfig): RawConfig => ({
 		own.requiredVariants,
 		keys(resolved.variants ?? {})
 	),
-	multiSlots: resolveOwnNames(own.multiSlots, getSlotNames(resolved.slots)),
+	multiSlots: resolveMultiSlots(own.multiSlots, resolved),
 	introspection: resolved.introspection ?? false
 });

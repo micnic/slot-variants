@@ -491,6 +491,27 @@ t.test('unions multi slots, resolving true on each side', (t) => {
 	t.end();
 });
 
+t.test('a parent group in multi slots covers only its own slots', (t) => {
+	const parent = sv({
+		slots: { a: 'a', b: 'b' },
+		groups: { g: ['a'] },
+		multiSlots: ['g']
+	});
+	const child = sv({
+		extend: parent,
+		slots: { c: 'c' },
+		groups: { g: ['c'] }
+	});
+	const own = sv({ extend: parent, slots: { c: 'c' }, multiSlots: ['g'] });
+	const result = child();
+
+	t.equal(typeof result.a, 'function', 'the group slot it had');
+	t.equal(result.c, 'c', 'a slot the child adds to the group');
+	t.equal(typeof own().a, 'function', 'a child naming the group');
+
+	t.end();
+});
+
 t.test('inherits behaviour options unless the child sets them', (t) => {
 	const upper = (className: string) => className.toUpperCase();
 	const lower = (className: string) => className.toLowerCase();
@@ -567,6 +588,53 @@ t.test('merges a shared ancestor once', (t) => {
 		'a ax cmp',
 		'the same parent twice'
 	);
+
+	t.end();
+});
+
+t.test('types merge a shared ancestor once', (t) => {
+	const required = sv({
+		variants: { size: { sm: 's' } },
+		requiredVariants: ['size']
+	});
+	const lifted = sv({ extend: required, defaultVariants: { size: 'sm' } });
+	const plain = sv({ extend: required, base: 'p' });
+
+	t.equal(
+		sv({ extend: [lifted, plain] })(),
+		'p s',
+		'a default one parent gives stays'
+	);
+
+	const defaulted = sv({
+		variants: { size: { sm: 's' } },
+		defaultVariants: { size: 'sm' }
+	});
+	const requiring = sv({ extend: defaulted, requiredVariants: ['size'] });
+	const other = sv({ extend: defaulted, base: 'o' });
+	const diamond = sv({ extend: [requiring, other] });
+	const repeated = sv({ extend: [requiring, defaulted] });
+
+	t.throws(
+		// @ts-expect-error - the first parent's requirement stays
+		() => diamond(),
+		{ message: 'Missing required variant: "size"' },
+		'a requirement one parent adds stays'
+	);
+	t.throws(
+		// @ts-expect-error - the repeated parent adds nothing
+		() => repeated(),
+		{ message: 'Missing required variant: "size"' },
+		'a parent repeated after its child adds nothing'
+	);
+
+	const shown = sv({ variants: { size: { sm: 's' } }, introspection: true });
+	const hidden = sv({ extend: shown, introspection: false });
+	const merged = sv({ extend: [hidden, shown] });
+
+	// @ts-expect-error - introspection stays off
+	void merged.getVariantValues;
+	t.notOk('getVariantValues' in merged, 'introspection stays off');
 
 	t.end();
 });

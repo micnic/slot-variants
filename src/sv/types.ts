@@ -463,7 +463,11 @@ type EmptyComponentTypes = {
 	introspection: false;
 };
 
-type ExtendTarget = AnyFn & { readonly [componentTypes]: ComponentTypes };
+// What a component records for the components extending it: the maps of its
+// ancestors' own configs, each once and in merge order, then its own.
+type ComponentLayers = readonly ComponentTypes[];
+
+type ExtendTarget = AnyFn & { readonly [componentTypes]: ComponentLayers };
 
 export type ExtendInput = ExtendTarget | readonly ExtendTarget[];
 
@@ -537,23 +541,59 @@ type MergeComponentTypes<A extends ComponentTypes, B extends ComponentTypes> = {
 	introspection: B['introspection'];
 };
 
-type TypesOf<T> = T extends {
-	readonly [componentTypes]: infer X extends ComponentTypes;
+type LayersOf<T> = T extends {
+	readonly [componentTypes]: infer L extends ComponentLayers;
 }
-	? X
-	: EmptyComponentTypes;
+	? L
+	: [];
 
-type FoldParents<E, Acc extends ComponentTypes> = E extends readonly [
-	infer H,
+type FlattenLayers<E> = E extends readonly [infer H, ...infer Rest]
+	? [...LayersOf<H>, ...FlattenLayers<Rest>]
+	: [];
+
+type IsSame<A, B> =
+	(<X>() => X extends A ? 1 : 2) extends <X>() => X extends B ? 1 : 2
+		? true
+		: false;
+
+type HasLayer<L extends ComponentLayers, H> = L extends readonly [
+	infer X,
+	...infer Rest extends ComponentLayers
+]
+	? IsSame<X, H> extends true
+		? true
+		: HasLayer<Rest, H>
+	: false;
+
+// Each layer once, where it first appears, as the runtime merges a shared
+// ancestor once. Layers are told apart by type, so two components with the
+// very same config types count as one.
+type DedupeLayers<
+	L extends ComponentLayers,
+	Seen extends ComponentLayers = []
+> = L extends readonly [
+	infer H extends ComponentTypes,
+	...infer Rest extends ComponentLayers
+]
+	? HasLayer<Seen, H> extends true
+		? DedupeLayers<Rest, Seen>
+		: DedupeLayers<Rest, [...Seen, H]>
+	: Seen;
+
+/** The layers of every component `E` extends, left to right, each once. */
+type ParentLayers<E> = DedupeLayers<
+	E extends readonly unknown[] ? FlattenLayers<E> : LayersOf<E>
+>;
+
+type FoldLayers<L, Acc extends ComponentTypes> = L extends readonly [
+	infer H extends ComponentTypes,
 	...infer Rest
 ]
-	? FoldParents<Rest, MergeComponentTypes<Acc, TypesOf<H>>>
+	? FoldLayers<Rest, MergeComponentTypes<Acc, H>>
 	: Acc;
 
 /** The merged maps of every component `E` extends, left to right. */
-type ParentTypes<E> = E extends readonly unknown[]
-	? FoldParents<E, EmptyComponentTypes>
-	: TypesOf<E>;
+type ParentTypes<E> = FoldLayers<ParentLayers<E>, EmptyComponentTypes>;
 
 /** A config's slots together with the ones it inherits. */
 export type ExtendedSlots<E, S extends MaybeSlots> = Extract<
@@ -873,20 +913,23 @@ export type VariantFn<
 	M extends MultiSlots<S, G>,
 	R extends RequiredVariants<V>,
 	I extends boolean,
-	D extends string = never
+	D extends string = never,
+	L extends ComponentLayers = [
+		{
+			slots: S;
+			groups: G;
+			variants: V;
+			presets: P;
+			required: RequiredVariantKeys<V, R>;
+			multi: MultiSlotKeys<S, G, M>;
+			defaulted: D;
+			introspection: I;
+		}
+	]
 > = {
 	(...args: VariantFnArgs<S, G, V, P, R>): ReturnValue<S, G, V, P, M, R>;
-	/** Type-only: the maps a component extending this one inherits. */
-	readonly [componentTypes]: {
-		slots: S;
-		groups: G;
-		variants: V;
-		presets: P;
-		required: RequiredVariantKeys<V, R>;
-		multi: MultiSlotKeys<S, G, M>;
-		defaulted: D;
-		introspection: I;
-	};
+	/** Type-only: the layers a component extending this one merges. */
+	readonly [componentTypes]: L;
 } & (I extends true ? IntrospectionValues<S, G, V, P, M, R> : unknown);
 
 export type NonConfigClassArg<T> =
@@ -1014,8 +1057,44 @@ export type ExtendedVariantFn<
 		RequiredVariants<ExtendedVariants<E, S, G, V>>
 	>,
 	ExtendedIntrospection<E, I, B>,
-	ParentTypes<E>['defaulted'] | D
+	D,
+	ExtendedLayers<E, S, G, V, P, M, R, I, D, B>
 >;
+
+// The layers a config's variant function records: the ones it extends, then
+// its own maps, its required variants and multi slots resolved to what they
+// cover now, as the runtime records them.
+type ExtendedLayers<
+	E,
+	S extends MaybeSlots,
+	G extends MaybeGroups<ExtendedSlots<E, S>>,
+	V,
+	P,
+	M,
+	R,
+	I extends MaybeIntrospection,
+	D extends string,
+	B extends boolean
+> = [
+	...ParentLayers<E>,
+	{
+		slots: S;
+		groups: G;
+		variants: V;
+		presets: P;
+		required: RequiredVariantKeys<
+			ExtendedVariants<E, S, G, V>,
+			Extract<R, RequiredVariants<ExtendedVariants<E, S, G, V>>>
+		>;
+		multi: MultiSlotKeys<
+			ExtendedSlots<E, S>,
+			ExtendedGroups<E, S, G>,
+			Extract<M, MultiSlots<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>>>
+		>;
+		defaulted: D;
+		introspection: ExtendedIntrospection<E, I, B>;
+	}
+];
 
 type ClassCall = <const T extends ClassValue[]>(
 	...args: T & { [K in keyof T]: NonConfigClassArg<T[K]> }
