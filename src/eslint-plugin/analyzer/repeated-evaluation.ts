@@ -1,6 +1,7 @@
 import type { Rule, SourceCode } from 'eslint';
 import type { CallExpression, Node } from 'estree';
 import { isComponentFunction } from './components.ts';
+import { unwrapExpression } from './const-bindings.ts';
 import type { SvelteAttribute, VAttribute } from './markup.ts';
 
 // Why a call would be evaluated more than once, or null when it runs exactly
@@ -45,6 +46,9 @@ const SVELTE_SCRIPT_ELEMENT = 'SvelteScriptElement';
 
 // Wraps every Vue template expression: `{{ }}` and directive values alike.
 const VUE_EXPRESSION_CONTAINER = 'VExpressionContainer';
+
+// The methods that invoke the function they're read off on the spot.
+const CALL_METHODS: ReadonlySet<string> = new Set(['call', 'apply']);
 
 const CLASS_FIELD_TYPES: ReadonlySet<string> = new Set([
 	'PropertyDefinition',
@@ -144,17 +148,44 @@ const isRepeatedLoopPart = (ancestor: Node, child: Node): boolean => {
 	return false;
 };
 
-// Whether the function `fn` is called right where it's written
-// (`(() => …)()`), so its body runs once, where the call sits.
-const isImmediatelyInvoked = (fn: Node, parent: Node): boolean =>
-	parent.type === 'CallExpression' && parent.callee === fn;
+// The function a call invokes right where it's written: its callee, through
+// type-only wrappers and a `.call()`/`.apply()` read off it.
+const getInvokedFunction = (callee: Node): Node => {
+	const target = unwrapExpression(callee);
+
+	if (
+		target.type === 'MemberExpression' &&
+		!target.computed &&
+		target.property.type === 'Identifier' &&
+		CALL_METHODS.has(target.property.name)
+	) {
+		return unwrapExpression(target.object);
+	}
+
+	return target;
+};
+
+// The functions the calls around a node invoke right where they're written
+// (`(() => …)()`), whose bodies run once, where the call sits.
+const getInvokedFunctions = (outward: readonly Node[]): ReadonlySet<Node> => {
+	const invoked = new Set<Node>();
+
+	for (const ancestor of outward) {
+		if (ancestor.type === 'CallExpression') {
+			invoked.add(getInvokedFunction(ancestor.callee));
+		}
+	}
+
+	return invoked;
+};
 
 // Why entering `ancestor`, on the way down to `child`, would evaluate the call
-// again, or null when it doesn't. `parent` is the node `ancestor` sits in.
+// again, or null when it doesn't. `invoked` holds the functions the calls
+// around it invoke on the spot.
 const getAncestorReason = (
 	ancestor: Node,
 	child: Node,
-	parent: Node
+	invoked: ReadonlySet<Node>
 ): RepeatedEvaluation => {
 	if (isSvelteScriptElement(ancestor)) {
 		if (isSvelteModuleScript(ancestor)) {
@@ -165,7 +196,7 @@ const getAncestorReason = (
 	}
 
 	if (isComponentFunction(ancestor)) {
-		if (isImmediatelyInvoked(ancestor, parent)) {
+		if (invoked.has(ancestor)) {
 			return null;
 		}
 
@@ -210,13 +241,11 @@ export const findRepeatedEvaluation = (
 	const { sourceCode } = context;
 	// `getAncestors` returns a fresh array, so reversing it in place is safe.
 	const outward = sourceCode.getAncestors(node).reverse();
+	const invoked = getInvokedFunctions(outward);
 	let child: Node = node;
 
-	for (const [index, ancestor] of outward.entries()) {
-		// The program, last in the walk, sits in nothing: it stands in for
-		// its own parent.
-		const parent = outward[index + 1] ?? ancestor;
-		const reason = getAncestorReason(ancestor, child, parent);
+	for (const ancestor of outward) {
+		const reason = getAncestorReason(ancestor, child, invoked);
 
 		if (reason !== null) {
 			return reason;

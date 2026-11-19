@@ -51,6 +51,10 @@ export const REQUIRE_TOP_LEVEL_CONFIG_VALID = [
 	IMPORT + 'const b = (() => sv({ variants: {} }))();',
 	IMPORT + 'const b = (function () { return sv({ variants: {} }); })();',
 	IMPORT + 'const b = (async () => sv({ variants: {} }))();',
+	// So does one invoked through `.call()` or `.apply()`.
+	IMPORT +
+		'const b = (function () { return sv({ variants: {} }); }).call(this);',
+	IMPORT + 'const b = (() => sv({ variants: {} })).apply(null, []);',
 	// `void 0` is `undefined`: neither key is set, so this is a class list.
 	IMPORT + "function f() { return sv({ slots: void 0, base: 'x' }); }",
 	// A spread no object literal can be read from leaves the call a class
@@ -234,6 +238,15 @@ export const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
 		errors: [{ messageId: 'nested' }]
 	},
 	{
+		// Nor is one whose method other than `.call()`/`.apply()` is called.
+		code: IMPORT + '(() => sv({ variants: {} })).bind(null);',
+		errors: [{ messageId: 'nested' }]
+	},
+	{
+		code: IMPORT + "(() => sv({ variants: {} }))['call']();",
+		errors: [{ messageId: 'nested' }]
+	},
+	{
 		// A function passed to a call isn't invoked where it's written.
 		code: IMPORT + 'list.map(() => sv({ variants: {} }));',
 		errors: [{ messageId: 'nested' }]
@@ -335,6 +348,13 @@ export const REQUIRE_TOP_LEVEL_CONFIG_VUE_INVALID = [
 
 // An `accessor` field, which only the TypeScript parser reads.
 export const REQUIRE_TOP_LEVEL_CONFIG_TS_VALID = [
+	{
+		// A type-only wrapper around an immediately invoked function.
+		code:
+			IMPORT +
+			'const b = ((() => sv({ variants: {} })) as () => void)();',
+		filename: 'test.ts'
+	},
 	{
 		code: IMPORT + 'class A { static accessor b = sv({ variants: {} }); }',
 		filename: 'test.ts'
