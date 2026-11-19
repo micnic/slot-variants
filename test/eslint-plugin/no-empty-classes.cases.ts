@@ -325,6 +325,16 @@ export const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyObject' }]
 	},
 	{
+		// `slots` from a spread keeps the object a config without `variants`.
+		code:
+			IMPORT +
+			"const shared = { slots: { a: 'x' } };\nsv({ ...shared, variants: {} });",
+		output:
+			IMPORT +
+			"const shared = { slots: { a: 'x' } };\nsv({ ...shared });",
+		errors: [{ messageId: 'emptyObject' }]
+	},
+	{
 		code: IMPORT + "sv({ variants: {}, base: 'p-2', slots: {} });",
 		output: IMPORT + "sv({ variants: {}, base: 'p-2' });",
 		errors: [{ messageId: 'emptyObject' }]

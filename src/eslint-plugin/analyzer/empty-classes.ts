@@ -347,40 +347,36 @@ const svEmptyConfigValueCheckers: ReadonlyMap<string, EmptyConfigChecker> =
 // removing every marker would turn the config into a class record.
 const getMarkerToKeep = (
 	{ slots, variants }: ConfigMarkers,
-	emptyKeys: ReadonlySet<string>
+	isEmpty: (key: string) => boolean
 ): string | null => {
 	if (!variants) {
 		return 'slots';
 	}
 
-	if (!slots || emptyKeys.has('slots')) {
+	if (!slots || isEmpty('slots')) {
 		return 'variants';
 	}
 
 	return null;
 };
 
-// The empty marker left unreported, if any.
+// The empty marker left unreported, if any. Only the config's own properties
+// are reported, so a marker a spread object holds is never removed.
 const getKeptMarker = (
 	context: Rule.RuleContext,
 	config: ObjectExpression
 ): string | null => {
 	const resolve = (node: Node) =>
 		resolveStaticValue(node, context.sourceCode);
-	const emptyKeys = new Set<string>();
+	const own = getProperties(config);
+	const isEmpty = (key: string) => {
+		const value = own.get(key);
 
-	for (const [key, value] of getProperties(config)) {
-		if (isEmptyContainer(resolve(value))) {
-			emptyKeys.add(key);
-		}
-	}
+		return value !== undefined && isEmptyContainer(resolve(value));
+	};
+	const marker = getMarkerToKeep(getConfigMarkers(config, resolve), isEmpty);
 
-	const marker = getMarkerToKeep(
-		getConfigMarkers(config, resolve),
-		emptyKeys
-	);
-
-	if (marker !== null && emptyKeys.has(marker)) {
+	if (marker !== null && isEmpty(marker)) {
 		return marker;
 	}
 
