@@ -57,6 +57,9 @@ const RESTYLE_OPTIONAL = `const b = sv({
 });\n`;
 
 export const RESTYLE_VALID = [
+	// A slot call's preset replaces the outer call's, whose values are lost.
+	IMPORT +
+		"const card = sv({ slots: { header: '' }, multiSlots: ['header'], variants: { size: { sm: { header: 'm-1' }, lg: { header: 'p-2' } }, tone: { red: { header: 'text-red' } } }, presets: { big: { size: 'lg' }, compact: { tone: 'red' } }, defaultVariants: { size: 'sm' } });\nconst r = card({ preset: 'big' });\nr.header({ preset: 'compact', class: 'p-4' });",
 	// A slot call's preset can't change a variant the outer call passes.
 	IMPORT +
 		"const card = sv({ slots: { header: '' }, multiSlots: ['header'], variants: { size: { sm: { header: 'm-1' }, lg: { header: 'p-2' } } }, presets: { big: { size: 'lg' } }, defaultVariants: { size: 'sm' } });\nconst r = card({ size: 'sm' });\nr.header({ preset: 'big', class: 'p-4' });",
@@ -487,12 +490,14 @@ export const RESTYLE_INVALID = [
 			["card({ size: 'sm' })", 'name', 'm-4', 'm-1'],
 			["card({ size: 'sm', tone: 'red' })", 'name', 'm-4', 'm-1'],
 			['card()', 'name', 'p-4', 'p-2'],
-			['card({ ...p })', "'big'", 'p-4', 'p-2']
+			['card({ ...p })', "'big'", 'p-4', 'p-2'],
+			// A slot call's preset replaces the outer call's.
+			["card({ preset: 'big' })", "'compact'", 'm-4', 'm-1']
 		] as const
 	).map(([outer, preset, cls, other]) => ({
 		code:
 			IMPORT +
-			`const card = sv({ slots: { header: '' }, multiSlots: ['header'], variants: { size: { sm: { header: 'm-1' }, lg: { header: 'p-2' } }, tone: { red: { header: 'text-red' } } }, presets: { big: { size: 'lg' } }, defaultVariants: { size: 'sm' } });\nconst r = ${outer};\nr.header({ preset: ${preset}, class: '${cls}' });`,
+			`const card = sv({ slots: { header: '' }, multiSlots: ['header'], variants: { size: { sm: { header: 'm-1' }, lg: { header: 'p-2' } }, tone: { red: { header: 'text-red' } } }, presets: { big: { size: 'lg' }, compact: { tone: 'red' } }, defaultVariants: { size: 'sm' } });\nconst r = ${outer};\nr.header({ preset: ${preset}, class: '${cls}' });`,
 		errors: [restyle(cls, other, 'header')]
 	})),
 	{
