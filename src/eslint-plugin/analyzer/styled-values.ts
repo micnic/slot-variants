@@ -27,6 +27,7 @@ import {
 	collectSlotKeyedProperties,
 	getClassValue,
 	getConfigSlotNames,
+	getConfigProperties,
 	getProperties,
 	getStrictProperties,
 	type GroupSlots
@@ -282,7 +283,7 @@ export const getConfigStyles = (
 	sourceCode: SourceCode
 ): InternalStyles =>
 	getOrCreate(stylesCache, node, () =>
-		buildStyles(getProperties(config), args, sourceCode)
+		buildStyles(getConfigProperties(config, sourceCode), args, sourceCode)
 	);
 
 export const createStyledContext = (
@@ -545,7 +546,10 @@ const resolveVariantFnStyles = (
 
 	return getOrCreate(factoryStylesCache, resolved, () =>
 		buildStyles(
-			new Map([...getProperties(config), ['base', factoryBase]]),
+			new Map([
+				...getConfigProperties(config, ctx.sourceCode),
+				['base', factoryBase]
+			]),
 			args,
 			ctx.sourceCode
 		)

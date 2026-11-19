@@ -2,7 +2,7 @@ import type { SourceCode } from 'eslint';
 import type { Node, ObjectExpression, Property, SpreadElement } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { getKeyName } from './config-keys.ts';
-import { resolveContainer } from './const-bindings.ts';
+import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
 import type { ResolveNode } from './static-predicates.ts';
 
 export type GroupSlots = ReadonlyMap<string, ReadonlyArray<string>>;
@@ -16,6 +16,13 @@ type GroupEntry = [group: string, slots: ReadonlyArray<string>];
 const EMPTY_PROPERTIES: ReadonlyMap<string, Node> = new Map();
 
 const propertiesCache = new WeakMap<
+	ObjectExpression,
+	ReadonlyMap<string, Node>
+>();
+
+// An object's properties with those of the objects it spreads, when it has a
+// spread.
+const spreadPropertiesCache = new WeakMap<
 	ObjectExpression,
 	ReadonlyMap<string, Node>
 >();
@@ -99,12 +106,23 @@ export const getSpreadProperties = (
 		return getProperties(obj);
 	}
 
-	const merged = new Map<string, Node>();
+	// `resolve` reads the file `obj` is in, so its result depends on `obj`
+	// alone.
+	return getOrCreate(spreadPropertiesCache, obj, () => {
+		const merged = new Map<string, Node>();
 
-	mergeSpreadProperties(obj, resolve, merged, new Set());
+		mergeSpreadProperties(obj, resolve, merged, new Set());
 
-	return merged;
+		return merged;
+	});
 };
+
+/** A config's properties, with those of the objects it spreads merged in. */
+export const getConfigProperties = (
+	config: ObjectExpression,
+	sourceCode: SourceCode
+): ReadonlyMap<string, Node> =>
+	getSpreadProperties(config, (node) => resolveStaticValue(node, sourceCode));
 
 export const getStrictProperties = (
 	obj: Node | undefined

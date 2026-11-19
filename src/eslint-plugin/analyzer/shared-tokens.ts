@@ -17,6 +17,7 @@ import {
 	collectSlotKeyedProperties,
 	getClassValue,
 	getConfigSlotNames,
+	getConfigProperties,
 	getProperties,
 	getStrictProperties
 } from './properties.ts';
@@ -866,14 +867,12 @@ const getEntryRemoval = (
 const checkCompoundsForSingleKey = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression,
+	config: ReadonlyMap<string, Node>,
 	kind: CompoundKind,
 	variantsMap: ReadonlyMap<string, Node>,
 	scope: CompoundScope
 ) => {
-	const compounds = resolveArray(
-		getProperties(configNode).get(kind),
-		context.sourceCode
-	);
+	const compounds = resolveArray(config.get(kind), context.sourceCode);
 
 	if (compounds === null) {
 		return;
@@ -928,7 +927,7 @@ export const analyzeSharedTokens = (
 	{ canCreateBase, leadingArg, inheritsPostProcess }: SharedTokensCall
 ) => {
 	const { sourceCode } = context;
-	const config = getProperties(configNode);
+	const config = getConfigProperties(configNode, sourceCode);
 	const slotNames = getConfigSlotNames(config, sourceCode);
 	const variantsMap = getProperties(
 		resolveContainer(config.get('variants'), sourceCode)
@@ -954,10 +953,17 @@ export const analyzeSharedTokens = (
 		inheritsPostProcess || inherits || config.has('postProcess');
 
 	for (const kind of COMPOUND_KINDS) {
-		checkCompoundsForSingleKey(context, configNode, kind, variantsMap, {
-			canEdit,
-			suggestOnly
-		});
+		checkCompoundsForSingleKey(
+			context,
+			configNode,
+			config,
+			kind,
+			variantsMap,
+			{
+				canEdit,
+				suggestOnly
+			}
+		);
 	}
 
 	if (variantsMap.size === 0) {

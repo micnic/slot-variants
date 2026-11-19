@@ -22,6 +22,7 @@ import { type EmptyFix, makeListFix } from './list-fix.ts';
 import { getStaticStringText } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
+	getConfigProperties,
 	getProperties,
 	getSlotTargetOverlaps,
 	type GroupSlots
@@ -460,7 +461,7 @@ export const analyzeConfigForRule = (
 	baseArgs: ReadonlyArray<Expression | SpreadElement>,
 	options: ConflictOptions
 ) => {
-	const config = getProperties(configNode);
+	const config = getConfigProperties(configNode, context.sourceCode);
 	const styles = getConfigStyles(
 		node,
 		configNode,

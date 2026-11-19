@@ -474,6 +474,13 @@ export const RESTYLE_INVALID = [
 		errors: [restyle('m-4', 'm-2', 'header')]
 	})),
 	{
+		// A config's spread object adds to its styles, defaults included.
+		code:
+			IMPORT +
+			"const shared = { defaultVariants: { size: 'md' } };\nconst b = sv({ ...shared, variants: { size: { sm: 'p-1', md: 'p-2' } } });\nb({ class: 'p-3' });",
+		errors: [restyle('p-3', 'p-2')]
+	},
+	{
 		code: IMPORT + RESTYLE_PRESET + "b({ preset: 'nope', class: 'p-4' });",
 		errors: [restyle('p-4', 'p-2')]
 	},
