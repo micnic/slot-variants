@@ -32,7 +32,7 @@ type JsxMemberName = {
 	property: JsxIdentifier;
 };
 
-type JsxOpeningElement = {
+export type JsxOpeningElement = {
 	type: 'JSXOpeningElement';
 	name: JsxIdentifier | JsxMemberName | { type: 'JSXNamespacedName' };
 	attributes: ReadonlyArray<JsxAttribute | { type: 'JSXSpreadAttribute' }>;
@@ -44,7 +44,7 @@ type SvelteLiteral = {
 	range: [number, number];
 };
 
-type SvelteAttributePart = SvelteLiteral | SvelteMustacheTag;
+export type SvelteAttributePart = SvelteLiteral | SvelteMustacheTag;
 
 type SvelteMustacheTag = {
 	type: 'SvelteMustacheTag';
@@ -57,19 +57,27 @@ export type SvelteAttribute = {
 	value: ReadonlyArray<SvelteAttributePart>;
 };
 
+// `{size}`: an attribute named after the expression it passes.
+type SvelteShorthandAttribute = {
+	type: 'SvelteShorthandAttribute';
+	key: { name: string };
+	value: Expression;
+};
+
 // Every other attribute kind svelte-eslint-parser emits on a start tag.
 type SvelteOtherAttribute = {
 	type:
-		| 'SvelteShorthandAttribute'
 		| 'SvelteSpreadAttribute'
 		| 'SvelteDirective'
 		| 'SvelteSpecialDirective'
 		| 'SvelteStyleDirective';
 };
 
-type SvelteStartTag = {
+export type SvelteStartTag = {
 	type: 'SvelteStartTag';
-	attributes: ReadonlyArray<SvelteAttribute | SvelteOtherAttribute>;
+	attributes: ReadonlyArray<
+		SvelteAttribute | SvelteShorthandAttribute | SvelteOtherAttribute
+	>;
 };
 
 // `<UI.Button>`: a member read off a name, possibly off another member.
@@ -96,7 +104,7 @@ type SvelteElement = {
 
 type VIdentifier = { type: 'VIdentifier'; name: string };
 
-type VLiteral = { type: 'VLiteral'; range: [number, number] };
+type VLiteral = { type: 'VLiteral'; value: string; range: [number, number] };
 
 type VExpressionContainer = {
 	type: 'VExpressionContainer';
@@ -274,8 +282,8 @@ export const getVueComponentName = (node: VElement): string | null => {
 	return null;
 };
 
-/** The `class` name a Vue attribute binds, plain or through `v-bind`. */
-export const getVueClassAttributeName = (node: VAttribute): string | null => {
+/** The name a Vue attribute binds, plain or through `v-bind`. */
+export const getVueAttributeName = (node: VAttribute): string | null => {
 	if (node.key.type === 'VIdentifier') {
 		return node.key.name;
 	}

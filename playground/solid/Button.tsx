@@ -1,4 +1,5 @@
-import { createMemo, type JSX } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { createMemo } from 'solid-js';
 import { sv, type VariantProps } from 'slot-variants';
 
 const button = sv('inline-flex items-center rounded-lg font-medium', {

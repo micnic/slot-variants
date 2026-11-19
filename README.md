@@ -1397,7 +1397,7 @@ The same checks apply to Svelte and Vue templates and components (with `svelte-e
 <div :class="[classes.base, 'p-4']">…</div>
 ```
 
-Classes from variant values the call doesn't select are ignored, so `card({ size: 'sm', class: 'mt-4' })` doesn't collide with a margin from `size: 'lg'`.
+Classes from variant values the call doesn't select are ignored, so `card({ size: 'sm', class: 'mt-4' })` doesn't collide with a margin from `size: 'lg'`. The same goes for a component that passes a variant on from its own props: `<Button size="sm" className="…" />` is checked against `size: 'sm'`, and an element that doesn't pass `size` against the prop's default, if it has one: `{ size = 'sm' }`, Vue's `withDefaults()` or `default`, or Solid's `merge({ size: 'sm' }, props)`.
 
 Components imported from another file are followed to the file that declares them (ESLint only; under oxlint, imported components are skipped):
 

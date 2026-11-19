@@ -68,6 +68,7 @@
 		"typecheck": "node node_modules/typescript/bin/tsc --project tsconfig.test.json"
 	},
 	"devDependencies": {
+		"@solidjs/web": "2.0.3",
 		"@types/estree": "1.0.10",
 		"@types/node": "24.19.2",
 		"@types/react": "19.3.0",
@@ -79,7 +80,7 @@
 		"jiti": "2.7.0",
 		"oxfmt": "0.75.0",
 		"oxlint": "1.90.0",
-		"solid-js": "1.9.18",
+		"solid-js": "2.0.3",
 		"svelte": "5.57.3",
 		"svelte-eslint-parser": "1.10.0",
 		"tailwind-merge": "3.7.0",

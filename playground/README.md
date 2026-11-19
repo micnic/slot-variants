@@ -48,7 +48,7 @@ template classes and cross-file `no-restyle` checks stay ESLint-only.
 Each folder also has a `tsconfig.json` so an editor resolves the fixtures the
 same way the lint does: framework JSX settings, the DOM lib, and a `paths`
 entry mapping `slot-variants` to `src/` (no build needed). `@types/react`,
-`solid-js` and `vue` are devDependencies purely so those imports type-check;
+`solid-js`, `@solidjs/web` and `vue` are devDependencies purely so those imports type-check;
 the root `tsconfig.json` excludes `playground/` so the per-folder configs own
 these files.
 

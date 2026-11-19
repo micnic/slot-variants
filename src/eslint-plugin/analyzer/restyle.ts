@@ -3,6 +3,7 @@ import type {
 	CallExpression,
 	ConditionalExpression,
 	Identifier,
+	LogicalExpression,
 	MemberExpression,
 	Node
 } from 'estree';
@@ -36,14 +37,17 @@ import {
 	type VariantMatchers
 } from './token-model.ts';
 
-/**
- * The side of each ternary a part was written in: `true` for the consequent,
- * `false` for the alternate.
- */
-export type BranchPath = ReadonlyMap<ConditionalExpression, boolean>;
+// A node whose two sides never render together: a ternary, or an `||` / `??`.
+type BranchNode = ConditionalExpression | LogicalExpression;
 
-// The branch path of each part, by its index; a part outside any ternary has
-// no entry.
+/**
+ * The side of each branch node a part was written in: `true` for a ternary's
+ * consequent or a logical's left side, `false` for the other.
+ */
+export type BranchPath = ReadonlyMap<BranchNode, boolean>;
+
+// The branch path of each part, by its index; a part outside any branch node
+// has no entry.
 type PartPaths = {
 	styled: BranchPath[];
 	literals: BranchPath[];
@@ -53,13 +57,13 @@ type PartPaths = {
 /**
  * One class-list position, split into the parts slot-variants produces itself,
  * the literal classes written alongside them, and the values that resolve to
- * neither.
+ * neither. `merged` holds the literals written inside a `cn()` list.
  */
 export type ClassParts = {
 	styled: StyledClasses[];
 	literals: Entry[];
 	dynamic: Array<Identifier | MemberExpression>;
-	merged: boolean;
+	merged: Set<Entry>;
 	paths: PartPaths;
 };
 
@@ -94,7 +98,7 @@ export const emptyParts = (): ClassParts => ({
 	styled: [],
 	literals: [],
 	dynamic: [],
-	merged: false,
+	merged: new Set(),
 	paths: { styled: [], literals: [], dynamic: [] }
 });
 
@@ -102,7 +106,7 @@ export const emptyParts = (): ClassParts => ({
 export const pathAt = (paths: readonly BranchPath[], index: number) =>
 	paths[index] ?? EMPTY_PATH;
 
-/** Whether two parts sit in different branches of one ternary. */
+/** Whether two parts sit on different sides of one branch node. */
 export const areExclusivePaths = (a: BranchPath, b: BranchPath): boolean => {
 	for (const [node, side] of a) {
 		const other = b.get(node);
@@ -130,12 +134,12 @@ const countParts = (parts: ClassParts): PartCounts => ({
 	dynamic: parts.dynamic.length
 });
 
-// Adds a ternary's side to the paths of the parts from `from` to `to`.
+// Adds a branch node's side to the paths of the parts from `from` to `to`.
 const markRange = (
 	paths: BranchPath[],
 	from: number,
 	to: number,
-	node: ConditionalExpression,
+	node: BranchNode,
 	side: boolean
 ) => {
 	for (let index = from; index < to; index += 1) {
@@ -163,12 +167,16 @@ export const collectCallParts = (
 	ctx: StyledContext,
 	parts: ClassParts
 ) => {
-	parts.merged = true;
+	const start = parts.literals.length;
 
 	for (const arg of node.arguments) {
 		if (arg.type !== 'SpreadElement') {
 			collectParts(arg, ctx, parts);
 		}
+	}
+
+	for (const entry of parts.literals.slice(start)) {
+		parts.merged.add(entry);
 	}
 };
 
@@ -222,8 +230,14 @@ export const collectParts = (
 		return;
 	}
 
+	// `a && b` renders `b` or nothing; `a || b` and `a ?? b` render one side.
 	if (resolved.type === 'LogicalExpression') {
-		collectParts(resolved.right, ctx, parts);
+		if (resolved.operator === '&&') {
+			collectParts(resolved.right, ctx, parts);
+		} else {
+			collectBranch(resolved, resolved.left, true, ctx, parts);
+			collectBranch(resolved, resolved.right, false, ctx, parts);
+		}
 
 		return;
 	}
@@ -251,11 +265,11 @@ export const collectParts = (
 };
 
 /**
- * Walks one branch of a ternary, marking the parts it adds with its side, so
- * they are never paired with the other branch's parts.
+ * Walks one side of a branch node, marking the parts it adds with its side,
+ * so they are never paired with the other side's parts.
  */
 const collectBranch = (
-	node: ConditionalExpression,
+	node: BranchNode,
 	branch: Node,
 	side: boolean,
 	ctx: StyledContext,
@@ -289,13 +303,19 @@ export const forEachOverrideParts = (
 	ctx: StyledContext,
 	visit: (parts: ClassParts) => void
 ) => {
-	const { styles, matchers, defaultMatchers } = invocation;
+	const { styles, matchers, defaultMatchers, unreadProps } = invocation;
 
 	forEachOverrideTarget(value, styles, invocation.slot, (slotKey, node) => {
 		const parts = emptyParts();
 
 		for (const slot of resolveTargetSlots(styles, slotKey)) {
-			parts.styled.push({ styles, slot, matchers, defaultMatchers });
+			parts.styled.push({
+				styles,
+				slot,
+				matchers,
+				defaultMatchers,
+				unreadProps
+			});
 		}
 
 		collectParts(node, ctx, parts);

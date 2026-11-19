@@ -1,3 +1,4 @@
+import { Badge } from './Badge';
 import { Button } from './Button';
 import { Card } from './Card';
 
@@ -15,7 +16,12 @@ export function App() {
 					</>
 				}
 			>
-				Ship the current branch to production.
+				Ship the current branch to production.{' '}
+				{/* `outline` sets no background, and the default `subtle` no border */}
+				<Badge variant="outline" class="bg-white">
+					Beta
+				</Badge>
+				<Badge class="ml-1 border-0">New</Badge>
 			</Card>
 			<Card class="mt-4" tone="danger" title="Danger zone">
 				Deleting a project cannot be undone.

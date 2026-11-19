@@ -8,7 +8,8 @@ import {
 import {
 	type ComponentSite,
 	createForwardingScan,
-	type ForwardedStyles
+	type ForwardedStyles,
+	getSiteTargets
 } from '../analyzer/forwarding.ts';
 import {
 	cacheLintedModule,
@@ -36,13 +37,18 @@ import { getOrCreate } from '../map-utils.ts';
  * A component forwards its prop when the prop reaches a variant call's override
  * (`button({ class: className })`) or sits beside a slot-variants result in one
  * class list (`cn(button(), className)`, `` `${button()} ${className}` ``).
- * Inside a `cn()` list the literals count as well — `cn('p-2', className)`
- * applies `p-2` just as a config would. The prop is read off a function
- * component's first parameter, destructured (with or without a default) or as a
- * whole props object, including one destructured or renamed in the component
- * body (`const { className } = props`) and an object derived from it (Solid's
- * `splitProps`, `mergeProps`); a wrapper call like `forwardRef()` or `memo()`
- * around the function is looked through. A Svelte or Vue single-file component
+ * The literals inside a `cn()` list count as well — `cn('p-2', className)`
+ * applies `p-2` just as a config would. A variant the component reads from a
+ * prop (`button({ size, class: className })`) takes the value the element
+ * passes it (`<Button size="sm" />`); when the element passes none, the
+ * prop's default — from destructuring (`{ size = 'sm' }`), Vue's
+ * `withDefaults()` or `defineProps()` `default`, or Solid's `merge()` —
+ * or else the variant's. The prop is read off a function component's first
+ * parameter, destructured (with or without a default) or as a whole props
+ * object, including one destructured or renamed in the component body
+ * (`const { className } = props`) and an object derived from it (Solid's
+ * `merge`, `omit`); a wrapper call like `forwardRef()` or `memo()` around the
+ * function is looked through. A Svelte or Vue single-file component
  * is a component too, its props coming from `$props()`, `defineProps()` (bare
  * or under `withDefaults()`) or `useAttrs()` at the top level of its script.
  *
@@ -55,8 +61,8 @@ import { getOrCreate } from '../map-utils.ts';
  * call site fixes (directly, through its `preset` or through
  * `defaultVariants`, or unset with `null` or by not passing a variant that
  * has no default) rule out every variant and compound entry that requires a
- * different value, and the two branches of a ternary are never checked
- * against each other.
+ * different value, and the two sides of a ternary, `||` or `??` are never
+ * checked against each other.
  *
  * The `exclusiveGroups` and `prefix` options mean exactly what they do in
  * `no-conflicting-classes`.
@@ -142,7 +148,10 @@ export const noRestyle: Rule.RuleModule = {
 					const styles = resolveSiteComponent(site);
 
 					if (styles !== null && styles.prop === site.prop) {
-						reportLiterals(styles.targets, parts.literals);
+						reportLiterals(
+							getSiteTargets(styles, site),
+							parts.literals
+						);
 					}
 				}
 

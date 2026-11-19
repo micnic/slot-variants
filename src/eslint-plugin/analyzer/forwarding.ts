@@ -15,17 +15,21 @@ import {
 } from './components.ts';
 import { getKeyName } from './config-keys.ts';
 import { getModuleScope } from './const-bindings.ts';
+import { getProperties } from './properties.ts';
 import {
 	CLASS_ATTRIBUTES,
 	getJsxAttributeName,
 	getJsxComponentName,
 	getSvelteComponentName,
-	getVueClassAttributeName,
+	getVueAttributeName,
 	getVueComponentName,
 	hasIsolatedSvelteParts,
 	type JsxAttribute,
+	type JsxOpeningElement,
 	type MarkupNode,
 	pushRawRangeTokens,
+	type SvelteAttributePart,
+	type SvelteStartTag,
 	type VAttribute
 } from './markup.ts';
 import {
@@ -39,25 +43,45 @@ import {
 	isClassListCall,
 	pathAt
 } from './restyle.ts';
+import { isUndefinedValue } from './static-predicates.ts';
 import {
 	getOverrideValue,
 	literalStyles,
+	readVariantValue,
 	resolveInvocation,
 	type StyledClasses
 } from './styled-values.ts';
 import { createTrackedCallResolver } from './tracked-calls.ts';
 
+/**
+ * A part a component merges its `class` prop into, with the component prop
+ * each of its unread variant props is read from.
+ */
+export type ForwardTarget = StyledClasses & {
+	variantProps: ReadonlyMap<string, string>;
+};
+
 /** What a component merges its `class` prop into. */
 export type ForwardedStyles = {
 	prop: string;
-	targets: ReadonlyArray<StyledClasses>;
+	targets: ReadonlyArray<ForwardTarget>;
 };
+
+/**
+ * The variant values an element passes a prop as, null when they can't be
+ * read. A prop it doesn't pass, or passes as `undefined`, has no entry.
+ */
+export type SiteProps = ReadonlyMap<string, ReadonlySet<string> | null>;
+
+// The site props being read off an element.
+type SiteValues = Map<string, ReadonlySet<string> | null>;
 
 /** The component element a class attribute was written on. */
 export type ComponentSite = {
 	component: string;
 	prop: string;
 	scope: Scope.Scope;
+	props: SiteProps;
 };
 
 /** A file's scan, as the module cache analyzes it. */
@@ -83,8 +107,19 @@ type ForwardingScan = {
 	listener: Rule.RuleListener;
 };
 
-// A `class` prop read: which component's, under which name.
-type PropRead = { component: Component; prop: string };
+// A prop a props pattern destructures, with the default it's given, if any.
+type PropBinding = { prop: string; defaultValue: Node | null };
+
+// A prop read: which component's, under which name, with which default.
+type PropRead = PropBinding & { component: Component };
+
+// An object holding a component's props, with the defaults it gives them:
+// Vue's `withDefaults()` or `defineProps()` defaults, or the objects Solid's
+// `merge()` merges below the props.
+type PropsObject = {
+	component: Component;
+	defaults: ReadonlyMap<string, Node>;
+};
 
 // A position found during the walk, read once the walk is over — so an import
 // or a props declaration written below its use (a Svelte template above its
@@ -110,6 +145,17 @@ const PROPS_SOURCES = new Set([
 	'withDefaults',
 	'useAttrs'
 ]);
+
+const EMPTY_VARIANT_PROPS: ReadonlyMap<string, string> = new Map();
+
+const EMPTY_UNREAD_PROPS: ReadonlyMap<string, Node> = new Map();
+
+const NO_SITE_PROPS: SiteProps = new Map();
+
+const NO_DEFAULTS: ReadonlyMap<string, Node> = new Map();
+
+// What a JSX or Svelte attribute written without a value passes.
+const TRUE_VALUE: ReadonlySet<string> = new Set(['true']);
 
 // What `bindings` holds for a variable. A null one is unbound, or a name a
 // Vue template binds itself (`v-for`, `v-slot`), which no script binding
@@ -139,11 +185,10 @@ const getJsxAttributeValue = (node: JsxAttribute): Node | null => {
 	return value.expression;
 };
 
-// The local names a props pattern destructures `class` / `className` into,
-// mapped to the prop name a call site would pass. A default value
-// (`{ className = '' }`) binds the same name.
-const getClassPropBindings = (pattern: ObjectPattern): Map<string, string> => {
-	const bindings = new Map<string, string>();
+// The local names a props pattern destructures props into, mapped to the prop
+// name a call site would pass and the default (`{ size = 'md' }`) it's given.
+const getPropBindings = (pattern: ObjectPattern): Map<string, PropBinding> => {
+	const bindings = new Map<string, PropBinding>();
 
 	for (const property of pattern.properties) {
 		if (property.type !== 'Property') {
@@ -152,18 +197,20 @@ const getClassPropBindings = (pattern: ObjectPattern): Map<string, string> => {
 
 		const key = getKeyName(property);
 
-		if (key === null || !CLASS_ATTRIBUTES.has(key)) {
+		if (key === null) {
 			continue;
 		}
 
 		let target = property.value;
+		let defaultValue: Node | null = null;
 
 		if (target.type === 'AssignmentPattern') {
+			defaultValue = target.right;
 			target = target.left;
 		}
 
 		if (target.type === 'Identifier') {
-			bindings.set(target.name, key);
+			bindings.set(target.name, { prop: key, defaultValue });
 		}
 	}
 
@@ -181,14 +228,59 @@ const emitCollected = (emit: PartsCallback, collect: PartsCallback) => {
 const makeSite = (
 	component: string | null,
 	prop: string,
-	scope: Scope.Scope
+	scope: Scope.Scope,
+	props: SiteProps
 ): ComponentSite | null => {
 	if (component === null) {
 		return null;
 	}
 
-	return { component, prop, scope };
+	return { component, prop, scope, props };
 };
+
+// The props an element passes, read only for a component's element.
+const readSiteProps = (
+	component: string | null,
+	read: (props: SiteValues) => void
+): SiteProps => {
+	if (component === null) {
+		return NO_SITE_PROPS;
+	}
+
+	const props: SiteValues = new Map();
+
+	read(props);
+
+	return props;
+};
+
+// `icon-size` as the `iconSize` prop Vue passes it as.
+const camelize = (name: string): string =>
+	name.replace(/-(\w)/g, (_match, letter: string) => letter.toUpperCase());
+
+/**
+ * The classes a forwarded part applies at an element: each variant the
+ * component reads from a prop takes the value the element passes it.
+ */
+export const getSiteTargets = (
+	styles: ForwardedStyles,
+	site: ComponentSite
+): StyledClasses[] =>
+	styles.targets.map((target) => {
+		const matchers = new Map(target.matchers);
+
+		for (const [variant, prop] of target.variantProps) {
+			const value = site.props.get(prop);
+
+			if (value === null) {
+				matchers.delete(variant);
+			} else if (value !== undefined) {
+				matchers.set(variant, value);
+			}
+		}
+
+		return { ...target, matchers };
+	});
 
 export const createForwardingScan = (
 	context: Rule.RuleContext,
@@ -200,9 +292,9 @@ export const createForwardingScan = (
 	// Where a component's `class` prop can be read from: the binding a props
 	// pattern put it in, or an object holding the whole props — the props
 	// parameter, a `defineProps()` result, or a view derived from either
-	// (Solid's `splitProps`, `mergeProps`).
+	// (Solid's `merge`, `omit`).
 	const propBindings = new Map<Scope.Variable, PropRead>();
-	const propsObjects = new Map<Scope.Variable, Component>();
+	const propsObjects = new Map<Scope.Variable, PropsObject>();
 	const pending: PendingPosition[] = [];
 
 	const moduleScope = (): Scope.Scope => getModuleScope(sourceCode);
@@ -216,18 +308,26 @@ export const createForwardingScan = (
 		});
 	};
 
+	// A pattern's own default for a prop wins over the props object's.
 	const registerBindings = (
 		declared: ReadonlyArray<Scope.Variable>,
 		pattern: ObjectPattern,
-		component: Component
+		{ component, defaults }: PropsObject
 	) => {
-		const bindings = getClassPropBindings(pattern);
+		const bindings = getPropBindings(pattern);
 
 		for (const variable of declared) {
-			const prop = bindings.get(variable.name);
+			const binding = bindings.get(variable.name);
 
-			if (prop !== undefined) {
-				propBindings.set(variable, { component, prop });
+			if (binding !== undefined) {
+				propBindings.set(variable, {
+					component,
+					prop: binding.prop,
+					defaultValue:
+						binding.defaultValue ??
+						defaults.get(binding.prop) ??
+						null
+				});
 			}
 		}
 	};
@@ -246,9 +346,10 @@ export const createForwardingScan = (
 		}
 
 		const declared = sourceCode.getDeclaredVariables(fn);
+		const props: PropsObject = { component: fn, defaults: NO_DEFAULTS };
 
 		if (param.type === 'ObjectPattern') {
-			registerBindings(declared, param, fn);
+			registerBindings(declared, param, props);
 
 			return;
 		}
@@ -259,51 +360,99 @@ export const createForwardingScan = (
 
 		for (const variable of declared) {
 			if (variable.name === param.name) {
-				propsObjects.set(variable, fn);
+				propsObjects.set(variable, props);
 			}
 		}
 	};
 
-	// The component whose props object a name refers to.
-	const getPropsObjectComponent = (node: Identifier): Component | null =>
+	// The props object a name refers to.
+	const getPropsObject = (node: Identifier): PropsObject | null =>
 		lookupBinding(propsObjects, ctx.variableOf(node));
 
-	// The component whose props a call yields: the module, for a props source
-	// like `$props()`; the owner of a props object the call is handed, for a
-	// derived view like `splitProps(props, …)`.
-	const getPropsComponent = (init: CallExpression): Component | null => {
-		if (
-			init.callee.type === 'Identifier' &&
-			PROPS_SOURCES.has(init.callee.name)
-		) {
-			return sourceCode.ast;
+	// The properties of an object a call is handed.
+	const readObjectArgument = (
+		arg: CallExpression['arguments'][number] | undefined
+	): ReadonlyMap<string, Node> => {
+		if (arg === undefined) {
+			return NO_DEFAULTS;
 		}
 
+		return getProperties(ctx.resolve(arg));
+	};
+
+	// The defaults a props source declares: `withDefaults()`'s second
+	// argument, or each `default` of a `defineProps()` runtime declaration.
+	const readSourceDefaults = (
+		name: string,
+		[declaration, defaults]: CallExpression['arguments']
+	): ReadonlyMap<string, Node> => {
+		if (name === 'withDefaults') {
+			return readObjectArgument(defaults);
+		}
+
+		if (name !== 'defineProps') {
+			return NO_DEFAULTS;
+		}
+
+		const result = new Map<string, Node>();
+
+		for (const [prop, value] of readObjectArgument(declaration)) {
+			const fallback = getProperties(ctx.resolve(value)).get('default');
+
+			if (fallback !== undefined) {
+				result.set(prop, fallback);
+			}
+		}
+
+		return result;
+	};
+
+	// The props object a call yields: the module's, for a props source like
+	// `$props()`; a view of a props object the call is handed, for a derived
+	// one like `omit(props, …)`, whose defaults gain the objects `merge()`
+	// merges below it (`merge({ size: 'sm' }, props)`).
+	const getPropsSource = (init: CallExpression): PropsObject | null => {
+		const { callee } = init;
+
+		if (callee.type === 'Identifier' && PROPS_SOURCES.has(callee.name)) {
+			return {
+				component: sourceCode.ast,
+				defaults: readSourceDefaults(callee.name, init.arguments)
+			};
+		}
+
+		const defaults = new Map<string, Node>();
+
 		for (const arg of init.arguments) {
-			if (arg.type !== 'Identifier') {
-				continue;
+			if (arg.type === 'Identifier') {
+				const source = getPropsObject(arg);
+
+				if (source !== null) {
+					return {
+						component: source.component,
+						defaults: new Map([...defaults, ...source.defaults])
+					};
+				}
 			}
 
-			const component = getPropsObjectComponent(arg);
-
-			if (component !== null) {
-				return component;
+			for (const [key, value] of readObjectArgument(arg)) {
+				defaults.set(key, value);
 			}
 		}
 
 		return null;
 	};
 
-	// The component whose props a declarator's initializer holds: a props
-	// call's result, or the props object itself, destructured or renamed in
-	// the component body (`const { className } = props`).
-	const getInitComponent = (init: Node): Component | null => {
+	// The props object a declarator's initializer holds: a props call's
+	// result, or the props object itself, destructured or renamed in the
+	// component body (`const { className } = props`).
+	const getInitSource = (init: Node): PropsObject | null => {
 		if (init.type === 'CallExpression') {
-			return getPropsComponent(init);
+			return getPropsSource(init);
 		}
 
 		if (init.type === 'Identifier') {
-			return getPropsObjectComponent(init);
+			return getPropsObject(init);
 		}
 
 		return null;
@@ -316,78 +465,129 @@ export const createForwardingScan = (
 			return;
 		}
 
-		const component = getInitComponent(init);
+		const source = getInitSource(init);
 
-		if (component === null) {
+		if (source === null) {
 			return;
 		}
 
 		const declared = sourceCode.getDeclaredVariables(node);
 
 		if (id.type === 'ObjectPattern') {
-			registerBindings(declared, id, component);
+			registerBindings(declared, id, source);
 
 			return;
 		}
 
 		for (const variable of declared) {
-			propsObjects.set(variable, component);
+			propsObjects.set(variable, source);
 		}
 	};
 
-	// `props.className` — `class` / `className` read off a props object.
+	// `props.className` — a prop read off a props object.
 	const readMemberProp = (node: MemberExpression): PropRead | null => {
 		if (
 			node.computed ||
 			node.property.type !== 'Identifier' ||
-			!CLASS_ATTRIBUTES.has(node.property.name) ||
 			node.object.type !== 'Identifier'
 		) {
 			return null;
 		}
 
-		const component = getPropsObjectComponent(node.object);
+		const source = getPropsObject(node.object);
 
-		if (component === null) {
+		if (source === null) {
 			return null;
 		}
 
-		return { component, prop: node.property.name };
+		const prop = node.property.name;
+
+		return {
+			component: source.component,
+			prop,
+			defaultValue: source.defaults.get(prop) ?? null
+		};
 	};
 
-	// The `class` prop a dynamic value reads, if it is one.
-	const readProp = (node: ClassParts['dynamic'][number]): PropRead | null => {
+	// The prop a value reads, if it is one.
+	const readProp = (node: Node): PropRead | null => {
 		if (node.type === 'MemberExpression') {
 			return readMemberProp(node);
+		}
+
+		if (node.type !== 'Identifier') {
+			return null;
 		}
 
 		return lookupBinding(propBindings, ctx.variableOf(node));
 	};
 
+	// The component prop each of a part's unread variant props reads.
+	// A part a component forwards its prop into, as an element that passes
+	// it nothing renders it: each variant read from a destructured prop with
+	// a default takes that default.
+	const getForwardTarget = (
+		part: StyledClasses,
+		component: Component
+	): ForwardTarget => {
+		const matchers = new Map(part.defaultMatchers);
+		const variantProps = new Map<string, string>();
+
+		for (const [variant, value] of part.unreadProps) {
+			const read = readProp(ctx.resolve(value));
+
+			if (read === null || read.component !== component) {
+				continue;
+			}
+
+			variantProps.set(variant, read.prop);
+
+			if (read.defaultValue !== null) {
+				setVariantValue(matchers, variant, read.defaultValue);
+			}
+		}
+
+		return {
+			...part,
+			matchers,
+			unreadProps: EMPTY_UNREAD_PROPS,
+			variantProps
+		};
+	};
+
 	// What a forwarded prop, written in `path`, is merged with at this
-	// position: the parts outside the other branches of its ternaries. Inside
-	// a `cn()` list the literals count too — `cn('p-2', className)` applies
+	// position: the parts outside the other sides of its branch nodes. The
+	// literals inside a `cn()` list count too — `cn('p-2', className)` applies
 	// `p-2` just as a config would. A variant the call can't read is left to
 	// its default, as it is for an element that doesn't pass the component
-	// the prop it's read from.
+	// the prop it's read from; one read from a component prop takes the value
+	// an element passes it.
 	const getForwardTargets = (
 		parts: ClassParts,
-		path: BranchPath
-	): StyledClasses[] => {
+		path: BranchPath,
+		component: Component
+	): ForwardTarget[] => {
 		const { paths } = parts;
 		const styled = parts.styled
 			.filter(
 				(_part, index) =>
 					!areExclusivePaths(path, pathAt(paths.styled, index))
 			)
-			.map((part) => ({ ...part, matchers: part.defaultMatchers }));
+			.map((part) => getForwardTarget(part, component));
 		const literals = parts.literals.filter(
-			(_entry, index) =>
+			(entry, index) =>
+				parts.merged.has(entry) &&
 				!areExclusivePaths(path, pathAt(paths.literals, index))
 		);
 
-		if (parts.merged && literals.length > 0) {
-			return [...styled, literalStyles(literals)];
+		if (literals.length > 0) {
+			return [
+				...styled,
+				{
+					...literalStyles(literals),
+					variantProps: EMPTY_VARIANT_PROPS
+				}
+			];
 		}
 
 		return styled;
@@ -398,12 +598,16 @@ export const createForwardingScan = (
 		parts.dynamic.forEach((node, index) => {
 			const read = readProp(node);
 
-			if (read === null || forwarded.has(read.component)) {
+			if (
+				read === null ||
+				!CLASS_ATTRIBUTES.has(read.prop) ||
+				forwarded.has(read.component)
+			) {
 				return;
 			}
 
 			const path = pathAt(parts.paths.dynamic, index);
-			const targets = getForwardTargets(parts, path);
+			const targets = getForwardTargets(parts, path, read.component);
 
 			if (targets.length > 0) {
 				forwarded.set(read.component, { prop: read.prop, targets });
@@ -441,9 +645,109 @@ export const createForwardingScan = (
 		});
 	};
 
+	// A prop passed as `value`; one passed as `undefined` isn't passed.
+	const setSiteValue = (props: SiteValues, name: string, value: Node) => {
+		if (!isUndefinedValue(ctx.resolve(value))) {
+			props.set(name, readVariantValue(value, ctx));
+		}
+	};
+
+	// A variant set to `value`, open when it can't be read; an `undefined`
+	// one leaves the variant as it is.
+	const setVariantValue = (
+		matchers: Map<string, ReadonlySet<string>>,
+		variant: string,
+		value: Node
+	) => {
+		if (isUndefinedValue(ctx.resolve(value))) {
+			return;
+		}
+
+		const values = readVariantValue(value, ctx);
+
+		if (values === null) {
+			matchers.delete(variant);
+		} else {
+			matchers.set(variant, values);
+		}
+	};
+
+	const readJsxProps = (node: JsxOpeningElement, props: SiteValues) => {
+		for (const attribute of node.attributes) {
+			if (attribute.type !== 'JSXAttribute') {
+				continue;
+			}
+
+			const name = getJsxAttributeName(attribute);
+			const value = getJsxAttributeValue(attribute);
+
+			if (name === null) {
+				continue;
+			}
+
+			if (value === null) {
+				props.set(name, TRUE_VALUE);
+			} else {
+				setSiteValue(props, name, value);
+			}
+		}
+	};
+
+	// A Svelte attribute's value: none passes `true`, a lone text or
+	// expression is read, and text mixed with expressions can't be.
+	const setSvelteValue = (
+		props: SiteValues,
+		name: string,
+		parts: ReadonlyArray<SvelteAttributePart>
+	) => {
+		const [part] = parts;
+
+		if (part === undefined) {
+			props.set(name, TRUE_VALUE);
+		} else if (parts.length > 1) {
+			props.set(name, null);
+		} else if (part.type === 'SvelteLiteral') {
+			props.set(name, new Set([part.value]));
+		} else {
+			setSiteValue(props, name, part.expression);
+		}
+	};
+
+	const readSvelteProps = (tag: SvelteStartTag, props: SiteValues) => {
+		for (const attribute of tag.attributes) {
+			if (attribute.type === 'SvelteAttribute') {
+				setSvelteValue(props, attribute.key.name, attribute.value);
+			} else if (attribute.type === 'SvelteShorthandAttribute') {
+				setSiteValue(props, attribute.key.name, attribute.value);
+			}
+		}
+	};
+
+	// A Vue attribute's value: static text, or a `v-bind` expression. One
+	// without a value is cast by the prop's declared type, so it isn't read.
+	const setVueValue = (props: SiteValues, attribute: VAttribute) => {
+		const name = getVueAttributeName(attribute);
+
+		if (name === null) {
+			return;
+		}
+
+		const key = camelize(name);
+		const { value } = attribute;
+
+		if (value?.type === 'VLiteral') {
+			props.set(key, new Set([value.value]));
+		} else if (value?.expression) {
+			setSiteValue(props, key, value.expression);
+		} else {
+			props.set(key, null);
+		}
+	};
+
 	const visitJsxAttribute = (
 		attribute: JsxAttribute,
-		component: string | null
+		component: string | null,
+		props: SiteProps
 	) => {
 		const prop = getJsxAttributeName(attribute);
 
@@ -458,7 +762,7 @@ export const createForwardingScan = (
 		}
 
 		deferParts(
-			makeSite(component, prop, sourceCode.getScope(value)),
+			makeSite(component, prop, sourceCode.getScope(value), props),
 			(parts) => {
 				collectParts(value, ctx, parts);
 			}
@@ -466,7 +770,7 @@ export const createForwardingScan = (
 	};
 
 	const isVueClassAttribute = (attribute: VAttribute): boolean => {
-		const name = getVueClassAttributeName(attribute);
+		const name = getVueAttributeName(attribute);
 
 		return name !== null && CLASS_ATTRIBUTES.has(name);
 	};
@@ -506,10 +810,13 @@ export const createForwardingScan = (
 			}
 
 			const component = getJsxComponentName(node);
+			const props = readSiteProps(component, (values) => {
+				readJsxProps(node, values);
+			});
 
 			for (const attribute of node.attributes) {
 				if (attribute.type === 'JSXAttribute') {
-					visitJsxAttribute(attribute, component);
+					visitJsxAttribute(attribute, component, props);
 				}
 			}
 		},
@@ -520,6 +827,9 @@ export const createForwardingScan = (
 			}
 
 			const component = getSvelteComponentName(node);
+			const props = readSiteProps(component, (values) => {
+				readSvelteProps(node.startTag, values);
+			});
 
 			for (const attribute of node.startTag.attributes) {
 				if (
@@ -531,7 +841,12 @@ export const createForwardingScan = (
 				}
 
 				deferParts(
-					makeSite(component, attribute.key.name, moduleScope()),
+					makeSite(
+						component,
+						attribute.key.name,
+						moduleScope(),
+						props
+					),
 					(parts) => {
 						for (const part of attribute.value) {
 							if (part.type === 'SvelteLiteral') {
@@ -588,8 +903,15 @@ export const createForwardingScan = (
 				return;
 			}
 
+			const component = getVueComponentName(node);
+			const props = readSiteProps(component, (values) => {
+				for (const attribute of node.startTag.attributes) {
+					setVueValue(values, attribute);
+				}
+			});
+
 			deferParts(
-				makeSite(getVueComponentName(node), 'class', moduleScope()),
+				makeSite(component, 'class', moduleScope(), props),
 				(parts) => {
 					for (const attribute of attributes) {
 						collectVueAttribute(attribute, parts);

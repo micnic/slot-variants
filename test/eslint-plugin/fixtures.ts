@@ -262,6 +262,44 @@ writeFixture(
 	</script>`
 );
 
+// Variants read from the component's own props.
+writeFixture(
+	'ui/Sized.svelte',
+	`<script>
+	${IMPORT}const sized = sv({ base: 'p-2', variants: { size: { sm: 'text-sm', md: 'text-base' }, flat: { true: 'shadow-none', false: 'shadow' } }, defaultVariants: { size: 'md', flat: false } });
+	let { class: className, size, flat } = $props();
+	</script>
+	<b class={sized({ size, flat, class: className })}>x</b>`
+);
+
+writeFixture(
+	'ui/Sized.vue',
+	`<script setup>
+	${IMPORT}const sized = sv({ base: 'p-2', variants: { iconSize: { sm: 'text-sm', md: 'text-base' } }, defaultVariants: { iconSize: 'md' } });
+	const props = withDefaults(defineProps({ class: String, iconSize: String }));
+	</script>
+	<template><b :class="sized({ iconSize: props.iconSize, class: props.class })">x</b></template>`
+);
+
+// Vue defaults: `withDefaults()`, and a runtime declaration's `default`.
+writeFixture(
+	'ui/Defaulted.vue',
+	`<script setup>
+	${IMPORT}const sized = sv({ base: 'p-2', variants: { size: { sm: 'text-sm', md: 'text-base' } }, defaultVariants: { size: 'md' } });
+	const props = withDefaults(defineProps(), { size: 'sm' });
+	</script>
+	<template><b :class="sized({ size: props.size, class: props.class })">x</b></template>`
+);
+
+writeFixture(
+	'ui/RuntimeDefault.vue',
+	`<script setup>
+	${IMPORT}const sized = sv({ base: 'p-2', variants: { size: { sm: 'text-sm', md: 'text-base' } }, defaultVariants: { size: 'md' } });
+	const { size, class: cls } = defineProps({ class: String, size: { type: String, default: 'sm' } });
+	</script>
+	<template><b :class="sized({ size, class: cls })">x</b></template>`
+);
+
 writeFixture(
 	'ui/Plain.svelte',
 	'<script>let { id } = $props();</script>\n<i {id}></i>'

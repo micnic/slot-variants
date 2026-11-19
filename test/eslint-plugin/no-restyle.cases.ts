@@ -56,7 +56,41 @@ const RESTYLE_OPTIONAL = `const b = sv({
 	presets: { small: { size: 'sm' } }
 });\n`;
 
+// A component whose variants come from its own props.
+const RESTYLE_SIZED = `const sized = sv({
+	base: 'p-2',
+	variants: {
+		size: { sm: 'text-sm', md: 'text-base' },
+		tone: { red: 'bg-red-500' },
+		flat: { true: 'shadow-none' }
+	},
+	defaultVariants: { size: 'md' }
+});
+function Sized({ size, tone, flat, className }) {
+	return <b className={sized({ size, tone, flat, class: className })} />;
+}\n`;
+
 export const RESTYLE_VALID = [
+	// An element's variant props select the classes a component applies: a
+	// variant with no default stays unset unless passed, and `null` unsets
+	// one.
+	IMPORT +
+		RESTYLE_SIZED +
+		'<Sized className="bg-blue-500 shadow-lg" />;\n<Sized size={null} className="text-lg" />;',
+	// A destructured prop's `null` default unsets its variant.
+	IMPORT +
+		RESTYLE_SIZED +
+		'function Nulled({ size = null, className }) { return <b className={sized({ size, class: className })} />; }\n<Nulled className="text-lg" />;',
+	// The two sides of an `||` or `??` never render together.
+	IMPORT_SV_CN +
+		RESTYLE_BUTTON +
+		"cn(button() || 'p-4');\ncn(x ?? 'mt-8', button());",
+	IMPORT_SV_CN +
+		RESTYLE_BUTTON +
+		'function Button({ className }) { return <button className={className || button()} />; }\n<Button className="p-4" />;',
+	// Only literals inside the `cn()` list are merged with the prop.
+	IMPORT_SV_CN +
+		'function Inner({ className }) { return <div className={`${cn(\'x\', className)} m-2`} />; }\n<Inner className="m-4" />;',
 	// A slot call's preset replaces the outer call's, whose values are lost.
 	IMPORT +
 		"const card = sv({ slots: { header: '' }, multiSlots: ['header'], variants: { size: { sm: { header: 'm-1' }, lg: { header: 'p-2' } }, tone: { red: { header: 'text-red' } } }, presets: { big: { size: 'lg' }, compact: { tone: 'red' } }, defaultVariants: { size: 'sm' } });\nconst r = card({ preset: 'big' });\nr.header({ preset: 'compact', class: 'p-4' });",
@@ -333,6 +367,112 @@ export const RESTYLE_VUE_VALID = [
 ];
 
 export const RESTYLE_INVALID = [
+	// An element's variant props select the classes a component applies:
+	// static text, a static expression and a bare boolean attribute are read;
+	// `undefined`, a spread or a namespaced attribute leaves the default; a
+	// value that can't be read may select any.
+	{
+		code:
+			IMPORT +
+			RESTYLE_SIZED +
+			`<Sized size="sm" className="text-sm" />;
+<Sized size={'sm'} className="text-lg" />;
+<Sized flat className="shadow-lg" />;
+<Sized size={undefined} className="text-xl" />;
+<Sized {...rest} a:size="sm" className="text-2xl" />;
+<Sized size={pick()} className="text-3xl" />;`,
+		errors: [
+			dup('text-sm'),
+			restyle('text-lg', 'text-sm'),
+			restyle('shadow-lg', 'shadow-none'),
+			restyle('text-xl', 'text-base'),
+			restyle('text-2xl', 'text-base'),
+			restyle('text-3xl', 'text-sm')
+		]
+	},
+	// A destructured prop's default stands in for a prop the element doesn't
+	// pass, or passes as `undefined`; an `undefined` default leaves the
+	// config's, and one that can't be read may select any value.
+	{
+		code:
+			IMPORT +
+			RESTYLE_SIZED +
+			`function Defaulted({ size = 'sm', tone = 'red', flat = pick(), className }) {
+	return <b className={sized({ size, tone, flat, class: className })} />;
+}
+function Undef({ size = undefined, className }) {
+	return <b className={sized({ size, class: className })} />;
+}
+<Defaulted className="text-lg" />;
+<Defaulted size={undefined} className="bg-blue-500" />;
+<Defaulted size="md" className="shadow-lg" />;
+<Undef className="text-xl" />;`,
+		errors: [
+			restyle('text-lg', 'text-sm'),
+			restyle('bg-blue-500', 'bg-red-500'),
+			restyle('shadow-lg', 'shadow-none'),
+			restyle('text-xl', 'text-base')
+		]
+	},
+	// Solid: the objects `mergeProps()` merges below the props are their
+	// defaults, through a `splitProps()` view too; a pattern's own default
+	// wins over them.
+	{
+		code:
+			IMPORT +
+			RESTYLE_SIZED +
+			`const DEFAULTS = { size: 'sm' };
+function Solid(props) {
+	const merged = mergeProps(DEFAULTS, props);
+	const [local] = splitProps(merged, ['class', 'size']);
+	return <b class={sized({ size: local.size, class: local.class })} />;
+}
+function Pattern(props) {
+	const { size = 'md', tone, class: cls } = mergeProps({ size: 'sm', tone: 'red' }, props);
+	return <b class={sized({ size, tone, class: cls })} />;
+}
+<Solid class="text-lg" />;
+<Solid size="md" class="text-xl" />;
+<Pattern class="text-2xl bg-blue-500" />;`,
+		errors: [
+			restyle('text-lg', 'text-sm'),
+			restyle('text-xl', 'text-base'),
+			restyle('text-2xl', 'text-base'),
+			restyle('bg-blue-500', 'bg-red-500')
+		]
+	},
+	// A props object read; a variant read from another component's prop,
+	// which an element of this one can't pass; and one read from no prop.
+	{
+		code:
+			IMPORT +
+			RESTYLE_SIZED +
+			`function Member(props) {
+	return <b className={sized({ size: props.size, class: props.className })} />;
+}
+function Outer({ size }) {
+	const Inner = ({ className }) => <b className={sized({ size, class: className })} />;
+	return <Inner size="sm" className="text-lg" />;
+}
+function Picked({ className }) {
+	return <b className={sized({ size: pick(), class: className })} />;
+}
+<Member size="sm" className="text-xl" />;
+<Picked size="md" className="text-2xl" />;`,
+		errors: [
+			restyle('text-lg', 'text-base'),
+			restyle('text-xl', 'text-sm'),
+			restyle('text-2xl', 'text-base')
+		]
+	},
+	// The left side of an `||` or `??` renders too.
+	{
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_BUTTON +
+			"cn(button() || '', 'p-4');\ncn(x ?? button(), 'p-6');",
+		errors: [restyle('p-4', 'p-2'), restyle('p-6', 'p-2')]
+	},
 	// A preset not read in full may set a variant with no default, which is
 	// then not taken to be unset.
 	...[

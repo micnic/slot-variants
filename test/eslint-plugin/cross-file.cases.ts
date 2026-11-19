@@ -331,6 +331,21 @@ export const SVELTE_CROSS_FILE_INVALID = [
 	}
 ];
 
+SVELTE_CROSS_FILE_INVALID.push({
+	// Static text, a static expression, a bare attribute and a shorthand
+	// variable; text mixed with an expression can't be read.
+	code: `<script>import Sized from './ui/Sized.svelte';\nconst size = 'sm';</script>\n<Sized size="sm" class="text-lg" /><Sized size={'sm'} class="text-xl" /><Sized flat class="shadow-lg" /><Sized {size} class="text-2xl" /><Sized size="s{x}" class="text-3xl" /><Sized size={undefined} class="text-4xl" />`,
+	filename: join(fixtureDir, 'page.svelte'),
+	errors: [
+		restyle('text-lg', 'text-sm'),
+		restyle('text-xl', 'text-sm'),
+		restyle('shadow-lg', 'shadow-none'),
+		restyle('text-2xl', 'text-sm'),
+		restyle('text-3xl', 'text-sm'),
+		restyle('text-4xl', 'text-base')
+	]
+});
+
 export const VUE_CROSS_FILE_VALID = [
 	{
 		// A component that forwards no class prop, a globally registered one
@@ -341,6 +356,33 @@ export const VUE_CROSS_FILE_VALID = [
 ];
 
 export const VUE_CROSS_FILE_INVALID = [
+	{
+		// A default from `withDefaults()` or a runtime declaration stands in
+		// for a prop the element doesn't pass.
+		code: `<script setup>import Defaulted from './ui/Defaulted.vue';\nimport RuntimeDefault from './ui/RuntimeDefault.vue';</script>\n<template><Defaulted class="text-lg" /><Defaulted size="md" class="text-xl" /><RuntimeDefault class="text-2xl" /></template>`,
+		filename: join(fixtureDir, 'page.vue'),
+		errors: [
+			restyle('text-lg', 'text-sm'),
+			restyle('text-xl', 'text-base'),
+			restyle('text-2xl', 'text-sm')
+		]
+	},
+	{
+		// A kebab-case attribute names its camelCase prop: static text and a
+		// bound expression are read; a bare attribute, an empty binding and
+		// one that can't be read may select any value; `v-bind` of an object
+		// and an event leave the default.
+		code: `<script setup>import Sized from './ui/Sized.vue';</script>\n<template><Sized icon-size="sm" class="text-lg" /><Sized :icon-size="'sm'" class="text-xl" /><Sized icon-size class="text-2xl" /><Sized :icon-size="" class="text-3xl" /><Sized :icon-size="pick()" class="text-4xl" /><Sized v-bind="o" @click="f" class="text-5xl" /></template>`,
+		filename: join(fixtureDir, 'page.vue'),
+		errors: [
+			restyle('text-lg', 'text-sm'),
+			restyle('text-xl', 'text-sm'),
+			restyle('text-2xl', 'text-sm'),
+			restyle('text-3xl', 'text-sm'),
+			restyle('text-4xl', 'text-sm'),
+			restyle('text-5xl', 'text-base')
+		]
+	},
 	{
 		// A component read off a namespace import.
 		code: `<script setup>import * as UI from './ui/vue-barrel.js';</script>\n<template><UI.Button class="p-4" /></template>`,

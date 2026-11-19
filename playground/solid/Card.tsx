@@ -1,4 +1,5 @@
-import { createMemo, Show, type JSX } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { createMemo, Show } from 'solid-js';
 import { sv, type VariantProps } from 'slot-variants';
 
 const card = sv('overflow-hidden rounded-xl border bg-white', {

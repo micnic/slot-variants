@@ -73,11 +73,12 @@ type CallOptions = Pick<InternalStyles, 'presets' | 'optional'>;
  * value the call sets but can't be read, as any of its values may apply;
  * `defaultMatchers` leaves those to what the call would apply without them,
  * as an element rendering a component that forwards its props to the call
- * does when it doesn't pass them.
+ * does when it doesn't pass them. `unreadProps` holds those props' values.
  */
 export type CallMatchers = {
 	matchers: VariantMatchers;
 	defaultMatchers: VariantMatchers;
+	unreadProps: ReadonlyMap<string, Node>;
 };
 
 // A call's props: the ones that can be read, and all of them when every one
@@ -123,7 +124,8 @@ const NO_KEYS: ReadonlySet<string> = new Set();
 
 const NO_MATCHERS: CallMatchers = {
 	matchers: EMPTY_MATCHERS,
-	defaultMatchers: EMPTY_MATCHERS
+	defaultMatchers: EMPTY_MATCHERS,
+	unreadProps: EMPTY_PROPS
 };
 
 const EMPTY_GROUPS: GroupSlots = new Map();
@@ -415,9 +417,11 @@ const mergeCallProps = (
 };
 
 // The optional variants a call leaves unset: the ones it neither passes nor
-// gets from its preset. None when its props or preset can't be read in full.
+// gets from its preset, counting a prop whose value can't be read as not
+// passed. None when its props or preset can't be read in full.
 const readUnsetMatchers = (
 	props: ReadonlyMap<string, Node> | null,
+	unread: ReadonlyMap<string, Node>,
 	optional: ReadonlySet<string>,
 	preset: PresetValues,
 	ctx: StyledContext
@@ -430,7 +434,7 @@ const readUnsetMatchers = (
 
 	for (const key of optional) {
 		if (
-			!isDefinedValue(props.get(key), ctx.resolve) &&
+			(unread.has(key) || !isDefinedValue(props.get(key), ctx.resolve)) &&
 			!preset.matchers.has(key)
 		) {
 			unset.set(key, UNSET_MATCHER);
@@ -466,6 +470,23 @@ const isUnreadProp = (
 	!read.has(key) &&
 	!isUndefinedValue(ctx.resolve(value));
 
+// The variant props a call passes whose values can't be read.
+const readUnreadProps = (
+	read: ReadonlyMap<string, Node>,
+	propMatchers: VariantMatchers,
+	ctx: StyledContext
+): ReadonlyMap<string, Node> => {
+	const unread = new Map<string, Node>();
+
+	for (const [key, value] of read) {
+		if (isUnreadProp(key, value, propMatchers, ctx)) {
+			unread.set(key, value);
+		}
+	}
+
+	return unread;
+};
+
 // The matchers a call applies: `base`, refined by the props it passes. Later
 // matchers win: a call site's props over its preset's values, and those over
 // the config's `defaultVariants` or the `optional` variants it leaves unset. A
@@ -478,7 +499,8 @@ const buildCallMatchers = (
 ): CallMatchers => {
 	const preset = readPresetMatchers(read, presets, ctx);
 	const propMatchers = readPropMatchers(read, ctx);
-	const unset = readUnsetMatchers(known, optional, preset, ctx);
+	const unreadProps = readUnreadProps(read, propMatchers, ctx);
+	const unset = readUnsetMatchers(known, unreadProps, optional, preset, ctx);
 	const matchers = new Map([
 		...readKeptMatchers(known, base, preset),
 		...unset,
@@ -486,10 +508,8 @@ const buildCallMatchers = (
 		...propMatchers
 	]);
 
-	for (const [key, value] of read) {
-		if (isUnreadProp(key, value, propMatchers, ctx)) {
-			matchers.delete(key);
-		}
+	for (const key of unreadProps.keys()) {
+		matchers.delete(key);
 	}
 
 	return {
@@ -499,8 +519,30 @@ const buildCallMatchers = (
 			...unset,
 			...preset.matchers,
 			...propMatchers
-		])
+		]),
+		unreadProps
 	};
+};
+
+/**
+ * The variant values a prop value selects: its static value, unset for
+ * `null`, or null when it can't be read.
+ */
+export const readVariantValue = (
+	node: Node,
+	ctx: StyledContext
+): ReadonlySet<string> | null => {
+	if (isNullLiteral(ctx.resolve(node))) {
+		return UNSET_MATCHER;
+	}
+
+	const value = getStaticMatcherValue(node, ctx.sourceCode);
+
+	if (value === null) {
+		return null;
+	}
+
+	return new Set([value]);
 };
 
 /**
@@ -743,6 +785,7 @@ const resolveStyledRead = (
 		slot,
 		matchers: invocation.matchers,
 		defaultMatchers: invocation.defaultMatchers,
+		unreadProps: invocation.unreadProps,
 		props: invocation.props
 	};
 };
@@ -825,7 +868,8 @@ export const readStyledClasses = (
 		styles: invocation.styles,
 		slot: invocation.slot ?? 'base',
 		matchers: invocation.matchers,
-		defaultMatchers: invocation.defaultMatchers
+		defaultMatchers: invocation.defaultMatchers,
+		unreadProps: invocation.unreadProps
 	};
 };
 
