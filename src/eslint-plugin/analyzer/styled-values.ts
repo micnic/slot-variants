@@ -48,12 +48,16 @@ type InternalStyles = {
 	bySlot: TokenEntriesBySlot;
 	slotNames: ReadonlySet<string>;
 	defaults: VariantMatchers;
-	presets: ReadonlyMap<string, VariantMatchers>;
+	presets: ReadonlyMap<string, PresetValues>;
 	// The variants a call leaves unset unless it passes them.
 	optional: ReadonlySet<string>;
 	groupSlots: GroupSlots;
 	slotGroups: ReadonlyMap<string, ReadonlyArray<string>>;
 };
+
+// The variant values a preset sets that can be read, and whether that is all
+// of them: one with a spread or a value that can't be read may set others.
+type PresetValues = { matchers: VariantMatchers; complete: boolean };
 
 // What a call's props are read against: the presets it may name, and the
 // variants it leaves unset unless it passes them.
@@ -90,7 +94,16 @@ const EMPTY_GROUPS: GroupSlots = new Map();
 
 const NO_SKIP: ReadonlySet<string> = new Set();
 
-const NO_PRESETS: ReadonlyMap<string, VariantMatchers> = new Map();
+const NO_PRESETS: ReadonlyMap<string, PresetValues> = new Map();
+
+// What a call without a preset gets from one: nothing, known in full.
+const NO_PRESET: PresetValues = { matchers: EMPTY_MATCHERS, complete: true };
+
+// What an unknown preset sets: nothing that can be read, maybe anything.
+const UNKNOWN_PRESET: PresetValues = {
+	matchers: EMPTY_MATCHERS,
+	complete: false
+};
 
 const NO_KEYS: ReadonlySet<string> = new Set();
 
@@ -131,17 +144,34 @@ const readGroups = (
 	return { groupSlots, slotGroups };
 };
 
+// One preset's variant values, and whether every one of them was read.
+const readPresetValues = (
+	value: Node,
+	sourceCode: SourceCode
+): PresetValues => {
+	const container = resolveContainer(value, sourceCode);
+	const values = getStrictProperties(container);
+	const matchers = readMatchers(
+		getProperties(container),
+		NO_SKIP,
+		sourceCode
+	);
+
+	return {
+		matchers,
+		complete: values !== null && matchers.size === values.size
+	};
+};
+
 // Each preset's variant values, by preset name.
 const readPresets = (
 	presets: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
-): Map<string, VariantMatchers> => {
-	const result = new Map<string, VariantMatchers>();
+): Map<string, PresetValues> => {
+	const result = new Map<string, PresetValues>();
 
 	for (const [name, value] of presets) {
-		const values = getProperties(resolveContainer(value, sourceCode));
-
-		result.set(name, readMatchers(values, NO_SKIP, sourceCode));
+		result.set(name, readPresetValues(value, sourceCode));
 	}
 
 	return result;
@@ -282,26 +312,25 @@ const readPropMatchers = (
 	return matchers;
 };
 
-// The variant values of the preset a call's props name: none without a
-// preset, null for one that isn't known.
+// The variant values of the preset a call's props name.
 const readPresetMatchers = (
 	props: ReadonlyMap<string, Node>,
-	presets: ReadonlyMap<string, VariantMatchers>,
+	presets: ReadonlyMap<string, PresetValues>,
 	ctx: StyledContext
-): VariantMatchers | null => {
+): PresetValues => {
 	const preset = props.get('preset');
 
 	if (preset === undefined) {
-		return EMPTY_MATCHERS;
+		return NO_PRESET;
 	}
 
 	const name = getStaticMatcherValue(preset, ctx.sourceCode);
 
 	if (name === null) {
-		return null;
+		return UNKNOWN_PRESET;
 	}
 
-	return presets.get(name) ?? null;
+	return presets.get(name) ?? UNKNOWN_PRESET;
 };
 
 // A call's props, when every one of them can be read: none for a call
@@ -326,12 +355,12 @@ const getKnownCallProps = (
 const readUnsetMatchers = (
 	arg: Expression | SpreadElement | undefined,
 	optional: ReadonlySet<string>,
-	preset: VariantMatchers | null,
+	preset: PresetValues,
 	ctx: StyledContext
 ): VariantMatchers => {
 	const props = getKnownCallProps(arg, ctx);
 
-	if (props === null || preset === null) {
+	if (props === null || !preset.complete) {
 		return EMPTY_MATCHERS;
 	}
 
@@ -342,7 +371,7 @@ const readUnsetMatchers = (
 		const isPassed =
 			value !== undefined && !isUndefinedIdentifier(ctx.resolve(value));
 
-		if (!isPassed && !preset.has(key)) {
+		if (!isPassed && !preset.matchers.has(key)) {
 			unset.set(key, UNSET_MATCHER);
 		}
 	}
@@ -367,7 +396,7 @@ const buildCallMatchers = (
 	return new Map([
 		...base,
 		...readUnsetMatchers(arg, optional, preset, ctx),
-		...(preset ?? EMPTY_MATCHERS),
+		...preset.matchers,
 		...readPropMatchers(props, ctx)
 	]);
 };

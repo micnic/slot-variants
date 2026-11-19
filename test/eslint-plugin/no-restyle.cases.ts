@@ -315,6 +315,19 @@ export const RESTYLE_VUE_VALID = [
 ];
 
 export const RESTYLE_INVALID = [
+	// A preset not read in full may set a variant with no default, which is
+	// then not taken to be unset.
+	...[
+		'bigPreset',
+		'{ size: pick() }',
+		'{ ...bigPreset }',
+		"{ size: on ? 'lg' : 'sm' }"
+	].map((preset) => ({
+		code:
+			IMPORT +
+			`const b = sv({ variants: { size: { sm: 'm-1', lg: 'p-2' } }, presets: { big: ${preset} } });\nb({ preset: 'big', class: 'p-4' });`,
+		errors: [restyle('p-4', 'p-2')]
+	})),
 	// A variant function called where `sv()` returns it.
 	{
 		code: IMPORT + "sv({ base: 'p-2' })({ class: 'p-4' });",
