@@ -92,6 +92,66 @@ const mergeSpreadProperties = (
 	}
 };
 
+// Adds the keys spreading `node` may set to `keys`, entering the spreads it
+// holds itself. False when they can't all be read: a spread of anything but
+// an object literal, or a computed key. `stack` stops an object that spreads
+// itself (`const a = { ...a }`).
+const collectSpreadKeys = (
+	node: Node,
+	sourceCode: SourceCode,
+	keys: Set<string>,
+	stack: Set<ObjectExpression>
+): boolean => {
+	const obj = resolveStaticValue(node, sourceCode);
+
+	if (obj.type !== 'ObjectExpression' || stack.has(obj)) {
+		return false;
+	}
+
+	stack.add(obj);
+
+	for (const prop of obj.properties) {
+		if (prop.type === 'SpreadElement') {
+			if (!collectSpreadKeys(prop.argument, sourceCode, keys, stack)) {
+				return false;
+			}
+
+			continue;
+		}
+
+		const key = getKeyName(prop);
+
+		if (key === null) {
+			return false;
+		}
+
+		keys.add(key);
+	}
+
+	stack.delete(obj);
+
+	return true;
+};
+
+/**
+ * Adds the keys spreading `node` into an object may set to `keys`, or gives
+ * null once some spread's keys can't all be read.
+ */
+export const addSpreadKeys = (
+	node: Node,
+	sourceCode: SourceCode,
+	keys: Set<string> | null
+): Set<string> | null => {
+	if (
+		keys === null ||
+		!collectSpreadKeys(node, sourceCode, keys, new Set())
+	) {
+		return null;
+	}
+
+	return keys;
+};
+
 /**
  * A config's properties with those of each object it spreads merged in, a
  * later key winning as at runtime. A spread that doesn't read as an object

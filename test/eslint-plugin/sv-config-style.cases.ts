@@ -725,5 +725,91 @@ export const SV_CONFIG_STYLE_BASE_INVALID = [
 		output:
 			IMPORT +
 			"sv({ base: 'flex', variants: {}, slots: { icon: 'w-4' } });"
+	},
+	{
+		// A spread in the config may set a `base` the moved one would land
+		// before, and be overridden by.
+		code:
+			IMPORT +
+			"const x = { base: 'q' };\nsv('a', { ...x, variants: {} });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a separate leading argument'
+				}
+			}
+		],
+		output: null
+	},
+	{
+		// Or one a `base` moved out of the config would then join.
+		code:
+			IMPORT +
+			"const x = { base: 'q' };\nsv({ ...x, base: 'a', variants: {} });",
+		options: [{ baseStyle: 'separateArg' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a separate leading argument',
+					found: 'a "base" field in the config'
+				}
+			}
+		],
+		output: null
+	},
+	{
+		// A factory `base` is replaced by a config `base` but joined by a
+		// leading argument, so moving between them changes the classes.
+		code:
+			IMPORT_CREATE_SV +
+			"const mySv = createSV({ base: 'x' });\nmySv('flex', { variants: {} });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a separate leading argument'
+				}
+			}
+		],
+		output: null
+	},
+	{
+		// The same when the factory defaults can't be read.
+		code:
+			IMPORT_CREATE_SV +
+			"const mySv = createSV(getDefaults());\nmySv({ base: 'flex', variants: {} });",
+		options: [{ baseStyle: 'separateArg' }],
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a separate leading argument',
+					found: 'a "base" field in the config'
+				}
+			}
+		],
+		output: null
+	},
+	{
+		// Factory defaults without a `base` leave the move safe.
+		code:
+			IMPORT_CREATE_SV +
+			"const mySv = createSV({ cacheSize: 1 });\nmySv('flex', { variants: {} });",
+		errors: [
+			{
+				messageId: 'wrongBaseStyle',
+				data: {
+					style: 'a "base" field in the config',
+					found: 'a separate leading argument'
+				}
+			}
+		],
+		output:
+			IMPORT_CREATE_SV +
+			"const mySv = createSV({ cacheSize: 1 });\nmySv({ base: 'flex', variants: {} });"
 	}
 ];

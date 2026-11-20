@@ -1342,5 +1342,14 @@ export const NO_SHARED_TOKENS_INVALID = [
 				]
 			}
 		]
+	},
+	{
+		// An array matcher element that can't be read may name any value,
+		// so the class can't be moved onto the values the matcher lists.
+		code:
+			IMPORT +
+			"let dyn = 'lg';\nsv({ variants: { size: { sm: 'a', lg: 'b' } }, compoundVariants: [{ size: ['sm', dyn], class: 'z' }] });",
+		output: null,
+		errors: [singleKeyCompound('compoundVariants', 'size', "['sm', dyn]")]
 	}
 ];

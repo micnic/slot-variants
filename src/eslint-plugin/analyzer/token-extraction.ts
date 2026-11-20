@@ -628,10 +628,9 @@ export const getStaticMatcherValue = (
 };
 
 // A matcher property's value set: a scalar reads as one value, an array of
-// scalars (`variant: ["primary", "secondary"]`) as every value it statically
-// resolves — matching any one of them satisfies the compound. A dynamic
-// element inside the array is skipped, same as a wholly dynamic matcher;
-// an array with no statically-readable element gives up, same as null.
+// scalars (`variant: ["primary", "secondary"]`) as all of its values —
+// matching any one of them satisfies the compound. An array is read in full or
+// not at all: a hole, spread or dynamic element could stand for any value.
 export const getStaticMatcherValues = (
 	node: Node,
 	sourceCode: SourceCode
@@ -642,15 +641,27 @@ export const getStaticMatcherValues = (
 		return new Set([scalar]);
 	}
 
+	const list = resolveArray(node, sourceCode);
+
+	if (list === null) {
+		return null;
+	}
+
 	const values = new Set<string>();
 
-	forEachResolvedItem(node, sourceCode, (element) => {
-		const value = getStaticMatcherValue(element, sourceCode);
-
-		if (value !== null) {
-			values.add(value);
+	for (const item of list.elements) {
+		if (item === null || item.type === 'SpreadElement') {
+			return null;
 		}
-	});
+
+		const value = getStaticMatcherValue(item, sourceCode);
+
+		if (value === null) {
+			return null;
+		}
+
+		values.add(value);
+	}
 
 	if (values.size === 0) {
 		return null;
@@ -683,8 +694,7 @@ export const readMatchers = (
 
 // Derives an exclusivity source from a compound's matcher properties, so two
 // compounds requiring disjoint variant values aren't reported as conflicts.
-// Only statically-known matchers count; a wholly dynamic matcher (or an array
-// with no statically-readable element) is skipped, which can only
+// Only fully read matchers count; any other is skipped, which can only
 // under-suppress, never wrongly suppress. With no readable matcher left,
 // falls back to the never-exclusive compound source.
 const getCompoundSource = (

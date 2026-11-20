@@ -5,7 +5,7 @@ import { getKeyName } from './config-keys.ts';
 import { resolveArray, resolveStaticValue } from './const-bindings.ts';
 import { type EmptyFix, makeListFix } from './list-fix.ts';
 import { getStaticStringText } from './literals.ts';
-import { getProperties } from './properties.ts';
+import { addSpreadKeys, getProperties } from './properties.ts';
 import {
 	COMPOUND_NON_MATCHER_KEYS,
 	forEachCnBranch,
@@ -386,18 +386,46 @@ const getKeptMarker = (
 	return null;
 };
 
+const isWhollyEmpty = (context: Rule.RuleContext, value: Node): boolean => {
+	const node = resolveStaticValue(value, context.sourceCode);
+
+	return isEmptyStringNode(node) || isEmptyContainer(node);
+};
+
+// Whether a config key may also be set by a spread before it or by the call's
+// `createSV()` defaults (either null when it can't be read in full), so an
+// empty value there clears that one rather than having no effect.
+const mayOverride = (
+	key: string,
+	spreadKeys: ReadonlySet<string> | null,
+	inherited: ReadonlyMap<string, Node> | null
+): boolean =>
+	spreadKeys === null ||
+	spreadKeys.has(key) ||
+	inherited === null ||
+	inherited.has(key);
+
 // A `createSV()` factory config may carry a spread or computed key (reported
 // as dynamic by no-dynamic-classes); those aren't class-bearing, so they're
 // skipped here. Each checker gets the value as written and resolves it, so an
-// empty value read through a `const` is reported in this config.
+// empty value read through a `const` is reported in this config. `inherited`
+// holds the defaults of the call's `createSV()` factory.
 export const checkConfigForEmptyClasses = (
 	context: Rule.RuleContext,
-	config: ObjectExpression
+	config: ObjectExpression,
+	inherited: ReadonlyMap<string, Node> | null
 ) => {
 	const keptMarker = getKeptMarker(context, config);
 
+	let spreadKeys: Set<string> | null = new Set();
+
 	for (const prop of config.properties) {
 		if (prop.type !== 'Property') {
+			spreadKeys = addSpreadKeys(
+				prop.argument,
+				context.sourceCode,
+				spreadKeys
+			);
 			continue;
 		}
 
@@ -409,13 +437,20 @@ export const checkConfigForEmptyClasses = (
 
 		const checker = svEmptyConfigValueCheckers.get(key);
 
-		if (checker && key !== keptMarker) {
-			checker(
-				context,
-				prop.value,
-				makeListFix(context, prop, config.properties),
-				key
-			);
+		if (
+			checker === undefined ||
+			key === keptMarker ||
+			(isWhollyEmpty(context, prop.value) &&
+				mayOverride(key, spreadKeys, inherited))
+		) {
+			continue;
 		}
+
+		checker(
+			context,
+			prop.value,
+			makeListFix(context, prop, config.properties),
+			key
+		);
 	}
 };

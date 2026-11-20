@@ -2,13 +2,12 @@ import type { Rule } from 'eslint';
 import type { CallExpression, ObjectExpression } from 'estree';
 import { type CallMatch, isLastArgument } from '../analyzer/call-matching.ts';
 import { docsUrl } from '../analyzer/config-keys.ts';
-import { getStrictProperties } from '../analyzer/properties.ts';
 import {
 	analyzeSharedTokens,
 	type SharedTokensCall
 } from '../analyzer/shared-tokens.ts';
 import {
-	resolveCalleeCall,
+	getFactoryDefaults,
 	type StyledContext
 } from '../analyzer/styled-values.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
@@ -21,21 +20,15 @@ const getInheritedCall = (
 	ctx: StyledContext,
 	node: CallExpression
 ): Pick<SharedTokensCall, 'canCreateBase' | 'inheritsPostProcess'> => {
-	const defaults = resolveCalleeCall(node.callee, ctx)?.arguments[0];
+	const defaults = getFactoryDefaults(node, ctx);
 
-	if (defaults === undefined) {
-		return { canCreateBase: true, inheritsPostProcess: false };
-	}
-
-	const properties = getStrictProperties(ctx.resolve(defaults));
-
-	if (properties === null) {
+	if (defaults === null) {
 		return { canCreateBase: false, inheritsPostProcess: true };
 	}
 
 	return {
-		canCreateBase: !properties.has('base'),
-		inheritsPostProcess: properties.has('postProcess')
+		canCreateBase: !defaults.has('base'),
+		inheritsPostProcess: defaults.has('postProcess')
 	};
 };
 

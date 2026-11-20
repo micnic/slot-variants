@@ -6,6 +6,7 @@ import {
 	visitForEmptyClasses
 } from '../analyzer/empty-classes.ts';
 import { type EmptyFix, makeListFix } from '../analyzer/list-fix.ts';
+import { getFactoryDefaults } from '../analyzer/styled-values.ts';
 import { forEachStaticItem } from '../analyzer/token-extraction.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
@@ -20,9 +21,13 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  * least one value, so `sv()` throws for the config.
  *
  * The config containers that carry no class values of their own —
- * `defaultVariants`, `requiredVariants`, `multiSlots`, `presets` — are reported
- * when empty too: each one reads as configuration while changing nothing about
- * the output.
+ * `defaultVariants`, `requiredVariants`, `multiSlots`, `presets`, `groups` —
+ * are reported when empty too: each one reads as configuration while changing
+ * nothing about the output.
+ *
+ * An empty config value that overrides one a spread before it or the call's
+ * `createSV()` defaults may set is left alone, as removing it would bring that
+ * one back.
  */
 export const noEmptyClasses: Rule.RuleModule = {
 	meta: {
@@ -47,7 +52,7 @@ export const noEmptyClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		return createTrackedCallListeners(context, (node, call) => {
+		return createTrackedCallListeners(context, (node, call, ctx) => {
 			if (node.arguments.length === 0) {
 				// `createSV()` with no defaults is a valid factory call.
 				if (!call.isFactoryConfig) {
@@ -68,7 +73,11 @@ export const noEmptyClasses: Rule.RuleModule = {
 			});
 
 			if (call.config) {
-				checkConfigForEmptyClasses(context, call.config);
+				checkConfigForEmptyClasses(
+					context,
+					call.config,
+					getFactoryDefaults(node, ctx)
+				);
 			}
 		});
 	}

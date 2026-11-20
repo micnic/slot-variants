@@ -190,7 +190,29 @@ export const NO_EMPTY_CLASSES_VALID = [
 	// And in a boolean-shorthand variant value.
 	IMPORT + "sv({ variants: { disabled: '' } });",
 	// An empty string reached through a hoisted `const` alias.
-	IMPORT + "const none = '';\nsv({ variants: { size: { sm: none } } });"
+	IMPORT + "const none = '';\nsv({ variants: { size: { sm: none } } });",
+	// An empty value after a spread that sets the same key clears that one,
+	// so removing it would bring the spread's back.
+	IMPORT +
+		"const shared = { base: 'p-2', variants: {} };\nsv({ ...shared, base: '' });",
+	// The same through a spread inside the spread object.
+	IMPORT +
+		"const inner = { compoundVariants: [{ class: 'x' }] };\nconst shared = { ...inner, variants: {} };\nsv({ ...shared, compoundVariants: [] });",
+	// A spread whose keys can't all be read may set any key: a dynamic one,
+	// one holding a dynamic spread or a computed key, or one spreading itself.
+	IMPORT + 'sv({ ...rest, compoundVariants: [], variants: {} });',
+	IMPORT +
+		'const shared = { ...rest };\nsv({ ...shared, defaultVariants: {}, variants: {} });',
+	IMPORT +
+		"const shared = { [k]: 'x' };\nsv({ ...shared, presets: {}, variants: {} });",
+	IMPORT +
+		'const shared = { ...shared };\nsv({ ...shared, groups: {}, variants: {} });',
+	// An empty value over a factory default of the same key clears it.
+	IMPORT_CREATE_SV +
+		"const mySv = createSV({ base: 'p-2', requiredVariants: true });\nmySv({ base: '', variants: { size: { sm: 'a' } }, requiredVariants: [] });",
+	// Factory defaults that can't be read may set any key.
+	IMPORT_CREATE_SV +
+		'const mySv = createSV(getDefaults());\nmySv({ base: [], variants: {} });'
 ];
 
 export const NO_EMPTY_CLASSES_INVALID = [
@@ -800,6 +822,37 @@ export const NO_EMPTY_CLASSES_INVALID = [
 		errors: [
 			{ messageId: 'emptyString', line: 3, column: 23 },
 			{ messageId: 'emptyString', line: 3, column: 30 }
+		]
+	},
+	{
+		// A spread after the empty value sets the key over it, so the empty
+		// value has no effect.
+		code:
+			IMPORT +
+			"const shared = { base: 'p-2', variants: {} };\nsv({ base: '', ...shared });",
+		output:
+			IMPORT +
+			"const shared = { base: 'p-2', variants: {} };\nsv({ ...shared });",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// An empty value inside a key a spread also sets is still reported.
+		code:
+			IMPORT +
+			"const shared = { base: 'p-2', variants: {} };\nsv({ ...shared, variants: { size: { sm: [] } } });",
+		errors: [{ messageId: 'emptyArray' }]
+	},
+	{
+		// Factory defaults without the key leave the empty value inert.
+		code:
+			IMPORT_CREATE_SV +
+			"const mySv = createSV({ cacheSize: 1 });\nmySv({ base: '', variants: {}, defaultVariants: {} });",
+		output:
+			IMPORT_CREATE_SV +
+			'const mySv = createSV({ cacheSize: 1 });\nmySv({ variants: {} });',
+		errors: [
+			{ messageId: 'emptyString' },
+			{ messageId: 'emptyConfig', data: { key: 'defaultVariants' } }
 		]
 	}
 ];

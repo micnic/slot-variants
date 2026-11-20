@@ -885,12 +885,14 @@ const checkCompoundsForSingleKey = (
 			return;
 		}
 
+		// The entry is removed as written in the list, with any `as`/
+		// `satisfies` wrapper, while its resolved object is what's analyzed.
 		checkCompoundEntryForSingleKey(
 			context,
 			element,
 			kind,
 			variantsMap,
-			() => getEntryRemoval(context, configNode, compounds, element),
+			() => getEntryRemoval(context, configNode, compounds, item),
 			scope
 		);
 	});

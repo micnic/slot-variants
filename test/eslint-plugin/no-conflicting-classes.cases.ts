@@ -2734,5 +2734,33 @@ export const NO_CONFLICTING_NS_INVALID = [
 			conflictCn('[mask-type:alpha]!, [mask-type:luminance]'),
 			2
 		)
+	},
+	// An array matcher with an element that can't be read may match any
+	// value, so it isn't exclusive with the other entry: a dynamic element, a
+	// spread, or a hole.
+	{
+		code:
+			IMPORT +
+			"let more = ['lg'];\nsv({ variants: { size: { sm: 'p-1', lg: 'p-2' } }, compoundVariants: [{ size: 'lg', class: 'm-1' }, { size: ['sm', more[0]], class: 'm-2' }] });",
+		errors: repeat(conflict('m-1, m-2'), 2)
+	},
+	{
+		code:
+			IMPORT +
+			"const more = ['lg'];\nsv({ variants: { size: { sm: 'p-1', lg: 'p-2' } }, compoundVariants: [{ size: 'lg', class: 'm-1' }, { size: ['sm', ...more], class: 'm-2' }] });",
+		errors: repeat(conflict('m-1, m-2'), 2)
+	},
+	{
+		code:
+			IMPORT +
+			"sv({ variants: { size: { sm: 'p-1', lg: 'p-2' } }, compoundVariants: [{ size: 'lg', class: 'm-1' }, { size: ['sm', , 'md'], class: 'm-2' }] });",
+		errors: repeat(conflict('m-1, m-2'), 2)
+	},
+	{
+		// An empty array matcher (which makes sv() throw) is no value set.
+		code:
+			IMPORT +
+			"sv({ variants: { size: { sm: 'p-1', lg: 'p-2' } }, compoundVariants: [{ size: 'lg', class: 'm-1' }, { size: [], class: 'm-2' }] });",
+		errors: repeat(conflict('m-1, m-2'), 2)
 	}
 ];

@@ -20,6 +20,10 @@ import {
 } from '../analyzer/list-fix.ts';
 import { getProperties } from '../analyzer/properties.ts';
 import { isStaticStringNode } from '../analyzer/static-predicates.ts';
+import {
+	getFactoryDefaults,
+	type StyledContext
+} from '../analyzer/styled-values.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
 type KeyEntry = {
@@ -241,6 +245,9 @@ const touchesHoistedSlots = (
 	);
 };
 
+const hasSpreadProperty = (obj: ObjectExpression): boolean =>
+	obj.properties.some((property) => property.type === 'SpreadElement');
+
 // Whether a base-style fix would move a base into or out of a `slots` record
 // with a spread, whose own `base` may override the moved one or join it.
 const touchesSpreadSlots = (
@@ -254,13 +261,17 @@ const touchesSpreadSlots = (
 
 	const isTouched = insertInto === slotsObj || source.style === 'slotsBase';
 
-	return (
-		isTouched &&
-		slotsObj.properties.some(
-			(property) => property.type === 'SpreadElement'
-		)
-	);
+	return isTouched && hasSpreadProperty(slotsObj);
 };
+
+// Whether moving the base can change what the call applies: a spread in the
+// config may set `base` or `slots` over or under the moved one, and a factory
+// `base` is replaced by a config `base` but joined by a leading argument or a
+// `slots.base`.
+const mayChangeBase = (
+	configNode: ObjectExpression,
+	inheritsBase: boolean
+): boolean => inheritsBase || hasSpreadProperty(configNode);
 
 const detectBaseSources = (
 	configNode: ObjectExpression,
@@ -490,13 +501,24 @@ const canFixBaseStyle = (
 	);
 };
 
+// Whether the call's `createSV()` factory may give it a `base`.
+const inheritsFactoryBase = (
+	node: CallExpression,
+	ctx: StyledContext
+): boolean => {
+	const defaults = getFactoryDefaults(node, ctx);
+
+	return defaults === null || defaults.has('base');
+};
+
 const checkBaseStyle = (
 	context: Rule.RuleContext,
 	call: CallExpression,
 	configNode: ObjectExpression,
 	args: ReadonlyArray<Expression | SpreadElement>,
 	baseStyle: BaseStyle,
-	isFactoryConfig: boolean
+	isFactoryConfig: boolean,
+	inheritsBase: boolean
 ) => {
 	// `createSV(defaults)` takes exactly one argument and ignores any extra, so
 	// a leading class argument there is unsatisfiable, not merely un-fixable.
@@ -531,6 +553,7 @@ const checkBaseStyle = (
 	if (
 		sources.length === 1 &&
 		onlySource &&
+		!mayChangeBase(configNode, inheritsBase) &&
 		canFixBaseStyle(
 			context.sourceCode,
 			call,
@@ -599,7 +622,7 @@ export const svConfigStyle: Rule.RuleModule = {
 	create(context) {
 		const baseStyle: BaseStyle = context.options[0]?.baseStyle ?? 'field';
 
-		return createTrackedCallListeners(context, (node, call) => {
+		return createTrackedCallListeners(context, (node, call, ctx) => {
 			if (!call.config) {
 				return;
 			}
@@ -611,7 +634,8 @@ export const svConfigStyle: Rule.RuleModule = {
 				call.config,
 				call.args,
 				baseStyle,
-				call.isFactoryConfig
+				call.isFactoryConfig,
+				inheritsFactoryBase(node, ctx)
 			);
 		});
 	}

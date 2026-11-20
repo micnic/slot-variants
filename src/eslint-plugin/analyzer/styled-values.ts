@@ -564,6 +564,24 @@ export const resolveCalleeCall = (
 	return resolved;
 };
 
+/**
+ * The defaults a call inherits from the `createSV()` factory its callee came
+ * from: none for `sv()` itself or a factory called without any, and null when
+ * they can't be read in full.
+ */
+export const getFactoryDefaults = (
+	node: CallExpression,
+	ctx: StyledContext
+): ReadonlyMap<string, Node> | null => {
+	const defaults = resolveCalleeCall(node.callee, ctx)?.arguments[0];
+
+	if (defaults === undefined) {
+		return getProperties(undefined);
+	}
+
+	return getStrictProperties(ctx.resolve(defaults));
+};
+
 // The `base` a `createSV()` factory gives a call through it whose config sets
 // none: one with neither `base` nor `extend`, whose parents' would take its
 // place. Null for any other call, or a config that can't be read in full.

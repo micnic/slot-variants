@@ -20,6 +20,36 @@ t.test('no-shared-tokens', (t) => {
 	t.end();
 });
 
+// A compound entry with a TS wrapper is removed whole, wrapper included.
+t.test('no-shared-tokens removes a wrapped compound entry whole', (t) => {
+	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
+	const variants =
+		"variants: { size: { sm: 'a', lg: 'b' }, on: { true: 'o' } }";
+	const lift = "{ size: { sm: 'a x', lg: 'b' }, on: { true: 'o' } }";
+	const kept = "{ size: 'lg', on: true, class: 'y' }";
+
+	t.doesNotThrow(() => {
+		tsTester.run('no-shared-tokens', rules['no-shared-tokens'], {
+			valid: [],
+			invalid: [
+				{
+					code: `${IMPORT}sv({ ${variants}, compoundVariants: [{ size: 'sm', class: 'x' } as B, ${kept}] });`,
+					filename: 'test.ts',
+					output: `${IMPORT}sv({ variants: ${lift}, compoundVariants: [${kept}] });`,
+					errors: [{ messageId: 'singleKeyCompound' }]
+				},
+				{
+					code: `${IMPORT}sv({ ${variants}, compoundVariants: [${kept}, { size: 'sm', class: 'x' } satisfies B] });`,
+					filename: 'test.ts',
+					output: `${IMPORT}sv({ variants: ${lift}, compoundVariants: [${kept}] });`,
+					errors: [{ messageId: 'singleKeyCompound' }]
+				}
+			]
+		});
+	}, 'rule tester passes');
+	t.end();
+});
+
 // A compound list wrapped in `as const` isn't the config property's value
 // itself, so emptying it leaves no property the fix knows how to remove.
 t.test('no-shared-tokens leaves a wrapped compound list unfixed', (t) => {
