@@ -10,6 +10,8 @@ A lightweight, zero-dependency, type-safe library for managing class name varian
 npm install slot-variants
 ```
 
+The package ships an agent skill at `node_modules/slot-variants/SKILL.md`. Copy it into your agent's skills folder (for Claude Code, `.claude/skills/slot-variants/SKILL.md`) to teach it the API.
+
 ## Overview
 
 `slot-variants` exports three functions:
@@ -18,11 +20,11 @@ npm install slot-variants
 - **`cn()`** - a utility for conditionally merging class names
 - **`createSV()`** - builds a pre-configured `sv()` with shared config defaults
 
-`sv()` is a drop-in replacement for [CVA](https://cva.style/) (just rename `cva` to `sv`) and covers the core feature set of [tailwind-variants](https://www.tailwind-variants.org/) (`tv`) with a simpler API. See [Migrating from CVA / tailwind-variants](#migrating-from-cva--tailwind-variants) for details.
+`sv()` can replace [CVA](https://cva.style/) and [tailwind-variants](https://www.tailwind-variants.org/) — see [Migrating from CVA / tailwind-variants](#migrating-from-cva--tailwind-variants).
 
 ## Why slot-variants
 
-Compared to CVA and tailwind-variants, `sv()` adds required variants, shared variant presets, slot groups, and a built-in result cache, while staying dependency-free and noticeably faster at runtime — see the benchmarks in [`bench/`](bench) if you want the numbers. `tailwind-merge` integration is opt-in (via `postProcess`) rather than always on, and the bundled ESLint / oxlint plugin catches class conflicts and duplication at lint time.
+Compared to CVA and tailwind-variants, `sv()` adds required variants, shared variant presets, slot groups, and a built-in result cache, while staying dependency-free and noticeably faster at runtime — see the benchmarks in [`bench/`](bench) if you want the numbers. `tailwind-merge` can be added via `postProcess`, and the bundled ESLint / oxlint plugin catches class conflicts and duplication at lint time.
 
 ## Quick Start
 
@@ -1265,7 +1267,7 @@ const classes = computed(() => list());
 
 ### Rules
 
-Rules check calls to `sv`/`cn` imported from `'slot-variants'` and to functions created with [`createSV()`](#shared-defaults-with-createsv), including a factory imported from another file of your project (ESLint only). Relative imports work out of the box; path aliases go in the plugin's shared settings:
+Rules check calls to `sv`/`cn` imported from `'slot-variants'` and to functions created with [`createSV()`](#shared-defaults-with-createsv), including a factory imported from another file of your project. Relative imports work out of the box; path aliases go in the plugin's shared settings:
 
 ```js
 { settings: { 'slot-variants': { alias: { '@/': './src' } } } }
@@ -1340,11 +1342,12 @@ cn(classes.base, 'p-4'); // allowed — `classes.base` resolves to card()'s base
 
 #### `slot-variants/no-empty-classes`
 
-Flags empty class values (empty strings, arrays, objects), zero-argument `sv()` / `cn()` calls, empty compound matcher arrays, and a `compoundSlots` entry with no `slots`. Partially auto-fixable.
+Flags empty class values (empty strings, arrays, objects), zero-argument `sv()` / `cn()` calls, empty compound matcher arrays, a `compoundSlots` entry with no `slots`, and an empty `defaultVariants`, `requiredVariants`, `multiSlots`, `presets` or `groups`, which changes nothing. Partially auto-fixable.
 
 ```typescript
 sv({ base: '', variants: {} });         // empty base
 sv({ variants: { size: { sm: [] } } }); // empty variant value
+sv({ variants: {}, presets: {} });      // empty presets — removed
 sv();                                   // zero-arg call — always produces ''
 ```
 
@@ -1403,7 +1406,7 @@ The same checks apply to Svelte and Vue templates and components (with `svelte-e
 
 Classes from variant values the call doesn't select are ignored, so `card({ size: 'sm', class: 'mt-4' })` doesn't collide with a margin from `size: 'lg'`. The same goes for a component that passes a variant on from its own props: `<Button size="sm" className="…" />` is checked against `size: 'sm'`, and an element that doesn't pass `size` against the prop's default, if it has one: `{ size = 'sm' }`, Vue's `withDefaults()` or `default` (a `Boolean` prop without one is `false`), or Solid's `merge({ size: 'sm' }, props)`. Props spread into the call (`{ ...rest }`) and a forwarded `preset` are followed the same way, while a variant that comes from no prop, like `size: big ? 'lg' : 'sm'`, may take any of its values.
 
-Components imported from another file are followed to the file that declares them (ESLint only; under oxlint, imported components are skipped):
+Components imported from another file are followed to the file that declares them:
 
 ```tsx
 // ui/button.tsx
@@ -1591,9 +1594,7 @@ module.exports = {
 
 ## Migrating from CVA / tailwind-variants
 
-### From CVA
-
-`sv()` is a drop-in replacement for CVA. Rename `cva` to `sv` and the `VariantProps` import source — everything else, including the config shape, `class`/`className` override, and variant prop handling, works identically:
+`sv()` can replace both. Rename `cva` or `tv` to `sv` and change the import source:
 
 ```diff
 - import { cva, type VariantProps } from 'class-variance-authority';
@@ -1612,10 +1613,6 @@ module.exports = {
   });
 ```
 
-### From tailwind-variants
-
-`sv()` covers the core feature set of tailwind-variants with a simpler API. The config-only calling convention matches `tv()`:
-
 ```diff
 - import { tv, type VariantProps } from 'tailwind-variants';
 + import { sv, type VariantProps } from 'slot-variants';
@@ -1628,36 +1625,4 @@ module.exports = {
     },
     defaultVariants: { size: 'sm' }
   });
-```
-
-Key differences to be aware of:
-
-| Feature                | tailwind-variants                          | slot-variants                                                  |
-| ---------------------- | ------------------------------------------ | -------------------------------------------------------------- |
-| Slot return type       | Always functions: `slot({ class: '...' })` | Strings by default; functions for slots listed in `multiSlots` |
-| `extend` (composition) | Supported                                  | Supported, append-only like `tv`; see below                    |
-| Built-in `twMerge`     | Enabled by default                         | Use `postProcess: twMerge`, globally via `createSV`            |
-
-**Slot return type** is the most significant difference. In `tv()`, each slot returns a function that can accept additional props. In `sv()`, slots resolve to strings directly — use the `class` prop with a slot object for per-slot overrides, or list a slot in [`multiSlots`](#multi-slots) to expose it as a `tv`-style reconfigurable function:
-
-```typescript
-// tailwind-variants
-const { base, icon } = component({ size: 'sm' });
-base({ class: 'extra' }); // slot is a function
-
-// slot-variants
-const { base, icon } = component({ size: 'sm', class: { base: 'extra' } });
-base; // slot is a string
-```
-
-**`extend`** merges configs the same way `tv` does. As `tv` resolves the resulting class conflicts with its built-in `twMerge`, add `postProcess: twMerge` to a parent (children inherit it) to get the same output.
-
-**tailwind-merge** is not built in but can be added via `postProcess`, or applied globally with [`createSV()`](#shared-defaults-with-createsv) — the closest equivalent to `tv`'s default `twMerge`:
-
-```typescript
-// custom-sv.ts
-import { createSV } from 'slot-variants';
-import { twMerge } from 'tailwind-merge';
-
-export const customSV = createSV({ postProcess: twMerge });
 ```

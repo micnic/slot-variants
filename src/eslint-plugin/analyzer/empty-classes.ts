@@ -211,9 +211,9 @@ const checkVariantsForEmpty = (
 const isEmptyArrayLiteral = (node: Node): boolean =>
 	node.type === 'ArrayExpression' && node.elements.length === 0;
 
-// A compound matcher (any entry key other than `class`/`className`/`slots`)
-// whose value is a literal empty array could never match, so `sv()` rejects
-// it: the config throws when it's compiled.
+// A compound matcher (any entry key other than `class`, `className`, `slots`
+// and `preset`) whose value is a literal empty array could never match, so
+// `sv()` rejects it: the config throws when it's compiled.
 const checkCompoundMatchersForEmpty = (
 	context: Rule.RuleContext,
 	compoundEntries: ArrayExpression

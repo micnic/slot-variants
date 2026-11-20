@@ -1,3 +1,8 @@
+---
+name: slot-variants
+description: Write and review class name variants with slot-variants — sv(), cn(), createSV() and its ESLint/oxlint plugin. Use when code imports from 'slot-variants', or when migrating from CVA or tailwind-variants.
+---
+
 # slot-variants — AI Agent Guide
 
 ## Overview
@@ -8,7 +13,7 @@
 import { cn, createSV, sv, type VariantProps } from 'slot-variants';
 ```
 
-`sv()` is a drop-in replacement for CVA (`cva` → `sv`) and covers the core feature set of tailwind-variants (`tv`) with a simpler API. Slots return strings directly by default, or reconfigurable functions (like in `tv`) when listed in `multiSlots`. Features not in CVA/TV: `requiredVariants`, `presets`, `groups`, `cacheSize`, `introspection`, `postProcess`, function-based `defaultVariants`, variadic base args, and `null`-to-unset variant props. `tailwind-merge` is opt-in via `postProcess` rather than always on. `extend` builds on other `sv()` components like `tv`'s: classes are appended after the parent's (never replaced), so add `postProcess: twMerge` when a child must override parent classes.
+`sv()` can replace CVA and tailwind-variants: rename `cva` or `tv` to `sv` and import from `'slot-variants'`.
 
 Without `slots`, the returned function returns a `string` (or `{ base }` with a `base` function when `multiSlots` is `true` or lists `base`). With `slots`, it returns a `Record<string, string>` keyed by `base` plus each slot name (or a function for slots in `multiSlots`).
 
@@ -219,7 +224,8 @@ Set `introspection: true` to expose configuration and cache members on the retur
 
 ### React Component Pattern
 
-```typescript
+```tsx
+import type { ComponentProps } from 'react';
 import { sv, type VariantProps } from 'slot-variants';
 
 const button = sv('btn font-medium rounded-lg', {
@@ -230,10 +236,10 @@ const button = sv('btn font-medium rounded-lg', {
   defaultVariants: { size: 'md', intent: 'primary' }
 });
 
-export type ButtonProps = VariantProps<typeof button>;
+export type ButtonProps = VariantProps<typeof button> & ComponentProps<'button'>;
 
-export const Button = ({ class: className, ...props }: ButtonProps & { class?: string }) => {
-  return <button className={button({ ...props, class: className })} />;
+export const Button = ({ size, intent, className, ...props }: ButtonProps) => {
+  return <button className={button({ size, intent, className })} {...props} />;
 };
 ```
 
