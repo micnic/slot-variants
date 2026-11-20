@@ -147,7 +147,9 @@ const pushLiteralTokens = (
 };
 
 // The tokens of a template's quasis, the classes around its substitutions.
-// Callers make sure no token straddles a substitution.
+// Callers make sure no token straddles a substitution. A quasi's text is read
+// from the source rather than its `raw` value, which turns a `\r\n` into a
+// `\n` and would shift every offset after one.
 const pushQuasiTokens = (
 	node: TemplateLiteral,
 	slot: string,
@@ -156,10 +158,18 @@ const pushQuasiTokens = (
 	sourceCode: SourceCode
 ) => {
 	for (const quasi of node.quasis) {
+		const range = sourceCode.getRange(quasi);
+		// A quasi closes with the template's backtick, or with `${`.
+		let closing = 2;
+
+		if (quasi.tail) {
+			closing = 1;
+		}
+
 		pushLiteralTokens(
-			quasi.value.raw,
+			sourceCode.text.slice(range[0] + 1, range[1] - closing),
 			quasi.value.cooked,
-			sourceCode.getRange(quasi),
+			range,
 			slot,
 			source,
 			entries
@@ -603,9 +613,28 @@ const extractVariantTokens = (
 	}
 };
 
+// A negative number matcher (`-1`), which ESTree writes as a unary minus,
+// read as `sv()` stringifies it. Null for anything else.
+const getNegativeNumberText = (
+	node: Node,
+	sourceCode: SourceCode
+): string | null => {
+	if (node.type !== 'UnaryExpression' || node.operator !== '-') {
+		return null;
+	}
+
+	const argument = resolveStaticValue(node.argument, sourceCode);
+
+	if (argument.type !== 'Literal' || typeof argument.value !== 'number') {
+		return null;
+	}
+
+	return String(-argument.value);
+};
+
 // Strings, booleans, and numbers align with variant value keys (`{ true: … }`,
 // `{ 2: … }`), which getKeyName also reads as strings. Read through `const`
-// bindings, like class values.
+// bindings, like class values, as are negative numbers.
 export const getStaticMatcherValue = (
 	raw: Node,
 	sourceCode: SourceCode
@@ -624,7 +653,7 @@ export const getStaticMatcherValue = (
 		return String(node.value);
 	}
 
-	return null;
+	return getNegativeNumberText(node, sourceCode);
 };
 
 // A matcher property's value set: a scalar reads as one value, an array of

@@ -352,6 +352,27 @@ writeFixture(
 	<template><b :class="sized({ size, class: cls })">x</b></template>`
 );
 
+// Vue casts a `Boolean` prop left out to `false`, however its type is written.
+const FLAT_CONFIG = `${IMPORT}const flat = sv({ base: 'p-2', variants: { flat: { true: 'shadow-none', false: 'shadow' } } });`;
+
+for (const [name, declaration] of [
+	['Flat', 'Boolean'],
+	['FlatTyped', '{ type: Boolean }'],
+	['FlatListed', '[String, , Boolean]'],
+	['FlatString', '{ type: String }'],
+	['FlatStrings', '{ type: [String] }'],
+	['FlatUntyped', '{ required: false }']
+]) {
+	writeFixture(
+		`ui/${name}.vue`,
+		`<script setup>
+	${FLAT_CONFIG}
+	const props = defineProps({ class: String, flat: ${declaration} });
+	</script>
+	<template><b :class="flat({ flat: props.flat, class: props.class })">x</b></template>`
+	);
+}
+
 writeFixture(
 	'ui/Plain.svelte',
 	'<script>let { id } = $props();</script>\n<i {id}></i>'
@@ -404,6 +425,33 @@ writeFixture(
 	const attrs = useAttrs();
 	</script>
 	<template><span :class="[tag(), attrs.class]">x</span></template>`
+);
+
+// `$attrs` read in a template, and names that only look like it: a script
+// binding, and one the template binds itself.
+writeFixture(
+	'ui/Attrs.vue',
+	`<script setup>
+	${IMPORT}const tag = sv({ base: 'm-1', variants: {} });
+	</script>
+	<template><span :class="[tag(), $attrs.class]">x</span></template>`
+);
+
+writeFixture(
+	'ui/AttrsShadowed.vue',
+	`<script setup>
+	${IMPORT}const tag = sv({ base: 'm-1', variants: {} });
+	const $attrs = { class: 'p-1' };
+	</script>
+	<template><span :class="[tag(), $attrs.class]">x</span></template>`
+);
+
+writeFixture(
+	'ui/AttrsLooped.vue',
+	`<script setup>
+	${IMPORT}const tag = sv({ base: 'm-1', variants: {} });
+	</script>
+	<template><span v-for="$attrs in items" :class="[tag(), $attrs.class]">x</span></template>`
 );
 
 writeFixture(

@@ -1,6 +1,12 @@
 import { IMPORT, IMPORT_CN, IMPORT_CREATE_SV, IMPORT_NS } from './helpers.ts';
 
 export const NO_REDUNDANT_SPACES_VALID = [
+	// A canonical ternary template: single spaces around each substitution,
+	// none at its edges, and empty branches.
+	IMPORT_CN +
+		"cn(`a ${x ? 'b c' : ''} ${y ? 'd' : 'e'} f`);\ncn(`${x ? 'b' : 'c'}`);",
+	// A template whose classes straddle a substitution isn't read.
+	IMPORT_CN + "cn(`p-${x ? '2' : '4'}  m-1`);",
 	// A non-breaking space is no class separator — the browser reads one class.
 	IMPORT_CN + "cn('p-2\u00a0p-4');",
 	// Keys named like `Object.prototype` members are no config keys.
@@ -114,6 +120,36 @@ export const NO_REDUNDANT_SPACES_VALID = [
 ];
 
 export const NO_REDUNDANT_SPACES_INVALID = [
+	{
+		// A config's classes reached through an object it spreads.
+		code:
+			IMPORT +
+			"const shared = { base: 'c  d' };\nsv({ ...shared, variants: {} });",
+		output:
+			IMPORT +
+			"const shared = { base: 'c d' };\nsv({ ...shared, variants: {} });",
+		errors: 1
+	},
+	{
+		// A ternary template: a branch string, and the text around the
+		// substitutions, whose fix spans the branch, fixed on the next pass.
+		code:
+			IMPORT_CN + "cn(` x  ${y ? ' p  q' : ''}  ${z ? 'r' : 's'}\tz `);",
+		output: IMPORT_CN + "cn(`x ${y ? ' p  q' : ''} ${z ? 'r' : 's'} z`);",
+		errors: 2
+	},
+	{
+		// Its next pass fixes the branch.
+		code: IMPORT_CN + "cn(`x ${y ? ' p  q' : ''} ${z ? 'r' : 's'} z`);",
+		output: IMPORT_CN + "cn(`x ${y ? 'p q' : ''} ${z ? 'r' : 's'} z`);",
+		errors: 1
+	},
+	{
+		// Text around a substitution holding an escape is reported unfixed.
+		code: IMPORT_CN + "cn(`x\\u0020 ${y ? 'p' : 'q'}  z`);",
+		output: null,
+		errors: 1
+	},
 	{
 		// A hoisted value shared by several calls is reported once.
 		code: IMPORT_CN + "const X = 'a  b';\ncn(X, 'c');\ncn(X, 'd');",

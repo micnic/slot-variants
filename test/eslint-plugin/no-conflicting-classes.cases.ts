@@ -233,6 +233,15 @@ export const NO_CONFLICTING_DUP_VALID = [
 
 export const NO_CONFLICTING_DUP_INVALID = [
 	{
+		// A template's classes are placed on the source as written, CRLF line
+		// endings included.
+		code: IMPORT_CN + "cn(`a\r\nb\r\np-2 p-2 ${x ? 'c' : 'd'}`);",
+		errors: [
+			{ ...dupCn('p-2'), line: 4, column: 1 },
+			{ ...dupCn('p-2'), line: 4, column: 5 }
+		]
+	},
+	{
 		// A slot listed twice in a group gets the group's classes twice; the
 		// repeat is removed. A group repeating a slot isn't also reported as
 		// overlapping itself.
@@ -600,6 +609,10 @@ export const NO_CONFLICTING_DUP_INVALID = [
 ];
 
 export const NO_CONFLICTING_NS_VALID = [
+	// A negative number matcher, written or through a `const`, picks the
+	// value keyed by its string form.
+	IMPORT +
+		"const one = 1;\nsv({ variants: { o: { '-1': 'p-2', 1: 'm-4' } }, compoundVariants: [{ o: -1, class: 'm-6' }, { o: [-one], class: 'text-sm' }] });",
 	// Compound matchers are read through `const` bindings like any other
 	// value, so these two compounds can never apply together.
 	IMPORT +
@@ -1144,6 +1157,13 @@ export const NO_CONFLICTING_NS_VALID = [
 ];
 
 export const NO_CONFLICTING_NS_INVALID = [
+	{
+		// A unary matcher that isn't a negated number could be any value.
+		code:
+			IMPORT +
+			"sv({ variants: { o: { '-1': 'p-2', 1: 'm-4' } }, compoundVariants: [{ o: -x, class: 'm-6' }, { o: +1, class: 'm-8' }] });",
+		errors: repeat(conflict('m-4, m-6, m-8'), 3)
+	},
 	{
 		// Only tokens that differ are checked for co-occurring: `p-4` never
 		// renders with either `p-2`, which repeat each other — reported as a

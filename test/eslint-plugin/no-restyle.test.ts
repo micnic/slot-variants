@@ -229,6 +229,70 @@ t.test('no-restyle refreshes a stale module without evicting', async (t) => {
 	t.equal(reads.get(oldest), 1, 'the oldest module is still cached');
 });
 
+// Config blocks with different language options keep their own cache entry
+// for a module they share, rather than evicting each other's.
+t.test('no-restyle caches a module per set of language options', async (t) => {
+	const reads = new Map<string, number>();
+	const fresh = await t.mockImport<
+		typeof import('../../src/eslint-plugin.ts')
+	>('../../src/eslint-plugin.ts', {
+		'node:fs': {
+			...fs,
+			readFileSync: new Proxy(fs.readFileSync, {
+				apply: (target, thisArg, args) => {
+					const path = `${args[0]}`;
+
+					reads.set(path, (reads.get(path) ?? 0) + 1);
+
+					return Reflect.apply(target, thisArg, args);
+				}
+			})
+		}
+	});
+	const shared = writeFixture(
+		'per-options/shared.jsx',
+		`${IMPORT}const shared = sv({ base: 'p-2', variants: {} });
+
+		export function Shared({ className }) {
+			return <i className={shared({ class: className })} />;
+		}
+		`
+	);
+	const eslint = new ESLint({
+		cwd: fixtureDir,
+		overrideConfigFile: true,
+		overrideConfig: [
+			{
+				files: ['**/*.jsx'],
+				plugins: { 'slot-variants': fresh.default },
+				rules: { 'slot-variants/no-restyle': 2 },
+				languageOptions: {
+					parserOptions: { ecmaFeatures: { jsx: true } }
+				}
+			},
+			{
+				files: ['**/legacy/*.jsx'],
+				languageOptions: { ecmaVersion: 2022 }
+			}
+		]
+	});
+	const lint = async (filePath: string) => {
+		const [result] = await eslint.lintText(
+			'import { Shared } from \'../per-options/shared.jsx\';\n<Shared className="p-4" />;',
+			{ filePath: join(fixtureDir, filePath) }
+		);
+
+		return result?.messages.length;
+	};
+
+	for (const page of ['modern/a.jsx', 'legacy/a.jsx', 'modern/b.jsx']) {
+		t.equal(await lint(page), 1, `${page} reports the restyle`);
+	}
+
+	t.equal(await lint('legacy/b.jsx'), 1, 'legacy/b.jsx reports it');
+	t.equal(reads.get(shared), 2, 'each config block reads the module once');
+});
+
 // An imported module is only read for its syntax, so a type-aware parser
 // setup on the importer must not stop it from parsing: here the module is
 // reached through an alias the tsconfig doesn't know, which leaves it outside

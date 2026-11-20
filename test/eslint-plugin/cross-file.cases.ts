@@ -391,6 +391,25 @@ export const VUE_CROSS_FILE_VALID = [
 
 export const VUE_CROSS_FILE_INVALID = [
 	{
+		// `$attrs.class` forwards the class the element passes; a binding
+		// named `$attrs` is no such forward.
+		code: `<script setup>import Attrs from './ui/Attrs.vue';\nimport AttrsShadowed from './ui/AttrsShadowed.vue';\nimport AttrsLooped from './ui/AttrsLooped.vue';</script>\n<template><Attrs class="m-2" /><AttrsShadowed class="m-3" /><AttrsLooped class="m-4" /></template>`,
+		filename: join(fixtureDir, 'page.vue'),
+		errors: [restyle('m-2', 'm-1')]
+	},
+	{
+		// A `Boolean` prop the element leaves out is `false`; any other prop
+		// without a default is unset, so neither of its values applies.
+		code: `<script setup>import Flat from './ui/Flat.vue';\nimport FlatTyped from './ui/FlatTyped.vue';\nimport FlatListed from './ui/FlatListed.vue';\nimport FlatString from './ui/FlatString.vue';\nimport FlatStrings from './ui/FlatStrings.vue';\nimport FlatUntyped from './ui/FlatUntyped.vue';</script>\n<template><Flat class="shadow-lg" /><FlatTyped class="shadow-md" /><FlatListed class="shadow-sm" /><FlatString class="shadow-xl" /><FlatStrings class="shadow-xs" /><FlatUntyped class="shadow-inner" /><Flat flat class="shadow-2xl" /></template>`,
+		filename: join(fixtureDir, 'page.vue'),
+		errors: [
+			restyle('shadow-lg', 'shadow'),
+			restyle('shadow-md', 'shadow'),
+			restyle('shadow-sm', 'shadow'),
+			restyle('shadow-2xl', 'shadow-none')
+		]
+	},
+	{
 		// A default from `withDefaults()` or a runtime declaration stands in
 		// for a prop the element doesn't pass.
 		code: `<script setup>import Defaulted from './ui/Defaulted.vue';\nimport RuntimeDefault from './ui/RuntimeDefault.vue';</script>\n<template><Defaulted class="text-lg" /><Defaulted size="md" class="text-xl" /><RuntimeDefault class="text-2xl" /></template>`,

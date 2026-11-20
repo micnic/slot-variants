@@ -79,6 +79,9 @@ const RESTYLE_PRESET_BUTTON = `const button = sv({
 });\n`;
 
 export const RESTYLE_VALID = [
+	// `$attrs` outside a Vue template is no forward.
+	IMPORT_SV_CN +
+		'const tag = sv({ base: \'m-1\', variants: {} });\nfunction Tag() { return <i className={cn(tag(), $attrs.class)} />; }\n<Tag className="m-2" />;',
 	// An element's variant props select the classes a component applies: a
 	// variant with no default stays unset unless passed, and `null` unsets
 	// one.

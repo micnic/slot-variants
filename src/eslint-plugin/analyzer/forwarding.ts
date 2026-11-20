@@ -175,8 +175,14 @@ const NO_SITE_PROPS: SiteProps = { values: new Map(), open: false };
 
 const NO_DEFAULTS: ReadonlyMap<string, Node> = new Map();
 
+// What Vue casts a `Boolean` prop the element leaves out to.
+const ABSENT_BOOLEAN: Node = { type: 'Literal', value: false, raw: 'false' };
+
 // What a JSX or Svelte attribute written without a value passes.
 const TRUE_VALUE: ReadonlySet<string> = new Set(['true']);
+
+const isBooleanConstructor = (node: Node): boolean =>
+	node.type === 'Identifier' && node.name === 'Boolean';
 
 // What `bindings` holds for a variable. A null one is unbound, or a name a
 // Vue template binds itself (`v-for`, `v-slot`), which no script binding
@@ -548,8 +554,27 @@ export const createForwardingScan = (
 		return getProperties(ctx.resolve(arg));
 	};
 
+	// Whether a runtime prop declaration's type is or lists `Boolean`: bare
+	// (`Boolean`, `[String, Boolean]`) or as an options object's `type`.
+	const declaresBoolean = (options: Node): boolean => {
+		let type = options;
+
+		if (options.type === 'ObjectExpression') {
+			type = ctx.resolve(getProperties(options).get('type') ?? options);
+		}
+
+		if (type.type === 'ArrayExpression') {
+			return type.elements.some(
+				(element) => element !== null && isBooleanConstructor(element)
+			);
+		}
+
+		return isBooleanConstructor(type);
+	};
+
 	// The defaults a props source declares: `withDefaults()`'s second
-	// argument, or each `default` of a `defineProps()` runtime declaration.
+	// argument, or each `default` of a `defineProps()` runtime declaration,
+	// where a `Boolean` prop without one defaults to `false`.
 	const readSourceDefaults = (
 		name: string,
 		[declaration, defaults]: CallExpression['arguments']
@@ -565,10 +590,13 @@ export const createForwardingScan = (
 		const result = new Map<string, Node>();
 
 		for (const [prop, value] of readObjectArgument(declaration)) {
-			const fallback = getProperties(ctx.resolve(value)).get('default');
+			const options = ctx.resolve(value);
+			const fallback = getProperties(options).get('default');
 
 			if (fallback !== undefined) {
 				result.set(prop, fallback);
+			} else if (declaresBoolean(options)) {
+				result.set(prop, ABSENT_BOOLEAN);
 			}
 		}
 
@@ -662,7 +690,24 @@ export const createForwardingScan = (
 		}
 	};
 
-	// `props.className` — a prop read off a props object.
+	// `$attrs` in a Vue template: the attributes the component is passed,
+	// unless a binding of that name shadows it.
+	const readTemplateAttrs = (node: Identifier): PropsObject | null => {
+		if (node.name !== '$attrs' || !isInTemplate(node, sourceCode)) {
+			return null;
+		}
+
+		const scope = getLookupScope(node, sourceCode);
+
+		if (scope === null || findVariable(scope, node.name) !== null) {
+			return null;
+		}
+
+		return { component: sourceCode.ast, defaults: NO_DEFAULTS };
+	};
+
+	// `props.className` — a prop read off a props object, or off `$attrs` in
+	// a Vue template.
 	const readMemberProp = (node: MemberExpression): PropRead | null => {
 		if (
 			node.computed ||
@@ -672,7 +717,8 @@ export const createForwardingScan = (
 			return null;
 		}
 
-		const source = getPropsObject(node.object);
+		const source =
+			getPropsObject(node.object) ?? readTemplateAttrs(node.object);
 
 		if (source === null) {
 			return null;

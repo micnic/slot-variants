@@ -62,18 +62,7 @@ type LinterConstructor = new (options: { cwd: string }) => Linter;
 // lint run is visible to the caller's control flow.
 type Collected = { analysis: ModuleAnalysis | null };
 
-// A module is parsed with its importer's language options, or as a plain
-// script where that fails, so those options are part of what makes an entry
-// valid: ones that can't read the module (a JSX page importing a `.vue` file,
-// or a Vue page with no TypeScript parser importing a `lang="ts"` one) must
-// not hand their failure to ones that can. ESLint shares one options object
-// between the files a config's blocks match alike, so its identity tells them
-// apart.
-type CacheEntry = {
-	mtimeMs: number;
-	languageOptions: Linter.LanguageOptions;
-	analysis: ModuleAnalysis | null;
-};
+type CacheEntry = { mtimeMs: number; analysis: ModuleAnalysis | null };
 
 /** Everything cross-file resolution needs from the rule's context. */
 export type ModuleContext = {
@@ -111,7 +100,18 @@ const TYPE_AWARE_PARSER_OPTIONS = new Set([
 // ever seen. Eviction is FIFO — a hit is a plain `get`, with no reordering.
 const MAX_CACHED_MODULES = 200;
 
+// Keyed by path and the importer's language options. A module is parsed with
+// those options, or as a plain script where that fails, so ones that can't
+// read the module (a JSX page importing a `.vue` file, or a Vue page with no
+// TypeScript parser importing a `lang="ts"` one) must not hand their failure
+// to ones that can, and config blocks with different options each keep their
+// own entry rather than evicting each other's. ESLint shares one options
+// object between the files a config's blocks match alike, so its identity
+// tells them apart.
 const moduleCache = new Map<string, CacheEntry>();
+
+// An id for each language options object a cache key names.
+const languageOptionsIds = new WeakMap<Linter.LanguageOptions, number>();
 
 // The plugin's key in ESLint's shared `settings`.
 const SETTINGS_KEY = 'slot-variants';
@@ -125,6 +125,8 @@ const loadingModules = new Set<string>();
 // modules that run follows in turn are loaded under the importer's context
 // instead, sharing its cache entries.
 let nestedContext: ModuleContext | null = null;
+
+let nextLanguageOptionsId = 0;
 
 // How many re-exports deep an import is followed: enough to walk a barrel or
 // two without following a pathological chain. Sibling `export *` entries of
@@ -531,9 +533,24 @@ const analyzeModule = (
 	}
 };
 
+const getCacheKey = (
+	path: string,
+	languageOptions: Linter.LanguageOptions
+): string => {
+	const id = getOrCreate(languageOptionsIds, languageOptions, () => {
+		const next = nextLanguageOptionsId;
+
+		nextLanguageOptionsId += 1;
+
+		return next;
+	});
+
+	return `${id}\0${path}`;
+};
+
 // A stale entry is replaced rather than counted, and requeued as the newest.
-const storeModule = (path: string, entry: CacheEntry) => {
-	moduleCache.delete(path);
+const storeModule = (key: string, entry: CacheEntry) => {
+	moduleCache.delete(key);
 
 	if (moduleCache.size >= MAX_CACHED_MODULES) {
 		const oldest = moduleCache.keys().next().value;
@@ -544,14 +561,13 @@ const storeModule = (path: string, entry: CacheEntry) => {
 		}
 	}
 
-	moduleCache.set(path, entry);
+	moduleCache.set(key, entry);
 };
 
 const loadModule = (
 	path: string,
 	moduleContext: ModuleContext
 ): ModuleAnalysis | null => {
-	const { languageOptions } = moduleContext;
 	let mtimeMs: number;
 
 	try {
@@ -561,13 +577,10 @@ const loadModule = (
 		return null;
 	}
 
-	const cached = moduleCache.get(path);
+	const key = getCacheKey(path, moduleContext.languageOptions);
+	const cached = moduleCache.get(key);
 
-	if (
-		cached &&
-		cached.mtimeMs === mtimeMs &&
-		cached.languageOptions === languageOptions
-	) {
+	if (cached && cached.mtimeMs === mtimeMs) {
 		return cached.analysis;
 	}
 
@@ -585,7 +598,7 @@ const loadModule = (
 		loadingModules.delete(path);
 	}
 
-	storeModule(path, { mtimeMs, languageOptions, analysis });
+	storeModule(key, { mtimeMs, analysis });
 
 	return analysis;
 };
@@ -642,9 +655,8 @@ export const cacheLintedModule = (
 		return;
 	}
 
-	storeModule(path, {
+	storeModule(getCacheKey(path, context.languageOptions), {
 		mtimeMs: disk.mtimeMs,
-		languageOptions: context.languageOptions,
 		analysis
 	});
 };
