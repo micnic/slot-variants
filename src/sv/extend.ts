@@ -21,6 +21,8 @@ type MergeValue<T> = (inherited: T, own: T) => T;
 
 type NameList = RawConfig['requiredVariants'] | RawConfig['multiSlots'];
 
+type RawGroups = NonNullable<RawConfig['groups']>;
+
 const { entries, fromEntries, keys } = Object;
 
 // Each config-based `sv()` result, mapped to the layers it was built from:
@@ -116,23 +118,83 @@ const toSlotRecord = (value: RawVariantValue): RawSlotRecord => {
 	return { base: value };
 };
 
-/**
- * Merges one variant value's classes: two class values are joined, otherwise
- * both become per-slot records, a class value standing for `base`.
- */
-const mergeVariantValue = (
-	inherited: RawVariantValue,
-	own: RawVariantValue
-): RawVariantValue => {
-	if (!isPlainObject(inherited) && !isPlainObject(own)) {
-		return cn(inherited, own);
-	}
+// The slots a slot record key reaches: the group's slots, or the slot itself.
+const getTargets = (groups: RawGroups, key: string): readonly string[] =>
+	getOwn(groups, key) ?? [key];
 
-	return mergeRecords<ConfigClassValue>(cn)(
-		toSlotRecord(inherited),
-		toSlotRecord(own)
-	);
+/**
+ * Whether joining the own record into the inherited one key by key would put
+ * an own class ahead of an inherited one: an own key the inherited record
+ * already has, followed there by a key reaching one of its slots.
+ */
+const joinsAheadOfInherited = (
+	inherited: RawSlotRecord,
+	own: RawSlotRecord,
+	groups: RawGroups
+): boolean => {
+	const inheritedKeys = keys(inherited);
+
+	return inheritedKeys.some((key, index) => {
+		if (getOwn(own, key) === undefined) {
+			return false;
+		}
+
+		const slots = getTargets(groups, key);
+
+		return inheritedKeys
+			.slice(index + 1)
+			.some((later) =>
+				getTargets(groups, later).some((slot) => slots.includes(slot))
+			);
+	});
 };
+
+/**
+ * Adds a slot record's classes to `into` per slot, in key order, a group key
+ * standing for the slots it has now.
+ */
+const addPerSlot = (
+	into: RawSlotRecord,
+	record: RawSlotRecord,
+	groups: RawGroups
+) => {
+	for (const [key, value] of entries(record)) {
+		for (const slot of getTargets(groups, key)) {
+			into[slot] = cn(into[slot], value);
+		}
+	}
+};
+
+/**
+ * Builds the merge of one variant value's classes: two class values are
+ * joined, otherwise both become per-slot records, a class value standing for
+ * `base`. Records are joined key by key, unless that would put an own class
+ * ahead of an inherited one, in which case both are joined per slot.
+ */
+const mergeVariantValue =
+	(groups: RawGroups): MergeValue<RawVariantValue> =>
+	(inherited, own) => {
+		if (!isPlainObject(inherited) && !isPlainObject(own)) {
+			return cn(inherited, own);
+		}
+
+		const inheritedRecord = toSlotRecord(inherited);
+		const ownRecord = toSlotRecord(own);
+
+		if (!joinsAheadOfInherited(inheritedRecord, ownRecord, groups)) {
+			return mergeRecords<ConfigClassValue>(cn)(
+				inheritedRecord,
+				ownRecord
+			);
+		}
+
+		const merged: RawSlotRecord = {};
+
+		addPerSlot(merged, inheritedRecord, groups);
+		addPerSlot(merged, ownRecord, groups);
+
+		return merged;
+	};
 
 // A boolean shorthand stands for its `true` value.
 const toVariantRecord = (variant: RawVariant): RawVariantRecord => {
@@ -143,11 +205,13 @@ const toVariantRecord = (variant: RawVariant): RawVariantRecord => {
 	return { true: variant };
 };
 
-const mergeVariant = (inherited: RawVariant, own: RawVariant): RawVariant =>
-	mergeRecords(mergeVariantValue)(
-		toVariantRecord(inherited),
-		toVariantRecord(own)
-	);
+const mergeVariant =
+	(groups: RawGroups): MergeValue<RawVariant> =>
+	(inherited, own) =>
+		mergeRecords(mergeVariantValue(groups))(
+			toVariantRecord(inherited),
+			toVariantRecord(own)
+		);
 
 const joinUnique = (
 	inherited: readonly string[],
@@ -249,10 +313,15 @@ const mergeMultiSlots = (
  */
 const mergeConfigs = (inherited: RawConfig, config: RawConfig): RawConfig => {
 	const own = placeOwnBase(inherited, config);
+	const groups = mergeOptional(
+		inherited.groups,
+		own.groups,
+		mergeRecords(joinUnique)
+	);
 	const variants = mergeOptional(
 		inherited.variants,
 		own.variants,
-		mergeRecords(mergeVariant)
+		mergeRecords(mergeVariant(groups ?? {}))
 	);
 	const slots = mergeOptional(
 		inherited.slots,
@@ -267,11 +336,7 @@ const mergeConfigs = (inherited: RawConfig, config: RawConfig): RawConfig => {
 	return {
 		base: mergeOptional(inherited.base, own.base, cn),
 		slots,
-		groups: mergeOptional(
-			inherited.groups,
-			own.groups,
-			mergeRecords(joinUnique)
-		),
+		groups,
 		multiSlots: mergeMultiSlots(inherited, own, slots),
 		variants,
 		presets: mergeOptional(
@@ -355,7 +420,8 @@ const resolveMultiSlots = (names: NameList, resolved: RawConfig) => {
 /**
  * A config as a layer other configs merge: its `true` required variants and
  * its multi slots named, as they cover only what it had, and its
- * introspection resolved.
+ * introspection resolved, left unset when nothing sets it so that a config
+ * extending it falls back to an earlier parent or its own factory default.
  */
 export const toLayer = (own: RawConfig, resolved: RawConfig): RawConfig => ({
 	...own,
@@ -364,5 +430,5 @@ export const toLayer = (own: RawConfig, resolved: RawConfig): RawConfig => ({
 		keys(resolved.variants ?? {})
 	),
 	multiSlots: resolveMultiSlots(own.multiSlots, resolved),
-	introspection: resolved.introspection ?? false
+	introspection: resolved.introspection
 });

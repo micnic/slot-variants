@@ -727,7 +727,7 @@ How each option is merged:
 - **`compoundVariants` / `compoundSlots`** — the child's entries run after the parent's.
 - **`groups` / `presets`** — combined; a group or preset both define gets the slots, or the variant values, of both, the child's values winning.
 - **`requiredVariants` / `multiSlots`** — combined. A child default for a variant the parent requires makes it optional, and a child requirement drops the parent's default.
-- **`postProcess`, `cacheSize`, `introspection`** — inherited unless the child sets its own.
+- **`postProcess`, `cacheSize`, `introspection`** — the child's own, else the last parent's that sets one, else the `createSV()` default.
 
 The child's types follow: it accepts the parent's variants, slots and presets everywhere its own are accepted, and its props and result include them.
 
@@ -1032,7 +1032,7 @@ type ButtonGroupProps = {
 };
 ```
 
-`SlotClassProps<T>` extracts the per-slot class injection shape from an `sv()` return type — useful when building wrapper components that expose a typed prop for consumers to pass additional classes into specific slots:
+`SlotClassProps<T>` extracts the per-slot class injection shape from an `sv()` return type, keyed by `base`, each slot and each [group](#slot-groups) — useful when building wrapper components that expose a typed prop for consumers to pass additional classes into specific slots:
 
 ```typescript
 import { sv, type SlotClassProps, type VariantProps } from 'slot-variants';
@@ -1059,7 +1059,7 @@ function Card({ classNames, ...variants }: CardProps) {
 }
 ```
 
-When used on an `sv()` definition without slots, `SlotClassProps` resolves to `{ base?: ClassValue }`.
+When used on an `sv()` definition without slots or groups, `SlotClassProps` resolves to `{ base?: ClassValue }`.
 
 ### Exported Types
 

@@ -503,6 +503,75 @@ t.test('compoundSlots with unknown target throws', (t) => {
 	t.end();
 });
 
+t.test('a variant value with an unknown target throws', (t) => {
+	t.throws(
+		() =>
+			sv({
+				slots: { header: 'h' },
+				groups: { content: ['header'] },
+				// @ts-expect-error unknown target beside a known one
+				variants: { size: { sm: { content: 'a', heder: 'b' } } }
+			}),
+		{ message: 'Variant "size" references unknown slot "heder"' }
+	);
+
+	t.throws(
+		() =>
+			sv({
+				// @ts-expect-error a slot object needs slots or groups
+				variants: { tone: { true: { header: 'a' } } }
+			}),
+		{ message: 'Variant "tone" references unknown slot "header"' },
+		'without slots, only base is a target'
+	);
+
+	t.end();
+});
+
+t.test('a compound variant class with an unknown target throws', (t) => {
+	t.throws(
+		() =>
+			sv({
+				slots: { header: 'h' },
+				variants: { size: { sm: 'a' } },
+				compoundVariants: [
+					// @ts-expect-error unknown target name not assignable
+					{ size: 'sm', class: { heder: 'b' } }
+				]
+			}),
+		{ message: 'Compound variant references unknown slot "heder"' }
+	);
+
+	t.throws(
+		() =>
+			sv({
+				slots: { header: 'h' },
+				variants: { size: { sm: 'a' } },
+				compoundVariants: [
+					// @ts-expect-error unknown target beside a known one
+					{ size: 'sm', class: { header: 'a', heder: 'b' } }
+				]
+			}),
+		{ message: 'Compound variant references unknown slot "heder"' }
+	);
+
+	t.end();
+});
+
+t.test('a variant value with an unknown slot beside a slot throws', (t) => {
+	t.throws(
+		() =>
+			sv({
+				slots: { header: 'h' },
+				// @ts-expect-error unknown target beside a known one
+				variants: { size: { sm: { header: 'a', heder: 'b' } } }
+			}),
+		{ message: 'Variant "size" references unknown slot "heder"' }
+	);
+
+	t.end();
+});
+
 t.test('multiSlots with unknown target throws', (t) => {
 	t.throws(
 		() =>

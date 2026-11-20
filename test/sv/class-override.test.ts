@@ -294,6 +294,62 @@ type AssertSCPNoExtraKeys = keyof SCPSlots extends 'base' | 'header' | 'body'
 	: false;
 const _assertSCPNoExtraKeys: AssertSCPNoExtraKeys = true;
 
+// Groups are keys too, own and inherited, so the object can be passed on to
+// the component's `class` prop.
+const _scpGroupsFn = sv({
+	slots: { header: 'font-bold', body: 'py-4' },
+	groups: { content: ['header', 'body'] },
+	variants: {}
+});
+const _scpChildFn = sv({
+	extend: _scpGroupsFn,
+	groups: { top: ['base', 'header'] },
+	variants: {}
+});
+const _scpSlotlessFn = sv({ groups: { all: ['base'] }, variants: {} });
+
+type AssertSCPGroups = keyof SlotClassProps<typeof _scpGroupsFn> extends
+	| 'base'
+	| 'header'
+	| 'body'
+	| 'content'
+	? 'content' extends keyof SlotClassProps<typeof _scpGroupsFn>
+		? true
+		: false
+	: false;
+type AssertSCPInheritedGroups = 'content' | 'top' extends keyof SlotClassProps<
+	typeof _scpChildFn
+>
+	? true
+	: false;
+type AssertSCPSlotlessGroups = keyof SlotClassProps<
+	typeof _scpSlotlessFn
+> extends 'base' | 'all'
+	? 'all' extends keyof SlotClassProps<typeof _scpSlotlessFn>
+		? true
+		: false
+	: false;
+const _assertSCPGroups: AssertSCPGroups = true;
+const _assertSCPInheritedGroups: AssertSCPInheritedGroups = true;
+const _assertSCPSlotlessGroups: AssertSCPSlotlessGroups = true;
+
+const _scpClassNames: SlotClassProps<typeof _scpChildFn> = { top: 'mt-1' };
+
+t.test('a SlotClassProps object with a group reaches its slots', (t) => {
+	t.same(_scpChildFn({ class: _scpClassNames }), {
+		base: 'mt-1',
+		header: 'font-bold mt-1',
+		body: 'py-4'
+	});
+
+	t.end();
+});
+
+void _scpGroupsFn;
+void _scpSlotlessFn;
+void _assertSCPGroups;
+void _assertSCPInheritedGroups;
+void _assertSCPSlotlessGroups;
 void _scpNoSlotsFn;
 void _assertSCPNoSlotsHasBase;
 void _assertSCPNoSlotsOnlyBase;

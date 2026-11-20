@@ -362,7 +362,12 @@ const createVariantPlan = (
 	const slotTables = getSlotFragmentTables(
 		slotEntries,
 		values(variant.values).map((value) =>
-			applyValueToSlotClasses(value, targetKeys, groups)
+			applyValueToSlotClasses(
+				value,
+				targetKeys,
+				groups,
+				`Variant "${variant.key}"`
+			)
 		)
 	);
 

@@ -304,6 +304,61 @@ t.test('unions groups, joining a group in both', (t) => {
 	t.end();
 });
 
+t.test('keeps child classes after a parent group class', (t) => {
+	const grandparent = sv({
+		slots: { header: 'h', body: 'b' },
+		groups: { content: ['header', 'body'] },
+		variants: { size: { sm: { header: 'p1' } } }
+	});
+	const parent = sv({
+		extend: grandparent,
+		variants: { size: { sm: { content: 'p2' } } }
+	});
+	const child = sv({
+		extend: parent,
+		variants: { size: { sm: { header: 'c1' } } }
+	});
+
+	t.same(
+		child({ size: 'sm' }),
+		{ base: '', header: 'h p1 p2 c1', body: 'b p2' },
+		'joined per slot'
+	);
+
+	// Joined per slot, the group stands for the slots it had then.
+	const grown = sv({
+		extend: child,
+		slots: { footer: 'f' },
+		groups: { content: ['footer'] },
+		variants: {}
+	});
+
+	t.equal(
+		grown({ size: 'sm' }).footer,
+		'f',
+		'a slot added to the group later'
+	);
+
+	t.end();
+});
+
+t.test('a parent group class reaches slots a child adds to it', (t) => {
+	const parent = sv({
+		slots: { a: 'a', b: 'b' },
+		groups: { g: ['a'] },
+		variants: { s: { x: { g: 'pg' } } }
+	});
+	const child = sv({
+		extend: parent,
+		groups: { g: ['b'] },
+		variants: { s: { x: { a: 'ca' } } }
+	});
+
+	t.same(child({ s: 'x' }), { base: '', a: 'a pg ca', b: 'b pg' });
+
+	t.end();
+});
+
 t.test('unions presets, merging a preset in both', (t) => {
 	const parent = sv('btn', {
 		variants: {
@@ -604,7 +659,38 @@ t.test('extends several parents left to right', (t) => {
 		'btn inline-flex gap-2 text-sm p-1 opacity-80',
 		'values joined in parent order'
 	);
-	t.notOk('variantKeys' in child, 'last parent decides introspection');
+	t.same(
+		child.variantKeys,
+		['size', 'tone'],
+		'a parent leaving introspection unset defers to an earlier one'
+	);
+
+	t.end();
+});
+
+t.test('a factory default fills in introspection no parent sets', (t) => {
+	const introspectSV = createSV({ introspection: true });
+	const plain = sv({ variants: { size: { sm: 'a' } } });
+	const off = sv({ variants: { size: { sm: 'a' } }, introspection: false });
+	const offFactory = createSV({ introspection: false })({
+		variants: { size: { sm: 'a' } }
+	});
+
+	const child = introspectSV({ extend: plain, variants: {} });
+
+	t.same(child.variantKeys, ['size'], 'unset parent');
+
+	const offChild = introspectSV({ extend: off, variants: {} });
+	const offFactoryChild = introspectSV({ extend: offFactory, variants: {} });
+
+	// @ts-expect-error - the parent turns it off
+	t.notOk(offChild.variantKeys, 'parent sets false');
+	// @ts-expect-error - the parent's factory turns it off
+	t.notOk(offFactoryChild.variantKeys, "parent's factory sets false");
+
+	const grandchild = sv({ extend: child, variants: {} });
+
+	t.same(grandchild.variantKeys, ['size'], 'the resolved value is inherited');
 
 	t.end();
 });
@@ -1045,6 +1131,11 @@ const _tErrors = () => {
 		extend: _tParent,
 		// @ts-expect-error - unknown slot
 		variants: { size: { sm: { nope: 'x' } } }
+	});
+	sv({
+		extend: _tParent,
+		// @ts-expect-error - unknown slot beside an inherited one
+		variants: { size: { sm: { base: 'x', nope: 'y' } } }
 	});
 	// @ts-expect-error - intent is still required
 	_tReqChild({ size: 'sm' });

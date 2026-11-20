@@ -535,35 +535,35 @@ export const isSlotObjectValue = <T>(
 ): value is Partial<Record<string, T>> =>
 	isPlainObject(value) && keys(value).every((key) => targetKeys.has(key));
 
-const pushSlotObjectValue = (
-	slotClasses: SlotClasses,
-	value: Record<string, ConfigClassValue>,
-	groups: CompiledGroups
-) => {
-	for (const [targetKey, targetValue] of entries(value)) {
-		for (const slotKey of getTargetSlots(groups, targetKey)) {
-			slotClasses[slotKey]?.push(targetValue);
-		}
-	}
-};
-
 /**
  * Applies a config value to the slots it targets: per slot for a slot object,
- * or to `base` otherwise.
+ * or to `base` otherwise. A config class value is never an object, so every
+ * key of one must name a slot or group; `label` names the value in the error.
  */
 export const applyValueToSlotClasses =
 	(
 		value: NormalizedVariantValue,
 		targetKeys: ReadonlySet<string>,
-		groups: CompiledGroups
+		groups: CompiledGroups,
+		label: string
 	): ApplySlotClasses =>
 	(slotClasses) => {
-		if (isSlotObjectValue(value, targetKeys)) {
-			pushSlotObjectValue(slotClasses, value, groups);
+		if (!isPlainObject(value)) {
+			slotClasses.base?.push(value);
 			return;
 		}
 
-		slotClasses.base?.push(value);
+		for (const [targetKey, targetValue] of entries(value)) {
+			if (!targetKeys.has(targetKey)) {
+				throw new Error(
+					`${label} references unknown slot "${targetKey}"`
+				);
+			}
+
+			for (const slotKey of getTargetSlots(groups, targetKey)) {
+				slotClasses[slotKey]?.push(targetValue);
+			}
+		}
 	};
 
 /**
@@ -701,7 +701,8 @@ export const compileConfig = (config: RawConfig): CompiledConfig => {
 			applyValueToSlotClasses(
 				requireCompoundClassValue(compound, 'variant'),
 				targetKeys,
-				resolvedGroups
+				resolvedGroups,
+				'Compound variant'
 			)
 		)
 	);

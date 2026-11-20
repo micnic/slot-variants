@@ -13,6 +13,9 @@ type PartialNullable<T> = {
 
 export type StringKeyof<T> = Extract<keyof T, string>;
 
+// `T` when set, otherwise the fallback `F`.
+type Defined<T, F> = [T] extends [undefined] ? F : Exclude<T, undefined>;
+
 export type ConfigClassValue = string | string[] | undefined;
 
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -400,6 +403,28 @@ type ReservedVariantCollision<V> = {
 	[K in Extract<keyof V, ReservedVariantName>]: 'Variant name is reserved';
 };
 
+// The reason a slot object key is rejected. An object type, not a string
+// literal: one clashing with the key's literal value would reduce the whole
+// slot object to `never`, flagging every key and hiding the reason.
+type UnknownSlotOrGroupName = { 'Unknown slot or group name': never };
+
+// The keys of a slot object that name no slot or group, typed as the reason
+// they're rejected.
+type UnknownTargetKeys<T, K extends string> = T extends readonly unknown[]
+	? unknown
+	: T extends Record<string, unknown>
+		? { [X in Exclude<keyof T, K>]: UnknownSlotOrGroupName }
+		: unknown;
+
+// A variant value's slot object naming no slot or group, typed as the reason
+// it's rejected: inferred variants skip the excess property check, and one
+// known key is enough to pass the weak type check.
+type UnknownTargetCollision<V, K extends string> = {
+	[N in keyof V]: V[N] extends Record<string | number, unknown>
+		? { [X in keyof V[N]]: UnknownTargetKeys<V[N][X], K> }
+		: unknown;
+};
+
 // A variant named like an inherited preset, typed as the reason it's
 // rejected.
 type InheritedPresetCollision<P, V> = {
@@ -516,7 +541,7 @@ type ComponentTypes = {
 	required: string;
 	multi: string;
 	defaulted: string;
-	introspection: boolean;
+	introspection: MaybeIntrospection;
 };
 
 type EmptyComponentTypes = {
@@ -527,7 +552,7 @@ type EmptyComponentTypes = {
 	required: never;
 	multi: never;
 	defaulted: never;
-	introspection: false;
+	introspection: undefined;
 };
 
 // What a component records for the components extending it: the maps of its
@@ -639,7 +664,7 @@ type MergeComponentTypes<A extends ComponentTypes, B extends ComponentTypes> = {
 	required: Exclude<A['required'], B['defaulted']> | B['required'];
 	multi: A['multi'] | B['multi'];
 	defaulted: A['defaulted'] | B['defaulted'];
-	introspection: B['introspection'];
+	introspection: Defined<B['introspection'], A['introspection']>;
 };
 
 type LayersOf<T> = T extends {
@@ -750,16 +775,15 @@ type ExtendedMultiSlots<E, S extends MaybeSlots, G, M> = [E] extends [NoParents]
 			SlotTarget<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>>
 		>[];
 
-/** A config's introspection: its own, the last parent's, or the default. */
+/**
+ * A config's introspection: its own, else the last parent's that sets one,
+ * else the factory default. `undefined` when none does, which turns it off.
+ */
 type ExtendedIntrospection<
 	E,
 	I extends MaybeIntrospection,
-	B extends boolean
-> = [I] extends [undefined]
-	? [E] extends [NoParents]
-		? B
-		: ParentTypes<E>['introspection']
-	: Exclude<I, undefined>;
+	B extends MaybeIntrospection
+> = Defined<I, Defined<ParentTypes<E>['introspection'], B>>;
 
 type VariantPropsWithRequired<
 	S extends MaybeSlots,
@@ -819,7 +843,11 @@ export type Config<
 	variants?:
 		| (V &
 				ReservedVariantCollision<V> &
-				InheritedPresetCollision<ParentTypes<E>['presets'], V>)
+				InheritedPresetCollision<ParentTypes<E>['presets'], V> &
+				UnknownTargetCollision<
+					V,
+					SlotTarget<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>>
+				>)
 		| undefined;
 	/** Named slots with their own classes; the result becomes a slot map. */
 	slots?:
@@ -1022,7 +1050,7 @@ export type VariantFn<
 	P extends MaybePresets<S, G, V>,
 	M extends MultiSlots<S, G>,
 	R extends RequiredVariants<V>,
-	I extends boolean,
+	I extends MaybeIntrospection,
 	D extends string = never,
 	L extends ComponentLayers = [
 		{
@@ -1095,7 +1123,7 @@ type RawCompoundSlots = NonNullable<RawConfig['compoundSlots']>;
  * `multiSlots` take a boolean rather than a list of names.
  */
 export type SVDefaults<
-	I extends boolean,
+	I extends MaybeIntrospection,
 	R extends boolean,
 	M extends boolean
 > = {
@@ -1119,7 +1147,7 @@ export type SVDefaults<
  * (`DR`) and `multiSlots` (`DM`) used when the config omits them.
  */
 type ConfigCall<
-	B extends boolean,
+	B extends MaybeIntrospection,
 	DR extends boolean,
 	DM extends boolean,
 	C extends ClassValue[]
@@ -1157,7 +1185,7 @@ export type ExtendedVariantFn<
 	I extends MaybeIntrospection,
 	E extends ExtendInput | undefined,
 	D extends string,
-	B extends boolean
+	B extends MaybeIntrospection
 > = VariantFn<
 	ExtendedSlots<E, S>,
 	ExtendedGroups<E, S, G>,
@@ -1189,7 +1217,7 @@ type ExtendedLayers<
 	R,
 	I extends MaybeIntrospection,
 	D extends string,
-	B extends boolean
+	B extends MaybeIntrospection
 > = [
 	...ParentLayers<E>,
 	{
@@ -1232,7 +1260,7 @@ type UnmatchedCall = (...args: never[]) => never;
  * at the offending property rather than across the whole call.
  */
 export type SV<
-	D extends boolean = false,
+	D extends MaybeIntrospection = undefined,
 	DR extends boolean = false,
 	DM extends boolean = false
 > = ConfigCall<D, DR, DM, ClassValue[]> &
@@ -1292,10 +1320,18 @@ export type VariantValue<
 	K extends keyof VariantProps<T>
 > = NonNullable<VariantProps<T>[K]>;
 
+// The keys a `class` slot object takes: `base` and each slot, plus each group,
+// inherited ones included.
+type SlotClassKey<T extends AnyFn> =
+	| (ReturnType<T> extends string
+			? 'base'
+			: Extract<keyof ReturnType<T>, string>)
+	| StringKeyof<ParentTypes<T>['groups']>;
+
 /**
- * Extracts the per-slot class injection shape from an `sv()` return type.
- * Resolves to `{ base?: ClassValue }` when the definition has no slots, or to
- * a partial record of `base` plus each slot key when slots are defined. Useful
+ * Extracts the per-slot class injection shape from an `sv()` return type: a
+ * partial record of `base`, each slot and each group. Resolves to
+ * `{ base?: ClassValue }` when the definition has no slots or groups. Useful
  * for wrapper components that forward class overrides into specific slots.
  *
  * @example
@@ -1312,14 +1348,9 @@ export type VariantValue<
  * card({ class: classNames });
  * ```
  */
-export type SlotClassProps<T extends AnyFn> =
-	ReturnType<T> extends string
-		? Partial<Record<'base', ClassValue>>
-		: Prettify<
-				Partial<
-					Record<Extract<keyof ReturnType<T>, string>, ClassValue>
-				>
-			>;
+export type SlotClassProps<T extends AnyFn> = Prettify<
+	Partial<Record<SlotClassKey<T>, ClassValue>>
+>;
 
 export type RunFn = (props: RuntimeProps) => CacheValue;
 

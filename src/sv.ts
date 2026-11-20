@@ -452,7 +452,7 @@ const buildVariantFn = (
  * ```
  */
 export const createSV = <
-	I extends boolean = false,
+	I extends MaybeIntrospection = undefined,
 	DR extends boolean = false,
 	DM extends boolean = false
 >(
