@@ -113,7 +113,7 @@ export type ModuleScan = {
 
 type PositionHandlers = {
 	onPosition?: (parts: ClassParts, site: ComponentSite | null) => void;
-	onExit?: (scan: ModuleScan) => void;
+	onExit: (scan: ModuleScan) => void;
 };
 
 /**
@@ -1290,7 +1290,7 @@ export const createForwardingScan = (
 				handlers.onPosition?.(position.parts, position.site);
 			}
 
-			handlers.onExit?.({
+			handlers.onExit({
 				ast: sourceCode.ast,
 				moduleScope: moduleScope(),
 				forwarded,

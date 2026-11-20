@@ -56,17 +56,16 @@ type ConflictGroup = {
 	entries: Entry[];
 	variantPrefix: string;
 	overlap: string | null;
-	exclusive: boolean;
-	matchers: VariantMatchers[] | null;
 };
-
-// What reporting reads from a group, merged overlap components included.
-type ReportedGroup = Pick<ConflictGroup, 'tokens' | 'entries' | 'exclusive'>;
 
 type GroupMembers = Pick<ConflictGroup, 'tokens' | 'entries'>;
 
 // Overlap node -> that node's own group, for every node in one component.
 type OverlapComponent = Map<string, ConflictGroup>;
+
+// What reporting reads from a group: a merged overlap component keeps its
+// nodes' own groups, as its exclusivity is checked edge by edge.
+type ReportedGroup = GroupMembers & { component: OverlapComponent | null };
 
 // Adds `source`'s tokens and entries to `target`.
 const absorbGroup = (target: GroupMembers, source: GroupMembers) => {
@@ -75,13 +74,6 @@ const absorbGroup = (target: GroupMembers, source: GroupMembers) => {
 	}
 
 	target.entries.push(...source.entries);
-};
-
-// Derives `matchers`, for comparing neighbor groups, and `exclusive` from the
-// group's entries.
-const updateGroupExclusivity = (group: ConflictGroup) => {
-	group.matchers = getEntriesMatchers(group.entries);
-	group.exclusive = areDistinctTokensExclusive(group.entries);
 };
 
 const groupEntriesByConflictKey = (
@@ -101,17 +93,11 @@ const groupEntriesByConflictKey = (
 			tokens: new Set<string>(),
 			entries: [],
 			variantPrefix: info.variantPrefix,
-			overlap: info.overlap,
-			exclusive: true,
-			matchers: null
+			overlap: info.overlap
 		}));
 
 		group.tokens.add(token);
 		group.entries.push(...list);
-	}
-
-	for (const group of groups.values()) {
-		updateGroupExclusivity(group);
 	}
 
 	return groups;
@@ -122,17 +108,11 @@ const groupEntriesByConflictKey = (
 // distinct covers-adjacent nodes (`p` vs `px`) against each other directly,
 // instead of flattening a whole connected component into one all-pairs check
 // — `px` and `pb` both bridge through `p` but aren't adjacent to each other,
-// so they must never be compared against one another. `a` comes from a group
-// already known to be internally exclusive (see isOverlapComponentExclusive),
-// so unlike `b` it's never null.
+// so they must never be compared against one another.
 const areGroupsExclusive = (
 	a: ReadonlyArray<VariantMatchers>,
-	b: ReadonlyArray<VariantMatchers> | null
+	b: ReadonlyArray<VariantMatchers>
 ): boolean => {
-	if (b === null) {
-		return false;
-	}
-
 	for (const matchersA of a) {
 		for (const matchersB of b) {
 			if (!areExclusiveMatchers(matchersA, matchersB)) {
@@ -181,20 +161,28 @@ const collectOverlapComponent = (
 // nodes that merely share a bridge node without being adjacent to each other
 // are never compared.
 const isOverlapComponentExclusive = (component: OverlapComponent): boolean => {
+	const nodeMatchers = new Map<string, VariantMatchers[]>();
+
 	for (const [node, group] of component) {
-		// Null `matchers` means an entry, like a base one, renders with
-		// anything a neighbor holds.
-		if (!group.exclusive || group.matchers === null) {
+		const matchers = getEntriesMatchers(group.entries);
+
+		// Null matchers mean an entry, like a base one, renders with anything
+		// a neighbor holds.
+		if (matchers === null || !areDistinctTokensExclusive(group.entries)) {
 			return false;
 		}
 
+		nodeMatchers.set(node, matchers);
+	}
+
+	for (const [node, matchers] of nodeMatchers) {
 		// Every present neighbor of a component node is in the component.
 		for (const neighbor of overlapNeighbors(node)) {
-			const neighborGroup = component.get(neighbor);
+			const neighborMatchers = nodeMatchers.get(neighbor);
 
 			if (
-				neighborGroup !== undefined &&
-				!areGroupsExclusive(group.matchers, neighborGroup.matchers)
+				neighborMatchers !== undefined &&
+				!areGroupsExclusive(matchers, neighborMatchers)
 			) {
 				return false;
 			}
@@ -204,13 +192,23 @@ const isOverlapComponentExclusive = (component: OverlapComponent): boolean => {
 	return true;
 };
 
+// Whether a group's tokens never render together, checked only for a group
+// with two or more of them.
+const isGroupExclusive = (group: ReportedGroup): boolean => {
+	if (group.component === null) {
+		return areDistinctTokensExclusive(group.entries);
+	}
+
+	return isOverlapComponentExclusive(group.component);
+};
+
 const buildOverlapConflictGroup = (
 	component: OverlapComponent
 ): ReportedGroup => {
 	const merged: ReportedGroup = {
 		tokens: new Set<string>(),
 		entries: [],
-		exclusive: isOverlapComponentExclusive(component)
+		component
 	};
 
 	for (const group of component.values()) {
@@ -234,7 +232,7 @@ const mergeOverlappingGroups = (
 
 	for (const group of groups.values()) {
 		if (group.overlap === null) {
-			result.push(group);
+			result.push({ ...group, component: null });
 			continue;
 		}
 
@@ -249,7 +247,6 @@ const mergeOverlappingGroups = (
 		// node is stored as-is and later ones are absorbed into it.
 		if (existing) {
 			absorbGroup(existing, group);
-			updateGroupExclusivity(existing);
 		} else {
 			byNode.set(group.overlap, group);
 		}
@@ -288,7 +285,7 @@ const reportConflicts = (
 	const groups = groupEntriesByConflictKey(tokenMap, options);
 
 	for (const group of mergeOverlappingGroups(groups)) {
-		if (group.tokens.size < 2 || group.exclusive) {
+		if (group.tokens.size < 2 || isGroupExclusive(group)) {
 			continue;
 		}
 

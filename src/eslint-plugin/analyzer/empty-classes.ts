@@ -11,7 +11,8 @@ import {
 	forEachCnBranch,
 	forEachCompoundClass,
 	forEachStaticItem,
-	forEachStringRecordKey
+	forEachStringRecordKey,
+	type NodeVisitor
 } from './token-extraction.ts';
 
 type EmptyConfigChecker = (
@@ -20,8 +21,6 @@ type EmptyConfigChecker = (
 	remove: EmptyFix,
 	key: string
 ) => void;
-
-type ValueVisitor = (value: Node) => void;
 
 const isEmptyStringNode = (node: Node): boolean =>
 	getStaticStringText(node) === '';
@@ -150,7 +149,7 @@ const visitRecordForEmpty = (
 	context: Rule.RuleContext,
 	rawValue: Node,
 	remove: EmptyFix | undefined,
-	visitValue: ValueVisitor
+	visitValue: NodeVisitor
 ): boolean => {
 	const node = resolveStaticValue(rawValue, context.sourceCode);
 

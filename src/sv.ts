@@ -50,6 +50,8 @@ type MultiSlotResult = Record<
 
 type RuntimeVariantFn = (props?: RuntimeProps) => CacheValue | MultiSlotResult;
 
+type SlotFnBuilder = (slotKey: string) => (props?: RuntimeProps) => string;
+
 // What a call compiles, and the layers a component extending it merges.
 type ResolvedCall = {
 	config: RawConfig;
@@ -139,25 +141,35 @@ const buildSlotFn =
 		return readSlot(run(mergedProps), slotKey);
 	};
 
-const applyMultiSlots = (
+// A result with each multi slot's class replaced by its slot function.
+const wrapMultiSlots = (
 	config: CompiledConfig,
-	run: RunFn,
-	props: RuntimeProps,
-	result: CacheValue
-) => {
+	result: CacheValue,
+	buildSlot: SlotFnBuilder
+): MultiSlotResult => {
 	if (typeof result === 'string') {
-		return { base: buildSlotFn(config, run, props, result, 'base') };
+		return { base: buildSlot('base') };
 	}
 
 	// Overwriting a copied key keeps its place, so slots stay in order.
 	const output: MultiSlotResult = { ...result };
 
 	for (const slotKey of config.multiSlots) {
-		output[slotKey] = buildSlotFn(config, run, props, result, slotKey);
+		output[slotKey] = buildSlot(slotKey);
 	}
 
 	return output;
 };
+
+const applyMultiSlots = (
+	config: CompiledConfig,
+	run: RunFn,
+	props: RuntimeProps,
+	result: CacheValue
+) =>
+	wrapMultiSlots(config, result, (slotKey) =>
+		buildSlotFn(config, run, props, result, slotKey)
+	);
 
 // A slot function of the reused result of a call without props. Its class is
 // read up front, and calls with props go through a plain slot function, so
@@ -184,19 +196,10 @@ const applyDefaultMultiSlots = (
 	config: CompiledConfig,
 	run: RunFn,
 	result: CacheValue
-): MultiSlotResult => {
-	if (typeof result === 'string') {
-		return { base: buildDefaultSlotFn(config, run, result, 'base') };
-	}
-
-	const output: MultiSlotResult = { ...result };
-
-	for (const slotKey of config.multiSlots) {
-		output[slotKey] = buildDefaultSlotFn(config, run, result, slotKey);
-	}
-
-	return output;
-};
+) =>
+	wrapMultiSlots(config, result, (slotKey) =>
+		buildDefaultSlotFn(config, run, result, slotKey)
+	);
 
 // Gives the result of a call without props, rebuilt only when `run` returns
 // another value than last time, so a cache hit allocates nothing.

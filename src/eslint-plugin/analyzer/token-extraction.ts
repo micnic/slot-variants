@@ -40,7 +40,7 @@ type TokenExtractionContext = {
 	sourceCode: SourceCode;
 };
 
-type NodeVisitor = (node: Node) => void;
+export type NodeVisitor = (node: Node) => void;
 
 type TokenOffsets = number | AST.Range;
 

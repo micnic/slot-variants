@@ -19,7 +19,7 @@ import {
 	isStaticTernaryTemplate,
 	isUndefinedValue
 } from './static-predicates.ts';
-import { forEachCnBranch } from './token-extraction.ts';
+import { forEachCnBranch, type NodeVisitor } from './token-extraction.ts';
 
 type StaticClassValueOptions = {
 	cnStyle: boolean;
@@ -28,8 +28,6 @@ type StaticClassValueOptions = {
 };
 
 type PropertyVisitor = (prop: Property) => void;
-
-type NodeVisitor = (node: Node) => void;
 
 const reportDynamic = (context: Rule.RuleContext, node: Node) => {
 	context.report({ node, messageId: 'dynamic' });

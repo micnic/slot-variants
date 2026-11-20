@@ -220,6 +220,11 @@ const joinUnique = (
 
 const keepOwn = <T>(_inherited: T, own: T) => own;
 
+const concatLists = <T>(inherited: readonly T[], own: readonly T[]) => [
+	...inherited,
+	...own
+];
+
 const mergePresetValues = <T extends object>(inherited: T, own: T) => ({
 	...inherited,
 	...own
@@ -347,12 +352,12 @@ const mergeConfigs = (inherited: RawConfig, config: RawConfig): RawConfig => {
 		compoundSlots: mergeOptional(
 			inherited.compoundSlots,
 			own.compoundSlots,
-			(inheritedList, ownList) => [...inheritedList, ...ownList]
+			concatLists
 		),
 		compoundVariants: mergeOptional(
 			inherited.compoundVariants,
 			own.compoundVariants,
-			(inheritedList, ownList) => [...inheritedList, ...ownList]
+			concatLists
 		),
 		defaultVariants: mergeOptional(
 			getInheritedDefaults(inherited, ownRequired),

@@ -4,6 +4,9 @@ import { dirname, extname, isAbsolute, resolve } from 'node:path';
 /** Prefix -> directory, as the `alias` rule option supplies it. */
 export type AliasMap = ReadonlyMap<string, string>;
 
+/** A resolved module file and when it last changed. */
+export type ModuleFile = { path: string; mtimeMs: number };
+
 // Tried in order, so a `.ts` component wins over a stale `.js` build output
 // sitting next to it.
 const EXTENSIONS = [
@@ -28,15 +31,20 @@ const REWRITABLE = new Map([
 	['.jsx', ['.tsx']]
 ]);
 
-// Most probes miss, and a miss that doesn't throw is several times cheaper.
-// Other errors (a name too long, a symlink loop) still throw.
-const isFile = (path: string): boolean => {
+// The file at `path`, or null for anything else. Most probes miss, and a miss
+// that doesn't throw is several times cheaper. Other errors (a name too long,
+// a symlink loop) still throw.
+const statFile = (path: string): ModuleFile | null => {
 	try {
 		const stats = statSync(path, { throwIfNoEntry: false });
 
-		return stats !== undefined && stats.isFile();
+		if (stats === undefined || !stats.isFile()) {
+			return null;
+		}
+
+		return { path, mtimeMs: stats.mtimeMs };
 	} catch {
-		return false;
+		return null;
 	}
 };
 
@@ -44,12 +52,12 @@ const isFile = (path: string): boolean => {
 const findFile = (
 	stem: string,
 	extensions: ReadonlyArray<string>
-): string | null => {
+): ModuleFile | null => {
 	for (const extension of extensions) {
-		const candidate = `${stem}${extension}`;
+		const file = statFile(`${stem}${extension}`);
 
-		if (isFile(candidate)) {
-			return candidate;
+		if (file !== null) {
+			return file;
 		}
 	}
 
@@ -59,7 +67,7 @@ const findFile = (
 // The file a resolved path points at: a JavaScript path's source file under
 // a source extension, itself, an extensionless path plus one, or a directory's
 // index file.
-const resolveFile = (base: string): string | null => {
+const resolveFile = (base: string): ModuleFile | null => {
 	const extension = extname(base);
 	const rewrites = REWRITABLE.get(extension);
 
@@ -69,11 +77,11 @@ const resolveFile = (base: string): string | null => {
 		return findFile(stem, rewrites) ?? findFile(stem, [extension]);
 	}
 
-	if (isFile(base)) {
-		return base;
-	}
-
-	return findFile(base, EXTENSIONS) ?? findFile(`${base}/index`, EXTENSIONS);
+	return (
+		statFile(base) ??
+		findFile(base, EXTENSIONS) ??
+		findFile(`${base}/index`, EXTENSIONS)
+	);
 };
 
 const isRelative = (specifier: string): boolean =>
@@ -111,7 +119,7 @@ export const resolveModulePath = (
 	specifier: string,
 	fromFile: string,
 	aliases: AliasMap
-): string | null => {
+): ModuleFile | null => {
 	if (isRelative(specifier)) {
 		return resolveFile(resolve(dirname(fromFile), specifier));
 	}

@@ -32,13 +32,13 @@ import {
 	isBooleanShorthandVariant
 } from './token-extraction.ts';
 import {
+	baseSource,
 	type Entry,
 	type EntryListFixer,
 	type EntryRemedy,
 	indexEntriesBySlotAndToken,
 	reportEntryList,
-	type TokenEntriesBySlot,
-	variantSource
+	type TokenEntriesBySlot
 } from './token-model.ts';
 
 // Slot -> token -> the token's entries in each variant value, in value order:
@@ -567,18 +567,19 @@ const hasUnwrittenBoolean = (valueEntries: ReadonlyMap<string, Node>) =>
 
 const collectVariantTokensByValue = (
 	variantEntries: ReadonlyMap<string, Node>,
-	variantKey: string,
 	slotNames: ReadonlySet<string>,
 	sourceCode: SourceCode
 ): TokenEntriesBySlot[] => {
 	const tokensByValue: TokenEntriesBySlot[] = [];
 
-	for (const [valueKey, valueNode] of variantEntries) {
+	for (const valueNode of variantEntries.values()) {
 		const entries: Entry[] = [];
 
+		// Each value's tokens are compared as a whole, so their source is
+		// never read.
 		extractTokens(valueNode, {
 			slot: 'base',
-			source: variantSource(variantKey, valueKey),
+			source: baseSource,
 			slotNames,
 			entries,
 			sourceCode
@@ -621,7 +622,6 @@ const analyzeVariantSharedTokens = (
 	const { sourceCode } = context;
 	const tokensByValue = collectVariantTokensByValue(
 		valueEntries,
-		variantKey,
 		slotNames,
 		sourceCode
 	);

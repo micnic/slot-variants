@@ -143,25 +143,6 @@ const collectFromDeclaration = (
 		return;
 	}
 
-	if (declaration.type === 'FunctionDeclaration') {
-		if (declaration.id) {
-			add(declaration.id.name, {
-				kind: 'local',
-				name: declaration.id.name
-			});
-		}
-
-		return;
-	}
-
-	// No component, but a name of the module's own, which shadows any
-	// `export *` of it.
-	if (declaration.type === 'ClassDeclaration') {
-		add(declaration.id.name, { kind: 'local', name: declaration.id.name });
-
-		return;
-	}
-
 	const addLocal = (name: string) => {
 		add(name, { kind: 'local', name });
 	};
@@ -174,8 +155,8 @@ const collectFromDeclaration = (
 		return;
 	}
 
-	// A TypeScript `enum` or `namespace`: no component, but a value name of
-	// the module's own.
+	// A function, a class, or a TypeScript `enum` or `namespace`: a value name
+	// of the module's own, which shadows any `export *` of it.
 	if ('id' in declaration && declaration.id?.type === 'Identifier') {
 		addLocal(declaration.id.name);
 	}

@@ -20,6 +20,7 @@ import { collectExportTable, type ExportTarget } from './module-exports.ts';
 import {
 	type AliasMap,
 	buildAliasMap,
+	type ModuleFile,
 	resolveModulePath
 } from './module-paths.ts';
 import { DEFAULT_EXPORT } from './module-syntax.ts';
@@ -565,18 +566,9 @@ const storeModule = (key: string, entry: CacheEntry) => {
 };
 
 const loadModule = (
-	path: string,
+	{ path, mtimeMs }: ModuleFile,
 	moduleContext: ModuleContext
 ): ModuleAnalysis | null => {
-	let mtimeMs: number;
-
-	try {
-		mtimeMs = statSync(path).mtimeMs;
-		/* c8 ignore next 3 -- the path came from a successful stat already */
-	} catch {
-		return null;
-	}
-
 	const key = getCacheKey(path, moduleContext.languageOptions);
 	const cached = moduleCache.get(key);
 
@@ -677,13 +669,13 @@ const resolveImport = <T>(
 		return null;
 	}
 
-	const path = resolveModulePath(specifier, fromFile, moduleContext.aliases);
+	const file = resolveModulePath(specifier, fromFile, moduleContext.aliases);
 
-	if (path === null) {
+	if (file === null) {
 		return null;
 	}
 
-	const key = `${path}|${exportName}`;
+	const key = `${file.path}|${exportName}`;
 
 	if (seen.has(key)) {
 		return null;
@@ -691,7 +683,7 @@ const resolveImport = <T>(
 
 	seen.add(key);
 
-	const analysis = loadModule(path, moduleContext);
+	const analysis = loadModule(file, moduleContext);
 
 	if (analysis === null) {
 		return null;
@@ -701,7 +693,7 @@ const resolveImport = <T>(
 		resolveImport(
 			specifier,
 			name,
-			path,
+			file.path,
 			moduleContext,
 			read,
 			seen,
