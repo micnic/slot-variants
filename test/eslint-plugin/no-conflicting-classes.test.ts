@@ -1,6 +1,8 @@
 import t from 'tap';
+import { RuleTester } from 'eslint';
+import { parser as tsParser } from 'typescript-eslint';
 import { rules } from '../../src/eslint-plugin.ts';
-import { IMPORT, rule, tester } from './helpers.ts';
+import { dup, IMPORT, IMPORT_NS, rule, tester } from './helpers.ts';
 import {
 	NO_CONFLICTING_DUP_INVALID,
 	NO_CONFLICTING_DUP_VALID,
@@ -75,5 +77,32 @@ t.test('no-conflicting-classes (exclusiveGroups validation)', (t) => {
 		'a token listed in two custom groups throws'
 	);
 
+	t.end();
+});
+// Callees behind type-only wrappers, and namespace members read through a
+// `const` alias or destructured, still name their export.
+t.test('no-conflicting-classes (wrapped and destructured callees)', (t) => {
+	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
+	const config = "({ base: 'w-1 w-1', variants: {} });";
+
+	t.doesNotThrow(() => {
+		tsTester.run('no-conflicting-classes', rule, {
+			valid: [
+				// Destructured off anything but the namespace import.
+				`${IMPORT_NS}const { sv } = other;\nsv${config}`,
+				`${IMPORT_NS}let { sv } = SV;\nsv${config}`,
+				`${IMPORT_NS}const { sv } = SV;\nfunction f(sv) { sv${config} }`
+			],
+			invalid: [
+				`${IMPORT}(sv as any)${config}`,
+				`${IMPORT}sv!${config}`,
+				`${IMPORT_NS}(SV.sv as any)${config}`,
+				`${IMPORT_NS}const s = SV.sv;\ns${config}`,
+				`${IMPORT_NS}const NS = SV;\nNS.sv${config}`,
+				`${IMPORT_NS}const { sv } = SV;\nsv${config}`,
+				`${IMPORT_NS}const { sv: build } = SV as any;\nbuild${config}`
+			].map((code) => ({ code, errors: [dup('w-1'), dup('w-1')] }))
+		});
+	}, 'rule tester passes');
 	t.end();
 });

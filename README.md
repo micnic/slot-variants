@@ -1340,7 +1340,7 @@ cn(classes.base, 'p-4'); // allowed — `classes.base` resolves to card()'s base
 
 #### `slot-variants/no-empty-classes`
 
-Flags empty class values (empty strings, arrays, objects), zero-argument `sv()` / `cn()` calls, and empty compound matcher arrays. Partially auto-fixable.
+Flags empty class values (empty strings, arrays, objects), zero-argument `sv()` / `cn()` calls, empty compound matcher arrays, and a `compoundSlots` entry with no `slots`. Partially auto-fixable.
 
 ```typescript
 sv({ base: '', variants: {} });         // empty base

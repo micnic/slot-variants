@@ -610,6 +610,22 @@ export const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyMatcher' }]
 	},
 	{
+		// A compoundSlots entry naming no slot, written and through a `const`;
+		// `slots` on a compoundVariants entry is no target list.
+		code:
+			IMPORT +
+			`const none = [];
+			sv({
+				slots: { body: 'p-4' },
+				compoundSlots: [{ slots: [], class: 'a' }, { slots: none, class: 'b' }, { class: 'c' }],
+				compoundVariants: [{ slots: [], class: 'd' }]
+			});`,
+		errors: [
+			{ messageId: 'emptySlotTargets', line: 5, column: 30 },
+			{ messageId: 'emptySlotTargets', line: 5, column: 57 }
+		]
+	},
+	{
 		// A hoisted `const` empty array read through as a matcher value.
 		code:
 			IMPORT +

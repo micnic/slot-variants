@@ -239,10 +239,30 @@ const checkCompoundMatchersForEmpty = (
 	});
 };
 
+// A `compoundSlots` entry whose `slots` is a literal empty array targets no
+// slot, so `sv()` rejects it: the config throws when it's compiled.
+const checkCompoundSlotTargets = (
+	context: Rule.RuleContext,
+	compoundEntries: ArrayExpression
+) => {
+	forEachStaticItem(compoundEntries.elements, (element) => {
+		const entry = resolveStaticValue(element, context.sourceCode);
+		const raw = getProperties(entry).get('slots');
+
+		if (
+			raw !== undefined &&
+			isEmptyArrayLiteral(resolveStaticValue(raw, context.sourceCode))
+		) {
+			context.report({ node: raw, messageId: 'emptySlotTargets' });
+		}
+	});
+};
+
 const checkCompoundsForEmpty = (
 	context: Rule.RuleContext,
 	rawValue: Node,
-	remove: EmptyFix
+	remove: EmptyFix,
+	key: string
 ) => {
 	const value = resolveArray(rawValue, context.sourceCode);
 
@@ -260,6 +280,10 @@ const checkCompoundsForEmpty = (
 	}
 
 	checkCompoundMatchersForEmpty(context, value);
+
+	if (key === 'compoundSlots') {
+		checkCompoundSlotTargets(context, value);
+	}
 
 	forEachCompoundClass(value, context.sourceCode, (rawClass) => {
 		const isRecord = visitRecordForEmpty(

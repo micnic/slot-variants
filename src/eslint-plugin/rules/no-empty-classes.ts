@@ -18,7 +18,8 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  * position, since declaring a slot or a variant value with no classes of its
  * own is a meaningful use case. Also flags an empty array (`[]`) as a
  * `compoundVariants`/`compoundSlots` matcher value — a matcher must list at
- * least one value, so `sv()` throws for the config.
+ * least one value, so `sv()` throws for the config — and an empty `slots`
+ * list of a `compoundSlots` entry, which `sv()` rejects the same way.
  *
  * The config containers that carry no class values of their own —
  * `defaultVariants`, `requiredVariants`, `multiSlots`, `presets`, `groups` —
@@ -48,7 +49,9 @@ export const noEmptyClasses: Rule.RuleModule = {
 			emptyConfig:
 				'Empty "{{key}}" has no effect — remove it or fill it in.',
 			emptyMatcher:
-				'Empty array matcher for "{{key}}" makes sv() throw — a compound matcher must list at least one value.'
+				'Empty array matcher for "{{key}}" makes sv() throw — a compound matcher must list at least one value.',
+			emptySlotTargets:
+				'Empty "slots" makes sv() throw — a compound slot must name at least one slot.'
 		}
 	},
 	create(context) {

@@ -12,6 +12,7 @@ import {
 	matchSvCall
 } from './call-matching.ts';
 import { getImportSource, type ImportSource } from './components.ts';
+import { getDestructuredRead } from './const-bindings.ts';
 import {
 	getModuleContext,
 	type ModuleContext,
@@ -62,38 +63,57 @@ const identifierResolvesToImport = (
 	return variable.defs.some((def) => def.type === 'ImportBinding');
 };
 
-// The export a namespace member call names — `SV.sv(…)` for
+// Whether `node` reads a tracked namespace import (`import * as SV`), itself
+// or through same-file `const` aliases.
+const isTrackedNamespace = (match: MatchContext, node: Node): boolean => {
+	const resolved = match.ctx.resolve(node);
+
+	return (
+		resolved.type === 'Identifier' &&
+		match.names.namespaceNames.has(resolved.name) &&
+		identifierResolvesToImport(match, resolved)
+	);
+};
+
+// The export a namespace member names — `SV.sv` for
 // `import * as SV from 'slot-variants'`. Null when the callee isn't a member of
-// a tracked namespace binding, including a computed one (`SV[name](…)`), whose
+// a tracked namespace binding, including a computed one (`SV[name]`), whose
 // export can't be read statically.
 const resolveNamespaceExportName = (
 	match: MatchContext,
-	node: CallExpression
+	callee: Node
 ): string | null => {
-	const { callee } = node;
-
 	if (callee.type !== 'MemberExpression' || callee.computed) {
 		return null;
 	}
 
 	const { object, property } = callee;
 
-	if (object.type !== 'Identifier' || property.type !== 'Identifier') {
-		return null;
-	}
-
-	if (
-		!match.names.namespaceNames.has(object.name) ||
-		!identifierResolvesToImport(match, object)
-	) {
+	if (property.type !== 'Identifier' || !isTrackedNamespace(match, object)) {
 		return null;
 	}
 
 	return property.name;
 };
 
-// The export a call names, either as a namespace member (`SV.sv(…)`) or through
-// a named import read via same-file `const` aliases (`const cx = cn; cx(…)`).
+// The export a name destructured off a tracked namespace import binds
+// (`const { sv } = SV`), or null for any other name.
+const resolveDestructuredExportName = (
+	match: MatchContext,
+	identifier: Identifier
+): string | null => {
+	const read = getDestructuredRead(identifier, match.ctx.sourceCode);
+
+	if (read === null || !isTrackedNamespace(match, read.object)) {
+		return null;
+	}
+
+	return read.key;
+};
+
+// The export a call names, as a namespace member (`SV.sv(…)`), a named import
+// or a name destructured off a namespace, read through same-file `const`
+// aliases (`const cx = cn; cx(…)`) and type-only wrappers (`(sv as F)(…)`).
 // A callee bound to a `createSV(...)` call is a pre-configured `sv()`, so it
 // names `sv` and its call sites are analyzed exactly like `sv()` calls.
 // `visited` holds the calls already on the path, so a callee bound back to one
@@ -109,17 +129,12 @@ const resolveExportName = (
 
 	visited.add(node);
 
-	const namespaceExport = resolveNamespaceExportName(match, node);
+	const resolved = match.ctx.resolve(node.callee);
+	const namespaceExport = resolveNamespaceExportName(match, resolved);
 
 	if (namespaceExport !== null) {
 		return namespaceExport;
 	}
-
-	if (node.callee.type !== 'Identifier') {
-		return null;
-	}
-
-	const resolved = match.ctx.resolve(node.callee);
 
 	// An alias-resolved identifier names an export only as a tracked named
 	// import, not as a local binding shadowing one.
@@ -130,7 +145,7 @@ const resolveExportName = (
 			exportName === undefined ||
 			!identifierResolvesToImport(match, resolved)
 		) {
-			return null;
+			return resolveDestructuredExportName(match, resolved);
 		}
 
 		return exportName;
