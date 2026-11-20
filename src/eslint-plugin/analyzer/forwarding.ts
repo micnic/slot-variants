@@ -847,25 +847,34 @@ export const createForwardingScan = (
 		return styled;
 	};
 
-	// The first position a component forwards its prop into is the one kept.
+	// Every position a component forwards its prop into is kept, as any of
+	// them may render: two elements, or the branches of an early return. A
+	// component forwarding both `class` and `className` keeps the first.
 	const trackForwarding = (parts: ClassParts) => {
 		parts.dynamic.forEach((node, index) => {
 			const read = readProp(node);
 
-			if (
-				read === null ||
-				!CLASS_ATTRIBUTES.has(read.prop) ||
-				forwarded.has(read.component)
-			) {
+			if (read === null || !CLASS_ATTRIBUTES.has(read.prop)) {
+				return;
+			}
+
+			const kept = forwarded.get(read.component);
+
+			if (kept !== undefined && kept.prop !== read.prop) {
 				return;
 			}
 
 			const path = pathAt(parts.paths.dynamic, index);
 			const targets = getForwardTargets(parts, path, read.component);
 
-			if (targets.length > 0) {
-				forwarded.set(read.component, { prop: read.prop, targets });
+			if (targets.length === 0) {
+				return;
 			}
+
+			forwarded.set(read.component, {
+				prop: read.prop,
+				targets: [...(kept?.targets ?? []), ...targets]
+			});
 		});
 	};
 

@@ -1221,6 +1221,39 @@ RESTYLE_INVALID.push(
 	}
 );
 
+// Every position a component forwards its class into is checked, as any of
+// them may render; one forwarding `class` and `className` keeps the first.
+RESTYLE_INVALID.push(
+	...[
+		'<span className={wrap({ class: className })}><button className={button({ class: className })} /></span>',
+		'href ? <a className={wrap({ class: className })} /> : <button className={button({ class: className })} />'
+	].map((markup) => ({
+		code: `${IMPORT}${RESTYLE_BUTTON}const wrap = sv({ base: 'm-1', variants: {} });
+function Button({ className, href }) { return ${markup}; }
+<Button className="p-4 m-2" />;`,
+		errors: [restyle('p-4', 'p-2'), restyle('m-2', 'm-1')]
+	})),
+	{
+		code: `${IMPORT}${RESTYLE_BUTTON}const wrap = sv({ base: 'm-1', variants: {} });
+function Button(props) { return <span className={button({ class: props.class })}><b className={wrap({ class: props.className })} /></span>; }
+<Button class="p-4" />;
+<Button className="m-2" />;`,
+		errors: [restyle('p-4', 'p-2')]
+	}
+);
+
+// A config spreading one object twice takes its keys where it's spread last,
+// as at runtime, through another spread too.
+RESTYLE_INVALID.push(
+	...[
+		"const shared = { base: 'p-2' };\nconst b = sv({ ...shared, base: 'm-2', ...shared, variants: {} });",
+		"const root = { base: 'p-2' };\nconst a = { ...root };\nconst c = { ...root };\nconst b = sv({ ...a, base: 'm-2', ...c, variants: {} });"
+	].map((config) => ({
+		code: `${IMPORT}${config}\nb({ class: 'm-4' });\nb({ class: 'p-4' });`,
+		errors: [restyle('p-4', 'p-2')]
+	}))
+);
+
 // A component extending others applies their classes too: their base, their
 // variant values, and the slots its own values name. Presets and defaults are
 // merged as `extend` merges them, and a parent that can't be read leaves the

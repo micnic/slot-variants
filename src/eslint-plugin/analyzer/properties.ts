@@ -64,14 +64,16 @@ const isSpreadElement = (prop: Property | SpreadElement): boolean =>
 
 // Sets each property of `obj` in `merged`, in source order, entering each
 // spread that reads as an object literal through same-file `const` bindings.
-// `seen` stops an object that spreads itself (`const a = { ...a }`).
+// `stack` holds the objects being entered, which stops one that spreads
+// itself (`const a = { ...a }`) while an object spread twice is entered both
+// times, its keys winning again where it's spread last.
 const mergeSpreadProperties = (
 	obj: ObjectExpression,
 	sourceCode: SourceCode,
 	merged: Map<string, Node>,
-	seen: Set<ObjectExpression>
+	stack: Set<ObjectExpression>
 ) => {
-	seen.add(obj);
+	stack.add(obj);
 
 	for (const prop of obj.properties) {
 		if (prop.type === 'Property') {
@@ -86,10 +88,12 @@ const mergeSpreadProperties = (
 
 		const spread = resolveStaticValue(prop.argument, sourceCode);
 
-		if (spread.type === 'ObjectExpression' && !seen.has(spread)) {
-			mergeSpreadProperties(spread, sourceCode, merged, seen);
+		if (spread.type === 'ObjectExpression' && !stack.has(spread)) {
+			mergeSpreadProperties(spread, sourceCode, merged, stack);
 		}
 	}
+
+	stack.delete(obj);
 };
 
 // Adds the keys spreading `node` may set to `keys`, entering the spreads it
