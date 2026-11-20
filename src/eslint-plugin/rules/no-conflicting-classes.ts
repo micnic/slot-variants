@@ -74,14 +74,15 @@ export const noConflictingClasses: Rule.RuleModule = {
 
 		return createTrackedCallListeners(
 			context,
-			(node, call) => {
+			(node, call, ctx) => {
 				if (call.config) {
 					analyzeConfigForRule(
 						context,
 						node,
 						call.config,
 						call.args,
-						options
+						options,
+						ctx
 					);
 				} else {
 					analyzeCnForRule(context, call.args, options);

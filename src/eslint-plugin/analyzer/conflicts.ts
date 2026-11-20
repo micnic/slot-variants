@@ -28,7 +28,7 @@ import {
 	type GroupSlots
 } from './properties.ts';
 import {
-	getConfigStyles,
+	getCallStyles,
 	getOverrideValue,
 	getSlotBuckets,
 	resolveInvocation,
@@ -43,9 +43,9 @@ import {
 	areDistinctTokensExclusive,
 	areExclusiveMatchers,
 	type Entry,
-	type EntryListFilter,
 	getEntriesMatchers,
 	indexEntriesBySlotAndToken,
+	type PickReported,
 	reportDuplicateTokens,
 	reportEntryList,
 	type VariantMatchers
@@ -283,26 +283,27 @@ const reportConflicts = (
 	messageId: string,
 	data: Record<string, string>,
 	options: ConflictOptions,
-	isReported: EntryListFilter
+	pickReported: PickReported
 ) => {
 	const groups = groupEntriesByConflictKey(tokenMap, options);
 
 	for (const group of mergeOverlappingGroups(groups)) {
-		if (
-			group.tokens.size < 2 ||
-			group.exclusive ||
-			!isReported(group.entries)
-		) {
+		if (group.tokens.size < 2 || group.exclusive) {
 			continue;
 		}
 
 		const tokens = [...group.tokens].sort().join(', ');
 
-		reportEntryList(context, group.entries, messageId, { tokens, ...data });
+		reportEntryList(context, pickReported(group.entries), messageId, {
+			tokens,
+			...data
+		});
 	}
 };
 
-const REPORT_ALL: EntryListFilter = () => true;
+const REPORT_ALL: PickReported = (entries) => entries;
+
+const REPORT_NONE: ReadonlyArray<Entry> = [];
 
 // The token entries of several slot buckets, as one.
 const mergeTokenMaps = (
@@ -454,32 +455,39 @@ const reportDuplicateGroupSlots = (
 	}
 };
 
+/**
+ * Checks the classes a config's call applies, its inherited ones included:
+ * those of the components it extends and its `createSV()` factory's `base`.
+ * Only the config's own classes are reported, so a finding among inherited
+ * ones alone is left to the config that writes them.
+ */
 export const analyzeConfigForRule = (
 	context: Rule.RuleContext,
 	node: CallExpression,
 	configNode: ObjectExpression,
 	baseArgs: ReadonlyArray<Expression | SpreadElement>,
-	options: ConflictOptions
+	options: ConflictOptions,
+	ctx: StyledContext
 ) => {
 	const config = getConfigProperties(configNode, context.sourceCode);
-	const styles = getConfigStyles(
+	const { styles, inherited } = getCallStyles(
 		node,
 		configNode,
 		baseArgs,
-		context.sourceCode
+		ctx
 	);
 	const { bySlot, slotNames, groupSlots } = styles;
 	const report = (
 		tokenMap: Map<string, Entry[]>,
 		slot: string,
-		isReported: EntryListFilter
+		pickReported: PickReported
 	) => {
 		reportDuplicateTokens(
 			context,
 			tokenMap,
 			'duplicate',
 			{ slot },
-			isReported
+			pickReported
 		);
 		reportConflicts(
 			context,
@@ -487,25 +495,31 @@ export const analyzeConfigForRule = (
 			'conflict',
 			{ slot },
 			options,
-			isReported
+			pickReported
 		);
 	};
+	const pickOwn: PickReported = (entries) =>
+		entries.filter((entry) => !inherited.has(entry));
 	// A finding inside one group's own classes is the group's to report, not
 	// each of its member slots'.
-	const isConfinedToGroup: EntryListFilter = (entries) => {
+	const pickOutsideGroups: PickReported = (entries) => {
 		const [first] = entries;
 
-		return (
+		if (
 			first !== undefined &&
 			groupSlots.has(first.slot) &&
 			entries.every((entry) => entry.slot === first.slot)
-		);
+		) {
+			return REPORT_NONE;
+		}
+
+		return pickOwn(entries);
 	};
 	const slots = new Set<string>();
 
 	for (const [bucket, tokenMap] of bySlot) {
 		if (groupSlots.has(bucket)) {
-			report(tokenMap, bucket, REPORT_ALL);
+			report(tokenMap, bucket, pickOwn);
 		} else {
 			slots.add(bucket);
 		}
@@ -524,7 +538,7 @@ export const analyzeConfigForRule = (
 				getSlotBuckets(styles, slot).map((bucket) => bySlot.get(bucket))
 			),
 			slot,
-			(entries) => !isConfinedToGroup(entries)
+			pickOutsideGroups
 		);
 	}
 

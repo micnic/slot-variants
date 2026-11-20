@@ -181,6 +181,46 @@ export const collectCallParts = (
 	}
 };
 
+// Appends parts collected elsewhere, each with its branch path.
+const appendWithPaths = <T>(
+	items: T[],
+	paths: BranchPath[],
+	added: readonly T[],
+	addedPaths: readonly BranchPath[]
+) => {
+	added.forEach((item, index) => {
+		paths[items.length] = pathAt(addedPaths, index);
+		items.push(item);
+	});
+};
+
+/**
+ * The parts a class list read through a `const` holds besides its literals,
+ * which the list's own styled part stands for: the slot-variants parts and
+ * the props written inside it, so a prop forwarded into it stays in sight.
+ */
+const collectHoistedParts = (
+	node: CallExpression,
+	ctx: StyledContext,
+	parts: ClassParts
+) => {
+	const inner = emptyParts();
+
+	collectCallParts(node, ctx, inner);
+	appendWithPaths(
+		parts.styled,
+		parts.paths.styled,
+		inner.styled,
+		inner.paths.styled
+	);
+	appendWithPaths(
+		parts.dynamic,
+		parts.paths.dynamic,
+		inner.dynamic,
+		inner.paths.dynamic
+	);
+};
+
 /**
  * Walks one class-list position, separating slot-variants-produced parts from
  * the literal classes written next to them. Values that resolve to neither are
@@ -199,6 +239,11 @@ export const collectParts = (
 	}
 
 	const resolved = ctx.resolve(node);
+
+	if (resolved.type === 'CallExpression' && isClassListCall(resolved, ctx)) {
+		collectHoistedParts(resolved, ctx, parts);
+	}
+
 	const styled = readStyledClasses(resolved, ctx);
 
 	if (styled !== null) {

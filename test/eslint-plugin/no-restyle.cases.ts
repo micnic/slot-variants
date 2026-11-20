@@ -1200,6 +1200,79 @@ function Fallback({ preset = 'big', className }) { return <button className={but
 	}
 );
 
+// A class list held by a `const` is read in full where it's used: the prop
+// forwarded into it, and a slot-variants part inside it, its literals still
+// checked as one part. A `let` isn't followed, so its own list forwards.
+RESTYLE_INVALID.push(
+	...[
+		"const merged = cn('flex', className); return <button className={button({ class: merged })} />;",
+		"const extra = cn('flex', className); return <button className={cn(button(), extra)} />;",
+		'const merged = cn(button(), className); return <button className={merged} />;',
+		"const merged = cn(on ? className : 'x', 'flex'); return <button className={button({ class: merged })} />;"
+	].map((body) => ({
+		code: `${IMPORT_SV_CN}${RESTYLE_BUTTON}function Button({ className, on }) { ${body} }
+<Button on className="p-4" />;`,
+		errors: [restyle('p-4', 'p-2')]
+	})),
+	{
+		code: `${IMPORT_SV_CN}${RESTYLE_BUTTON}function Button({ className }) { let merged = cn('flex', className); return <button className={button({ class: merged })} />; }
+<Button className="flex" />;`,
+		errors: [dup('flex')]
+	}
+);
+
+// A component extending others applies their classes too: their base, their
+// variant values, and the slots its own values name. Presets and defaults are
+// merged as `extend` merges them, and a parent that can't be read leaves the
+// presets open.
+const RESTYLE_EXTENDED = `const parent = sv({
+	base: 'flex',
+	slots: { icon: 'w-4' },
+	groups: { all: ['base', 'icon'] },
+	variants: { size: { sm: 'p-2', lg: 'm-2' } },
+	presets: { big: { size: 'lg' }, wide: { size: 'lg' } }
+});
+const other = sv({ base: 'block', variants: {}, presets: { wide: { size: 'sm' } } });
+const child = sv({
+	extend: [parent, other, parent],
+	slots: { label: 'font-bold' },
+	groups: { all: ['label'] },
+	variants: { size: { sm: { base: 'text-sm', icon: 'h-4' }, lg: 'gap-2' } },
+	defaultVariants: { size: 'sm' }
+});\n`;
+
+RESTYLE_INVALID.push(
+	{
+		code: `${IMPORT}${RESTYLE_EXTENDED}child({ class: 'p-4' });
+child({ preset: 'big', class: 'text-lg' });
+child({ preset: 'big', class: 'gap-4 m-4' });
+child({ preset: 'wide', class: 'p-6' });
+child({ class: { icon: 'w-6 h-6', all: 'font-normal' } });`,
+		errors: [
+			restyle('p-4', 'p-2'),
+			restyle('gap-4', 'gap-2'),
+			restyle('m-4', 'm-2'),
+			restyle('p-6', 'p-2'),
+			restyle('w-6', 'w-4', 'icon'),
+			restyle('h-6', 'h-4', 'icon'),
+			restyle('font-normal', 'font-bold', 'label')
+		]
+	},
+	{
+		code: `${IMPORT}import { imported } from './imported';
+const child = sv({ extend: [imported, ...more], variants: { size: { sm: 'p-2', lg: 'm-2' }, tone: { a: 'mt-1', b: 'mb-1' } }, presets: { big: { size: 'sm' } }, defaultVariants: { size: 'sm', tone: 'a' } });
+const looped = sv({ extend: looped, base: 'p-2', variants: {} });
+child({ preset: 'any', class: 'm-4' });
+child({ preset: 'big', class: 'mb-3' });
+looped({ class: 'p-4' });`,
+		errors: [
+			restyle('m-4', 'm-2'),
+			restyle('mb-3', 'mb-1'),
+			restyle('p-4', 'p-2')
+		]
+	}
+);
+
 export const RESTYLE_SVELTE_INVALID = [
 	// Svelte: literal runs around a substitution, and a `class` attribute that
 	// is a single substitution beside a static one.

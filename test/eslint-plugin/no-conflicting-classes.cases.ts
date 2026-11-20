@@ -2762,5 +2762,33 @@ export const NO_CONFLICTING_NS_INVALID = [
 			IMPORT +
 			"sv({ variants: { size: { sm: 'p-1', lg: 'p-2' } }, compoundVariants: [{ size: 'lg', class: 'm-1' }, { size: [], class: 'm-2' }] });",
 		errors: repeat(conflict('m-1, m-2'), 2)
+	},
+	// Classes a config inherits count too: its parents' in `extend`, read
+	// with the slots they give it, and its factory's `base` when it sets none.
+	// Only its own classes are reported, so a finding among the parent's alone
+	// is left to the parent.
+	{
+		code:
+			IMPORT +
+			"const parent = sv({ base: 'p-2 p-3 rounded', slots: { icon: 'w-4' }, variants: {} });\nsv({ extend: [parent], base: 'p-1 rounded', variants: { size: { sm: { icon: 'w-6' } } } });",
+		errors: [
+			...repeat(conflict('p-2, p-3'), 2),
+			conflict('p-1, p-2, p-3'),
+			dup('rounded'),
+			conflict('w-4, w-6', 'icon')
+		]
+	},
+	{
+		code:
+			IMPORT_CREATE_SV +
+			"const mySv = createSV({ base: 'p-2' });\nmySv('p-3', { variants: {} });\nmySv({ base: 'p-4', variants: {} });",
+		errors: [conflict('p-2, p-3')]
+	},
+	{
+		// A parent that can't be read adds nothing.
+		code:
+			IMPORT +
+			"import { parent } from './parent';\nsv({ extend: parent, base: 'p-1 p-2', variants: {} });",
+		errors: repeat(conflict('p-1, p-2'), 2)
 	}
 ];

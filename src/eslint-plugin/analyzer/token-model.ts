@@ -23,8 +23,11 @@ export type Entry = {
 
 export type TokenEntriesBySlot = Map<string, Map<string, Entry[]>>;
 
-// Whether a finding over these entries is reported by the current pass.
-export type EntryListFilter = (entries: ReadonlyArray<Entry>) => boolean;
+// The entries of a finding the current pass reports, none to leave it to
+// another.
+export type PickReported = (
+	entries: ReadonlyArray<Entry>
+) => ReadonlyArray<Entry>;
 
 export type EntryListFixer = (fixer: Rule.RuleFixer) => Rule.Fix[] | null;
 
@@ -215,17 +218,16 @@ export const reportDuplicateTokens = (
 	tokenMap: Map<string, Entry[]>,
 	messageId: string,
 	data: Record<string, string>,
-	isReported: EntryListFilter
+	pickReported: PickReported
 ) => {
 	for (const [token, list] of tokenMap.entries()) {
-		if (
-			list.length < 2 ||
-			everyPair(list, areEntriesExclusive) ||
-			!isReported(list)
-		) {
+		if (list.length < 2 || everyPair(list, areEntriesExclusive)) {
 			continue;
 		}
 
-		reportEntryList(context, list, messageId, { token, ...data });
+		reportEntryList(context, pickReported(list), messageId, {
+			token,
+			...data
+		});
 	}
 };

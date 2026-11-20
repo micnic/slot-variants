@@ -55,10 +55,28 @@ type InternalStyles = {
 	slotNames: ReadonlySet<string>;
 	defaults: VariantMatchers;
 	presets: ReadonlyMap<string, PresetValues>;
+	// Whether a parent in `extend` that can't be read may add presets.
+	openPresets: boolean;
 	// The variants a call leaves unset unless it passes them.
 	optional: ReadonlySet<string>;
 	groupSlots: GroupSlots;
 	slotGroups: ReadonlyMap<string, ReadonlyArray<string>>;
+};
+
+// The parents an `extend` value names that can be read, each once, and
+// whether that is all of them.
+type ParentStyles = {
+	parents: ReadonlyArray<InternalStyles>;
+	complete: boolean;
+};
+
+/**
+ * The classes a config's call applies, with the entries of those it inherits
+ * rather than writes: its parents' in `extend`, or its factory's `base`.
+ */
+export type CallStyles = {
+	styles: InternalStyles;
+	inherited: ReadonlySet<Entry>;
 };
 
 /**
@@ -69,7 +87,7 @@ export type PresetValues = { matchers: VariantMatchers; complete: boolean };
 
 // What a call's props are read against: the presets it may name, and the
 // variants it leaves unset unless it passes them.
-type CallOptions = Pick<InternalStyles, 'presets' | 'optional'>;
+type CallOptions = Pick<InternalStyles, 'presets' | 'openPresets' | 'optional'>;
 
 /**
  * What a call's props hold besides the values it fixes: the props it passes
@@ -179,6 +197,14 @@ const stylesCache = new WeakMap<Node, InternalStyles>();
 // kept apart from the call's own: other rules read those without it.
 const factoryStylesCache = new WeakMap<Node, InternalStyles>();
 
+// The classes of a call extending other components, its parents' included,
+// kept apart from the call's own for the same reason.
+const extendedStylesCache = new WeakMap<Node, CallStyles>();
+
+const NO_ENTRIES: ReadonlySet<Entry> = new Set();
+
+const NO_ARGS: ReadonlyArray<Expression | SpreadElement> = [];
+
 const readGroups = (
 	groups: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
@@ -282,12 +308,18 @@ const readOptionalVariants = (
 	return optional;
 };
 
+// `inheritedSlots` holds the slot and group names of the parents in `extend`,
+// which a slot object of the config may name too.
 const buildStyles = (
 	config: ReadonlyMap<string, Node>,
 	args: ReadonlyArray<Expression | SpreadElement>,
-	sourceCode: SourceCode
+	sourceCode: SourceCode,
+	inheritedSlots: ReadonlySet<string> = EMPTY_SLOT_NAMES
 ): InternalStyles => {
-	const slotNames = getConfigSlotNames(config, sourceCode);
+	const slotNames = new Set([
+		...inheritedSlots,
+		...getConfigSlotNames(config, sourceCode)
+	]);
 	const defaults = resolveContainer(
 		config.get('defaultVariants'),
 		sourceCode
@@ -302,6 +334,7 @@ const buildStyles = (
 		slotNames,
 		defaults: readMatchers(getProperties(defaults), NO_SKIP, sourceCode),
 		presets: readPresets(getProperties(presets), sourceCode),
+		openPresets: false,
 		optional: readOptionalVariants(config, sourceCode),
 		...readGroups(getProperties(groups), sourceCode)
 	};
@@ -352,17 +385,18 @@ const readPropMatchers = (
 };
 
 // The variant values of the preset a call's props name. A config without
-// presets throws on any preset name, so it applies none.
+// presets throws on any preset name, so it applies none — unless a parent
+// that can't be read may give it some.
 const readPresetMatchers = (
 	props: ReadonlyMap<string, Node>,
-	presets: ReadonlyMap<string, PresetValues>,
+	{ presets, openPresets }: CallOptions,
 	ctx: StyledContext
 ): PresetValues => {
 	const preset = props.get('preset');
 
 	if (
 		preset === undefined ||
-		presets.size === 0 ||
+		(presets.size === 0 && !openPresets) ||
 		isUndefinedValue(ctx.resolve(preset))
 	) {
 		return NO_PRESET;
@@ -582,10 +616,11 @@ const readPassedKeys = (
 const buildCallMatchers = (
 	{ read, known, spreads }: CallProps,
 	base: VariantMatchers,
-	{ presets, optional }: CallOptions,
+	options: CallOptions,
 	ctx: StyledContext
 ): CallMatchers => {
-	const preset = readPresetMatchers(read, presets, ctx);
+	const { optional } = options;
+	const preset = readPresetMatchers(read, options, ctx);
 	const propMatchers = readPropMatchers(read, ctx);
 	const unreadProps = readUnreadProps(read, propMatchers, ctx);
 	const unset = readUnsetMatchers(known, unreadProps, optional, preset, ctx);
@@ -718,15 +753,225 @@ const getFactoryBase = (
 	return getProperties(match.config).get('base') ?? null;
 };
 
+// Joins `items`' lists per key, each value once, in order.
+const joinLists = (
+	items: ReadonlyArray<ReadonlyMap<string, ReadonlyArray<string>>>
+): Map<string, string[]> => {
+	const joined = new Map<string, string[]>();
+
+	for (const item of items) {
+		for (const [key, values] of item) {
+			const list = getOrCreate(joined, key, () => []);
+
+			for (const value of values) {
+				if (!list.includes(value)) {
+					list.push(value);
+				}
+			}
+		}
+	}
+
+	return joined;
+};
+
+// The groups naming each slot, read off the slots of each group.
+const invertGroups = (groupSlots: GroupSlots): Map<string, string[]> => {
+	const slotGroups = new Map<string, string[]>();
+
+	for (const [group, slots] of groupSlots) {
+		for (const slot of slots) {
+			getOrCreate(slotGroups, slot, () => []).push(group);
+		}
+	}
+
+	return slotGroups;
+};
+
+// The presets of each styles, merged as `extend` merges them: a preset both
+// define takes the values of both, the later winning. With a parent that
+// can't be read, any preset may set other values too.
+const mergePresets = (
+	all: ReadonlyArray<InternalStyles>,
+	complete: boolean
+): Map<string, PresetValues> => {
+	const presets = new Map<string, PresetValues>();
+
+	for (const styles of all) {
+		for (const [name, preset] of styles.presets) {
+			const inherited = presets.get(name) ?? NO_PRESET;
+
+			presets.set(name, {
+				matchers: new Map([...inherited.matchers, ...preset.matchers]),
+				complete: complete && inherited.complete && preset.complete
+			});
+		}
+	}
+
+	return presets;
+};
+
+/**
+ * The classes a config that extends others applies: its parents', then its
+ * own. Defaults and presets are merged the way `extend` merges them, the
+ * config's own winning, and a parent that can't be read leaves the presets
+ * open. Which variants stay unset is left to the config's own reading.
+ */
+const mergeStyles = (
+	{ parents, complete }: ParentStyles,
+	own: InternalStyles
+): InternalStyles => {
+	const all = [...parents, own];
+	const bySlot: TokenEntriesBySlot = new Map();
+
+	for (const styles of all) {
+		for (const [slot, tokens] of styles.bySlot) {
+			const merged = getOrCreate(bySlot, slot, () => new Map());
+
+			for (const [token, entries] of tokens) {
+				getOrCreate(merged, token, () => []).push(...entries);
+			}
+		}
+	}
+
+	const groupSlots = joinLists(all.map((styles) => styles.groupSlots));
+
+	return {
+		bySlot,
+		slotNames: new Set(all.flatMap((styles) => [...styles.slotNames])),
+		defaults: new Map(all.flatMap((styles) => [...styles.defaults])),
+		presets: mergePresets(all, complete),
+		openPresets: !complete || parents.some((styles) => styles.openPresets),
+		optional: own.optional,
+		groupSlots,
+		slotGroups: invertGroups(groupSlots)
+	};
+};
+
+// Every entry of some styles.
+const getAllEntries = (styles: InternalStyles): Entry[] =>
+	[...styles.bySlot.values()].flatMap((tokens) =>
+		[...tokens.values()].flat()
+	);
+
+// The classes of `own` with those it inherits from `parents` merged in.
+const withInherited = (
+	parentStyles: ParentStyles,
+	own: InternalStyles
+): CallStyles => ({
+	styles: mergeStyles(parentStyles, own),
+	inherited: new Set(parentStyles.parents.flatMap(getAllEntries))
+});
+
+// The classes of a call extending other components, read with the slots its
+// parents give it. `visiting` holds the calls on the path to it.
+const getExtendedStyles = (
+	call: CallExpression,
+	properties: ReadonlyMap<string, Node>,
+	extend: Node,
+	args: ReadonlyArray<Expression | SpreadElement>,
+	ctx: StyledContext,
+	visiting: Set<Node>
+): CallStyles =>
+	getOrCreate(extendedStylesCache, call, () => {
+		visiting.add(call);
+
+		const parentStyles = resolveParentStyles(extend, ctx, visiting);
+		const inheritedSlots = new Set(
+			parentStyles.parents.flatMap((styles) => [...styles.slotNames])
+		);
+
+		return withInherited(
+			parentStyles,
+			buildStyles(properties, args, ctx.sourceCode, inheritedSlots)
+		);
+	});
+
+/**
+ * The classes a config's own call applies, its inherited ones included: those
+ * of the components it extends, and the `base` of the `createSV()` factory it
+ * goes through when it sets none.
+ */
+export const getCallStyles = (
+	call: CallExpression,
+	config: ObjectExpression,
+	args: ReadonlyArray<Expression | SpreadElement>,
+	ctx: StyledContext
+): CallStyles => {
+	const properties = getConfigProperties(config, ctx.sourceCode);
+	const extend = properties.get('extend');
+
+	if (extend !== undefined) {
+		return getExtendedStyles(
+			call,
+			properties,
+			extend,
+			args,
+			ctx,
+			new Set()
+		);
+	}
+
+	const own = getConfigStyles(call, config, args, ctx.sourceCode);
+	const factoryBase = getFactoryBase(call, config, ctx);
+
+	if (factoryBase === null) {
+		return { styles: own, inherited: NO_ENTRIES };
+	}
+
+	const factory = buildStyles(
+		new Map([['base', factoryBase]]),
+		NO_ARGS,
+		ctx.sourceCode
+	);
+
+	return withInherited({ parents: [factory], complete: true }, own);
+};
+
+// The parents an `extend` value names: one, or each of a list. One that isn't
+// an `sv()` result read through `const` bindings — an import, a spread — can't
+// be read. `visiting` holds the calls on the path, so a cycle reads as none.
+const resolveParentStyles = (
+	extend: Node,
+	ctx: StyledContext,
+	visiting: Set<Node>
+): ParentStyles => {
+	const resolved = ctx.resolve(extend);
+	let items: ReadonlyArray<Node | null> = [resolved];
+
+	if (resolved.type === 'ArrayExpression') {
+		items = resolved.elements;
+	}
+
+	const parents: InternalStyles[] = [];
+	let complete = true;
+
+	for (const item of items) {
+		let styles: InternalStyles | null = null;
+
+		if (item !== null && item.type !== 'SpreadElement') {
+			styles = resolveVariantFnStyles(item, ctx, visiting);
+		}
+
+		if (styles === null) {
+			complete = false;
+		} else if (!parents.includes(styles)) {
+			parents.push(styles);
+		}
+	}
+
+	return { parents, complete };
+};
+
 // The `sv(config)` call a compiled variant function came from, reached through
-// the `const` binding the call site names.
+// the `const` binding the call site names, with the parents it extends.
 const resolveVariantFnStyles = (
 	callee: Node,
-	ctx: StyledContext
+	ctx: StyledContext,
+	visiting: Set<Node> = new Set()
 ): InternalStyles | null => {
 	const resolved = resolveCalleeCall(callee, ctx);
 
-	if (resolved === null) {
+	if (resolved === null || visiting.has(resolved)) {
 		return null;
 	}
 
@@ -740,6 +985,20 @@ const resolveVariantFnStyles = (
 	}
 
 	const { config, args } = match;
+	const properties = getConfigProperties(config, ctx.sourceCode);
+	const extend = properties.get('extend');
+
+	if (extend !== undefined) {
+		return getExtendedStyles(
+			resolved,
+			properties,
+			extend,
+			args,
+			ctx,
+			visiting
+		).styles;
+	}
+
 	const factoryBase = getFactoryBase(resolved, config, ctx);
 
 	if (factoryBase === null) {
@@ -748,10 +1007,7 @@ const resolveVariantFnStyles = (
 
 	return getOrCreate(factoryStylesCache, resolved, () =>
 		buildStyles(
-			new Map([
-				...getConfigProperties(config, ctx.sourceCode),
-				['base', factoryBase]
-			]),
+			new Map([...properties, ['base', factoryBase]]),
 			args,
 			ctx.sourceCode
 		)
@@ -915,6 +1171,7 @@ const buildLiteralStyles = (entries: ReadonlyArray<Entry>): InternalStyles => ({
 	slotNames: EMPTY_SLOT_NAMES,
 	defaults: EMPTY_MATCHERS,
 	presets: NO_PRESETS,
+	openPresets: false,
 	optional: NO_KEYS,
 	groupSlots: EMPTY_GROUPS,
 	slotGroups: EMPTY_GROUPS

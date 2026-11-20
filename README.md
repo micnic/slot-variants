@@ -1269,7 +1269,7 @@ Rules check calls to `sv`/`cn` imported from `'slot-variants'` and to functions 
 
 #### `slot-variants/no-conflicting-classes`
 
-Flags classes that collide in the output of an `sv()` or `cn()` call: exact duplicates and Tailwind utilities that target the same property (e.g. `w-100`/`w-200`, `px-4`/`pl-2`, or `[color:red]`/`[color:blue]`). Classes that can never apply together, like two values of the same variant, are not flagged. Single-word utilities (`flex`, `block`) are ignored unless `exclusiveGroups` is set. If your Tailwind v3 config sets a `prefix`, pass it via the `prefix` option.
+Flags classes that collide in the output of an `sv()` or `cn()` call: exact duplicates and Tailwind utilities that target the same property (e.g. `w-100`/`w-200`, `px-4`/`pl-2`, or `[color:red]`/`[color:blue]`). Classes that can never apply together, like two values of the same variant, are not flagged. Classes a component inherits through `extend` or a `createSV()` `base` count too, and the component's own class is the one flagged. Single-word utilities (`flex`, `block`) are ignored unless `exclusiveGroups` is set. If your Tailwind v3 config sets a `prefix`, pass it via the `prefix` option.
 
 ```typescript
 const button = sv({

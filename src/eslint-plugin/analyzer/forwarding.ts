@@ -16,6 +16,7 @@ import {
 import { getKeyName } from './config-keys.ts';
 import {
 	findVariable,
+	getConstDefInit,
 	getLookupScope,
 	getModuleScope,
 	isInTemplate
@@ -144,6 +145,7 @@ type PropsObject = {
 type PendingPosition = {
 	site: ComponentSite | null;
 	run: (emit: PartsCallback) => void;
+	forwards: () => boolean;
 };
 
 // Receives a position's class parts: filled by a collector, or read by an
@@ -151,7 +153,7 @@ type PendingPosition = {
 type PartsCallback = (parts: ClassParts) => void;
 
 // A pending position once its walk has run: the class parts it produced.
-type CollectedPosition = Omit<PendingPosition, 'run'> & { parts: ClassParts };
+type CollectedPosition = Pick<PendingPosition, 'site'> & { parts: ClassParts };
 
 // Calls whose result is a single-file component's props, read at the top level
 // of its script: Svelte's `$props()` rune, and Vue's `defineProps()` (bare or
@@ -452,6 +454,9 @@ export const createForwardingScan = (
 	// name.
 	let templateProps: PropsObject | null = null;
 
+	// The values `const` declarations hold, read wherever the name is used.
+	const constValues = new Set<Node>();
+
 	const moduleScope = (): Scope.Scope => getModuleScope(sourceCode);
 
 	const deferParts = (site: ComponentSite | null, collect: PartsCallback) => {
@@ -459,7 +464,8 @@ export const createForwardingScan = (
 			site,
 			run(emit) {
 				emitCollected(emit, collect);
-			}
+			},
+			forwards: () => true
 		});
 	};
 
@@ -625,13 +631,23 @@ export const createForwardingScan = (
 			return;
 		}
 
+		const declared = sourceCode.getDeclaredVariables(node);
+
+		for (const variable of declared) {
+			for (const def of variable.defs) {
+				const value = getConstDefInit(def);
+
+				if (value !== null) {
+					constValues.add(value);
+				}
+			}
+		}
+
 		const source = getInitSource(init);
 
 		if (source === null) {
 			return;
 		}
-
-		const declared = sourceCode.getDeclaredVariables(node);
 
 		if (id.type === 'ObjectPattern') {
 			registerBindings(declared, id, source);
@@ -885,6 +901,10 @@ export const createForwardingScan = (
 		recordTemplateProps(node);
 		pending.push({
 			site: null,
+			// A class list that is a `const`'s value is read in full wherever
+			// the `const` is used, so a prop forwarded into it is tracked there.
+			forwards: () =>
+				!(constValues.has(node) && isClassListCall(node, ctx)),
 			run(emit) {
 				if (isClassListCall(node, ctx)) {
 					emitCollected(emit, (parts) => {
@@ -1201,7 +1221,10 @@ export const createForwardingScan = (
 			for (const item of pending) {
 				item.run((parts) => {
 					positions.push({ parts, site: item.site });
-					trackForwarding(parts);
+
+					if (item.forwards()) {
+						trackForwarding(parts);
+					}
 				});
 			}
 
