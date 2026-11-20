@@ -70,6 +70,14 @@ function Sized({ size, tone, flat, className }) {
 	return <b className={sized({ size, tone, flat, class: className })} />;
 }\n`;
 
+// The button above with a preset, and one whose values aren't known in full.
+const RESTYLE_PRESET_BUTTON = `const button = sv({
+	base: 'p-2 rounded',
+	variants: { size: { sm: 'text-sm', lg: 'mt-8' } },
+	defaultVariants: { size: 'sm' },
+	presets: { big: { size: 'lg' }, odd: { ...extra, size: 'lg' } }
+});\n`;
+
 export const RESTYLE_VALID = [
 	// An element's variant props select the classes a component applies: a
 	// variant with no default stays unset unless passed, and `null` unsets
@@ -369,8 +377,8 @@ export const RESTYLE_VUE_VALID = [
 export const RESTYLE_INVALID = [
 	// An element's variant props select the classes a component applies:
 	// static text, a static expression and a bare boolean attribute are read;
-	// `undefined`, a spread or a namespaced attribute leaves the default; a
-	// value that can't be read may select any.
+	// `undefined` or a namespaced attribute leaves the default; a spread that
+	// can't be read, or a value that can't be, may select any.
 	{
 		code:
 			IMPORT +
@@ -386,7 +394,7 @@ export const RESTYLE_INVALID = [
 			restyle('text-lg', 'text-sm'),
 			restyle('shadow-lg', 'shadow-none'),
 			restyle('text-xl', 'text-base'),
-			restyle('text-2xl', 'text-base'),
+			restyle('text-2xl', 'text-sm'),
 			restyle('text-3xl', 'text-sm')
 		]
 	},
@@ -441,8 +449,9 @@ function Pattern(props) {
 			restyle('bg-blue-500', 'bg-red-500')
 		]
 	},
-	// A props object read; a variant read from another component's prop,
-	// which an element of this one can't pass; and one read from no prop.
+	// A props object read; and a variant read from another component's prop,
+	// which an element of this one can't pass, or from no prop, which may
+	// select any value, as in a direct call.
 	{
 		code:
 			IMPORT +
@@ -460,9 +469,9 @@ function Picked({ className }) {
 <Member size="sm" className="text-xl" />;
 <Picked size="md" className="text-2xl" />;`,
 		errors: [
-			restyle('text-lg', 'text-base'),
+			restyle('text-lg', 'text-sm'),
 			restyle('text-xl', 'text-sm'),
-			restyle('text-2xl', 'text-base')
+			restyle('text-2xl', 'text-sm')
 		]
 	},
 	// The left side of an `||` or `??` renders too.
@@ -1108,6 +1117,88 @@ cn(classes.item({ active: true }), 'px-4');`,
 		errors: [restyle('p-4', 'p-2')]
 	}
 ];
+
+// A component spreading its props into the call passes on the ones an element
+// passes, its preset included; one the call passes itself stays.
+RESTYLE_INVALID.push(
+	...[
+		'function Button({ className, ...rest }) { return <button className={button({ ...rest, class: className })} />; }',
+		'function Button(props) { return <button className={button({ ...props, class: props.className })} />; }'
+	].map((component) => ({
+		code: `${IMPORT}${RESTYLE_PRESET_BUTTON}${component}
+<Button size="lg" className="text-lg" />;
+<Button size="lg" className="mt-2" />;
+<Button className="text-xl" />;
+<Button preset="big" className="mt-3" />;`,
+		errors: [
+			restyle('mt-2', 'mt-8'),
+			restyle('text-xl', 'text-sm'),
+			restyle('mt-3', 'mt-8')
+		]
+	})),
+	{
+		code: `${IMPORT}${RESTYLE_PRESET_BUTTON}function Button({ className, ...rest }) { return <button className={button({ ...rest, size: 'sm', preset: 'big', class: className })} />; }
+<Button size="lg" preset="odd" className="text-lg" />;`,
+		errors: [restyle('text-lg', 'text-sm')]
+	},
+	// A spread of anything else, a computed key, or a variant or preset read
+	// from no prop may set any variant the call doesn't pass itself.
+	...[
+		'button({ ...other, class: className })',
+		'button({ ...pick(), class: className })',
+		'button({ [key]: value, class: className })',
+		"button({ size: big ? 'lg' : 'sm', class: className })",
+		'button({ preset: pick(), class: className })'
+	].map((call) => ({
+		code: `${IMPORT}${RESTYLE_PRESET_BUTTON}function Button({ className, big }) { return <button className={${call}} />; }
+<Button big className="mt-2" />;`,
+		errors: [restyle('mt-2', 'mt-8')]
+	})),
+	// A preset read from a prop takes the one the element passes: a known one
+	// sets its values, and one that can't be read, an unknown one or one not
+	// known in full may set any value. A default on the prop isn't followed.
+	{
+		code: `${IMPORT}${RESTYLE_PRESET_BUTTON}function Button({ preset, className }) { return <button className={button({ preset, class: className })} />; }
+function Fallback({ preset = 'big', className }) { return <button className={button({ preset, class: className })} />; }
+<Button preset="big" className="text-lg" />;
+<Button preset="big" className="mt-2" />;
+<Button className="text-xl" />;
+<Button preset={name} className="mt-3" />;
+<Button preset="nope" className="mt-4" />;
+<Button preset="odd" className="mt-5" />;
+<Button preset="odd" className="text-2xl" />;
+<Fallback className="mt-6" />;`,
+		errors: [
+			restyle('mt-2', 'mt-8'),
+			restyle('text-xl', 'text-sm'),
+			restyle('mt-3', 'mt-8'),
+			restyle('mt-4', 'mt-8'),
+			restyle('mt-5', 'mt-8'),
+			restyle('mt-6', 'mt-8')
+		]
+	},
+	// An element spread passes the props of an object literal, and may pass
+	// any prop otherwise, over the props written before it.
+	{
+		code: `${IMPORT}${RESTYLE_PRESET_BUTTON}function Button({ size, className }) { return <button className={button({ size, class: className })} />; }
+<Button {...{ size: 'lg' }} className="text-lg" />;
+<Button {...{ size: 'lg' }} className="mt-2" />;
+<Button {...o} className="mt-3" />;
+<Button {...o} size="sm" className="mt-4" />;
+<Button size="sm" {...o} className="mt-5" />;`,
+		errors: [
+			restyle('mt-2', 'mt-8'),
+			restyle('mt-3', 'mt-8'),
+			restyle('mt-5', 'mt-8')
+		]
+	},
+	{
+		// The same for a component spreading its props into the call.
+		code: `${IMPORT}${RESTYLE_PRESET_BUTTON}function Button({ className, ...rest }) { return <button className={button({ ...rest, class: className })} />; }
+<Button {...o} className="mt-2" />;`,
+		errors: [restyle('mt-2', 'mt-8')]
+	}
+);
 
 export const RESTYLE_SVELTE_INVALID = [
 	// Svelte: literal runs around a substitution, and a `class` attribute that

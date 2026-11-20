@@ -411,6 +411,50 @@ t.test('no-restyle reuses the scan of a module linted earlier', async (t) => {
 		'a file missing from disk lints without errors'
 	);
 });
+// A type, an overload signature or a namespace sharing a name declares no
+// other value, so the name still resolves to its one value definition.
+t.test('no-restyle reads a name a type also declares', (t) => {
+	const tsxTester = new RuleTester({
+		languageOptions: {
+			parser: tsParser,
+			parserOptions: { ecmaFeatures: { jsx: true } }
+		}
+	});
+	const button = "const button = sv({ base: 'p-2', variants: {} });\n";
+	const forward =
+		'({ className }: Props) => <b className={button({ class: className })} />';
+	const conflict = { messageId: 'conflict' };
+
+	t.doesNotThrow(() => {
+		tsxTester.run('no-restyle', rules['no-restyle'], {
+			valid: [],
+			invalid: [
+				{
+					code: `${IMPORT}${button}type button = ReturnType<typeof button>;\nbutton({ class: 'p-4' });`,
+					filename: 'test.tsx',
+					errors: [conflict]
+				},
+				{
+					code: `${IMPORT}${button}const C = ${forward};\ntype C = typeof C;\n<C className="p-4" />;`,
+					filename: 'test.tsx',
+					errors: [conflict]
+				},
+				{
+					code: `${IMPORT}${button}function Over(props: Other): null;\nfunction Over({ className }: Props) { return <b className={button({ class: className })} />; }\n<Over className="p-4" />;`,
+					filename: 'test.tsx',
+					errors: [conflict]
+				},
+				{
+					code: `${IMPORT}${button}function Merged({ className }: Props) { return <b className={button({ class: className })} />; }\nnamespace Merged { export type Size = string; }\n<Merged className="p-4" />;`,
+					filename: 'test.tsx',
+					errors: [conflict]
+				}
+			]
+		});
+	}, 'rule tester passes');
+	t.end();
+});
+
 // A callee in a type-only wrapper is read through it, like any other value.
 t.test('no-restyle reads callees through type-only wrappers', (t) => {
 	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });

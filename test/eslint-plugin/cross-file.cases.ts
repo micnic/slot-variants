@@ -346,6 +346,20 @@ SVELTE_CROSS_FILE_INVALID.push({
 	]
 });
 
+SVELTE_CROSS_FILE_INVALID.push({
+	// A spread passes the props of an object literal, and may pass any prop
+	// otherwise; a `bind:` directive passes a state that can't be read, and
+	// an event handler leaves the default.
+	code: `<script>import Sized from './ui/Sized.svelte';</script>\n<Sized {...{ size: 'md' }} class="text-lg" /><Sized {...o} class="text-xl" /><Sized bind:size={s} class="text-2xl" /><Sized on:click={f} class="text-3xl" />`,
+	filename: join(fixtureDir, 'page.svelte'),
+	errors: [
+		restyle('text-lg', 'text-base'),
+		restyle('text-xl', 'text-sm'),
+		restyle('text-2xl', 'text-sm'),
+		restyle('text-3xl', 'text-base')
+	]
+});
+
 export const VUE_CROSS_FILE_VALID = [
 	{
 		// A component that forwards no class prop, a globally registered one
@@ -369,9 +383,9 @@ export const VUE_CROSS_FILE_INVALID = [
 	},
 	{
 		// A kebab-case attribute names its camelCase prop: static text and a
-		// bound expression are read; a bare attribute, an empty binding and
-		// one that can't be read may select any value; `v-bind` of an object
-		// and an event leave the default.
+		// bound expression are read; a bare attribute, an empty binding, one
+		// that can't be read and `v-bind` of an object that can't be may
+		// select any value; an event leaves the default.
 		code: `<script setup>import Sized from './ui/Sized.vue';</script>\n<template><Sized icon-size="sm" class="text-lg" /><Sized :icon-size="'sm'" class="text-xl" /><Sized icon-size class="text-2xl" /><Sized :icon-size="" class="text-3xl" /><Sized :icon-size="pick()" class="text-4xl" /><Sized v-bind="o" @click="f" class="text-5xl" /></template>`,
 		filename: join(fixtureDir, 'page.vue'),
 		errors: [
@@ -380,7 +394,35 @@ export const VUE_CROSS_FILE_INVALID = [
 			restyle('text-2xl', 'text-sm'),
 			restyle('text-3xl', 'text-sm'),
 			restyle('text-4xl', 'text-sm'),
-			restyle('text-5xl', 'text-base')
+			restyle('text-5xl', 'text-sm')
+		]
+	},
+	{
+		// `v-bind` of an object literal passes its props; `v-model:icon-size`
+		// a state that can't be read, as does a dynamic argument; a bare
+		// `v-model` passes no variant.
+		code: `<script setup>import Sized from './ui/Sized.vue';</script>\n<template><Sized v-bind="{ iconSize: 'md' }" class="text-lg" /><Sized v-model:icon-size="s" class="text-xl" /><Sized :[k]="x" class="text-2xl" /><Sized v-model="m" class="text-3xl" /></template>`,
+		filename: join(fixtureDir, 'page.vue'),
+		errors: [
+			restyle('text-lg', 'text-base'),
+			restyle('text-xl', 'text-sm'),
+			restyle('text-2xl', 'text-sm'),
+			restyle('text-3xl', 'text-base')
+		]
+	},
+	{
+		// A template reads a `defineProps()` prop by its bare name, with its
+		// `withDefaults()` default; a `v-for` binding, a script binding and a
+		// global read in the script are no prop, and may select any value.
+		code: `<script setup>import Bare from './ui/Bare.vue';\nimport BareDefault from './ui/BareDefault.vue';\nimport Looped from './ui/Looped.vue';\nimport Picked from './ui/Picked.vue';\nimport ScriptGlobal from './ui/ScriptGlobal.vue';</script>\n<template><Bare size="lg" class="text-lg" /><Bare size="lg" class="mt-2" /><Bare class="text-xl" /><BareDefault class="mt-3" /><Looped size="sm" class="mt-4" /><Picked size="sm" class="mt-5" /><ScriptGlobal size="sm" class="mt-6" /></template>`,
+		filename: join(fixtureDir, 'page.vue'),
+		errors: [
+			restyle('mt-2', 'mt-8'),
+			restyle('text-xl', 'text-sm'),
+			restyle('mt-3', 'mt-8'),
+			restyle('mt-4', 'mt-8'),
+			restyle('mt-5', 'mt-8'),
+			restyle('mt-6', 'mt-8')
 		]
 	},
 	{

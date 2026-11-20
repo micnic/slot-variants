@@ -83,6 +83,10 @@ const findTemplateContainer = (
 	return null;
 };
 
+/** Whether `node` is written in a Vue template expression. */
+export const isInTemplate = (node: Node, sourceCode: SourceCode): boolean =>
+	findTemplateContainer(node, sourceCode) !== null;
+
 // The innermost scope the program node owns — the module scope holding the
 // file's own bindings, rather than the global one `getScope()` hands back for
 // a Program.
@@ -154,8 +158,24 @@ export const findLookupVariable = (
 	return findVariable(scope, node.name);
 };
 
-// The one definition `name` resolves to, with the scope it's declared in, or
-// null when it's unbound or declared more than once.
+// Whether a definition the TypeScript parser records declares no value of its
+// own: a type alias, interface or type parameter, a function overload
+// signature, or a namespace, which only adds members to what it merges with.
+// Read as strings, as ESLint's own types list none of these kinds.
+const isTypeOnlyDef = (def: Scope.Definition): boolean => {
+	const kind: string = def.type;
+	const nodeType: string = def.node.type;
+
+	return (
+		kind === 'Type' ||
+		kind === 'TSModuleName' ||
+		nodeType === 'TSDeclareFunction'
+	);
+};
+
+// The one value definition `name` resolves to, with the scope it's declared
+// in, or null when it's unbound or declared more than once. A type sharing the
+// name (`type Size = keyof typeof Size`) doesn't count as another declaration.
 export const findSingleBinding = (
 	scope: Scope.Scope,
 	name: string
@@ -166,7 +186,7 @@ export const findSingleBinding = (
 		return null;
 	}
 
-	const [def, extra] = variable.defs;
+	const [def, extra] = variable.defs.filter((item) => !isTypeOnlyDef(item));
 
 	// A global has no definition, a redeclared name more than one
 	if (def === undefined || extra !== undefined) {

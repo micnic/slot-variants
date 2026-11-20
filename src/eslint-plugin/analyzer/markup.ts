@@ -32,10 +32,13 @@ type JsxMemberName = {
 	property: JsxIdentifier;
 };
 
+// `{...props}`: every prop of an object.
+type JsxSpreadAttribute = { type: 'JSXSpreadAttribute'; argument: Node };
+
 export type JsxOpeningElement = {
 	type: 'JSXOpeningElement';
 	name: JsxIdentifier | JsxMemberName | { type: 'JSXNamespacedName' };
-	attributes: ReadonlyArray<JsxAttribute | { type: 'JSXSpreadAttribute' }>;
+	attributes: ReadonlyArray<JsxAttribute | JsxSpreadAttribute>;
 };
 
 type SvelteLiteral = {
@@ -64,19 +67,32 @@ type SvelteShorthandAttribute = {
 	value: Expression;
 };
 
+// `{...props}`: every prop of an object.
+type SvelteSpreadAttribute = {
+	type: 'SvelteSpreadAttribute';
+	argument: Expression;
+};
+
+// A directive: `bind:size={value}` is of kind `Binding`.
+type SvelteDirective = {
+	type: 'SvelteDirective';
+	kind: string;
+	key: { name: { name: string } };
+};
+
 // Every other attribute kind svelte-eslint-parser emits on a start tag.
 type SvelteOtherAttribute = {
-	type:
-		| 'SvelteSpreadAttribute'
-		| 'SvelteDirective'
-		| 'SvelteSpecialDirective'
-		| 'SvelteStyleDirective';
+	type: 'SvelteSpecialDirective' | 'SvelteStyleDirective';
 };
 
 export type SvelteStartTag = {
 	type: 'SvelteStartTag';
 	attributes: ReadonlyArray<
-		SvelteAttribute | SvelteShorthandAttribute | SvelteOtherAttribute
+		| SvelteAttribute
+		| SvelteShorthandAttribute
+		| SvelteSpreadAttribute
+		| SvelteDirective
+		| SvelteOtherAttribute
 	>;
 };
 
@@ -114,7 +130,7 @@ type VExpressionContainer = {
 type VDirectiveKey = {
 	type: 'VDirectiveKey';
 	name: { name: string };
-	argument: VIdentifier | null;
+	argument: VIdentifier | { type: 'VExpressionContainer' } | null;
 };
 
 export type VAttribute = {

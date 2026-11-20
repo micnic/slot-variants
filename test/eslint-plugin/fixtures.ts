@@ -281,6 +281,58 @@ writeFixture(
 	<template><b :class="sized({ iconSize: props.iconSize, class: props.class })">x</b></template>`
 );
 
+// Vue templates reading a `defineProps()` prop by its bare name, with and
+// without a `withDefaults()` default; and names that are no prop: a `v-for`
+// binding, a script binding, and a global read in the script.
+const BARE_CONFIG = `${IMPORT}const sized = sv({ base: 'p-2', variants: { size: { sm: 'text-sm', lg: 'mt-8' } }, defaultVariants: { size: 'sm' } });`;
+
+writeFixture(
+	'ui/Bare.vue',
+	`<script setup>
+	${BARE_CONFIG}
+	const props = defineProps({ class: String, size: String });
+	</script>
+	<template><b :class="sized({ size, class: props.class })">x</b></template>`
+);
+
+writeFixture(
+	'ui/BareDefault.vue',
+	`<script setup>
+	${BARE_CONFIG}
+	const props = withDefaults(defineProps({ class: String, size: String }), { size: 'lg' });
+	</script>
+	<template><b :class="sized({ size, class: props.class })">x</b></template>`
+);
+
+writeFixture(
+	'ui/Looped.vue',
+	`<script setup>
+	${BARE_CONFIG}
+	const props = defineProps({ class: String, size: String });
+	</script>
+	<template><b v-for="size in sizes" :class="sized({ size, class: props.class })">x</b></template>`
+);
+
+writeFixture(
+	'ui/Picked.vue',
+	`<script setup>
+	${BARE_CONFIG}
+	const props = defineProps({ class: String, size: String });
+	let picked = pick();
+	</script>
+	<template><b :class="sized({ size: picked, class: props.class })">x</b></template>`
+);
+
+writeFixture(
+	'ui/ScriptGlobal.vue',
+	`<script setup>
+	${BARE_CONFIG}
+	const props = defineProps({ class: String, size: String });
+	const classes = () => sized({ size: globalSize, class: props.class });
+	</script>
+	<template><b :class="classes()">x</b></template>`
+);
+
 // Vue defaults: `withDefaults()`, and a runtime declaration's `default`.
 writeFixture(
 	'ui/Defaulted.vue',

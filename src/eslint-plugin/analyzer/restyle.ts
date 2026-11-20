@@ -19,6 +19,7 @@ import {
 	forEachOverrideTarget,
 	getSlotBuckets,
 	type Invocation,
+	pickCallMatchers,
 	readStyledClasses,
 	resolveTargetSlots,
 	type StyledClasses,
@@ -303,19 +304,14 @@ export const forEachOverrideParts = (
 	ctx: StyledContext,
 	visit: (parts: ClassParts) => void
 ) => {
-	const { styles, matchers, defaultMatchers, unreadProps } = invocation;
+	const { styles } = invocation;
+	const callMatchers = pickCallMatchers(invocation);
 
 	forEachOverrideTarget(value, styles, invocation.slot, (slotKey, node) => {
 		const parts = emptyParts();
 
 		for (const slot of resolveTargetSlots(styles, slotKey)) {
-			parts.styled.push({
-				styles,
-				slot,
-				matchers,
-				defaultMatchers,
-				unreadProps
-			});
+			parts.styled.push({ styles, slot, ...callMatchers });
 		}
 
 		collectParts(node, ctx, parts);
