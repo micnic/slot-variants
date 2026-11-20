@@ -39,7 +39,10 @@ const TRANSPARENT_WRAPPER_TYPES: ReadonlySet<string> = new Set([
 	'TSTypeAssertion'
 ]);
 
-const isTransparentWrapper = (node: Node): node is TransparentWrapper =>
+/** Whether `node` is a type-only or optional-chain wrapper of another. */
+export const isTransparentWrapper = (node: {
+	type: string;
+}): node is TransparentWrapper =>
 	TRANSPARENT_WRAPPER_TYPES.has(node.type) && 'expression' in node;
 
 // The expression a chain of transparent wrappers stands for: `x as const`,

@@ -18,8 +18,9 @@ const EXTENSIONS = [
 ];
 
 // TypeScript's ESM convention writes `./button.js` for a file that is really
-// `./button.ts`, so a specifier that doesn't exist as written is retried with
-// each source extension in place of its JavaScript one.
+// `./button.ts`, so such a specifier tries each source extension in place of
+// its JavaScript one first, as TypeScript does, and only then the file as
+// written, which may be stale build output.
 const REWRITABLE = new Map([
 	['.js', ['.ts', '.tsx']],
 	['.mjs', ['.mts']],
@@ -55,18 +56,21 @@ const findFile = (
 	return null;
 };
 
-// The file a resolved path points at: itself, the same path under a source
-// extension, an extensionless path plus one, or a directory's index file.
+// The file a resolved path points at: a JavaScript path's source file under
+// a source extension, itself, an extensionless path plus one, or a directory's
+// index file.
 const resolveFile = (base: string): string | null => {
-	if (isFile(base)) {
-		return base;
-	}
-
 	const extension = extname(base);
 	const rewrites = REWRITABLE.get(extension);
 
 	if (rewrites) {
-		return findFile(base.slice(0, -extension.length), rewrites);
+		const stem = base.slice(0, -extension.length);
+
+		return findFile(stem, rewrites) ?? findFile(stem, [extension]);
+	}
+
+	if (isFile(base)) {
+		return base;
 	}
 
 	return findFile(base, EXTENSIONS) ?? findFile(`${base}/index`, EXTENSIONS);

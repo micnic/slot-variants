@@ -7,7 +7,7 @@ import type {
 	Property,
 	SpreadElement
 } from 'estree';
-import { isLastArgument } from '../analyzer/call-matching.ts';
+import { type CallMatch, isLastArgument } from '../analyzer/call-matching.ts';
 import {
 	CONFIG_KEY_ORDER,
 	docsUrl,
@@ -504,9 +504,10 @@ const canFixBaseStyle = (
 // Whether the call's `createSV()` factory may give it a `base`.
 const inheritsFactoryBase = (
 	node: CallExpression,
+	call: CallMatch,
 	ctx: StyledContext
 ): boolean => {
-	const defaults = getFactoryDefaults(node, ctx);
+	const defaults = getFactoryDefaults(node, call, ctx);
 
 	return defaults === null || defaults.has('base');
 };
@@ -635,7 +636,7 @@ export const svConfigStyle: Rule.RuleModule = {
 				call.args,
 				baseStyle,
 				call.isFactoryConfig,
-				inheritsFactoryBase(node, ctx)
+				inheritsFactoryBase(node, call, ctx)
 			);
 		});
 	}

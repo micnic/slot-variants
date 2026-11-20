@@ -18,9 +18,10 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 // `sv()` itself, or a factory called without defaults, inherits nothing.
 const getInheritedCall = (
 	ctx: StyledContext,
-	node: CallExpression
+	node: CallExpression,
+	call: CallMatch
 ): Pick<SharedTokensCall, 'canCreateBase' | 'inheritsPostProcess'> => {
-	const defaults = getFactoryDefaults(node, ctx);
+	const defaults = getFactoryDefaults(node, call, ctx);
 
 	if (defaults === null) {
 		return { canCreateBase: false, inheritsPostProcess: true };
@@ -126,7 +127,7 @@ export const noSharedTokens: Rule.RuleModule = {
 			}
 
 			analyzeSharedTokens(context, call.config, {
-				...getInheritedCall(ctx, node),
+				...getInheritedCall(ctx, node, call),
 				leadingArg: getLeadingArg(node, call, call.config)
 			});
 		});

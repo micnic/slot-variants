@@ -185,6 +185,13 @@ export const CROSS_FILE_INVALID = [
 		errors: [restyle('px-4', 'px-1')]
 	},
 	{
+		// A `.js` specifier prefers the source file over the build output
+		// beside it.
+		code: `import { Stale } from './ui/stale.js';\n<Stale className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
 		// A path alias, mapped by the `alias` option.
 		code: `import { Button } from '@ui/button.tsx';\n<Button className="p-4" />;`,
 		filename: join(fixtureDir, 'page.tsx'),
@@ -278,10 +285,23 @@ export const TS_CROSS_FILE_VALID = [
 		code: `import { Button, Badge, Card, Tag } from './ui/shadowing-declarations.ts';\n<><Button className="p-4" /><Badge className="px-4" /><Card className="p-4" /><Tag className="p-4" /></>;`,
 		filename: join(fixtureDir, 'page.tsx'),
 		languageOptions: { parser: tsParser }
+	},
+	{
+		// `export type *` re-exports no value.
+		code: `import { Button } from './ui/type-star.ts';\n<Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		languageOptions: { parser: tsParser }
 	}
 ];
 
 export const TS_CROSS_FILE_INVALID = [
+	{
+		// A component exported through a type assertion, wrapped and bare.
+		code: `import Asserted, { Cast } from './ui/asserted.tsx';\n<><Cast className="m-4" /><Asserted className="m-6" /></>;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		languageOptions: { parser: tsParser },
+		errors: [restyle('m-4', 'm-5'), restyle('m-6', 'm-5')]
+	},
 	{
 		// A type-only or erased export leaves the value to `export *`.
 		code: `import { Chip, Pill, Ghost, Phantom, Shade, Mist } from './ui/shadowing-declarations.ts';\n<><Chip className="p-4" /><Pill className="p-4" /><Ghost className="p-4" /><Phantom className="p-4" /><Shade className="p-4" /><Mist className="p-4" /></>;`,
@@ -316,7 +336,7 @@ export const SVELTE_CROSS_FILE_INVALID = [
 	},
 	{
 		// …and with the configured one otherwise, here for TypeScript.
-		code: `<script lang="ts">import { Chip } from './ui/svelte-barrel.ts';</script>\n<Chip class="px-4" />`,
+		code: `<script lang="ts">import { Chip } from './ui/svelte-ts-barrel.ts';</script>\n<Chip class="px-4" />`,
 		filename: join(fixtureDir, 'page.svelte'),
 		languageOptions: {
 			parser: svelteParser,

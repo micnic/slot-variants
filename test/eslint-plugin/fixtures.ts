@@ -375,7 +375,7 @@ writeFixture(
 );
 
 writeFixture(
-	'ui/svelte-barrel.ts',
+	'ui/svelte-ts-barrel.ts',
 	"export type Size = 'sm' | 'lg';\nexport { default as Chip } from './Chip.svelte';\n"
 );
 
@@ -426,6 +426,39 @@ writeFixture(
 	}
 	`
 );
+
+// A `.js` specifier whose source file sits beside stale build output.
+writeFixture(
+	'ui/stale.tsx',
+	`${IMPORT}const stale = sv({ base: 'p-2', variants: {} });
+
+	export function Stale({ className }) {
+		return <i className={stale({ class: className })} />;
+	}
+	`
+);
+
+writeFixture(
+	'ui/stale.js',
+	'export function Stale({ className }) { return <i className={className} />; }\n'
+);
+
+// Components exported through type assertions, and a barrel that re-exports
+// only types.
+writeFixture(
+	'ui/asserted.tsx',
+	`${IMPORT}const asserted = sv({ base: 'm-5', variants: {} });
+
+	function Impl({ className }: { className?: string }) {
+		return <i className={asserted({ class: className })} />;
+	}
+
+	export const Cast = memo(Impl) as typeof Impl;
+	export default Impl as typeof Impl;
+	`
+);
+
+writeFixture('ui/type-star.ts', "export type * from './button.tsx';\n");
 
 // A re-export chain longer than the loader will follow.
 const HOP_COUNT = 12;

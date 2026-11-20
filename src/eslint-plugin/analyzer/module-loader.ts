@@ -2,24 +2,45 @@ import { readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import type { Linter, Rule } from 'eslint';
+import type { Node } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
+import type { ImportedFactory } from './call-matching.ts';
 import { type Component, resolveComponentBinding } from './components.ts';
+import {
+	findSingleBinding,
+	getConstDefInit,
+	isTransparentWrapper
+} from './const-bindings.ts';
 import {
 	createForwardingScan,
 	type ForwardedStyles,
 	type ModuleScan
 } from './forwarding.ts';
 import { collectExportTable, type ExportTarget } from './module-exports.ts';
-import { type AliasMap, resolveModulePath } from './module-paths.ts';
+import {
+	type AliasMap,
+	buildAliasMap,
+	resolveModulePath
+} from './module-paths.ts';
 import { DEFAULT_EXPORT } from './module-syntax.ts';
+import { getDefaultKeys, type StyledContext } from './styled-values.ts';
 
 /**
  * One place an export name leads: a component of the module, already resolved
- * to the classes it forwards, or a name to look up in another module.
+ * to the classes it forwards, a `createSV()` factory, or a name to look up in
+ * another module.
  */
 type ExportStep =
 	| { kind: 'styles'; styles: ForwardedStyles }
+	| { kind: 'factory'; factory: ImportedFactory }
 	| { kind: 'forward'; specifier: string; name: string };
+
+// What an import is resolved to: the step of the module declaring it that
+// answers, or the module itself as a single-file component.
+type ExportReader<T> = {
+	step: (step: ExportStep) => T | null;
+	self: (analysis: ModuleAnalysis) => T | null;
+};
 
 /**
  * What one imported module contributes, resolved while it's analyzed so the
@@ -61,6 +82,8 @@ export type ModuleContext = {
 	languageOptions: Linter.LanguageOptions;
 };
 
+type SettingsRecord = Readonly<Record<string, unknown>>;
+
 // `eslint` is an optional peer dependency, so it is resolved on use from the
 // project being linted rather than imported at load time — under a host that
 // doesn't ship it (oxlint), cross-file resolution simply stays off instead of
@@ -89,6 +112,19 @@ const TYPE_AWARE_PARSER_OPTIONS = new Set([
 const MAX_CACHED_MODULES = 200;
 
 const moduleCache = new Map<string, CacheEntry>();
+
+// The plugin's key in ESLint's shared `settings`.
+const SETTINGS_KEY = 'slot-variants';
+
+// The paths whose analysis is under way, so modules importing each other
+// read as unknown rather than analyzing each other forever.
+const loadingModules = new Set<string>();
+
+// The context of the module analysis under way, read by the rules a nested
+// lint run creates. ESLint copies `languageOptions` for each run, so the
+// modules that run follows in turn are loaded under the importer's context
+// instead, sharing its cache entries.
+let nestedContext: ModuleContext | null = null;
 
 // How many re-exports deep an import is followed: enough to walk a barrel or
 // two without following a pathological chain. Sibling `export *` entries of
@@ -146,6 +182,98 @@ const getLinterConstructor = (
 	);
 };
 
+const isSettingsRecord = (value: unknown): value is SettingsRecord =>
+	typeof value === 'object' && value !== null;
+
+// The string targets of the `alias` map in the plugin's shared settings
+// (`settings: { 'slot-variants': { alias } }`).
+const readAliasSetting = (
+	settings: SettingsRecord
+): Record<string, string> | undefined => {
+	const shared = settings[SETTINGS_KEY];
+
+	if (!isSettingsRecord(shared) || !isSettingsRecord(shared.alias)) {
+		return undefined;
+	}
+
+	const aliases: Record<string, string> = {};
+
+	for (const [prefix, target] of Object.entries(shared.alias)) {
+		if (typeof target === 'string') {
+			aliases[prefix] = target;
+		}
+	}
+
+	return aliases;
+};
+
+/**
+ * What following a file's imports needs: the importer's context in a nested
+ * run analyzing an imported module, or else the rule's own, with `alias` (a
+ * rule option) in place of the shared setting's aliases when given.
+ */
+export const getModuleContext = (
+	context: Rule.RuleContext,
+	alias?: Record<string, string>
+): ModuleContext => {
+	if (nestedContext !== null) {
+		return nestedContext;
+	}
+
+	return {
+		aliases: buildAliasMap(
+			alias ?? readAliasSetting(context.settings),
+			context.cwd
+		),
+		cwd: context.cwd,
+		languageOptions: context.languageOptions
+	};
+};
+
+// The `createSV()` factory `node` is, read through `const` bindings and
+// type-only wrappers, or null for anything else.
+const readFactory = (
+	node: Node,
+	ctx: StyledContext
+): ImportedFactory | null => {
+	const call = ctx.resolve(node);
+
+	if (
+		call.type !== 'CallExpression' ||
+		!ctx.matchCall(call)?.isFactoryConfig
+	) {
+		return null;
+	}
+
+	return { defaultKeys: getDefaultKeys(call, ctx) };
+};
+
+// The factory a module-scope `const` holds, or null when it holds none.
+const readFactoryBinding = (
+	name: string,
+	{ moduleScope, ctx }: ModuleScan
+): ExportStep | null => {
+	const binding = findSingleBinding(moduleScope, name);
+
+	if (binding === null) {
+		return null;
+	}
+
+	const init = getConstDefInit(binding.def);
+
+	if (!init) {
+		return null;
+	}
+
+	const factory = readFactory(init, ctx);
+
+	if (factory === null) {
+		return null;
+	}
+
+	return { kind: 'factory', factory };
+};
+
 // The step for a component that forwards its class prop, or null when it
 // forwards none.
 const toStylesStep = (
@@ -166,14 +294,22 @@ const toStylesStep = (
 // or a binding it imported and re-exports — followed on to that module.
 const toExportStep = (
 	target: ExportTarget,
-	{ moduleScope, forwarded }: ModuleScan
+	scan: ModuleScan
 ): ExportStep | null => {
+	const { moduleScope, forwarded } = scan;
+
 	if (target.kind === 'forward') {
 		return target;
 	}
 
 	if (target.kind === 'node') {
 		return toStylesStep(target.node, forwarded);
+	}
+
+	const factory = readFactoryBinding(target.name, scan);
+
+	if (factory !== null) {
+		return factory;
 	}
 
 	const binding = resolveComponentBinding(target.name, moduleScope);
@@ -193,9 +329,43 @@ const toExportStep = (
 	};
 };
 
+// The factory an anonymous default export is (`export default createSV()`),
+// which names no binding to look up.
+const readDefaultFactory = ({ ast, ctx }: ModuleScan): ExportStep | null => {
+	for (const node of ast.body) {
+		if (node.type !== 'ExportDefaultDeclaration') {
+			continue;
+		}
+
+		const { declaration } = node;
+
+		if (
+			declaration.type !== 'CallExpression' &&
+			!isTransparentWrapper(declaration)
+		) {
+			return null;
+		}
+
+		const factory = readFactory(declaration, ctx);
+
+		if (factory === null) {
+			return null;
+		}
+
+		return { kind: 'factory', factory };
+	}
+
+	return null;
+};
+
 const analyzeScan = (scan: ModuleScan): ModuleAnalysis => {
 	const { named, starSources } = collectExportTable(scan.ast);
 	const exports = new Map<string, ExportStep[]>();
+	const defaultFactory = readDefaultFactory(scan);
+
+	if (defaultFactory !== null) {
+		exports.set(DEFAULT_EXPORT, [defaultFactory]);
+	}
 
 	for (const [name, targets] of named) {
 		const steps: ExportStep[] = [];
@@ -208,7 +378,7 @@ const analyzeScan = (scan: ModuleScan): ModuleAnalysis => {
 			}
 		}
 
-		exports.set(name, steps);
+		exports.set(name, [...(exports.get(name) ?? []), ...steps]);
 	}
 
 	return {
@@ -286,35 +456,43 @@ const collectModule = (
 	LinterClass: LinterConstructor,
 	path: string,
 	text: string,
-	languageOptions: Linter.LanguageOptions
+	languageOptions: Linter.LanguageOptions,
+	moduleContext: ModuleContext
 ): ModuleAnalysis | null => {
 	const collected: Collected = { analysis: null };
+	const outerContext = nestedContext;
 
-	new LinterClass({ cwd: dirname(path) }).verify(
-		text,
-		[
-			{
-				files: FILE_PATTERN,
-				languageOptions: toSyntaxOnly(languageOptions),
-				plugins: {
-					'slot-variants-internal': {
-						rules: { collect: createCollector(collected) }
-					}
-				},
-				rules: { 'slot-variants-internal/collect': 'error' }
-			}
-		],
-		path
-	);
+	nestedContext = moduleContext;
+
+	try {
+		new LinterClass({ cwd: dirname(path) }).verify(
+			text,
+			[
+				{
+					files: FILE_PATTERN,
+					languageOptions: toSyntaxOnly(languageOptions),
+					plugins: {
+						'slot-variants-internal': {
+							rules: { collect: createCollector(collected) }
+						}
+					},
+					rules: { 'slot-variants-internal/collect': 'error' }
+				}
+			],
+			path
+		);
+	} finally {
+		nestedContext = outerContext;
+	}
 
 	return collected.analysis;
 };
 
 const analyzeModule = (
 	path: string,
-	cwd: string,
-	languageOptions: Linter.LanguageOptions
+	moduleContext: ModuleContext
 ): ModuleAnalysis | null => {
+	const { cwd, languageOptions } = moduleContext;
 	const LinterClass = getLinterConstructor(path, cwd);
 
 	/* c8 ignore next 3 -- eslint is present whenever this plugin runs */
@@ -328,7 +506,8 @@ const analyzeModule = (
 			LinterClass,
 			path,
 			text,
-			languageOptions
+			languageOptions,
+			moduleContext
 		);
 
 		if (analysis !== null) {
@@ -341,7 +520,8 @@ const analyzeModule = (
 			LinterClass,
 			path,
 			text,
-			toScriptOptions(languageOptions)
+			toScriptOptions(languageOptions),
+			moduleContext
 		);
 		/* c8 ignore next 6 -- a parse failure is reported, not thrown; this
 		   catches an I/O race (the file vanishing between stat and read) and a
@@ -369,9 +549,9 @@ const storeModule = (path: string, entry: CacheEntry) => {
 
 const loadModule = (
 	path: string,
-	cwd: string,
-	languageOptions: Linter.LanguageOptions
+	moduleContext: ModuleContext
 ): ModuleAnalysis | null => {
+	const { languageOptions } = moduleContext;
 	let mtimeMs: number;
 
 	try {
@@ -391,7 +571,19 @@ const loadModule = (
 		return cached.analysis;
 	}
 
-	const analysis = analyzeModule(path, cwd, languageOptions);
+	if (loadingModules.has(path)) {
+		return null;
+	}
+
+	loadingModules.add(path);
+
+	let analysis: ModuleAnalysis | null;
+
+	try {
+		analysis = analyzeModule(path, moduleContext);
+	} finally {
+		loadingModules.delete(path);
+	}
 
 	storeModule(path, { mtimeMs, languageOptions, analysis });
 
@@ -457,19 +649,18 @@ export const cacheLintedModule = (
 	});
 };
 
-/**
- * The component an import names, followed through re-exports and barrel files.
- * Null when the module can't be resolved or read, when the export doesn't
- * lead to a function, or when that function forwards no class prop.
- */
-export const resolveImportedComponent = (
+// What an import names, followed through re-exports and barrel files to the
+// module whose step `read` answers. Null when the module can't be resolved or
+// read, or when no step answers.
+const resolveImport = <T>(
 	specifier: string,
 	exportName: string,
 	fromFile: string,
 	moduleContext: ModuleContext,
-	seen = new Set<string>(),
-	depth = 0
-): ForwardedStyles | null => {
+	read: ExportReader<T>,
+	seen: Set<string>,
+	depth: number
+): T | null => {
 	if (depth >= MAX_MODULE_HOPS) {
 		return null;
 	}
@@ -488,29 +679,32 @@ export const resolveImportedComponent = (
 
 	seen.add(key);
 
-	const analysis = loadModule(
-		path,
-		moduleContext.cwd,
-		moduleContext.languageOptions
-	);
+	const analysis = loadModule(path, moduleContext);
 
 	if (analysis === null) {
 		return null;
 	}
 
 	const follow = (specifier: string, name: string) =>
-		resolveImportedComponent(
+		resolveImport(
 			specifier,
 			name,
 			path,
 			moduleContext,
+			read,
 			seen,
 			depth + 1
 		);
 
 	for (const step of analysis.exports.get(exportName) ?? []) {
-		if (step.kind === 'styles') {
-			return step.styles;
+		if (step.kind !== 'forward') {
+			const found = read.step(step);
+
+			if (found !== null) {
+				return found;
+			}
+
+			continue;
 		}
 
 		const found = follow(step.specifier, step.name);
@@ -524,7 +718,7 @@ export const resolveImportedComponent = (
 	// module itself is what a default import receives. `export *` never
 	// re-exports a default.
 	if (exportName === DEFAULT_EXPORT) {
-		return analysis.self;
+		return read.self(analysis);
 	}
 
 	// A name the module exports itself shadows every `export *` of it.
@@ -542,3 +736,67 @@ export const resolveImportedComponent = (
 
 	return null;
 };
+
+const STYLES_READER: ExportReader<ForwardedStyles> = {
+	step(step) {
+		if (step.kind !== 'styles') {
+			return null;
+		}
+
+		return step.styles;
+	},
+	self: (analysis) => analysis.self
+};
+
+const FACTORY_READER: ExportReader<ImportedFactory> = {
+	step(step) {
+		if (step.kind !== 'factory') {
+			return null;
+		}
+
+		return step.factory;
+	},
+	self: () => null
+};
+
+/**
+ * The component an import names, followed through re-exports and barrel files.
+ * Null when the module can't be resolved or read, when the export doesn't
+ * lead to a function, or when that function forwards no class prop.
+ */
+export const resolveImportedComponent = (
+	specifier: string,
+	exportName: string,
+	fromFile: string,
+	moduleContext: ModuleContext
+): ForwardedStyles | null =>
+	resolveImport(
+		specifier,
+		exportName,
+		fromFile,
+		moduleContext,
+		STYLES_READER,
+		new Set(),
+		0
+	);
+
+/**
+ * The `createSV()` factory an import names, followed through re-exports and
+ * barrel files. Null when the module can't be resolved or read, or when the
+ * export is no factory.
+ */
+export const resolveImportedFactory = (
+	specifier: string,
+	exportName: string,
+	fromFile: string,
+	moduleContext: ModuleContext
+): ImportedFactory | null =>
+	resolveImport(
+		specifier,
+		exportName,
+		fromFile,
+		moduleContext,
+		FACTORY_READER,
+		new Set(),
+		0
+	);

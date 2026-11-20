@@ -6,21 +6,37 @@ import type {
 	Node
 } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
-import { type CallMatch, matchSvCall } from './call-matching.ts';
+import {
+	type CallMatch,
+	type ImportedFactory,
+	matchSvCall
+} from './call-matching.ts';
+import { getImportSource, type ImportSource } from './components.ts';
+import {
+	getModuleContext,
+	type ModuleContext,
+	resolveImportedFactory
+} from './module-loader.ts';
 import { getExportName } from './module-syntax.ts';
 import { createStyledContext, type StyledContext } from './styled-values.ts';
 
-// The tracked export each named-import local stands for, plus the locals bound
-// to a whole-module namespace import.
+// The tracked export each named-import local stands for, the locals bound to
+// a whole-module namespace import, and whether the file imports anything
+// else, which may be a `createSV()` factory.
 type TrackedNames = {
 	exportByLocal: Map<string, string>;
 	namespaceNames: Set<string>;
+	hasOtherImports: boolean;
 };
 
-// Everything the classifier needs from the rule that owns it.
+// Everything the classifier needs from the rule that owns it, with the
+// factories its imports were found to be, each looked up once per file.
 type MatchContext = {
 	names: TrackedNames;
 	ctx: StyledContext;
+	filename: string;
+	moduleContext: ModuleContext;
+	factories: Map<string, ImportedFactory | null>;
 };
 
 const TRACKED_EXPORTS = new Set(['sv', 'cn', 'createSV']);
@@ -161,9 +177,74 @@ const matchFactoryCall = (
 	};
 };
 
+// The import a call's callee names, through same-file `const` aliases. Null
+// for anything else, including a namespace import called as a whole.
+const findCalleeImport = (
+	{ ctx }: MatchContext,
+	node: CallExpression
+): ImportSource | null => {
+	if (node.callee.type !== 'Identifier') {
+		return null;
+	}
+
+	const resolved = ctx.resolve(node.callee);
+
+	if (resolved.type !== 'Identifier') {
+		return null;
+	}
+
+	const def = ctx.variableOf(resolved)?.defs[0];
+
+	if (def === undefined || def.type !== 'ImportBinding') {
+		return null;
+	}
+
+	return getImportSource(def);
+};
+
+// A call through a `createSV()` factory imported from another module, read as
+// an `sv()` call. Only a call passing a config is followed to the module: a
+// class list alone isn't worth loading one for.
+const matchImportedFactoryCall = (
+	match: MatchContext,
+	node: CallExpression
+): CallMatch | null => {
+	const source = findCalleeImport(match, node);
+
+	if (source === null) {
+		return null;
+	}
+
+	const call = matchSvCall(node, match.ctx.sourceCode);
+
+	if (call.config === null) {
+		return null;
+	}
+
+	const { specifier, exportName } = source;
+	const factory = getOrCreate(
+		match.factories,
+		`${specifier}|${exportName}`,
+		() =>
+			resolveImportedFactory(
+				specifier,
+				exportName,
+				match.filename,
+				match.moduleContext
+			)
+	);
+
+	if (factory === null) {
+		return null;
+	}
+
+	return { ...call, imported: factory };
+};
+
 // Classifies a call as sv/cn-style by the export its callee names: `sv` and
 // `cn` use their own conventions, and `createSV` names the factory call that
-// validates defaults. Null for anything untracked.
+// validates defaults. A call through an imported factory is an `sv()` call.
+// Null for anything untracked.
 const matchTrackedCall = (
 	match: MatchContext,
 	node: CallExpression
@@ -187,7 +268,7 @@ const matchTrackedCall = (
 		return matchFactoryCall(match, node);
 	}
 
-	return null;
+	return matchImportedFactoryCall(match, node);
 };
 
 // Every import of the file, read up front rather than as the traversal meets
@@ -223,11 +304,13 @@ const collectImportDeclarations = (
 const collectTrackedNames = (program: AST.Program): TrackedNames => {
 	const names: TrackedNames = {
 		exportByLocal: new Map<string, string>(),
-		namespaceNames: new Set<string>()
+		namespaceNames: new Set<string>(),
+		hasOtherImports: false
 	};
 
 	for (const node of collectImportDeclarations(program)) {
 		if (node.source.value !== 'slot-variants') {
+			names.hasOtherImports = true;
 			continue;
 		}
 
@@ -264,7 +347,9 @@ export const createTrackedCallResolver = (
 	const names = collectTrackedNames(context.sourceCode.ast);
 
 	const hasTrackedImports =
-		names.exportByLocal.size > 0 || names.namespaceNames.size > 0;
+		names.exportByLocal.size > 0 ||
+		names.namespaceNames.size > 0 ||
+		names.hasOtherImports;
 	const ctx = createStyledContext(context.sourceCode, (node) => {
 		if (!hasTrackedImports) {
 			return null;
@@ -276,7 +361,13 @@ export const createTrackedCallResolver = (
 		);
 	});
 	// Read lazily by the classifier above, so it is set before any call.
-	const match: MatchContext = { names, ctx };
+	const match: MatchContext = {
+		names,
+		ctx,
+		filename: context.physicalFilename,
+		moduleContext: getModuleContext(context),
+		factories: new Map()
+	};
 
 	return ctx;
 };

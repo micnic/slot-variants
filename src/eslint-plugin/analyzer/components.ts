@@ -9,7 +9,11 @@ import type {
 	Node,
 	Program
 } from 'estree';
-import { findSingleBinding, getConstDefInit } from './const-bindings.ts';
+import {
+	findSingleBinding,
+	getConstDefInit,
+	isTransparentWrapper
+} from './const-bindings.ts';
 import {
 	DEFAULT_EXPORT,
 	getExportName,
@@ -35,10 +39,13 @@ type WrapperCandidate =
  */
 export type Component = ComponentFunction | Program;
 
-/** The module a component identifier is imported from, and under which name. */
-type ImportSource = { specifier: string; exportName: string };
+/** The module an identifier is imported from, and under which name. */
+export type ImportSource = { specifier: string; exportName: string };
 
-type ImportDefinition = Extract<Scope.Definition, { type: 'ImportBinding' }>;
+export type ImportDefinition = Extract<
+	Scope.Definition,
+	{ type: 'ImportBinding' }
+>;
 
 /** What a component name is bound to: a same-file function, or an import. */
 type ComponentBinding =
@@ -57,7 +64,8 @@ export const isComponentFunction = (node: {
 /**
  * The component `node` is, or wraps: a function, or the name of one, handed to
  * `forwardRef()`, `memo()` or any other call, however deeply nested
- * (`memo(forwardRef(fn))`, `memo(Impl)`). The first argument that leads
+ * (`memo(forwardRef(fn))`, `memo(Impl)`), read through type-only wrappers
+ * (`memo(Impl) as typeof Impl`). The first argument that leads
  * somewhere wins, so a later one (`memo(Impl, areEqual)`) isn't mistaken for
  * the component. Null when nothing is reachable that way.
  */
@@ -66,6 +74,10 @@ export const findWrappedComponent = (
 ): ComponentFunction | Identifier | null => {
 	if (isComponentFunction(node) || node.type === 'Identifier') {
 		return node;
+	}
+
+	if (isTransparentWrapper(node)) {
+		return findWrappedComponent(node.expression);
 	}
 
 	if (node.type !== 'CallExpression') {
@@ -87,9 +99,11 @@ export const findWrappedComponent = (
 	return null;
 };
 
-// The module and export name an import binding reads, or null for a namespace
-// import, whose members are read through a dotted name instead.
-const getImportSource = (def: ImportDefinition): ImportSource | null => {
+/**
+ * The module and export name an import binding reads, or null for a namespace
+ * import, whose members are read through a dotted name instead.
+ */
+export const getImportSource = (def: ImportDefinition): ImportSource | null => {
 	const value = getModuleSpecifier(def.parent.source);
 
 	if (def.node.type === 'ImportDefaultSpecifier') {

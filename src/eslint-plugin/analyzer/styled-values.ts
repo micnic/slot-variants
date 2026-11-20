@@ -703,21 +703,49 @@ export const resolveCalleeCall = (
 };
 
 /**
- * The defaults a call inherits from the `createSV()` factory its callee came
- * from: none for `sv()` itself or a factory called without any, and null when
- * they can't be read in full.
+ * The keys a `createSV(defaults)` call's defaults set: none when it's called
+ * without any, and null when they can't be read in full.
+ */
+export const getDefaultKeys = (
+	factory: CallExpression,
+	ctx: StyledContext
+): ReadonlySet<string> | null => {
+	const [defaults] = factory.arguments;
+
+	if (defaults === undefined) {
+		return NO_KEYS;
+	}
+
+	const properties = getStrictProperties(ctx.resolve(defaults));
+
+	if (properties === null) {
+		return null;
+	}
+
+	return new Set(properties.keys());
+};
+
+/**
+ * The keys a call inherits from the defaults of the `createSV()` factory its
+ * callee came from, in this file or imported: none for `sv()` itself or a
+ * factory called without any, and null when they can't be read in full.
  */
 export const getFactoryDefaults = (
 	node: CallExpression,
+	call: CallMatch,
 	ctx: StyledContext
-): ReadonlyMap<string, Node> | null => {
-	const defaults = resolveCalleeCall(node.callee, ctx)?.arguments[0];
+): ReadonlySet<string> | null => {
+	const factory = resolveCalleeCall(node.callee, ctx);
 
-	if (defaults === undefined) {
-		return getProperties(undefined);
+	if (factory !== null) {
+		return getDefaultKeys(factory, ctx);
 	}
 
-	return getStrictProperties(ctx.resolve(defaults));
+	if (call.imported === undefined) {
+		return NO_KEYS;
+	}
+
+	return call.imported.defaultKeys;
 };
 
 // The `base` a `createSV()` factory gives a call through it whose config sets

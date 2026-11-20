@@ -10,6 +10,12 @@ import { resolveStaticValue } from './const-bindings.ts';
 import { getConfigProperties } from './properties.ts';
 import { isDefinedValue } from './static-predicates.ts';
 
+/**
+ * A `createSV()` factory imported from another module: the keys its defaults
+ * set, or null when they can't all be read.
+ */
+export type ImportedFactory = { defaultKeys: ReadonlySet<string> | null };
+
 export type CallMatch = {
 	config: ObjectExpression | null;
 	args: ReadonlyArray<Expression | SpreadElement>;
@@ -17,6 +23,8 @@ export type CallMatch = {
 	// True for an `sv()` class list whose argument before the last reads as a
 	// config: removing the last would turn the call into a config call.
 	keepsLastArg: boolean;
+	// Set for a call through a factory imported from another module.
+	imported?: ImportedFactory;
 };
 
 /** Which of the keys that make an object `sv()`'s config it defines. */

@@ -259,8 +259,9 @@ export const collectExportTable = (ast: Program): ExportTable => {
 	for (const node of ast.body) {
 		if (node.type === 'ExportAllDeclaration') {
 			// `export * as ns from` exports a namespace object, not the names
-			// inside it, so it never answers a plain name.
-			if (node.exported === null) {
+			// inside it, so it never answers a plain name, and `export type *`
+			// exports no value at all.
+			if (node.exported === null && !isTypeOnlyExport(node)) {
 				starSources.push(getModuleSpecifier(node.source));
 			}
 

@@ -398,7 +398,7 @@ const isWhollyEmpty = (context: Rule.RuleContext, value: Node): boolean => {
 const mayOverride = (
 	key: string,
 	spreadKeys: ReadonlySet<string> | null,
-	inherited: ReadonlyMap<string, Node> | null
+	inherited: ReadonlySet<string> | null
 ): boolean =>
 	spreadKeys === null ||
 	spreadKeys.has(key) ||
@@ -413,7 +413,7 @@ const mayOverride = (
 export const checkConfigForEmptyClasses = (
 	context: Rule.RuleContext,
 	config: ObjectExpression,
-	inherited: ReadonlyMap<string, Node> | null
+	inherited: ReadonlySet<string> | null
 ) => {
 	const keptMarker = getKeptMarker(context, config);
 

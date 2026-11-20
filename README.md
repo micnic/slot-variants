@@ -1265,7 +1265,11 @@ const classes = computed(() => list());
 
 ### Rules
 
-Rules check calls to `sv`/`cn` imported from `'slot-variants'` and to functions created with [`createSV()`](#shared-defaults-with-createsv).
+Rules check calls to `sv`/`cn` imported from `'slot-variants'` and to functions created with [`createSV()`](#shared-defaults-with-createsv), including a factory imported from another file of your project (ESLint only). Relative imports work out of the box; path aliases go in the plugin's shared settings:
+
+```js
+{ settings: { 'slot-variants': { alias: { '@/': './src' } } } }
+```
 
 #### `slot-variants/no-conflicting-classes`
 
@@ -1415,7 +1419,7 @@ import { Button } from './ui/button.tsx';
 <Button className="p-4" />; // p-4 vs the button's own p-2
 ```
 
-Relative imports work out of the box; path aliases need the `alias` option. Packages from `node_modules` are not followed.
+Relative imports work out of the box; path aliases come from the [`alias` setting](#rules), or from this rule's own `alias` option, which takes precedence. Packages from `node_modules` are not followed.
 
 ```js
 'slot-variants/no-restyle': ['error', { alias: { '@/': './src' } }]

@@ -76,7 +76,7 @@ export const noEmptyClasses: Rule.RuleModule = {
 				checkConfigForEmptyClasses(
 					context,
 					call.config,
-					getFactoryDefaults(node, ctx)
+					getFactoryDefaults(node, call, ctx)
 				);
 			}
 		});

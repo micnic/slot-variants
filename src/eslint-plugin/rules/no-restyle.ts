@@ -13,10 +13,9 @@ import {
 } from '../analyzer/forwarding.ts';
 import {
 	cacheLintedModule,
-	type ModuleContext,
+	getModuleContext,
 	resolveImportedComponent
 } from '../analyzer/module-loader.ts';
-import { buildAliasMap } from '../analyzer/module-paths.ts';
 import { canPairParts, createLiteralReporter } from '../analyzer/restyle.ts';
 import { getOrCreate } from '../map-utils.ts';
 
@@ -98,11 +97,10 @@ export const noRestyle: Rule.RuleModule = {
 	},
 	create(context) {
 		const options = readConflictOptions(context.options[0]);
-		const moduleContext: ModuleContext = {
-			aliases: buildAliasMap(context.options[0]?.alias, context.cwd),
-			cwd: context.cwd,
-			languageOptions: context.languageOptions
-		};
+		const moduleContext = getModuleContext(
+			context,
+			context.options[0]?.alias
+		);
 		// Shared by every position, so a class list reached from two of
 		// them — a `cn()` call is its own site and a part of the attribute
 		// holding it — reports each literal once.

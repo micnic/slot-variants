@@ -56,7 +56,8 @@ import {
 	type PresetValues,
 	readVariantValue,
 	resolveInvocation,
-	type StyledClasses
+	type StyledClasses,
+	type StyledContext
 } from './styled-values.ts';
 import { createTrackedCallResolver } from './tracked-calls.ts';
 
@@ -107,6 +108,7 @@ export type ModuleScan = {
 	ast: Program;
 	moduleScope: Scope.Scope;
 	forwarded: ReadonlyMap<Component, ForwardedStyles>;
+	ctx: StyledContext;
 };
 
 type PositionHandlers = {
@@ -1245,7 +1247,8 @@ export const createForwardingScan = (
 			handlers.onExit?.({
 				ast: sourceCode.ast,
 				moduleScope: moduleScope(),
-				forwarded
+				forwarded,
+				ctx
 			});
 		}
 	};
