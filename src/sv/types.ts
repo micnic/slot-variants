@@ -395,6 +395,19 @@ type PresetNameCollision<V extends AnyVariants, P> = {
 	]: 'Preset name must not match a variant name';
 };
 
+// The reason a preset key is rejected, an object type for the same reason as
+// `UnknownSlotOrGroupName`.
+type UnknownVariantName = { 'Unknown variant name': never };
+
+// A preset naming a variant that doesn't exist, typed as the reason it's
+// rejected: inferred presets skip the excess property check, and one known
+// variant is enough to pass the weak type check.
+type UnknownPresetVariantCollision<V extends AnyVariants, P> = {
+	[N in keyof P]: {
+		[X in Exclude<keyof P[N], StringKeyof<V>>]: UnknownVariantName;
+	};
+};
+
 /** Keys a variant function or compound entry reads besides its variants. */
 type ReservedVariantName = 'slots' | 'class' | 'className' | 'preset';
 
@@ -892,7 +905,9 @@ export type Config<
 	multiSlots?: M | undefined;
 	/** Named bundles of variant values, picked with the `preset` prop. */
 	presets?:
-		| (P & PresetNameCollision<ExtendedVariants<E, S, G, V>, P>)
+		| (P &
+				PresetNameCollision<ExtendedVariants<E, S, G, V>, P> &
+				UnknownPresetVariantCollision<ExtendedVariants<E, S, G, V>, P>)
 		| undefined;
 	/** How many prop combinations' classes are cached. Defaults to 256. */
 	cacheSize?: number | undefined;

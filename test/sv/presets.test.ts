@@ -275,6 +275,38 @@ t.test('preset throws when it references an unknown variant', (t) => {
 		'throws at config time for undefined preset variant'
 	);
 
+	t.throws(
+		() =>
+			sv('btn', {
+				variants: {
+					size: { sm: 'text-sm', lg: 'text-lg' },
+					tone: { soft: 'opacity-80' }
+				},
+				presets: {
+					// @ts-expect-error - unknown preset variant beside known ones
+					large: { size: 'lg', tone: 'soft', sze: 'lg' }
+				}
+			}),
+		{ message: 'Preset "large" references unknown variant "sze"' },
+		'throws for an unknown variant beside known ones'
+	);
+
+	const parent = sv({ variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });
+
+	t.throws(
+		() =>
+			sv({
+				extend: parent,
+				variants: { tone: { soft: 'opacity-80' } },
+				presets: {
+					// @ts-expect-error - unknown variant beside inherited and own
+					large: { size: 'lg', tone: 'soft', sze: 'lg' }
+				}
+			}),
+		{ message: 'Preset "large" references unknown variant "sze"' },
+		'throws for an unknown variant beside inherited ones'
+	);
+
 	t.end();
 });
 
