@@ -21,10 +21,12 @@ import {
 	type AliasMap,
 	buildAliasMap,
 	type ModuleFile,
-	resolveModulePath
+	resolveModulePath,
+	statFile
 } from './module-paths.ts';
 import { DEFAULT_EXPORT } from './module-syntax.ts';
 import {
+	getDefaultBaseStyles,
 	getDefaultKeys,
 	getDefaultRequiresAll,
 	type StyledContext
@@ -67,13 +69,26 @@ type LinterConstructor = new (options: { cwd: string }) => Linter;
 // lint run is visible to the caller's control flow.
 type Collected = { analysis: ModuleAnalysis | null };
 
-type CacheEntry = { mtimeMs: number; analysis: ModuleAnalysis | null };
+// The files an analysis read on the way, each with when it last changed.
+type Dependencies = Map<string, number>;
 
-/** Everything cross-file resolution needs from the rule's context. */
+type CacheEntry = {
+	mtimeMs: number;
+	analysis: ModuleAnalysis | null;
+	dependencies: ReadonlyMap<string, number>;
+};
+
+/**
+ * Everything cross-file resolution needs from the rule's context: `aliasKey`
+ * tells one set of aliases from another, and `dependencies` collects the
+ * files the linted file's own imports led to.
+ */
 export type ModuleContext = {
 	aliases: AliasMap;
+	aliasKey: string;
 	cwd: string;
 	languageOptions: Linter.LanguageOptions;
+	dependencies: Dependencies;
 };
 
 type SettingsRecord = Readonly<Record<string, unknown>>;
@@ -105,7 +120,8 @@ const TYPE_AWARE_PARSER_OPTIONS = new Set([
 // ever seen. Eviction is FIFO — a hit is a plain `get`, with no reordering.
 const MAX_CACHED_MODULES = 200;
 
-// Keyed by path and the importer's language options. A module is parsed with
+// Keyed by path, the importer's aliases, which decide where the module's own
+// imports lead, and the importer's language options. A module is parsed with
 // those options, or as a plain script where that fails, so ones that can't
 // read the module (a JSX page importing a `.vue` file, or a Vue page with no
 // TypeScript parser importing a `lang="ts"` one) must not hand their failure
@@ -125,11 +141,18 @@ const SETTINGS_KEY = 'slot-variants';
 // read as unknown rather than analyzing each other forever.
 const loadingModules = new Set<string>();
 
+// One context per rule context, so everything a rule resolves for a file
+// collects its dependencies in the same place.
+const moduleContexts = new WeakMap<Rule.RuleContext, ModuleContext>();
+
 // The context of the module analysis under way, read by the rules a nested
 // lint run creates. ESLint copies `languageOptions` for each run, so the
 // modules that run follows in turn are loaded under the importer's context
 // instead, sharing its cache entries.
 let nestedContext: ModuleContext | null = null;
+
+// The dependencies of the module analysis under way, null outside of one.
+let loadingDependencies: Dependencies | null = null;
 
 let nextLanguageOptionsId = 0;
 
@@ -227,14 +250,20 @@ export const getModuleContext = (
 		return nestedContext;
 	}
 
-	return {
-		aliases: buildAliasMap(
+	return getOrCreate(moduleContexts, context, () => {
+		const aliases = buildAliasMap(
 			alias ?? readAliasSetting(context.settings),
 			context.cwd
-		),
-		cwd: context.cwd,
-		languageOptions: context.languageOptions
-	};
+		);
+
+		return {
+			aliases,
+			aliasKey: JSON.stringify([...aliases]),
+			cwd: context.cwd,
+			languageOptions: context.languageOptions,
+			dependencies: new Map()
+		};
+	});
 };
 
 // The `createSV()` factory `node` is, read through `const` bindings and
@@ -254,7 +283,8 @@ const readFactory = (
 
 	return {
 		defaultKeys: getDefaultKeys(call, ctx),
-		requiresAll: getDefaultRequiresAll(call, ctx)
+		requiresAll: getDefaultRequiresAll(call, ctx),
+		base: getDefaultBaseStyles(call, ctx)
 	};
 };
 
@@ -543,7 +573,7 @@ const analyzeModule = (
 
 const getCacheKey = (
 	path: string,
-	languageOptions: Linter.LanguageOptions
+	{ aliasKey, languageOptions }: ModuleContext
 ): string => {
 	const id = getOrCreate(languageOptionsIds, languageOptions, () => {
 		const next = nextLanguageOptionsId;
@@ -553,7 +583,7 @@ const getCacheKey = (
 		return next;
 	});
 
-	return `${id}\0${path}`;
+	return `${id}\0${aliasKey}\0${path}`;
 };
 
 // A stale entry is replaced rather than counted, and requeued as the newest.
@@ -572,34 +602,73 @@ const storeModule = (key: string, entry: CacheEntry) => {
 	moduleCache.set(key, entry);
 };
 
+// Whether every file an analysis read on the way is still as it was then.
+const hasFreshDependencies = ({ dependencies }: CacheEntry): boolean => {
+	for (const [path, mtimeMs] of dependencies) {
+		if (statFile(path)?.mtimeMs !== mtimeMs) {
+			return false;
+		}
+	}
+
+	return true;
+};
+
+// The module's cache entry, analyzed first when it has none that still holds.
+// Null for a module whose analysis is under way.
 const loadModule = (
 	{ path, mtimeMs }: ModuleFile,
 	moduleContext: ModuleContext
-): ModuleAnalysis | null => {
-	const key = getCacheKey(path, moduleContext.languageOptions);
+): CacheEntry | null => {
+	const key = getCacheKey(path, moduleContext);
 	const cached = moduleCache.get(key);
 
-	if (cached && cached.mtimeMs === mtimeMs) {
-		return cached.analysis;
+	if (cached && cached.mtimeMs === mtimeMs && hasFreshDependencies(cached)) {
+		return cached;
 	}
 
 	if (loadingModules.has(path)) {
 		return null;
 	}
 
-	loadingModules.add(path);
-
+	const outerDependencies = loadingDependencies;
+	const dependencies: Dependencies = new Map();
 	let analysis: ModuleAnalysis | null;
+
+	loadingModules.add(path);
+	loadingDependencies = dependencies;
 
 	try {
 		analysis = analyzeModule(path, moduleContext);
 	} finally {
 		loadingModules.delete(path);
+		loadingDependencies = outerDependencies;
 	}
 
-	storeModule(key, { mtimeMs, analysis });
+	const entry: CacheEntry = { mtimeMs, analysis, dependencies };
 
-	return analysis;
+	storeModule(key, entry);
+
+	return entry;
+};
+
+// Records `file`, and what its own analysis read, as read by the analysis
+// under way, or else by the linted file.
+const addDependencies = (
+	file: ModuleFile,
+	entry: CacheEntry | null,
+	moduleContext: ModuleContext
+) => {
+	const dependencies = loadingDependencies ?? moduleContext.dependencies;
+
+	dependencies.set(file.path, file.mtimeMs);
+
+	if (entry === null) {
+		return;
+	}
+
+	for (const [path, mtimeMs] of entry.dependencies) {
+		dependencies.set(path, mtimeMs);
+	}
 };
 
 // Whether a module leads an import anywhere: a component forwarding its class
@@ -639,7 +708,8 @@ const readDiskModule = (path: string): DiskModule | null => {
  */
 export const cacheLintedModule = (
 	context: Rule.RuleContext,
-	scan: ModuleScan
+	scan: ModuleScan,
+	moduleContext: ModuleContext
 ) => {
 	const analysis = analyzeScan(scan);
 
@@ -654,9 +724,10 @@ export const cacheLintedModule = (
 		return;
 	}
 
-	storeModule(getCacheKey(path, context.languageOptions), {
+	storeModule(getCacheKey(path, moduleContext), {
 		mtimeMs: disk.mtimeMs,
-		analysis
+		analysis,
+		dependencies: moduleContext.dependencies
 	});
 };
 
@@ -690,11 +761,15 @@ const resolveImport = <T>(
 
 	seen.add(key);
 
-	const analysis = loadModule(file, moduleContext);
+	const entry = loadModule(file, moduleContext);
 
-	if (analysis === null) {
+	addDependencies(file, entry, moduleContext);
+
+	if (entry === null || entry.analysis === null) {
 		return null;
 	}
+
+	const { analysis } = entry;
 
 	const follow = (specifier: string, name: string) =>
 		resolveImport(

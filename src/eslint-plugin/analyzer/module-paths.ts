@@ -34,7 +34,7 @@ const REWRITABLE = new Map([
 // The file at `path`, or null for anything else. Most probes miss, and a miss
 // that doesn't throw is several times cheaper. Other errors (a name too long,
 // a symlink loop) still throw.
-const statFile = (path: string): ModuleFile | null => {
+export const statFile = (path: string): ModuleFile | null => {
 	try {
 		const stats = statSync(path, { throwIfNoEntry: false });
 

@@ -9,15 +9,17 @@ import type {
 import { resolveStaticValue } from './const-bindings.ts';
 import { getConfigProperties } from './properties.ts';
 import { isDefinedValue } from './static-predicates.ts';
+import type { InternalStyles } from './styled-values.ts';
 
 /**
  * A `createSV()` factory imported from another module: the keys its defaults
- * set, or null when they can't all be read, and whether they make every
- * variant required.
+ * set, or null when they can't all be read, whether they make every variant
+ * required, and the classes of their `base`, null when they set none.
  */
 export type ImportedFactory = {
 	defaultKeys: ReadonlySet<string> | null;
 	requiresAll: boolean;
+	base: InternalStyles | null;
 };
 
 export type CallMatch = {

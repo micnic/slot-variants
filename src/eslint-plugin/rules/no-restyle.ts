@@ -162,7 +162,7 @@ export const noRestyle: Rule.RuleModule = {
 				// A later file importing this one reads the scan from the cache
 				// rather than parsing the file again.
 				onExit(moduleScan) {
-					cacheLintedModule(context, moduleScan);
+					cacheLintedModule(context, moduleScan, moduleContext);
 				}
 			},
 			alias

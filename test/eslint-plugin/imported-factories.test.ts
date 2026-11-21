@@ -5,6 +5,7 @@ import { parser as tsParser } from 'typescript-eslint';
 import { rules } from '../../src/eslint-plugin.ts';
 import { fixtureDir, writeFixture } from './fixtures.ts';
 import {
+	conflict,
 	dup,
 	IMPORT_CREATE_SV,
 	jsxTester,
@@ -105,6 +106,10 @@ t.test('no-conflicting-classes through imported factories', (t) => {
 				`import { customSV } from './factory/missing.ts';\ncustomSV${DUP_CONFIG}`,
 				// Modules calling each other's exports are read once each.
 				`import { a } from './factory/cycle-a.ts';\na${DUP_CONFIG}`,
+				// A config setting its own `base` takes none from the factory,
+				// and a factory without one gives none.
+				"import { customSV } from './factory/sv.ts';\ncustomSV({ base: 'm-4', variants: {} });",
+				"import { bareSV } from './factory/sv.ts';\nbareSV({ variants: { a: { x: 'm-4' } } });",
 				// A class list alone isn't followed to the module.
 				"import { customSV } from './factory/sv.ts';\ncustomSV('p-2 p-2');",
 				// Callees that name no import, or a namespace as a whole.
@@ -144,6 +149,12 @@ t.test('no-conflicting-classes through imported factories', (t) => {
 					filename: PAGE,
 					errors: repeat(dup('p-2'), 2)
 				})),
+				{
+					// The factory's `base` counts for a config setting none.
+					code: "import { customSV } from './factory/sv.ts';\ncustomSV({ variants: { a: { x: 'm-4' } } });",
+					filename: PAGE,
+					errors: [conflict('m-1, m-4')]
+				},
 				{
 					// A path alias from the plugin's shared settings.
 					code: `import { customSV } from '@f/sv.ts';\ncustomSV${DUP_CONFIG}`,
@@ -310,6 +321,12 @@ t.test('no-restyle follows a component styled by an imported factory', (t) => {
 					code: `import { Button } from './factory/button.jsx';\n<Button className="p-4" />;`,
 					filename: join(fixtureDir, 'page.jsx'),
 					errors: [restyle('p-4', 'p-2')]
+				},
+				{
+					// The factory's `base` is applied with the config's own.
+					code: "import { customSV } from './factory/sv.ts';\nconst b = customSV({ variants: {} });\nb({ class: 'm-4' });",
+					filename: join(fixtureDir, 'page.jsx'),
+					errors: [restyle('m-4', 'm-1')]
 				},
 				{
 					// The rule's own `alias` option follows an imported factory

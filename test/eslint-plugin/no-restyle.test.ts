@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import { utimesSync } from 'node:fs';
+import { rmSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import t from 'tap';
 import { ESLint, Linter, RuleTester } from 'eslint';
@@ -17,7 +17,13 @@ import {
 	VUE_CROSS_FILE_VALID
 } from './cross-file.cases.ts';
 import { fixtureDir, writeFixture } from './fixtures.ts';
-import { IMPORT, jsxTester, svelteTester, vueTester } from './helpers.ts';
+import {
+	IMPORT,
+	IMPORT_CREATE_SV,
+	jsxTester,
+	svelteTester,
+	vueTester
+} from './helpers.ts';
 import {
 	RESTYLE_INVALID,
 	RESTYLE_SVELTE_INVALID,
@@ -651,4 +657,101 @@ t.test('no-restyle reads callees through type-only wrappers', (t) => {
 		});
 	}, 'rule tester passes');
 	t.end();
+});
+
+const BUTTON_BODY = `const button = mk({ base: 'p-2', variants: {} });
+
+export function Button({ className }) {
+	return <i className={button({ class: className })} />;
+}
+`;
+
+const createJsxLinter = (rules: Linter.RulesRecord) =>
+	new ESLint({
+		cwd: fixtureDir,
+		overrideConfigFile: true,
+		overrideConfig: {
+			files: ['**/*.jsx'],
+			plugins: { 'slot-variants': plugin },
+			rules,
+			languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } }
+		}
+	});
+
+const lintJsxPage = async (eslint: ESLint, code: string) => {
+	const results = await eslint.lintText(code, {
+		filePath: join(fixtureDir, 'page.jsx')
+	});
+
+	return results.flatMap((result) =>
+		result.messages.map((message) => message.ruleId)
+	);
+};
+
+// A cached module holds what its own imports led to, so it's read again when
+// one of them changes or goes away.
+t.test('no-restyle reads a module again when its imports change', async (t) => {
+	const factory = writeFixture(
+		'stale/sv.js',
+		'export const mk = notAFactory();\n'
+	);
+
+	writeFixture(
+		'stale/button.jsx',
+		`import { mk } from './sv.js';\n${BUTTON_BODY}`
+	);
+
+	const eslint = createJsxLinter({ 'slot-variants/no-restyle': 2 });
+	const lintPage = () =>
+		lintJsxPage(
+			eslint,
+			'import { Button } from \'./stale/button.jsx\';\n<Button className="p-4" />;'
+		);
+
+	t.same(await lintPage(), [], 'the import is no factory');
+
+	const later = new Date(Date.now() + 60_000);
+
+	writeFixture(
+		'stale/sv.js',
+		`${IMPORT_CREATE_SV}export const mk = createSV();\n`
+	);
+	utimesSync(factory, later, later);
+	t.same(
+		await lintPage(),
+		['slot-variants/no-restyle'],
+		'the import became a factory'
+	);
+
+	rmSync(factory);
+	t.same(await lintPage(), [], 'the import is gone');
+});
+
+// A module is cached per set of aliases, so a rule resolving without the
+// `alias` option of another doesn't hand it a module read without them.
+t.test('no-restyle keeps a module read with its own aliases', async (t) => {
+	writeFixture(
+		'aliased/sv.js',
+		`${IMPORT_CREATE_SV}export const mk = createSV();\n`
+	);
+	writeFixture(
+		'aliased/button.jsx',
+		`import { mk } from '@a/sv.js';\nexport { mk };\n${BUTTON_BODY}`
+	);
+
+	const eslint = createJsxLinter({
+		'slot-variants/no-conflicting-classes': 2,
+		'slot-variants/no-restyle': [
+			2,
+			{ alias: { '@a/': join(fixtureDir, 'aliased') } }
+		]
+	});
+
+	t.same(
+		await lintJsxPage(
+			eslint,
+			"import { Button, mk } from './aliased/button.jsx';\nconst x = mk({ base: 'm-1', variants: {} });\n<Button className=\"p-4\" />;"
+		),
+		['slot-variants/no-restyle']
+	);
 });

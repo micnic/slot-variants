@@ -50,7 +50,7 @@ import {
 } from './token-model.ts';
 
 /** The classes one `sv()`/`cn()` call applies internally, indexed per slot. */
-type InternalStyles = {
+export type InternalStyles = {
 	bySlot: TokenEntriesBySlot;
 	slotNames: ReadonlySet<string>;
 	defaults: VariantMatchers;
@@ -817,14 +817,38 @@ export const getFactoryRequiresAll = (
 	return call.imported?.requiresAll === true;
 };
 
-// The `base` a `createSV()` factory gives a call through it whose config sets
-// none: one with neither `base` nor `extend`, whose parents' would take its
-// place. Null for any other call, or a config that can't be read in full.
-const getFactoryBase = (
+/**
+ * The classes of the `base` a `createSV(defaults)` call's defaults set, null
+ * when they set none.
+ */
+export const getDefaultBaseStyles = (
+	factory: CallExpression,
+	ctx: StyledContext
+): InternalStyles | null => {
+	const match = ctx.matchCall(factory);
+
+	if (match === null || match.config === null || !match.isFactoryConfig) {
+		return null;
+	}
+
+	const base = getProperties(match.config).get('base');
+
+	if (base === undefined) {
+		return null;
+	}
+
+	return buildStyles(new Map([['base', base]]), NO_ARGS, ctx.sourceCode);
+};
+
+// The classes of the `base` a `createSV()` factory, in this file or imported,
+// gives a call through it whose config sets none: one with neither `base` nor
+// `extend`, whose parents' would take its place. Null for any other call, or
+// a config that can't be read in full.
+const getFactoryBaseStyles = (
 	call: CallExpression,
 	config: ObjectExpression,
 	ctx: StyledContext
-): Node | null => {
+): InternalStyles | null => {
 	const properties = getStrictProperties(config);
 
 	if (
@@ -837,17 +861,11 @@ const getFactoryBase = (
 
 	const factory = resolveCalleeCall(call.callee, ctx);
 
-	if (factory === null) {
-		return null;
+	if (factory !== null) {
+		return getDefaultBaseStyles(factory, ctx);
 	}
 
-	const match = ctx.matchCall(factory);
-
-	if (match === null || match.config === null || !match.isFactoryConfig) {
-		return null;
-	}
-
-	return getProperties(match.config).get('base') ?? null;
+	return ctx.matchCall(call)?.imported?.base ?? null;
 };
 
 // Joins `items`' lists per key, each value once, in order.
@@ -1060,19 +1078,13 @@ export const getCallStyles = (
 	}
 
 	const own = getConfigStyles(call, config, args, ctx.sourceCode);
-	const factoryBase = getFactoryBase(call, config, ctx);
+	const factoryBase = getFactoryBaseStyles(call, config, ctx);
 
 	if (factoryBase === null) {
 		return { styles: own, inherited: NO_ENTRIES };
 	}
 
-	const factory = buildStyles(
-		new Map([['base', factoryBase]]),
-		NO_ARGS,
-		ctx.sourceCode
-	);
-
-	return withInherited({ parents: [factory], complete: true }, own);
+	return withInherited({ parents: [factoryBase], complete: true }, own);
 };
 
 // The parents an `extend` value names: one, or each of a list. One that isn't
@@ -1147,18 +1159,15 @@ const resolveVariantFnStyles = (
 		).styles;
 	}
 
-	const factoryBase = getFactoryBase(resolved, config, ctx);
+	const own = getConfigStyles(resolved, config, args, ctx.sourceCode);
+	const factoryBase = getFactoryBaseStyles(resolved, config, ctx);
 
 	if (factoryBase === null) {
-		return getConfigStyles(resolved, config, args, ctx.sourceCode);
+		return own;
 	}
 
 	return getOrCreate(factoryStylesCache, resolved, () =>
-		buildStyles(
-			new Map([...properties, ['base', factoryBase]]),
-			args,
-			ctx.sourceCode
-		)
+		mergeStyles({ parents: [factoryBase], complete: true }, own)
 	);
 };
 
