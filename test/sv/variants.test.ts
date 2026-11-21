@@ -470,7 +470,7 @@ const _typeNumericKeysFn = sv('flex', {
 
 type NumericKeysProps = VariantProps<typeof _typeNumericKeysFn>;
 type AssertNumericKeys = NumericKeysProps extends {
-	level?: 1 | 2 | 3 | null | undefined;
+	level?: 1 | 2 | 3 | '1' | '2' | '3' | null | undefined;
 }
 	? true
 	: false;
@@ -618,8 +618,8 @@ const _assertVVDisabled: AssertVVDisabled = true;
 
 // numeric variant keys
 type VVLevel = VariantValue<typeof _variantValueFn, 'level'>;
-type AssertVVLevel = VVLevel extends 1 | 2
-	? 1 | 2 extends VVLevel
+type AssertVVLevel = VVLevel extends 1 | 2 | '1' | '2'
+	? 1 | 2 | '1' | '2' extends VVLevel
 		? true
 		: false
 	: false;

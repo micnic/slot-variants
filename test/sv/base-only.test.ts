@@ -338,3 +338,32 @@ t.test(
 		t.end();
 	}
 );
+
+t.test('a config with no slots takes slot objects naming base', (t) => {
+	const button = sv('btn', {
+		variants: {
+			size: { sm: { base: 'text-sm' }, lg: 'text-lg' },
+			flat: { true: { base: 'shadow-none' } }
+		},
+		compoundVariants: [
+			{ size: 'sm', flat: true, class: { base: 'border' } }
+		]
+	});
+
+	t.equal(button({ size: 'sm' }), 'btn text-sm', 'variant value');
+	t.equal(
+		button({ size: 'sm', flat: true }),
+		'btn text-sm shadow-none border',
+		'boolean and compound values'
+	);
+	t.throws(
+		() =>
+			sv('btn', {
+				// @ts-expect-error only `base` names a slot here
+				variants: { size: { sm: { header: 'text-sm' } } }
+			}),
+		'an unknown slot'
+	);
+
+	t.end();
+});

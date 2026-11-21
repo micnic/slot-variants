@@ -17,9 +17,9 @@ const _numericVariantFn = sv('font-bold', {
 
 type NumericVariantProps = VariantProps<typeof _numericVariantFn>;
 
-// level should accept numeric literal types
+// level should accept numeric literal types, and their string forms
 type AssertNumericVariant = NumericVariantProps extends {
-	level?: 1 | 2 | 3 | null | undefined;
+	level?: 1 | 2 | 3 | '1' | '2' | '3' | null | undefined;
 }
 	? true
 	: false;
@@ -42,7 +42,7 @@ const _mixedKeysFn = sv('font-bold', {
 type MixedKeysProps = VariantProps<typeof _mixedKeysFn>;
 
 type AssertMixedKeys = MixedKeysProps extends {
-	level?: 1 | 2 | null | undefined;
+	level?: 1 | 2 | '1' | '2' | null | undefined;
 	intent?: 'primary' | 'danger' | null | undefined;
 }
 	? true
@@ -148,6 +148,22 @@ t.test('throws for invalid numeric variant value', (t) => {
 		() => heading({ level: 5 }),
 		{ message: 'Invalid value "5" for variant "level"' },
 		'throws for out-of-range numeric value'
+	);
+
+	t.end();
+});
+
+t.test('number keys take their string as well', (t) => {
+	const heading = sv('font-bold', {
+		variants: { level: { 1: 'text-4xl', 2: 'text-3xl' } }
+	});
+
+	t.equal(heading({ level: '1' }), 'font-bold text-4xl', 'string form');
+	t.equal(heading({ level: 2 }), 'font-bold text-3xl', 'number form');
+	t.throws(
+		// @ts-expect-error '3' is no value of the variant
+		() => heading({ level: '3' }),
+		'an unknown string form'
 	);
 
 	t.end();

@@ -94,8 +94,8 @@ type BooleanKeys<K> = [Extract<K, 'true' | 'false'>] extends [never]
 	: boolean;
 
 // A record keyed only by `true`/`false` is a boolean. Any other record's keys
-// are its values, plus both booleans when it names either one. Anything else
-// is a boolean shorthand.
+// are its values, a number key as its string too, plus both booleans when it
+// names either one. Anything else is a boolean shorthand.
 type VariantPropType<T> =
 	T extends Record<string | number, unknown>
 		? [keyof T] extends ['true' | 'false']
@@ -103,6 +103,7 @@ type VariantPropType<T> =
 			:
 					| KeyValue<StringKeyof<T>>
 					| Extract<keyof T, number>
+					| `${Extract<keyof T, number>}`
 					| BooleanKeys<StringKeyof<T>>
 		: boolean;
 
@@ -220,27 +221,18 @@ type SlotlessClassRecord<
 	V
 > = Extract<V, ClassRecord> & Partial<Record<SlotTarget<S, G>, never>>;
 
-type SlotRecord<S extends MaybeSlots, G extends MaybeGroups<S>, V> =
+// A class value, or one per slot or group: `base` is always a slot, so a
+// config with no `slots` takes a slot object too.
+export type SlotValue<S extends MaybeSlots, G extends MaybeGroups<S>, V> =
 	| Partial<Record<SlotTarget<S, G>, V>>
 	| Exclude<V, ClassRecord>
 	| SlotlessClassRecord<S, G, V>;
-
-// Groups name targets even without `slots`, as `base` is always a slot.
-export type SlotValue<
-	S extends MaybeSlots,
-	G extends MaybeGroups<S>,
-	V
-> = S extends Slots
-	? SlotRecord<S, G, V>
-	: [G] extends [undefined]
-		? V
-		: SlotRecord<S, G, V>;
 
 type ClassProp<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V
-> = EitherClassProp<SlotRecord<S, G, V>, true>;
+> = EitherClassProp<SlotValue<S, G, V>, true>;
 
 export type Variants<S extends MaybeSlots, G extends MaybeGroups<S>> = Record<
 	string,

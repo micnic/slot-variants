@@ -2,6 +2,7 @@ import { cn, type ClassValue } from './cn.ts';
 import {
 	coerceVariantKeyValue,
 	compileConfig,
+	getOwn,
 	isConfig,
 	isReservedProp
 } from './sv/compile.ts';
@@ -81,13 +82,23 @@ const mergeMultiSlotClass = (
 /**
  * Overrides the outer variant props with the slot function's own, skipping
  * the ones left `undefined` so they keep the outer value, like an omitted
- * prop. The class props are merged separately.
+ * prop. Its own preset also unsets the outer props for the variants it sets,
+ * which would otherwise override it. The class props are merged separately.
  */
 const mergeSlotFnProps = (
+	config: CompiledConfig,
 	outerProps: RuntimeProps,
 	innerProps: RuntimeProps
 ): RuntimeProps => {
 	const mergedProps: RuntimeProps = { ...outerProps };
+	const { preset } = innerProps;
+
+	if (preset !== undefined) {
+		// An unknown preset sets nothing, and the run throws for it
+		for (const key of keys(getOwn(config.presets, preset) ?? {})) {
+			mergedProps[key] = undefined;
+		}
+	}
 
 	for (const key of keys(innerProps)) {
 		const value = innerProps[key];
@@ -127,7 +138,7 @@ const buildSlotFn =
 		const outerClass = outerProps.class ?? outerProps.className;
 		const innerClass = innerProps.class ?? innerProps.className;
 
-		const mergedProps = mergeSlotFnProps(outerProps, innerProps);
+		const mergedProps = mergeSlotFnProps(config, outerProps, innerProps);
 
 		if (innerClass !== undefined) {
 			mergedProps.class = mergeMultiSlotClass(

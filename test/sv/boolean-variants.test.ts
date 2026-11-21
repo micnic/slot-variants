@@ -80,8 +80,8 @@ type AssertMixedSize = [MixedSize] extends [boolean | 'big']
 		? true
 		: false
 	: false;
-type AssertMixedLevel = [MixedLevel] extends [boolean | 1]
-	? [boolean | 1] extends [MixedLevel]
+type AssertMixedLevel = [MixedLevel] extends [boolean | 1 | '1']
+	? [boolean | 1 | '1'] extends [MixedLevel]
 		? true
 		: false
 	: false;

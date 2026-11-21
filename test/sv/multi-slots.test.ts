@@ -132,6 +132,43 @@ t.test('multiSlots slot function overrides an outer preset', (t) => {
 	t.end();
 });
 
+t.test('multiSlots slot function preset overrides outer props', (t) => {
+	const card = sv({
+		slots: { header: 'font-bold' },
+		variants: {
+			tone: {
+				neutral: { header: 'text-gray-900' },
+				danger: { header: 'text-red-600' }
+			},
+			size: { sm: { header: 'text-sm' }, lg: { header: 'text-lg' } }
+		},
+		presets: {
+			alert: { tone: 'danger' },
+			plain: { tone: 'neutral' }
+		},
+		multiSlots: ['header']
+	});
+	const result = card({ tone: 'danger', size: 'lg' });
+
+	t.equal(
+		result.header({ preset: 'plain' }),
+		'font-bold text-gray-900 text-lg',
+		'the preset replaces the outer value of the variants it sets only'
+	);
+	t.equal(
+		result.header({ preset: 'plain', tone: 'danger' }),
+		'font-bold text-red-600 text-lg',
+		"the slot function's own prop still overrides its preset"
+	);
+	t.equal(
+		card({ preset: 'alert', size: 'sm' }).header({ preset: 'plain' }),
+		'font-bold text-gray-900 text-sm',
+		'outer props the preset leaves alone are kept'
+	);
+
+	t.end();
+});
+
 t.test('multiSlots slot function throws for an unknown preset', (t) => {
 	const card = sv({
 		slots: {
