@@ -379,6 +379,88 @@ export const RESTYLE_VUE_VALID = [
 
 export const RESTYLE_INVALID = [
 	{
+		// A nullish `class` falls back to `className`, as at runtime.
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			`button({ class: undefined, className: 'p-4' });
+button({ class: null, className: 'p-6' });
+button({ class: 'm-1', className: 'p-8' });`,
+		errors: [restyle('p-4', 'p-2'), restyle('p-6', 'p-2')]
+	},
+	{
+		// A component naming a preset that isn't known in full: the preset
+		// may set any variant, its defaults included.
+		code:
+			IMPORT +
+			`const button = sv({ base: 'p-2', variants: { size: { sm: 'text-sm', lg: 'mt-8' }, tone: { a: 'gap-1', b: 'm-1' } }, defaultVariants: { size: 'sm', tone: 'b' }, presets: { odd: { ...extra, size: 'lg' } } });
+function Button({ className }) {
+	return <button className={button({ preset: 'odd', class: className })} />;
+}
+<Button className="gap-4" />;
+<Button className="text-lg" />;`,
+		errors: [restyle('gap-4', 'gap-1')]
+	},
+	{
+		// Solid: an object merged above the props forces its values over the
+		// element's, while `omit()` and the rest of `splitProps()` leave out
+		// the props they name.
+		code:
+			IMPORT +
+			RESTYLE_PRESET_BUTTON +
+			`function Forced(props) {
+	const merged = mergeProps(props, { size: 'lg', tone: undefined });
+	return <button class={button({ size: merged.size, class: merged.class })} />;
+}
+function Destructured(props) {
+	const { size, class: cls } = mergeProps({ size: 'sm' }, props, { size: 'lg' });
+	return <button class={button({ size, class: cls })} />;
+}
+function Omitted(props) {
+	const others = omit(props, 'class', name, 'size');
+	return <button class={button({ ...others, class: props.class })} />;
+}
+function Split(props) {
+	const [local, others] = splitProps(props, ['class', 'size']);
+	return <button class={button({ ...others, class: local.class })} />;
+}
+function Picked(props) {
+	const [local, sized, ...more] = splitProps(props, ['class'], ['size']);
+	return <button class={button({ ...sized, class: local.class })} />;
+}
+function Holed(props) {
+	const [, others] = splitProps(props, ['size']);
+	return <button class={button({ ...others, class: props.class })} />;
+}
+<Forced size="sm" class="mt-2" />;
+<Forced size="sm" class="text-lg" />;
+<Destructured size="sm" class="mt-2" />;
+<Omitted size="lg" class="mt-2" />;
+<Omitted size="lg" class="text-lg" />;
+<Split size="lg" class="mt-2" />;
+<Split size="lg" class="text-lg" />;
+<Picked size="lg" class="mt-2" />;
+<Holed size="lg" class="text-lg" />;
+function Computed(props) {
+	return <button class={button({ size: props['size'], class: props.class })} />;
+}
+function Other(props) {
+	return <button class={button({ size: options.size, class: props.class })} />;
+}
+<Computed size="sm" class="mt-2" />;
+<Other size="sm" class="mt-2" />;`,
+		errors: [
+			restyle('mt-2', 'mt-8'),
+			restyle('mt-2', 'mt-8'),
+			restyle('text-lg', 'text-sm'),
+			restyle('text-lg', 'text-sm'),
+			restyle('mt-2', 'mt-8'),
+			restyle('text-lg', 'text-sm'),
+			restyle('mt-2', 'mt-8'),
+			restyle('mt-2', 'mt-8')
+		]
+	},
+	{
 		// A rest of the props leaves out the props its pattern destructures,
 		// unless another spread carries them; one leaving out `preset` passes
 		// none on.

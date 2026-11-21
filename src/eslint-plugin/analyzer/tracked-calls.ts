@@ -42,9 +42,12 @@ type MatchContext = {
 
 const TRACKED_EXPORTS = new Set(['sv', 'cn', 'createSV']);
 
+type MatchedCalls = WeakMap<CallExpression, CallMatch | null>;
+
 // Every rule classifies every call of a file, and the outcome depends only on
 // the file's AST and scopes, which the rules share, so it is worked out once.
-const matchedCalls = new WeakMap<CallExpression, CallMatch | null>();
+// A rule resolving imports with aliases of its own keeps a cache of its own.
+const matchedCalls: MatchedCalls = new WeakMap();
 
 // A tracked-name identifier could still be a local binding that shadows the
 // import (e.g. a function parameter named `cn`), so confirm it resolves to
@@ -192,16 +195,13 @@ const matchFactoryCall = (
 	};
 };
 
-// The import a call's callee names, through same-file `const` aliases. Null
-// for anything else, including a namespace import called as a whole.
+// The import a call's callee names, through same-file `const` aliases and
+// type-only wrappers (`(customSV as F)(…)`). Null for anything else, including
+// a namespace import called as a whole or one of its members.
 const findCalleeImport = (
 	{ ctx }: MatchContext,
 	node: CallExpression
 ): ImportSource | null => {
-	if (node.callee.type !== 'Identifier') {
-		return null;
-	}
-
 	const resolved = ctx.resolve(node.callee);
 
 	if (resolved.type !== 'Identifier') {
@@ -355,11 +355,18 @@ const collectTrackedNames = (program: AST.Program): TrackedNames => {
 // An on-demand classifier, for rules that need to ask whether an arbitrary call
 // is a tracked sv/cn call outside a CallExpression visitor (`no-restyle`
 // resolves callees and class-list parts that way). The file's imports are read
-// before any call is classified.
+// before any call is classified. `alias` replaces the shared setting's aliases
+// for following imported factories (a rule's own option).
 export const createTrackedCallResolver = (
-	context: Rule.RuleContext
+	context: Rule.RuleContext,
+	alias?: Record<string, string>
 ): StyledContext => {
 	const names = collectTrackedNames(context.sourceCode.ast);
+	let cache = matchedCalls;
+
+	if (alias !== undefined) {
+		cache = new WeakMap();
+	}
 
 	const hasTrackedImports =
 		names.exportByLocal.size > 0 ||
@@ -371,16 +378,14 @@ export const createTrackedCallResolver = (
 		}
 
 		// A cached null, for a call that isn't tracked, is still a hit.
-		return getOrCreate(matchedCalls, node, () =>
-			matchTrackedCall(match, node)
-		);
+		return getOrCreate(cache, node, () => matchTrackedCall(match, node));
 	});
 	// Read lazily by the classifier above, so it is set before any call.
 	const match: MatchContext = {
 		names,
 		ctx,
 		filename: context.physicalFilename,
-		moduleContext: getModuleContext(context),
+		moduleContext: getModuleContext(context, alias),
 		factories: new Map()
 	};
 

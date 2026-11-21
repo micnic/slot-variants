@@ -671,8 +671,9 @@ const buildCallMatchers = (
 
 	return {
 		matchers,
+		// A preset it names that isn't known in full may set any variant.
 		defaultMatchers: new Map([
-			...base,
+			...readKeptMatchers(read, base, readPreset),
 			...readUnsetMatchers(read, unreadProps, optional, readPreset, ctx),
 			...readPreset.matchers,
 			...propMatchers

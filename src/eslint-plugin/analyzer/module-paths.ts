@@ -84,11 +84,42 @@ const resolveFile = (base: string): ModuleFile | null => {
 	);
 };
 
+// Whether a specifier can only name a directory, as Node reads it: `.`, `..`,
+// or one ending in `/`, `/.` or `/..`, whose index file it then names.
+const namesDirectory = (specifier: string): boolean =>
+	specifier === '.' ||
+	specifier === '..' ||
+	specifier.endsWith('/') ||
+	specifier.endsWith('/.') ||
+	specifier.endsWith('/..');
+
+// The file a specifier resolved to `base` names: a directory's index for one
+// that can only name a directory, else any file `resolveFile` finds.
+const resolveSpecifierFile = (
+	specifier: string,
+	base: string
+): ModuleFile | null => {
+	if (namesDirectory(specifier)) {
+		return findFile(`${base}/index`, EXTENSIONS);
+	}
+
+	return resolveFile(base);
+};
+
 const isRelative = (specifier: string): boolean =>
 	specifier === '.' ||
 	specifier === '..' ||
 	specifier.startsWith('./') ||
 	specifier.startsWith('../');
+
+// Whether an alias prefix matches a specifier: in full, or as whole path
+// segments, so `ui` maps `ui/button` but not `uikit/button`. A prefix ending
+// in `/` already ends a segment.
+const matchesAlias = (specifier: string, prefix: string): boolean =>
+	specifier.startsWith(prefix) &&
+	(prefix.endsWith('/') ||
+		specifier.length === prefix.length ||
+		specifier.charAt(prefix.length) === '/');
 
 // The longest matching alias wins, so `@/ui/` can override a broader `@/`.
 const applyAlias = (specifier: string, aliases: AliasMap): string | null => {
@@ -97,7 +128,7 @@ const applyAlias = (specifier: string, aliases: AliasMap): string | null => {
 
 	for (const [prefix, target] of aliases) {
 		if (
-			!specifier.startsWith(prefix) ||
+			!matchesAlias(specifier, prefix) ||
 			prefix.length < bestPrefix.length
 		) {
 			continue;
@@ -121,11 +152,14 @@ export const resolveModulePath = (
 	aliases: AliasMap
 ): ModuleFile | null => {
 	if (isRelative(specifier)) {
-		return resolveFile(resolve(dirname(fromFile), specifier));
+		return resolveSpecifierFile(
+			specifier,
+			resolve(dirname(fromFile), specifier)
+		);
 	}
 
 	if (isAbsolute(specifier)) {
-		return resolveFile(specifier);
+		return resolveSpecifierFile(specifier, specifier);
 	}
 
 	const aliased = applyAlias(specifier, aliases);
@@ -135,7 +169,7 @@ export const resolveModulePath = (
 	}
 
 	// Alias targets are already absolute; resolving only normalizes the path.
-	return resolveFile(resolve(aliased));
+	return resolveSpecifierFile(specifier, resolve(aliased));
 };
 
 /** The `alias` option, with each target normalized against `cwd`. */

@@ -616,6 +616,9 @@ export const NO_CONFLICTING_DUP_INVALID = [
 ];
 
 export const NO_CONFLICTING_NS_VALID = [
+	// A line continuation adds no whitespace, so the substitution completes
+	// `w-` and the template isn't read.
+	IMPORT_CN + "cn(`w-\\\n${c ? '2' : '4'}`, 'w-2');",
 	// A negative number matcher, written or through a `const`, picks the
 	// value keyed by its string form.
 	IMPORT +

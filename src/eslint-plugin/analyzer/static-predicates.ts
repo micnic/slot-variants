@@ -40,26 +40,28 @@ const isStaticStringConditional = (node: Node): boolean =>
 // A substitution is only statically tokenizable when whitespace (or a
 // template edge) separates it from the surrounding quasi text — otherwise a
 // class token would straddle the boundary (e.g. `p-${x ? '2' : '4'}`), which
-// we deliberately don't attempt to enumerate.
+// we deliberately don't attempt to enumerate. The text is read cooked, as a
+// line continuation (`\` before a line break) adds no whitespace.
 const quasiIsolatesExpression = (
 	quasi: TemplateElement,
 	index: number,
 	quasis: ReadonlyArray<TemplateElement>
 ): boolean => {
-	const raw = quasi.value.raw;
+	/* c8 ignore next -- cooked is always defined on untagged templates */
+	const text = quasi.value.cooked ?? quasi.value.raw;
 	const hasLeftExpression = index > 0;
 	const hasRightExpression = index < quasis.length - 1;
 
 	// An interior empty quasi means two expressions sit adjacent.
-	if (raw.length === 0) {
+	if (text.length === 0) {
 		return !hasLeftExpression || !hasRightExpression;
 	}
 
-	if (hasLeftExpression && !LEADING_SEPARATOR.test(raw)) {
+	if (hasLeftExpression && !LEADING_SEPARATOR.test(text)) {
 		return false;
 	}
 
-	if (hasRightExpression && !TRAILING_SEPARATOR.test(raw)) {
+	if (hasRightExpression && !TRAILING_SEPARATOR.test(text)) {
 		return false;
 	}
 

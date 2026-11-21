@@ -97,10 +97,8 @@ export const noRestyle: Rule.RuleModule = {
 	},
 	create(context) {
 		const options = readConflictOptions(context.options[0]);
-		const moduleContext = getModuleContext(
-			context,
-			context.options[0]?.alias
-		);
+		const alias = context.options[0]?.alias;
+		const moduleContext = getModuleContext(context, alias);
 		// Shared by every position, so a class list reached from two of
 		// them — a `cn()` call is its own site and a part of the attribute
 		// holding it — reports each literal once.
@@ -140,31 +138,35 @@ export const noRestyle: Rule.RuleModule = {
 			);
 		};
 
-		const scan = createForwardingScan(context, {
-			onPosition(parts, site) {
-				if (site !== null) {
-					const styles = resolveSiteComponent(site);
+		const scan = createForwardingScan(
+			context,
+			{
+				onPosition(parts, site) {
+					if (site !== null) {
+						const styles = resolveSiteComponent(site);
 
-					if (styles !== null && styles.prop === site.prop) {
-						reportLiterals(
-							getSiteTargets(styles, site),
-							parts.literals
-						);
+						if (styles !== null && styles.prop === site.prop) {
+							reportLiterals(
+								getSiteTargets(styles, site),
+								parts.literals
+							);
+						}
 					}
-				}
 
-				reportLiterals(
-					parts.styled,
-					parts.literals,
-					canPairParts(parts)
-				);
+					reportLiterals(
+						parts.styled,
+						parts.literals,
+						canPairParts(parts)
+					);
+				},
+				// A later file importing this one reads the scan from the cache
+				// rather than parsing the file again.
+				onExit(moduleScan) {
+					cacheLintedModule(context, moduleScan);
+				}
 			},
-			// A later file importing this one reads the scan from the cache
-			// rather than parsing the file again.
-			onExit(moduleScan) {
-				cacheLintedModule(context, moduleScan);
-			}
-		});
+			alias
+		);
 
 		return scan.listener;
 	}

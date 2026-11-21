@@ -112,6 +112,108 @@ t.test('no-restyle reparses a module for a different parser', (t) => {
 	t.end();
 });
 
+// A type-based `defineProps<…>()` casts a `boolean` prop an element leaves
+// out to `false`, like a runtime `Boolean` one: read from an inline object
+// type, or a same-file interface or alias of one, under `withDefaults()` too.
+t.test('no-restyle reads type-based Vue Boolean props', (t) => {
+	const component = (name: string, script: string, props = 'props') => {
+		writeFixture(
+			`typed-props/${name}.vue`,
+			`<script setup lang="ts">
+			${IMPORT}const flat = sv({ base: 'p-2', variants: { flat: { true: 'shadow-none', false: 'shadow' } } });
+			${script}
+			</script>
+			<template><b :class="flat({ flat: ${props}.flat, class: ${props}.class })">x</b></template>`
+		);
+	};
+
+	component(
+		'Inline',
+		'const props = defineProps<{ class?: string; flat?: boolean }>();'
+	);
+	component(
+		'Interface',
+		`export interface Props { class?: string; flat?: boolean | string; [k: string]: unknown; 'x-y'?: boolean; 1?: boolean; [key]?: boolean; m(): void; n; }
+		const props = defineProps<Props>();`
+	);
+	component(
+		'Alias',
+		`type Props = { class?: string; flat?: boolean };
+		const props = withDefaults(defineProps<Props>(), {});`
+	);
+	component(
+		'Defaulted',
+		`type Props = { class?: string; flat?: boolean };
+		const props = withDefaults(defineProps<Props>(), { flat: true });`
+	);
+	component('Qualified', 'const props = defineProps<NS.Props>();');
+	component(
+		'Composed',
+		`type Base = { class?: string };
+		type Props = Base & { flat?: boolean };
+		const props = defineProps<Props>();`
+	);
+	component(
+		'Intersection',
+		'const props = defineProps<{ class?: string } & { flat?: boolean }>();'
+	);
+	component(
+		'Stringly',
+		'const props = defineProps<{ class?: string; flat?: string }>();'
+	);
+	component('Bare', 'const props = withDefaults();');
+	component(
+		'Wrapped',
+		`const base = defineProps<{ class?: string; flat?: boolean }>();
+		const props = withDefaults(base, {});`
+	);
+
+	const names = [
+		'Inline',
+		'Interface',
+		'Alias',
+		'Defaulted',
+		'Qualified',
+		'Composed',
+		'Intersection',
+		'Stringly',
+		'Bare',
+		'Wrapped'
+	];
+	const linter = new Linter({ cwd: fixtureDir });
+	const imports = names
+		.map((name) => `import ${name} from './typed-props/${name}.vue';`)
+		.join('\n');
+	const elements = names
+		.map((name) => `<${name} class="shadow-lg" />`)
+		.join('');
+	const messages = linter.verify(
+		`<script setup lang="ts">${imports}</script>\n<template>${elements}</template>`,
+		{
+			files: ['**/*.vue'],
+			plugins: { 'slot-variants': plugin },
+			rules: { 'slot-variants/no-restyle': 2 },
+			languageOptions: {
+				parser: vueParser,
+				parserOptions: { parser: tsParser }
+			}
+		},
+		{ filename: join(fixtureDir, 'page.vue') }
+	);
+
+	t.same(
+		messages.map(({ message }) => message),
+		[
+			'Class "shadow-lg" conflicts with "shadow" applied to the "base" slot.',
+			'Class "shadow-lg" conflicts with "shadow" applied to the "base" slot.',
+			'Class "shadow-lg" conflicts with "shadow" applied to the "base" slot.',
+			'Class "shadow-lg" conflicts with "shadow-none" applied to the "base" slot.'
+		],
+		'Inline, Interface, Alias and Defaulted cast flat; the rest leave it unset'
+	);
+	t.end();
+});
+
 // The same parser reads a module differently under other parser options, so a
 // failure cached under one set of them isn't handed to another.
 t.test('no-restyle reparses a module for other parser options', (t) => {

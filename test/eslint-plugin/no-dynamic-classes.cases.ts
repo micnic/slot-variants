@@ -288,6 +288,19 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 
 export const NO_DYNAMIC_CLASSES_INVALID = [
 	{
+		// A config class array is flat, through a `const` binding too.
+		code:
+			IMPORT +
+			"const inner = ['gap-2'];\nsv({ base: ['flex', inner], variants: {} });",
+		errors: 1
+	},
+	{
+		// A line continuation adds no whitespace, so the substitution
+		// completes the `w-` before it.
+		code: IMPORT_CN + "cn(`w-\\\n${c ? '2' : '4'}`);",
+		errors: 1
+	},
+	{
 		// Only a `void` of a literal is surely `undefined`.
 		code: IMPORT + 'sv({ base: void f(), variants: {} });',
 		errors: [{ messageId: 'dynamic' }]

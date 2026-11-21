@@ -77,6 +77,18 @@ writeFixture(
 	`${IMPORT_CREATE_SV}export default createSV({ base: 'm-1' }) as SV;\n`
 );
 
+// A file and a directory of the same name: a specifier that can only name a
+// directory reaches its index, which exports no factory.
+writeFixture(
+	'paths/lib.ts',
+	`${IMPORT_CREATE_SV}export const customSV = createSV();\n`
+);
+writeFixture('paths/lib/index.ts', 'export const customSV = 1;\n');
+writeFixture(
+	'paths/real/index.ts',
+	`${IMPORT_CREATE_SV}export const customSV = createSV();\n`
+);
+
 // The alias map as a config may spell it, including values the plugin skips.
 type AliasSetting = Record<string, string | number> | null;
 
@@ -148,6 +160,45 @@ t.test('no-conflicting-classes through imported factories', (t) => {
 	t.end();
 });
 
+t.test('module specifiers resolve as Node reads them', (t) => {
+	const paths = join(fixtureDir, 'paths');
+	const at = (file: string, specifier: string) => ({
+		code: `import { customSV } from '${specifier}';\ncustomSV${DUP_CONFIG}`,
+		filename: join(paths, file)
+	});
+
+	t.doesNotThrow(() => {
+		tester.run('no-conflicting-classes', rules['no-conflicting-classes'], {
+			valid: [
+				// A directory specifier names the index, not a sibling file.
+				at('lib/page.js', '.'),
+				at('lib/sub/page.js', '..'),
+				at('page.js', './lib/'),
+				at('lib/page.js', './sub/..'),
+				at('lib/page.js', join(paths, 'lib') + '/.'),
+				// An alias matches whole path segments only.
+				{
+					...at('page.js', 'uireal/index.ts'),
+					settings: aliasSettings({ ui: paths })
+				}
+			],
+			invalid: [
+				at('page.js', './real/'),
+				at('page.js', './lib'),
+				{
+					...at('page.js', 'ui/real/'),
+					settings: aliasSettings({ ui: paths })
+				},
+				{
+					...at('page.js', '#sv'),
+					settings: aliasSettings({ '#sv': join(paths, 'lib.ts') })
+				}
+			].map((test) => ({ ...test, errors: repeat(dup('p-2'), 2) }))
+		});
+	}, 'rule tester passes');
+	t.end();
+});
+
 t.test('a default-exported factory behind a type assertion', (t) => {
 	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
 
@@ -162,6 +213,13 @@ t.test('a default-exported factory behind a type assertion', (t) => {
 						code: `import typedSV from './factory/typed.ts';\ntypedSV${DUP_CONFIG}`,
 						filename: join(fixtureDir, 'page.ts'),
 						errors: repeat(dup('p-2'), 2)
+					},
+					{
+						// An imported factory called through a type-only
+						// wrapper.
+						code: `import { customSV } from './factory/sv.ts';\n(customSV as any)${DUP_CONFIG}\ncustomSV!${DUP_CONFIG}\n(customSV satisfies unknown)${DUP_CONFIG}`,
+						filename: join(fixtureDir, 'page.ts'),
+						errors: repeat(dup('p-2'), 6)
 					}
 				]
 			}
@@ -251,6 +309,19 @@ t.test('no-restyle follows a component styled by an imported factory', (t) => {
 				{
 					code: `import { Button } from './factory/button.jsx';\n<Button className="p-4" />;`,
 					filename: join(fixtureDir, 'page.jsx'),
+					errors: [restyle('p-4', 'p-2')]
+				},
+				{
+					// The rule's own `alias` option follows an imported factory
+					// too, over the shared setting.
+					code: `import { customSV } from '@f/sv.ts';\nconst b = customSV({ base: 'p-2', variants: {} });\nb({ class: 'p-4' });`,
+					filename: join(fixtureDir, 'page.jsx'),
+					options: [
+						{ alias: { '@f/': join(fixtureDir, 'factory') } }
+					],
+					settings: aliasSettings({
+						'@f/': join(fixtureDir, 'missing')
+					}),
 					errors: [restyle('p-4', 'p-2')]
 				}
 			]

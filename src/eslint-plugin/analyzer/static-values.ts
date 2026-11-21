@@ -92,7 +92,10 @@ const checkArrayClassValue = (
 	const nested = branchOptions(options);
 
 	forEachItemReportingSpread(context, node.elements, (element) => {
-		if (!options.cnStyle && element.type === 'ArrayExpression') {
+		// A config class array is flat, read through `const` bindings too.
+		const resolved = resolveStaticValue(element, context.sourceCode);
+
+		if (!options.cnStyle && resolved.type === 'ArrayExpression') {
 			reportDynamic(context, element);
 			return;
 		}

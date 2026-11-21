@@ -3,6 +3,7 @@ import type { Node, ObjectExpression, Property, SpreadElement } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { getKeyName } from './config-keys.ts';
 import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
+import { isUndefinedValue } from './static-predicates.ts';
 
 export type GroupSlots = ReadonlyMap<string, ReadonlyArray<string>>;
 
@@ -249,12 +250,23 @@ export const getConfigSlotNames = (
 	return slotNames;
 };
 
-// The class value a props or compound object carries.
-// `class` wins over `className` when both are present,
-// exactly as `sv()` resolves them at runtime.
+// Whether a value is written as `null`, `undefined` or a `void` of a literal.
+const isNullishValue = (node: Node): boolean =>
+	isUndefinedValue(node) || (node.type === 'Literal' && node.raw === 'null');
+
+// The class value a props or compound object carries: `class`, unless it's
+// left nullish, then `className`, exactly as `sv()` reads them at runtime.
 export const getClassValue = (
 	properties: ReadonlyMap<string, Node>
-): Node | undefined => properties.get('class') ?? properties.get('className');
+): Node | undefined => {
+	const classValue = properties.get('class');
+
+	if (classValue === undefined || isNullishValue(classValue)) {
+		return properties.get('className');
+	}
+
+	return classValue;
+};
 
 // The slots each group key of a slot object reaches that another key of the
 // same object already targets: a key naming the slot, or an earlier group. A

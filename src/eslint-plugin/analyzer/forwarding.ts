@@ -1,5 +1,6 @@
 import type { Rule, Scope } from 'eslint';
 import type {
+	ArrayPattern,
 	CallExpression,
 	Identifier,
 	MemberExpression,
@@ -19,7 +20,8 @@ import {
 	getConstDefInit,
 	getLookupScope,
 	getModuleScope,
-	isInTemplate
+	isInTemplate,
+	unwrapExpression
 } from './const-bindings.ts';
 import { getProperties, getStrictProperties } from './properties.ts';
 import {
@@ -49,7 +51,8 @@ import {
 	isClassListCall,
 	pathAt
 } from './restyle.ts';
-import { isUndefinedValue } from './static-predicates.ts';
+import { getStaticStringText } from './literals.ts';
+import { isDefinedValue, isUndefinedValue } from './static-predicates.ts';
 import {
 	getOverrideValue,
 	literalStyles,
@@ -60,7 +63,9 @@ import {
 	type StyledClasses,
 	type StyledContext
 } from './styled-values.ts';
+import { forEachStringLiteralElement } from './token-extraction.ts';
 import { createTrackedCallResolver } from './tracked-calls.ts';
+import { readTypedBooleanProps } from './typed-props.ts';
 
 /**
  * A part a component merges its `class` prop into, as an element passing it
@@ -141,12 +146,18 @@ type PropRead = PropBinding & { component: Component };
 // An object holding a component's props, with the defaults it gives them:
 // Vue's `withDefaults()` or `defineProps()` defaults, or the objects Solid's
 // `merge()` merges below the props. A rest of them (`...rest`) leaves out the
-// props its pattern destructures.
+// props its pattern destructures, as Solid's `omit()` and `splitProps()` do
+// the ones they name, and the objects `merge()` merges above the props force
+// their values over the element's.
 type PropsObject = {
 	component: Component;
 	defaults: ReadonlyMap<string, Node>;
 	omitted: ReadonlySet<string>;
+	forced: ReadonlyMap<string, Node>;
 };
+
+// A prop read off an object by name: `props.size`.
+type MemberRead = { object: Identifier; prop: string };
 
 // A position found during the walk, read once the walk is over — so an import
 // or a props declaration written below its use (a Svelte template above its
@@ -266,6 +277,11 @@ const getRestName = (pattern: ObjectPattern): string | null => {
 
 	return null;
 };
+
+const isSplitPropsCall = (node: Node): node is CallExpression =>
+	node.type === 'CallExpression' &&
+	node.callee.type === 'Identifier' &&
+	node.callee.name === 'splitProps';
 
 // The props a pattern names, which its rest (`...rest`) leaves out.
 const getPatternKeys = (pattern: ObjectPattern): string[] => {
@@ -499,16 +515,19 @@ export const getSiteTargets = (
 
 export const createForwardingScan = (
 	context: Rule.RuleContext,
-	handlers: PositionHandlers
+	handlers: PositionHandlers,
+	alias?: Record<string, string>
 ): ForwardingScan => {
 	const { sourceCode } = context;
-	const ctx = createTrackedCallResolver(context);
+	const ctx = createTrackedCallResolver(context, alias);
 	const forwarded = new Map<Component, ForwardedStyles>();
 	// Where a component's `class` prop can be read from: the binding a props
 	// pattern put it in, or an object holding the whole props — the props
 	// parameter, a `defineProps()` result, or a view derived from either
 	// (Solid's `merge`, `omit`).
 	const propBindings = new Map<Scope.Variable, PropRead>();
+	// The names destructured off a props object that forces their value.
+	const forcedBindings = new Map<Scope.Variable, Node>();
 	const propsObjects = new Map<Scope.Variable, PropsObject>();
 	const pending: PendingPosition[] = [];
 	// The props a Vue `<script setup>` declares, which its template reads by
@@ -537,7 +556,6 @@ export const createForwardingScan = (
 		pattern: ObjectPattern,
 		source: PropsObject
 	) => {
-		const { component, defaults } = source;
 		const bindings = getPropBindings(pattern);
 		const rest = getRestName(pattern);
 
@@ -553,16 +571,32 @@ export const createForwardingScan = (
 					])
 				});
 			} else if (binding !== undefined) {
-				propBindings.set(variable, {
-					component,
-					prop: binding.prop,
-					defaultValue:
-						binding.defaultValue ??
-						defaults.get(binding.prop) ??
-						null
-				});
+				registerBinding(variable, binding, source);
 			}
 		}
+	};
+
+	// A name a pattern destructures a prop into: the element's prop, or the
+	// value the props object forces over it.
+	const registerBinding = (
+		variable: Scope.Variable,
+		binding: PropBinding,
+		{ component, defaults, forced }: PropsObject
+	) => {
+		const value = forced.get(binding.prop);
+
+		if (value !== undefined) {
+			forcedBindings.set(variable, value);
+
+			return;
+		}
+
+		propBindings.set(variable, {
+			component,
+			prop: binding.prop,
+			defaultValue:
+				binding.defaultValue ?? defaults.get(binding.prop) ?? null
+		});
 	};
 
 	// A component function's props are its first parameter, destructured or
@@ -582,7 +616,8 @@ export const createForwardingScan = (
 		const props: PropsObject = {
 			component: fn,
 			defaults: NO_DEFAULTS,
-			omitted: NO_PROPS
+			omitted: NO_PROPS,
+			forced: NO_DEFAULTS
 		};
 
 		if (param.type === 'ObjectPattern') {
@@ -635,15 +670,42 @@ export const createForwardingScan = (
 		return isBooleanConstructor(type);
 	};
 
+	// `defaults`, with each `boolean` prop of a type-based `defineProps<…>()`
+	// declaration that it gives no default cast to `false`, as Vue does.
+	const withTypedBooleans = (
+		defaults: ReadonlyMap<string, Node>,
+		declaration: Node | undefined
+	): ReadonlyMap<string, Node> => {
+		if (
+			declaration === undefined ||
+			declaration.type !== 'CallExpression'
+		) {
+			return defaults;
+		}
+
+		const result = new Map(defaults);
+
+		for (const prop of readTypedBooleanProps(declaration, sourceCode.ast)) {
+			if (!result.has(prop)) {
+				result.set(prop, ABSENT_BOOLEAN);
+			}
+		}
+
+		return result;
+	};
+
 	// The defaults a props source declares: `withDefaults()`'s second
 	// argument, or each `default` of a `defineProps()` runtime declaration,
-	// where a `Boolean` prop without one defaults to `false`.
+	// where a `Boolean` prop without one defaults to `false` — or a `boolean`
+	// one of a type-based declaration, under `withDefaults()` too.
 	const readSourceDefaults = (
 		name: string,
-		[declaration, defaults]: CallExpression['arguments']
+		call: CallExpression
 	): ReadonlyMap<string, Node> => {
+		const [declaration, defaults] = call.arguments;
+
 		if (name === 'withDefaults') {
-			return readObjectArgument(defaults);
+			return withTypedBooleans(readObjectArgument(defaults), declaration);
 		}
 
 		if (name !== 'defineProps') {
@@ -663,7 +725,44 @@ export const createForwardingScan = (
 			}
 		}
 
-		return result;
+		return withTypedBooleans(result, call);
+	};
+
+	// A view of a props object a call is handed as its argument `index`: the
+	// objects before it merge `defaults` below it, the ones after force each
+	// defined prop of theirs over it, and Solid's `omit()` leaves out the
+	// props its other arguments name.
+	const getPropsView = (
+		source: PropsObject,
+		defaults: ReadonlyMap<string, Node>,
+		{ callee, arguments: args }: CallExpression,
+		index: number
+	): PropsObject => {
+		const isOmit = callee.type === 'Identifier' && callee.name === 'omit';
+		const omitted = new Set(source.omitted);
+		const forced = new Map(source.forced);
+
+		for (const arg of args.slice(index + 1)) {
+			for (const [key, value] of readObjectArgument(arg)) {
+				if (isDefinedValue(value, ctx.resolve)) {
+					forced.set(key, value);
+					omitted.add(key);
+				}
+			}
+
+			const key = getStaticStringText(ctx.resolve(arg));
+
+			if (isOmit && key !== null) {
+				omitted.add(key);
+			}
+		}
+
+		return {
+			component: source.component,
+			defaults: new Map([...defaults, ...source.defaults]),
+			omitted,
+			forced
+		};
 	};
 
 	// The props object a call yields: the module's, for a props source like
@@ -676,23 +775,20 @@ export const createForwardingScan = (
 		if (callee.type === 'Identifier' && PROPS_SOURCES.has(callee.name)) {
 			return {
 				component: sourceCode.ast,
-				defaults: readSourceDefaults(callee.name, init.arguments),
-				omitted: NO_PROPS
+				defaults: readSourceDefaults(callee.name, init),
+				omitted: NO_PROPS,
+				forced: NO_DEFAULTS
 			};
 		}
 
 		const defaults = new Map<string, Node>();
 
-		for (const arg of init.arguments) {
+		for (const [index, arg] of init.arguments.entries()) {
 			if (arg.type === 'Identifier') {
 				const source = getPropsObject(arg);
 
 				if (source !== null) {
-					return {
-						component: source.component,
-						defaults: new Map([...defaults, ...source.defaults]),
-						omitted: source.omitted
-					};
+					return getPropsView(source, defaults, init, index);
 				}
 			}
 
@@ -719,6 +815,41 @@ export const createForwardingScan = (
 		return null;
 	};
 
+	// The props objects Solid's `splitProps(props, [...keys], …)` returns: one
+	// per key list, then the rest, which leaves out every key they list.
+	const registerSplitProps = (
+		declared: ReadonlyArray<Scope.Variable>,
+		pattern: ArrayPattern,
+		init: CallExpression,
+		source: PropsObject
+	) => {
+		const [, ...lists] = init.arguments;
+		const listed = new Set(source.omitted);
+
+		for (const list of lists) {
+			forEachStringLiteralElement(list, sourceCode, (key) => {
+				listed.add(key);
+			});
+		}
+
+		const rest: PropsObject = { ...source, omitted: listed };
+
+		for (const variable of declared) {
+			const index = pattern.elements.findIndex(
+				(element) =>
+					element !== null &&
+					element.type === 'Identifier' &&
+					element.name === variable.name
+			);
+
+			if (index === lists.length) {
+				propsObjects.set(variable, rest);
+			} else {
+				propsObjects.set(variable, source);
+			}
+		}
+	};
+
 	const visitDeclarator = (node: VariableDeclarator) => {
 		const { id, init } = node;
 
@@ -738,7 +869,7 @@ export const createForwardingScan = (
 			}
 		}
 
-		const source = getInitSource(init);
+		const source = getInitSource(unwrapExpression(init));
 
 		if (source === null) {
 			return;
@@ -750,9 +881,54 @@ export const createForwardingScan = (
 			return;
 		}
 
+		if (id.type === 'ArrayPattern' && isSplitPropsCall(init)) {
+			registerSplitProps(declared, id, init, source);
+
+			return;
+		}
+
 		for (const variable of declared) {
 			propsObjects.set(variable, source);
 		}
+	};
+
+	// The object and name a non-computed member read names.
+	const readMember = (node: MemberExpression): MemberRead | null => {
+		if (
+			node.computed ||
+			node.property.type !== 'Identifier' ||
+			node.object.type !== 'Identifier'
+		) {
+			return null;
+		}
+
+		return { object: node.object, prop: node.property.name };
+	};
+
+	// The value a props object forces over the element's for a prop read off
+	// it (`merge(props, { size: 'lg' }).size`), or destructured off it.
+	const readForcedValue = (node: Node): Node | null => {
+		if (node.type === 'Identifier') {
+			return lookupBinding(forcedBindings, ctx.variableOf(node));
+		}
+
+		if (node.type !== 'MemberExpression') {
+			return null;
+		}
+
+		const read = readMember(node);
+
+		if (read === null) {
+			return null;
+		}
+
+		const source = getPropsObject(read.object);
+
+		if (source === null) {
+			return null;
+		}
+
+		return source.forced.get(read.prop) ?? null;
 	};
 
 	// `$attrs` in a Vue template: the attributes the component is passed,
@@ -771,29 +947,28 @@ export const createForwardingScan = (
 		return {
 			component: sourceCode.ast,
 			defaults: NO_DEFAULTS,
-			omitted: NO_PROPS
+			omitted: NO_PROPS,
+			forced: NO_DEFAULTS
 		};
 	};
 
 	// `props.className` — a prop read off a props object, or off `$attrs` in
-	// a Vue template.
+	// a Vue template. One the object forces a value of its own for is no
+	// prop of the element's.
 	const readMemberProp = (node: MemberExpression): PropRead | null => {
-		if (
-			node.computed ||
-			node.property.type !== 'Identifier' ||
-			node.object.type !== 'Identifier'
-		) {
+		const read = readMember(node);
+
+		if (read === null) {
 			return null;
 		}
 
 		const source =
-			getPropsObject(node.object) ?? readTemplateAttrs(node.object);
+			getPropsObject(read.object) ?? readTemplateAttrs(read.object);
+		const { prop } = read;
 
-		if (source === null) {
+		if (source === null || source.forced.has(prop)) {
 			return null;
 		}
-
-		const prop = node.property.name;
 
 		return {
 			component: source.component,
@@ -859,13 +1034,15 @@ export const createForwardingScan = (
 		value: Node,
 		component: Component
 	): PropsObject | null => {
-		const resolved = ctx.resolve(value);
+		// Read by name, not resolved: a `const` holding a view of the props
+		// (`omit(props, …)`) is a props object of its own, unlike its call.
+		const node = unwrapExpression(value);
 
-		if (resolved.type !== 'Identifier') {
+		if (node.type !== 'Identifier') {
 			return null;
 		}
 
-		const source = getPropsObject(resolved);
+		const source = getPropsObject(node);
 
 		if (source === null || source.component !== component) {
 			return null;
@@ -945,6 +1122,13 @@ export const createForwardingScan = (
 		}
 
 		for (const [variant, value] of part.unreadProps) {
+			const forced = readForcedValue(ctx.resolve(value));
+
+			if (forced !== null) {
+				setVariantValue(matchers, variant, forced);
+				continue;
+			}
+
 			const read = readComponentProp(value, component);
 
 			if (read === null) {
@@ -1046,10 +1230,9 @@ export const createForwardingScan = (
 	// The props a `defineProps()` call declares, with the defaults it or a
 	// `withDefaults()` around it gives them. `withDefaults()` is entered
 	// first, so the `defineProps()` inside adds to its defaults.
-	const recordTemplateProps = ({
-		callee,
-		arguments: args
-	}: CallExpression) => {
+	const recordTemplateProps = (node: CallExpression) => {
+		const { callee } = node;
+
 		if (
 			callee.type !== 'Identifier' ||
 			(callee.name !== 'defineProps' && callee.name !== 'withDefaults')
@@ -1057,7 +1240,7 @@ export const createForwardingScan = (
 			return;
 		}
 
-		const defaults = new Map(readSourceDefaults(callee.name, args));
+		const defaults = new Map(readSourceDefaults(callee.name, node));
 
 		if (templateProps !== null) {
 			for (const [prop, value] of templateProps.defaults) {
@@ -1068,7 +1251,8 @@ export const createForwardingScan = (
 		templateProps = {
 			component: sourceCode.ast,
 			defaults,
-			omitted: NO_PROPS
+			omitted: NO_PROPS,
+			forced: NO_DEFAULTS
 		};
 	};
 
