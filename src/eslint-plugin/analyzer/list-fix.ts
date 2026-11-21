@@ -119,6 +119,7 @@ export const removeRangeKeepingComments = (
 
 	return fixer.removeRange(range);
 };
+
 // The items a list holds, skipping the holes of a sparse array.
 export const countListItems = (list: ListItems): number => {
 	let count = 0;
@@ -194,6 +195,36 @@ export const removeFromList = (
 	return removeRangeKeepingComments(fixer, sourceCode, [
 		before.range[0],
 		end
+	]);
+};
+
+// Removes the only item of a list: with the comma trailing it, as nothing is
+// left to separate, and with the line break and indentation introducing it
+// when it sits on its own line. Null when a comment would go with it.
+export const removeSoleItem = (
+	fixer: Rule.RuleFixer,
+	sourceCode: SourceCode,
+	node: Node
+): Rule.Fix | null => {
+	const {
+		range: [start, end],
+		after
+	} = getListElement(sourceCode, node);
+	const ownLine = startOfOwnLine(sourceCode.getText(), start);
+	let removeStart = start;
+	let removeEnd = end;
+
+	if (ownLine !== null) {
+		removeStart = ownLine;
+	}
+
+	if (isToken(after, ',')) {
+		[, removeEnd] = after.range;
+	}
+
+	return removeRangeKeepingComments(fixer, sourceCode, [
+		removeStart,
+		removeEnd
 	]);
 };
 

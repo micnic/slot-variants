@@ -8,6 +8,13 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 	IMPORT_CREATE_SV + "createSV({ toString: 'x', __defineGetter__: 'y' });",
 	// Static class strings in cn-style call.
 	IMPORT + "sv('flex', 'items-center');",
+	// The placeholders `cn()` skips are known at lint time, on their own and
+	// as a conditional's branch.
+	IMPORT_CN +
+		"cn('foo', null, undefined, void 0, false, true, ok ? 'a' : null, ok && false);",
+	// A `const` read in a function body, which runs later, is no cycle.
+	IMPORT_CN +
+		"let later;\nconst base = 'p-2';\nconst pick = () => cn(base, [base]);\ncn(base);",
 	// Another sv()/cn() call's output is not a literal, but its classes are
 	// still known at lint time — `no-restyle` is what checks them.
 	`import { cn, sv } from 'slot-variants';
@@ -356,7 +363,7 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 		errors: 1
 	},
 	{
-		// Non-string literal as cn-style argument.
+		// A number is no class value, nor a placeholder a condition leaves.
 		code: IMPORT + 'sv(42);',
 		errors: 1
 	},
@@ -781,6 +788,33 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 	{
 		// A reference cycle terminates and is reported as dynamic.
 		code: IMPORT_CN + 'const a = b;\nconst b = a;\ncn(a);',
+		errors: 1
+	},
+	{
+		// A `const` array holding itself is left unread rather than walked
+		// forever.
+		code: IMPORT_CN + "const list = ['p-2', list];\ncn(list);",
+		errors: 1
+	},
+	{
+		// Two `const` arrays holding each other are a cycle too.
+		code:
+			IMPORT_CN + "const a = ['p-2', b];\nconst b = ['p-4', a];\ncn(a);",
+		errors: 1
+	},
+	{
+		// A `const` naming itself in a conditional's branch.
+		code: IMPORT_CN + "const c = ok ? 'a' : c;\ncn(c);",
+		errors: 1
+	},
+	{
+		// A config record holding itself.
+		code: IMPORT + 'const v = { size: v };\nsv({ variants: v });',
+		errors: 1
+	},
+	{
+		// A placeholder `cn()` skips is still no config class value.
+		code: IMPORT + "sv({ base: ['flex', null], variants: {} });",
 		errors: 1
 	},
 	{

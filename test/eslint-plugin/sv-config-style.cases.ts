@@ -637,6 +637,30 @@ export const SV_CONFIG_STYLE_BASE_INVALID = [
 		output: IMPORT + "sv('flex', { slots: {  }, variants: {} });"
 	},
 	{
+		// The comma trailing the only `slots` entry goes with it.
+		code: IMPORT + "sv({ slots: { base: 'flex', }, variants: {} });",
+		errors: [{ messageId: 'wrongBaseStyle' }],
+		output: IMPORT + "sv({ base: 'flex', slots: {  }, variants: {} });"
+	},
+	{
+		// An only entry on its own line goes with the line break and
+		// indentation introducing it.
+		code:
+			IMPORT +
+			"sv({\n\tslots: {\n\t\tbase: 'flex',\n\t},\n\tvariants: {},\n});",
+		options: [{ baseStyle: 'separateArg' }],
+		errors: [{ messageId: 'wrongBaseStyle' }],
+		output: IMPORT + "sv('flex', {\n\tslots: {\n\t},\n\tvariants: {},\n});"
+	},
+	{
+		// A comment between the only entry and its comma withholds the fix.
+		code:
+			IMPORT +
+			"sv({ slots: { base: 'flex' /* note */, }, variants: {} });",
+		errors: [{ messageId: 'wrongBaseStyle' }],
+		output: null
+	},
+	{
 		// separateArg present, target configured as
 		// slotsBase with slots already declared: reports and
 		// fixes, moving the leading argument into `slots`.

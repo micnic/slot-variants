@@ -21,6 +21,16 @@ export const isUndefinedValue = (node: Node): boolean => {
 	return node.type === 'Identifier' && node.name === 'undefined';
 };
 
+// A placeholder `cn()` skips wherever it's written: `undefined`, `null` or a
+// boolean, as a condition leaves behind.
+export const isSkippedClassValue = (node: Node): boolean => {
+	if (node.type === 'Literal') {
+		return node.raw === 'null' || typeof node.value === 'boolean';
+	}
+
+	return isUndefinedValue(node);
+};
+
 // A value present and not `undefined` once read: a property left `undefined`
 // is one that isn't set.
 export const isDefinedValue = (

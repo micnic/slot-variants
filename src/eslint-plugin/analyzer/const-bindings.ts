@@ -1,12 +1,18 @@
-import type { Scope, SourceCode } from 'eslint';
+import type { AST, Scope, SourceCode } from 'eslint';
 import type { ArrayExpression, Identifier, Node } from 'estree';
 import { getKeyName } from './config-keys.ts';
 
 // A node that only wraps another expression without changing its value.
 type TransparentWrapper = Node & { expression: Node };
 
-// A name's single definition, and the scope that declares it.
-type SingleBinding = { def: Scope.Definition; scope: Scope.Scope };
+// A name's variable, its single definition, and the scope that declares it.
+type SingleBinding = {
+	variable: Scope.Variable;
+	def: Scope.Definition;
+	scope: Scope.Scope;
+};
+
+type VariableSet = Set<Scope.Variable>;
 
 /** A name destructured off a value: the value, and the key it reads. */
 export type DestructuredRead = { object: Node; key: string };
@@ -38,6 +44,13 @@ const TRANSPARENT_WRAPPER_TYPES: ReadonlySet<string> = new Set([
 	'TSSatisfiesExpression',
 	'TSTypeAssertion'
 ]);
+
+// The variables whose values read each variable; kept per variable, as every
+// read of it asks.
+const dependentVariables = new WeakMap<
+	Scope.Variable,
+	ReadonlySet<Scope.Variable>
+>();
 
 /** Whether `node` is a type-only or optional-chain wrapper of another. */
 export const isTransparentWrapper = (node: {
@@ -196,7 +209,123 @@ export const findSingleBinding = (
 		return null;
 	}
 
-	return { def, scope: variable.scope };
+	return { variable, def, scope: variable.scope };
+};
+
+const isRangeWithin = (
+	[start, end]: AST.Range,
+	[containerStart, containerEnd]: AST.Range
+): boolean => start >= containerStart && end <= containerEnd;
+
+// Whether `def` declares a variable with an initializer written around `range`.
+const hasInitializerAround = (
+	def: Scope.Definition,
+	range: AST.Range,
+	sourceCode: SourceCode
+): boolean => {
+	if (def.type !== 'Variable' || !def.node.init) {
+		return false;
+	}
+
+	return isRangeWithin(range, sourceCode.getRange(def.node.init));
+};
+
+// Adds to `readers` each variable whose initializer evaluates what's written
+// at `range` in the scope `from`: one declared around it, up to the nearest
+// function, whose body runs later.
+const addReaders = (
+	range: AST.Range,
+	from: Scope.Scope,
+	sourceCode: SourceCode,
+	readers: VariableSet
+) => {
+	let scope: Scope.Scope | null = from;
+
+	while (scope) {
+		for (const variable of scope.variables) {
+			const isReader = variable.defs.some((def) =>
+				hasInitializerAround(def, range, sourceCode)
+			);
+
+			if (isReader) {
+				readers.add(variable);
+			}
+		}
+
+		if (scope.type === 'function') {
+			return;
+		}
+
+		scope = scope.upper;
+	}
+};
+
+const addVariableReaders = (
+	variable: Scope.Variable,
+	sourceCode: SourceCode,
+	readers: VariableSet
+) => {
+	for (const reference of variable.references) {
+		const { range } = reference.identifier;
+
+		/* c8 ignore next 3 -- every parsed node has a range */
+		if (!range) {
+			continue;
+		}
+
+		addReaders(range, reference.from, sourceCode, readers);
+	}
+};
+
+// The variables whose values read `variable` as they're evaluated, straight
+// (`const a = [variable]`) or through other values.
+const getDependents = (
+	variable: Scope.Variable,
+	sourceCode: SourceCode
+): ReadonlySet<Scope.Variable> => {
+	const known = dependentVariables.get(variable);
+
+	if (known) {
+		return known;
+	}
+
+	const dependents: VariableSet = new Set();
+
+	addVariableReaders(variable, sourceCode, dependents);
+
+	// A set also iterates the items added along the way.
+	for (const dependent of dependents) {
+		addVariableReaders(dependent, sourceCode, dependents);
+	}
+
+	dependentVariables.set(variable, dependents);
+
+	return dependents;
+};
+
+// Whether reading `variable` at `node` closes a cycle: `node` is written in
+// its own value (`const a = [a]`), or in a value its own reads
+// (`const a = [b]; const b = [a]`).
+const closesCycle = (
+	node: Identifier,
+	variable: Scope.Variable,
+	scope: Scope.Scope,
+	sourceCode: SourceCode
+): boolean => {
+	const readers: VariableSet = new Set();
+
+	addReaders(sourceCode.getRange(node), scope, sourceCode, readers);
+
+	for (const reader of readers) {
+		if (
+			reader === variable ||
+			getDependents(reader, sourceCode).has(variable)
+		) {
+			return true;
+		}
+	}
+
+	return false;
 };
 
 // The initializer of a `const name = <value>` definition, or null for any other
@@ -272,23 +401,18 @@ export const getDestructuredRead = (
 	return null;
 };
 
-// Follows `const` bindings so a hoisted constant (`const base = 'flex'`) is
-// analyzed as its value. Returns the original node when it doesn't resolve to
-// a readable const, or the node that closes a reference cycle.
-export const resolveStaticValue = (
+// Follows `const` bindings from `node` to the value it names. A read that
+// closes a reference cycle ends it, as following that one would never end;
+// with `entersCycle`, only from the second binding on.
+const followConstBindings = (
 	node: Node,
-	sourceCode: SourceCode
+	sourceCode: SourceCode,
+	entersCycle: boolean
 ): Node => {
 	let current = unwrapExpression(node);
-	const seen = new Set<Node>();
+	let guarded = !entersCycle;
 
 	while (current.type === 'Identifier') {
-		if (seen.has(current)) {
-			return current;
-		}
-
-		seen.add(current);
-
 		const scope = getLookupScope(current, sourceCode);
 
 		if (scope === null) {
@@ -307,11 +431,32 @@ export const resolveStaticValue = (
 			return current;
 		}
 
+		if (
+			guarded &&
+			closesCycle(current, binding.variable, scope, sourceCode)
+		) {
+			return current;
+		}
+
+		guarded = true;
 		current = init;
 	}
 
 	return current;
 };
+
+// Follows `const` bindings so a hoisted constant (`const base = 'flex'`) is
+// analyzed as its value. Returns the original node when it doesn't resolve to
+// a readable const, or when reading it there closes a reference cycle
+// (`const list = ['flex', list]`).
+export const resolveStaticValue = (node: Node, sourceCode: SourceCode): Node =>
+	followConstBindings(node, sourceCode, false);
+
+// Like `resolveStaticValue`, but a `const` is read even where that closes a
+// cycle (`const a = { ...a }`), for a caller that tracks the values it has
+// entered and stops at one itself.
+export const resolveEnteredValue = (node: Node, sourceCode: SourceCode): Node =>
+	followConstBindings(node, sourceCode, true);
 
 // A config container (`variants`, a variant's value record, a compound array,
 // …) read through `const` bindings, like a class value is. Undefined stays
@@ -348,9 +493,5 @@ export const isWithinNode = (
 	sourceCode: SourceCode,
 	node: Node,
 	container: Node
-): boolean => {
-	const [start, end] = sourceCode.getRange(node);
-	const [containerStart, containerEnd] = sourceCode.getRange(container);
-
-	return start >= containerStart && end <= containerEnd;
-};
+): boolean =>
+	isRangeWithin(sourceCode.getRange(node), sourceCode.getRange(container));

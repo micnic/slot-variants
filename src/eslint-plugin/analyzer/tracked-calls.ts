@@ -119,19 +119,12 @@ const resolveDestructuredExportName = (
 // aliases (`const cx = cn; cx(…)`) and type-only wrappers (`(sv as F)(…)`).
 // A callee bound to a `createSV(...)` call is a pre-configured `sv()`, so it
 // names `sv` and its call sites are analyzed exactly like `sv()` calls.
-// `visited` holds the calls already on the path, so a callee bound back to one
-// of them (`const f = f()`) names nothing instead of recursing forever.
+// A callee bound back to its own call (`const f = f()`) isn't read through,
+// so it names nothing.
 const resolveExportName = (
 	match: MatchContext,
-	node: CallExpression,
-	visited: Set<CallExpression> = new Set()
+	node: CallExpression
 ): string | null => {
-	if (visited.has(node)) {
-		return null;
-	}
-
-	visited.add(node);
-
 	const resolved = match.ctx.resolve(node.callee);
 	const namespaceExport = resolveNamespaceExportName(match, resolved);
 
@@ -156,7 +149,7 @@ const resolveExportName = (
 
 	if (
 		resolved.type === 'CallExpression' &&
-		resolveExportName(match, resolved, visited) === 'createSV'
+		resolveExportName(match, resolved) === 'createSV'
 	) {
 		return 'sv';
 	}

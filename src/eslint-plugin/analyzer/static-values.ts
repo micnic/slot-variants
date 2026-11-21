@@ -8,13 +8,14 @@ import type {
 	SpreadElement
 } from 'estree';
 import { getKeyName } from './config-keys.ts';
-import { resolveStaticValue } from './const-bindings.ts';
+import { resolveEnteredValue, resolveStaticValue } from './const-bindings.ts';
 import {
 	collectSlotKeyedProperties,
 	getConfigSlotNames,
 	getConfigProperties
 } from './properties.ts';
 import {
+	isSkippedClassValue,
 	isStaticStringNode,
 	isStaticTernaryTemplate,
 	isUndefinedValue
@@ -115,6 +116,10 @@ const checkClassValueIsStatic = (
 		return;
 	}
 
+	if (options.cnStyle && isSkippedClassValue(node)) {
+		return;
+	}
+
 	if (isStaticStringNode(node)) {
 		return;
 	}
@@ -195,7 +200,7 @@ const forEachConfigProperty = (
 			continue;
 		}
 
-		const spread = resolveStaticValue(prop.argument, context.sourceCode);
+		const spread = resolveEnteredValue(prop.argument, context.sourceCode);
 
 		if (spread.type !== 'ObjectExpression') {
 			reportDynamic(context, prop);

@@ -1,6 +1,9 @@
 import { IMPORT, IMPORT_CN, IMPORT_CREATE_SV, IMPORT_NS } from './helpers.ts';
 
 export const NO_REDUNDANT_SPACES_VALID = [
+	// A `const` holding itself is left unread rather than walked forever.
+	IMPORT +
+		"const list = ['p-2', list];\nconst v = { size: v };\nconst s = { a: s };\nsv({ base: list, slots: s, variants: v });\nsv(list);",
 	// A canonical ternary template: single spaces around each substitution,
 	// none at its edges, and empty branches.
 	IMPORT_CN +

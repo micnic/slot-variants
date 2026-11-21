@@ -14,7 +14,8 @@ import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
  * In a `cn()`-style position, `cond && x`, ternaries and ternary templates are
  * allowed when every branch is static. An object there is a clsx-style record
  * whose keys are the classes, so only its keys must be static; its values are
- * runtime conditions and aren't checked.
+ * runtime conditions and aren't checked. A placeholder `cn()` skips (`null`,
+ * `undefined`, a boolean) is allowed there too.
  *
  * A `cn()`-style argument that resolves to another `sv()`/`cn()` call's output
  * (`cn(classes.base, 'p-4')`) is exempt: its classes are known at lint time,

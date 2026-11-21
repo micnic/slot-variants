@@ -14,10 +14,7 @@ import {
 	getKeyName
 } from '../analyzer/config-keys.ts';
 import { isWithinNode, resolveContainer } from '../analyzer/const-bindings.ts';
-import {
-	removeFromList,
-	removeRangeKeepingComments
-} from '../analyzer/list-fix.ts';
+import { removeFromList, removeSoleItem } from '../analyzer/list-fix.ts';
 import { getProperties } from '../analyzer/properties.ts';
 import { isStaticStringNode } from '../analyzer/static-predicates.ts';
 import {
@@ -338,12 +335,7 @@ const removePropertyFix = (
 		return removeFromList(fixer, sourceCode, prop, obj.properties);
 	}
 
-	// The only property: no comma to take along, so remove just the property.
-	return removeRangeKeepingComments(
-		fixer,
-		sourceCode,
-		sourceCode.getRange(prop)
-	);
+	return removeSoleItem(fixer, sourceCode, prop);
 };
 
 const insertAsFirstPropertyFix = (

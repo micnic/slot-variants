@@ -2,7 +2,7 @@ import type { SourceCode } from 'eslint';
 import type { Node, ObjectExpression, Property, SpreadElement } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { getKeyName } from './config-keys.ts';
-import { resolveContainer, resolveStaticValue } from './const-bindings.ts';
+import { resolveContainer, resolveEnteredValue } from './const-bindings.ts';
 import { isUndefinedValue } from './static-predicates.ts';
 
 export type GroupSlots = ReadonlyMap<string, ReadonlyArray<string>>;
@@ -87,7 +87,7 @@ const mergeSpreadProperties = (
 			continue;
 		}
 
-		const spread = resolveStaticValue(prop.argument, sourceCode);
+		const spread = resolveEnteredValue(prop.argument, sourceCode);
 
 		if (spread.type === 'ObjectExpression' && !stack.has(spread)) {
 			mergeSpreadProperties(spread, sourceCode, merged, stack);
@@ -107,7 +107,7 @@ const collectSpreadKeys = (
 	keys: Set<string>,
 	stack: Set<ObjectExpression>
 ): boolean => {
-	const obj = resolveStaticValue(node, sourceCode);
+	const obj = resolveEnteredValue(node, sourceCode);
 
 	if (obj.type !== 'ObjectExpression' || stack.has(obj)) {
 		return false;

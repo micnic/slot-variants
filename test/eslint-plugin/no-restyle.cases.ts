@@ -79,6 +79,11 @@ const RESTYLE_PRESET_BUTTON = `const button = sv({
 });\n`;
 
 export const RESTYLE_VALID = [
+	// A slot function destructured off its own call names nothing.
+	IMPORT_SV_CN + "const { item } = item();\ncn(item(), 'p-2');",
+	// A `const` holding itself is left unread rather than walked forever.
+	IMPORT_SV_CN +
+		"const b = sv({ base: 'p-2', variants: {} });\nconst list = ['m-4', list];\nconst t = `a ${t}`;\nconst c = cn('b', c);\nb({ class: list });\ncn(t, c);",
 	// `$attrs` outside a Vue template is no forward.
 	IMPORT_SV_CN +
 		'const tag = sv({ base: \'m-1\', variants: {} });\nfunction Tag() { return <i className={cn(tag(), $attrs.class)} />; }\n<Tag className="m-2" />;',

@@ -1,6 +1,9 @@
 import { IMPORT, IMPORT_CN, IMPORT_CREATE_SV, IMPORT_NS } from './helpers.ts';
 
 export const NO_EMPTY_CLASSES_VALID = [
+	// A `const` holding itself is left unread rather than walked forever.
+	IMPORT +
+		"const list = ['p-2', list];\nconst v = { size: v };\nconst s = { a: s };\nsv({ base: list, slots: s, variants: v });\nsv(list);",
 	// An empty object is an empty config, as `sv()` reads it at runtime, not
 	// an empty class record.
 	// An empty `variants` or `slots` is kept while it's what makes the object
