@@ -242,9 +242,10 @@ const scaleSpec: PrefixSpec = {
 // `translate-none` is a keyword value (not an axis), and it's a special case:
 // it resets every axis including `z`, while the bare form (`translate-4`)
 // only sets `x`/`y` — so `none` gets its own category, distinct from the
-// `all` fallback the bare form uses (see `getOverlapNode`).
+// `all` fallback the bare form uses (see `getOverlapNode`). `translate-3d`,
+// like `scale-3d`, only enables 3D and composes with every amount.
 const translateSpec: PrefixSpec = {
-	keywords: selfMap(['x', 'y', 'z', 'none']),
+	keywords: selfMap(['x', 'y', 'z', 'none', '3d']),
 	fallback: 'all'
 };
 

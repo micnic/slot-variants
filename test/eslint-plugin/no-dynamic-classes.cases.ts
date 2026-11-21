@@ -1,6 +1,9 @@
 import { IMPORT, IMPORT_CN, IMPORT_CREATE_SV, IMPORT_NS } from './helpers.ts';
 
 export const NO_DYNAMIC_CLASSES_VALID = [
+	// A config declaring only the `base` slot still takes slot objects.
+	IMPORT +
+		"sv({ slots: { base: 'p-2' }, variants: { a: { x: { base: 'm-1' } } }, compoundVariants: [{ a: 'x', class: { base: 'm-2' } }] });",
 	// Keys named like `Object.prototype` members are no config keys.
 	IMPORT_CREATE_SV + "createSV({ toString: 'x', __defineGetter__: 'y' });",
 	// Static class strings in cn-style call.

@@ -56,6 +56,7 @@ import {
 	type PresetValues,
 	readVariantValue,
 	resolveInvocation,
+	type CallInputs,
 	type StyledClasses,
 	type StyledContext
 } from './styled-values.ts';
@@ -64,13 +65,17 @@ import { createTrackedCallResolver } from './tracked-calls.ts';
 /**
  * A part a component merges its `class` prop into, as an element passing it
  * no props renders it, with what an element's props change: the component
- * prop each of its unread variant props is read from, the one its `preset` is
- * read from, and whether it spreads the component's props into its own.
+ * prop each of its unread variant props is read from, the ones of those with
+ * no default (an element leaving one out has the call pass `undefined`), the
+ * prop its `preset` is read from, whether it spreads the component's props
+ * into its own, and the props none of those spreads carries.
  */
 export type ForwardTarget = StyledClasses & {
 	variantProps: ReadonlyMap<string, string>;
+	optionalProps: ReadonlyMap<string, string>;
 	presetProp: string | null;
 	forwardsProps: boolean;
+	spreadOmits: ReadonlySet<string>;
 };
 
 /** What a component merges its `class` prop into. */
@@ -135,10 +140,12 @@ type PropRead = PropBinding & { component: Component };
 
 // An object holding a component's props, with the defaults it gives them:
 // Vue's `withDefaults()` or `defineProps()` defaults, or the objects Solid's
-// `merge()` merges below the props.
+// `merge()` merges below the props. A rest of them (`...rest`) leaves out the
+// props its pattern destructures.
 type PropsObject = {
 	component: Component;
 	defaults: ReadonlyMap<string, Node>;
+	omitted: ReadonlySet<string>;
 };
 
 // A position found during the walk, read once the walk is over — so an import
@@ -174,6 +181,8 @@ const EMPTY_UNREAD_PROPS: ReadonlyMap<string, Node> = new Map();
 const NO_SITE_PROPS: SiteProps = { values: new Map(), open: false };
 
 const NO_DEFAULTS: ReadonlyMap<string, Node> = new Map();
+
+const NO_PROPS: ReadonlySet<string> = new Set();
 
 // What Vue casts a `Boolean` prop the element leaves out to.
 const ABSENT_BOOLEAN: Node = { type: 'Literal', value: false, raw: 'false' };
@@ -256,6 +265,23 @@ const getRestName = (pattern: ObjectPattern): string | null => {
 	}
 
 	return null;
+};
+
+// The props a pattern names, which its rest (`...rest`) leaves out.
+const getPatternKeys = (pattern: ObjectPattern): string[] => {
+	const keys: string[] = [];
+
+	for (const property of pattern.properties) {
+		if (property.type === 'Property') {
+			const key = getKeyName(property);
+
+			if (key !== null) {
+				keys.push(key);
+			}
+		}
+	}
+
+	return keys;
 };
 
 // Emits the parts `collect` gathers into a fresh class list.
@@ -341,23 +367,41 @@ const setSiteVariant = (
 	}
 };
 
+// The props a call passes at an element: its own, less each variant read from
+// a prop with no default that the element leaves out, which passes `undefined`.
+const getSitePassed = (
+	{ inputs, optionalProps }: ForwardTarget,
+	props: SiteProps
+): ReadonlySet<string> => {
+	const passed = new Set(inputs.passed);
+
+	for (const [variant, prop] of optionalProps) {
+		if (readSiteProp(props, prop) === undefined) {
+			passed.delete(variant);
+		}
+	}
+
+	return passed;
+};
+
 // The values of the preset an element passes, below the call's own props. One
 // that can't be read, or isn't known in full, may set any of the others.
 const applySitePreset = (
 	matchers: Map<string, ReadonlySet<string>>,
-	{ styles, inputs }: ForwardTarget,
+	{ presets }: ForwardTarget['styles'],
+	passed: ReadonlySet<string>,
 	value: ReadonlySet<string> | null
 ) => {
 	let preset: PresetValues | undefined;
 
 	if (value !== null) {
 		for (const name of value) {
-			preset = styles.presets.get(name);
+			preset = presets.get(name);
 		}
 	}
 
 	if (preset === undefined || !preset.complete) {
-		openUnpassed(matchers, inputs.passed);
+		openUnpassed(matchers, passed);
 	}
 
 	if (preset === undefined) {
@@ -365,7 +409,7 @@ const applySitePreset = (
 	}
 
 	for (const [variant, values] of preset.matchers) {
-		if (!inputs.passed.has(variant)) {
+		if (!passed.has(variant)) {
 			matchers.set(variant, values);
 		}
 	}
@@ -373,19 +417,22 @@ const applySitePreset = (
 
 // The props an element passes, which a call spreading the component's props
 // passes on: each one the call doesn't pass itself sets the variant it names,
-// the class and the preset aside.
+// the class, the preset and the props the spreads leave out aside.
 const applySpreadProps = (
 	matchers: Map<string, ReadonlySet<string>>,
 	passed: ReadonlySet<string>,
+	omitted: ReadonlySet<string>,
 	props: SiteProps
 ) => {
+	const kept = new Set([...passed, ...omitted]);
+
 	if (props.open) {
-		openUnpassed(matchers, passed);
+		openUnpassed(matchers, kept);
 	}
 
 	for (const [prop, value] of props.values) {
 		if (
-			!passed.has(prop) &&
+			!kept.has(prop) &&
 			!CLASS_ATTRIBUTES.has(prop) &&
 			prop !== 'preset'
 		) {
@@ -399,13 +446,18 @@ const applySpreadProps = (
 const getPresetProp = ({
 	presetProp,
 	forwardsProps,
+	spreadOmits,
 	inputs
 }: ForwardTarget): string | null => {
 	if (presetProp !== null) {
 		return presetProp;
 	}
 
-	if (forwardsProps && !inputs.passed.has('preset')) {
+	if (
+		forwardsProps &&
+		!inputs.passed.has('preset') &&
+		!spreadOmits.has('preset')
+	) {
 		return 'preset';
 	}
 
@@ -424,17 +476,18 @@ export const getSiteTargets = (
 	styles.targets.map((target) => {
 		const matchers = new Map(target.matchers);
 		const presetProp = getPresetProp(target);
+		const passed = getSitePassed(target, site.props);
 
 		if (presetProp !== null) {
 			const value = readSiteProp(site.props, presetProp);
 
 			if (value !== undefined) {
-				applySitePreset(matchers, target, value);
+				applySitePreset(matchers, target.styles, passed, value);
 			}
 		}
 
 		if (target.forwardsProps) {
-			applySpreadProps(matchers, target.inputs.passed, site.props);
+			applySpreadProps(matchers, passed, target.spreadOmits, site.props);
 		}
 
 		for (const [variant, prop] of target.variantProps) {
@@ -492,7 +545,13 @@ export const createForwardingScan = (
 			const binding = bindings.get(variable.name);
 
 			if (variable.name === rest) {
-				propsObjects.set(variable, source);
+				propsObjects.set(variable, {
+					...source,
+					omitted: new Set([
+						...source.omitted,
+						...getPatternKeys(pattern)
+					])
+				});
 			} else if (binding !== undefined) {
 				propBindings.set(variable, {
 					component,
@@ -520,7 +579,11 @@ export const createForwardingScan = (
 		}
 
 		const declared = sourceCode.getDeclaredVariables(fn);
-		const props: PropsObject = { component: fn, defaults: NO_DEFAULTS };
+		const props: PropsObject = {
+			component: fn,
+			defaults: NO_DEFAULTS,
+			omitted: NO_PROPS
+		};
 
 		if (param.type === 'ObjectPattern') {
 			registerBindings(declared, param, props);
@@ -613,7 +676,8 @@ export const createForwardingScan = (
 		if (callee.type === 'Identifier' && PROPS_SOURCES.has(callee.name)) {
 			return {
 				component: sourceCode.ast,
-				defaults: readSourceDefaults(callee.name, init.arguments)
+				defaults: readSourceDefaults(callee.name, init.arguments),
+				omitted: NO_PROPS
 			};
 		}
 
@@ -626,7 +690,8 @@ export const createForwardingScan = (
 				if (source !== null) {
 					return {
 						component: source.component,
-						defaults: new Map([...defaults, ...source.defaults])
+						defaults: new Map([...defaults, ...source.defaults]),
+						omitted: source.omitted
 					};
 				}
 			}
@@ -703,7 +768,11 @@ export const createForwardingScan = (
 			return null;
 		}
 
-		return { component: sourceCode.ast, defaults: NO_DEFAULTS };
+		return {
+			component: sourceCode.ast,
+			defaults: NO_DEFAULTS,
+			omitted: NO_PROPS
+		};
 	};
 
 	// `props.className` — a prop read off a props object, or off `$attrs` in
@@ -785,17 +854,60 @@ export const createForwardingScan = (
 		return read;
 	};
 
-	// Whether a value is the props of `component`, whole or the rest of them.
-	const isComponentProps = (value: Node, component: Component): boolean => {
+	// The props object of `component` a value is, whole or the rest of them.
+	const getComponentProps = (
+		value: Node,
+		component: Component
+	): PropsObject | null => {
 		const resolved = ctx.resolve(value);
 
 		if (resolved.type !== 'Identifier') {
-			return false;
+			return null;
 		}
 
 		const source = getPropsObject(resolved);
 
-		return source !== null && source.component === component;
+		if (source === null || source.component !== component) {
+			return null;
+		}
+
+		return source;
+	};
+
+	// The props none of a call's spreads of `component`'s props carries, the
+	// ones every rest among them leaves out. Null unless it spreads them, and
+	// nothing else.
+	const getSpreadOmits = (
+		spreads: CallInputs['spreads'],
+		component: Component
+	): ReadonlySet<string> | null => {
+		if (spreads === null || spreads.length === 0) {
+			return null;
+		}
+
+		const sources: PropsObject[] = [];
+
+		for (const spread of spreads) {
+			const source = getComponentProps(spread, component);
+
+			if (source === null) {
+				return null;
+			}
+
+			sources.push(source);
+		}
+
+		const omitted = new Set<string>();
+
+		for (const source of sources) {
+			for (const key of source.omitted) {
+				if (sources.every((other) => other.omitted.has(key))) {
+					omitted.add(key);
+				}
+			}
+		}
+
+		return omitted;
 	};
 
 	/**
@@ -813,10 +925,9 @@ export const createForwardingScan = (
 		const { passed, preset, spreads } = part.inputs;
 		const matchers = new Map(part.defaultMatchers);
 		const variantProps = new Map<string, string>();
-		const forwardsProps =
-			spreads !== null &&
-			spreads.length > 0 &&
-			spreads.every((spread) => isComponentProps(spread, component));
+		const optionalProps = new Map<string, string>();
+		const spreadOmits = getSpreadOmits(spreads, component);
+		const forwardsProps = spreadOmits !== null;
 		let presetProp: string | null = null;
 
 		if (preset !== undefined) {
@@ -843,7 +954,9 @@ export const createForwardingScan = (
 
 			variantProps.set(variant, read.prop);
 
-			if (read.defaultValue !== null) {
+			if (read.defaultValue === null) {
+				optionalProps.set(variant, read.prop);
+			} else {
 				setVariantValue(matchers, variant, read.defaultValue);
 			}
 		}
@@ -853,8 +966,10 @@ export const createForwardingScan = (
 			matchers,
 			unreadProps: EMPTY_UNREAD_PROPS,
 			variantProps,
+			optionalProps,
 			presetProp,
-			forwardsProps
+			forwardsProps,
+			spreadOmits: spreadOmits ?? NO_PROPS
 		};
 	};
 
@@ -886,8 +1001,10 @@ export const createForwardingScan = (
 				{
 					...literalStyles(literals),
 					variantProps: EMPTY_VARIANT_PROPS,
+					optionalProps: EMPTY_VARIANT_PROPS,
 					presetProp: null,
-					forwardsProps: false
+					forwardsProps: false,
+					spreadOmits: NO_PROPS
 				}
 			];
 		}
@@ -948,7 +1065,11 @@ export const createForwardingScan = (
 			}
 		}
 
-		templateProps = { component: sourceCode.ast, defaults };
+		templateProps = {
+			component: sourceCode.ast,
+			defaults,
+			omitted: NO_PROPS
+		};
 	};
 
 	// A `cn()` (or config-less `sv()`) call is a class list in its own right,
@@ -986,9 +1107,12 @@ export const createForwardingScan = (
 		});
 	};
 
-	// A prop passed as `value`; one passed as `undefined` isn't passed.
+	// A prop passed as `value`; one passed as `undefined` isn't passed, even
+	// when an earlier attribute or spread passed it.
 	const setSiteValue = (props: SiteValues, name: string, value: Node) => {
-		if (!isUndefinedValue(ctx.resolve(value))) {
+		if (isUndefinedValue(ctx.resolve(value))) {
+			props.values.delete(name);
+		} else {
 			props.values.set(name, readVariantValue(value, ctx));
 		}
 	};

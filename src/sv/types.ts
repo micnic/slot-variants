@@ -734,6 +734,23 @@ type FoldLayers<L, Acc extends ComponentTypes> = L extends readonly [
 /** The merged maps of every component `E` extends, left to right. */
 type ParentTypes<E> = FoldLayers<ParentLayers<E>, EmptyComponentTypes>;
 
+// Names the parents of `extend` give two meanings: one parent's variant and
+// another's preset, or one's slot and another's group.
+type ParentNameClashes<T extends ComponentTypes> =
+	| Extract<StringKeyof<T['variants']>, StringKeyof<T['presets']>>
+	| Extract<StringKeyof<T['groups']>, SlotKey<T['slots']>>;
+
+// Parents whose names clash, typed as the reason they're rejected.
+type ParentNameCollision<E> = [ParentNameClashes<ParentTypes<E>>] extends [
+	never
+]
+	? unknown
+	: {
+			[
+				K in ParentNameClashes<ParentTypes<E>>
+			]: 'Parents must not give a name to both a variant and a preset, or a slot and a group';
+		};
+
 /** A config's slots together with the ones it inherits. */
 export type ExtendedSlots<E, S extends MaybeSlots> = Extract<
 	MergeSlots<ParentTypes<E>['slots'], S>,
@@ -849,7 +866,7 @@ export type Config<
 	D extends StringKeyof<ExtendedVariants<E, S, G, V>> = never
 > = {
 	/** Components whose config this one builds on, appending to theirs. */
-	extend?: E;
+	extend?: E & ParentNameCollision<E>;
 	/** Classes always applied, alongside matched variant/compound classes. */
 	base?: ConfigClassValue;
 	/** Named variants, each mapping its values to the classes they apply. */

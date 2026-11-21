@@ -105,49 +105,9 @@ export const areExclusiveMatchers = (
 	return false;
 };
 
-// Every entry's matchers, or null the moment one entry has no readable matcher
-// (base/compound), since such an entry can co-occur with anything.
-export const getEntriesMatchers = (
-	entries: ReadonlyArray<Entry>
-): VariantMatchers[] | null => {
-	const matchers: VariantMatchers[] = [];
-
-	for (const entry of entries) {
-		const entryMatchers = getEntryMatchers(entry);
-
-		if (entryMatchers === null) {
-			return null;
-		}
-
-		matchers.push(entryMatchers);
-	}
-
-	return matchers;
-};
-
-// True when `test` holds for every pair of entries. Indexed rather than
-// sliced: this runs for every candidate pair of tokens, so it shouldn't copy
-// the rest of the list on each step.
-const everyPair = (
-	entries: ReadonlyArray<Entry>,
-	test: (a: Entry, b: Entry) => boolean
-): boolean => {
-	for (const [index, current] of entries.entries()) {
-		for (let next = index + 1; next < entries.length; next += 1) {
-			const other = entries[next];
-
-			if (other !== undefined && !test(current, other)) {
-				return false;
-			}
-		}
-	}
-
-	return true;
-};
-
 // An entry with no readable matchers (base/compound) can co-occur with
 // anything, so it's never exclusive.
-const areEntriesExclusive = (a: Entry, b: Entry): boolean => {
+export const areEntriesExclusive = (a: Entry, b: Entry): boolean => {
 	const matchersA = getEntryMatchers(a);
 	const matchersB = getEntryMatchers(b);
 
@@ -158,15 +118,20 @@ const areEntriesExclusive = (a: Entry, b: Entry): boolean => {
 	return areExclusiveMatchers(matchersA, matchersB);
 };
 
-// True when no two entries of different tokens can render together. Entries
-// of one token aren't compared: a repeat is a duplicate, reported on its own,
-// and doesn't make the tokens it never renders with conflict.
-export const areDistinctTokensExclusive = (
-	entries: ReadonlyArray<Entry>
-): boolean =>
-	everyPair(
-		entries,
-		(a, b) => a.token === b.token || areEntriesExclusive(a, b)
+// Whether two entries of different tokens can render together. Entries of one
+// token aren't: a repeat is a duplicate, reported on its own, and doesn't make
+// the tokens it never renders with conflict.
+export const areConflicting = (a: Entry, b: Entry): boolean =>
+	a.token !== b.token && !areEntriesExclusive(a, b);
+
+// The entries `others` holds one that renders with, as `collides` tells.
+export const pickColliding = (
+	entries: ReadonlyArray<Entry>,
+	others: ReadonlyArray<Entry>,
+	collides: (a: Entry, b: Entry) => boolean
+): Entry[] =>
+	entries.filter((entry) =>
+		others.some((other) => other !== entry && collides(entry, other))
 	);
 
 export const indexEntriesBySlotAndToken = (
@@ -210,9 +175,10 @@ export const reportEntryList = (
 	}
 };
 
-// A token is skipped when every pair of its entries disagrees on a shared
-// matcher key, so they can't co-occur. Safe for cn() too: the check is false
-// for non-variant entries, so base-only token lists are never skipped.
+// Only the entries of a token that render with another of its entries are
+// reported: one disagreeing with all of them on a shared matcher key can't
+// co-occur with any. Safe for cn() too: non-variant entries are never
+// exclusive, so base-only token lists are always reported.
 export const reportDuplicateTokens = (
 	context: Rule.RuleContext,
 	tokenMap: Map<string, Entry[]>,
@@ -221,13 +187,17 @@ export const reportDuplicateTokens = (
 	pickReported: PickReported
 ) => {
 	for (const [token, list] of tokenMap.entries()) {
-		if (list.length < 2 || everyPair(list, areEntriesExclusive)) {
-			continue;
-		}
+		const repeated = pickColliding(
+			list,
+			list,
+			(a, b) => !areEntriesExclusive(a, b)
+		);
 
-		reportEntryList(context, pickReported(list), messageId, {
-			token,
-			...data
-		});
+		if (repeated.length > 0) {
+			reportEntryList(context, pickReported(repeated), messageId, {
+				token,
+				...data
+			});
+		}
 	}
 };

@@ -352,16 +352,22 @@ export const forEachOverrideParts = (
 	const { styles } = invocation;
 	const callMatchers = pickCallMatchers(invocation);
 
-	forEachOverrideTarget(value, styles, invocation.slot, (slotKey, node) => {
-		const parts = emptyParts();
+	forEachOverrideTarget(
+		value,
+		styles,
+		invocation.slot,
+		ctx,
+		(slotKey, node) => {
+			const parts = emptyParts();
 
-		for (const slot of resolveTargetSlots(styles, slotKey)) {
-			parts.styled.push({ styles, slot, ...callMatchers });
+			for (const slot of resolveTargetSlots(styles, slotKey)) {
+				parts.styled.push({ styles, slot, ...callMatchers });
+			}
+
+			collectParts(node, ctx, parts);
+			visit(parts);
 		}
-
-		collectParts(node, ctx, parts);
-		visit(parts);
-	});
+	);
 };
 
 // An internal entry counts only when it can render under the variant values

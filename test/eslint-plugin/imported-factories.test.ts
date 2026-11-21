@@ -31,6 +31,7 @@ writeFixture(
 
 	export const customSV = createSV({ base: 'm-1', postProcess: (c) => c });
 	export const bareSV = createSV();
+	export const strictSV = createSV({ requiredVariants: true });
 	export const spreadSV = createSV({ ...shared });
 	export const aliased = customSV;
 	export const notFactory = makeThing({});
@@ -196,6 +197,19 @@ t.test('no-shared-tokens reads an imported factory’s defaults', (t) => {
 					code: page('spreadSV', SHARED_VARIANTS),
 					filename: PAGE,
 					output: null,
+					errors: repeat(shared('p-2', 'size'), 2)
+				},
+				{
+					// `requiredVariants: true` makes every variant required.
+					code: page(
+						'strictSV',
+						"({ variants: { size: { sm: 'p-2 a', md: 'p-2 b' } } });"
+					),
+					filename: PAGE,
+					output: page(
+						'strictSV',
+						"({ base: 'p-2', variants: { size: { sm: 'a', md: 'b' } } });"
+					),
 					errors: repeat(shared('p-2', 'size'), 2)
 				}
 			]

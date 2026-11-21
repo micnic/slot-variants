@@ -226,7 +226,8 @@ export const collectSlotKeyedProperties = (
 
 // Every name a per-slot object may be keyed by: the declared slots plus the
 // group names that stand for them, mirroring how `sv()` reads those objects.
-// `base` is dropped since it is keyable without being declared.
+// `base` is in it once a `slots` object is declared, even one holding `base`
+// alone, and never otherwise, as a config without slots takes no slot object.
 export const getConfigSlotNames = (
 	config: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
@@ -239,7 +240,11 @@ export const getConfigSlotNames = (
 		slotNames.add(groupName);
 	}
 
-	slotNames.delete('base');
+	if (slots?.type === 'ObjectExpression') {
+		slotNames.add('base');
+	} else {
+		slotNames.delete('base');
+	}
 
 	return slotNames;
 };

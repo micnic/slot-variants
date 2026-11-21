@@ -24,7 +24,11 @@ import {
 	resolveModulePath
 } from './module-paths.ts';
 import { DEFAULT_EXPORT } from './module-syntax.ts';
-import { getDefaultKeys, type StyledContext } from './styled-values.ts';
+import {
+	getDefaultKeys,
+	getDefaultRequiresAll,
+	type StyledContext
+} from './styled-values.ts';
 
 /**
  * One place an export name leads: a component of the module, already resolved
@@ -248,7 +252,10 @@ const readFactory = (
 		return null;
 	}
 
-	return { defaultKeys: getDefaultKeys(call, ctx) };
+	return {
+		defaultKeys: getDefaultKeys(call, ctx),
+		requiresAll: getDefaultRequiresAll(call, ctx)
+	};
 };
 
 // The factory a module-scope `const` holds, or null when it holds none.

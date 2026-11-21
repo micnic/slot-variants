@@ -225,11 +225,6 @@ const concatLists = <T>(inherited: readonly T[], own: readonly T[]) => [
 	...own
 ];
 
-const mergePresetValues = <T extends object>(inherited: T, own: T) => ({
-	...inherited,
-	...own
-});
-
 const getSlotNames = (slots: RawConfig['slots']) => [
 	'base',
 	...keys(slots ?? {})
@@ -347,7 +342,7 @@ const mergeConfigs = (inherited: RawConfig, config: RawConfig): RawConfig => {
 		presets: mergeOptional(
 			inherited.presets,
 			own.presets,
-			mergeRecords(mergePresetValues)
+			mergeRecords(mergeRecords(keepOwn))
 		),
 		compoundSlots: mergeOptional(
 			inherited.compoundSlots,

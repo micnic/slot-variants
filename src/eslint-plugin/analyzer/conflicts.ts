@@ -40,15 +40,14 @@ import {
 	forEachStaticItem
 } from './token-extraction.ts';
 import {
-	areDistinctTokensExclusive,
-	areExclusiveMatchers,
+	areConflicting,
+	areEntriesExclusive,
 	type Entry,
-	getEntriesMatchers,
 	indexEntriesBySlotAndToken,
 	type PickReported,
+	pickColliding,
 	reportDuplicateTokens,
-	reportEntryList,
-	type VariantMatchers
+	reportEntryList
 } from './token-model.ts';
 
 type ConflictGroup = {
@@ -103,27 +102,6 @@ const groupEntriesByConflictKey = (
 	return groups;
 };
 
-// The real-edge counterpart to areDistinctTokensExclusive: true when every
-// matcher of `a` is exclusive with every matcher of `b`. Used to check two
-// distinct covers-adjacent nodes (`p` vs `px`) against each other directly,
-// instead of flattening a whole connected component into one all-pairs check
-// — `px` and `pb` both bridge through `p` but aren't adjacent to each other,
-// so they must never be compared against one another.
-const areGroupsExclusive = (
-	a: ReadonlyArray<VariantMatchers>,
-	b: ReadonlyArray<VariantMatchers>
-): boolean => {
-	for (const matchersA of a) {
-		for (const matchersB of b) {
-			if (!areExclusiveMatchers(matchersA, matchersB)) {
-				return false;
-			}
-		}
-	}
-
-	return true;
-};
-
 // Walks every node reachable from `start` through present covers edges,
 // without merging anything yet — collecting the component first keeps each
 // node's own entries pristine until every edge in the component has been
@@ -156,50 +134,42 @@ const collectOverlapComponent = (
 	return component;
 };
 
-// A component is exclusive only when every node's own group is exclusive and
-// every real covers edge between two present nodes in it is exclusive too —
-// nodes that merely share a bridge node without being adjacent to each other
-// are never compared.
-const isOverlapComponentExclusive = (component: OverlapComponent): boolean => {
-	const nodeMatchers = new Map<string, VariantMatchers[]>();
+// The entries of a component that collide: with another token of their own
+// node, or with any entry of a node a real covers edge joins theirs to — nodes
+// that merely share a bridge node without being adjacent to each other (`px`
+// and `pb` through `p`) are never compared.
+const pickCollidingInComponent = (component: OverlapComponent): Entry[] => {
+	const colliding: Entry[] = [];
 
 	for (const [node, group] of component) {
-		const matchers = getEntriesMatchers(group.entries);
-
-		// Null matchers mean an entry, like a base one, renders with anything
-		// a neighbor holds.
-		if (matchers === null || !areDistinctTokensExclusive(group.entries)) {
-			return false;
-		}
-
-		nodeMatchers.set(node, matchers);
-	}
-
-	for (const [node, matchers] of nodeMatchers) {
 		// Every present neighbor of a component node is in the component.
-		for (const neighbor of overlapNeighbors(node)) {
-			const neighborMatchers = nodeMatchers.get(neighbor);
+		const neighbors = overlapNeighbors(node).flatMap(
+			(neighbor) => component.get(neighbor)?.entries ?? []
+		);
 
-			if (
-				neighborMatchers !== undefined &&
-				!areGroupsExclusive(matchers, neighborMatchers)
-			) {
-				return false;
-			}
-		}
+		colliding.push(
+			...group.entries.filter(
+				(entry) =>
+					group.entries.some((other) =>
+						areConflicting(entry, other)
+					) ||
+					neighbors.some(
+						(other) => !areEntriesExclusive(entry, other)
+					)
+			)
+		);
 	}
 
-	return true;
+	return colliding;
 };
 
-// Whether a group's tokens never render together, checked only for a group
-// with two or more of them.
-const isGroupExclusive = (group: ReportedGroup): boolean => {
+// The entries of a group that render with another token of it.
+const pickCollidingInGroup = (group: ReportedGroup): Entry[] => {
 	if (group.component === null) {
-		return areDistinctTokensExclusive(group.entries);
+		return pickColliding(group.entries, group.entries, areConflicting);
 	}
 
-	return isOverlapComponentExclusive(group.component);
+	return pickCollidingInComponent(group.component);
 };
 
 const buildOverlapConflictGroup = (
@@ -285,13 +255,23 @@ const reportConflicts = (
 	const groups = groupEntriesByConflictKey(tokenMap, options);
 
 	for (const group of mergeOverlappingGroups(groups)) {
-		if (group.tokens.size < 2 || isGroupExclusive(group)) {
+		if (group.tokens.size < 2) {
 			continue;
 		}
 
-		const tokens = [...group.tokens].sort().join(', ');
+		// Only the entries rendering with another token are reported, and
+		// named: one exclusive with all of them never conflicts.
+		const colliding = pickCollidingInGroup(group);
 
-		reportEntryList(context, pickReported(group.entries), messageId, {
+		if (colliding.length === 0) {
+			continue;
+		}
+
+		const tokens = [...new Set(colliding.map(({ token }) => token))]
+			.sort()
+			.join(', ');
+
+		reportEntryList(context, pickReported(colliding), messageId, {
 			tokens,
 			...data
 		});

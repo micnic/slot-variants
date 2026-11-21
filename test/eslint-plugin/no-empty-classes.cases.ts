@@ -423,6 +423,12 @@ export const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyString' }]
 	},
 	{
+		// An element on its own line takes the whole CRLF break before it.
+		code: IMPORT_CN + "cn(\r\n\t'a',\r\n\t'',\r\n\t'b'\r\n);",
+		output: IMPORT_CN + "cn(\r\n\t'a',\r\n\t'b'\r\n);",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
 		// A comment after the comma keeps the element's line going, so only
 		// the element and its comma go.
 		code: IMPORT_CN + "cn('a', '', /* c */\n\t'b');",

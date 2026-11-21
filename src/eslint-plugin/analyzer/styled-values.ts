@@ -59,6 +59,8 @@ type InternalStyles = {
 	openPresets: boolean;
 	// The variants a call leaves unset unless it passes them.
 	optional: ReadonlySet<string>;
+	// The variants given a default, null when that can't be read in full.
+	defaulted: ReadonlySet<string> | null;
 	groupSlots: GroupSlots;
 	slotGroups: ReadonlyMap<string, ReadonlyArray<string>>;
 };
@@ -273,34 +275,54 @@ const getKnownDefaults = (
 	return getStrictProperties(defaults);
 };
 
-// The variants with no default, which a call leaves unset unless it passes
-// them. None when a parent in `extend` may give them a default, or when the
-// `variants` or `defaultVariants` can't be read in full.
-const readOptionalVariants = (
+// The variants a config gives a default, one left `undefined` aside. Null
+// when its `defaultVariants` can't be read in full.
+const readDefaultedVariants = (
 	config: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
-): ReadonlySet<string> => {
-	if (config.has('extend')) {
-		return NO_KEYS;
-	}
-
-	const variants = getStrictProperties(
-		resolveContainer(config.get('variants'), sourceCode)
-	);
+): ReadonlySet<string> | null => {
 	const defaults = getKnownDefaults(
 		config.get('defaultVariants'),
 		sourceCode
 	);
 
-	if (variants === null || defaults === null) {
+	if (defaults === null) {
+		return null;
+	}
+
+	const defaulted = new Set<string>();
+	const resolve: ResolveNode = (node) => resolveStaticValue(node, sourceCode);
+
+	for (const [key, value] of defaults) {
+		if (isDefinedValue(value, resolve)) {
+			defaulted.add(key);
+		}
+	}
+
+	return defaulted;
+};
+
+// The variants a config declares with no default of its own, which a call
+// leaves unset unless it passes them — a parent in `extend` may still give
+// them one. None when the `variants` or `defaultVariants` can't be read in
+// full.
+const readOptionalVariants = (
+	config: ReadonlyMap<string, Node>,
+	defaulted: ReadonlySet<string> | null,
+	sourceCode: SourceCode
+): ReadonlySet<string> => {
+	const variants = getStrictProperties(
+		resolveContainer(config.get('variants'), sourceCode)
+	);
+
+	if (variants === null || defaulted === null) {
 		return NO_KEYS;
 	}
 
 	const optional = new Set<string>();
-	const resolve: ResolveNode = (node) => resolveStaticValue(node, sourceCode);
 
 	for (const key of variants.keys()) {
-		if (!isDefinedValue(defaults.get(key), resolve)) {
+		if (!defaulted.has(key)) {
 			optional.add(key);
 		}
 	}
@@ -326,6 +348,7 @@ const buildStyles = (
 	);
 	const groups = resolveContainer(config.get('groups'), sourceCode);
 	const presets = resolveContainer(config.get('presets'), sourceCode);
+	const defaulted = readDefaultedVariants(config, sourceCode);
 
 	return {
 		bySlot: indexEntriesBySlotAndToken(
@@ -335,7 +358,8 @@ const buildStyles = (
 		defaults: readMatchers(getProperties(defaults), NO_SKIP, sourceCode),
 		presets: readPresets(getProperties(presets), sourceCode),
 		openPresets: false,
-		optional: readOptionalVariants(config, sourceCode),
+		optional: readOptionalVariants(config, defaulted, sourceCode),
+		defaulted,
 		...readGroups(getProperties(groups), sourceCode)
 	};
 };
@@ -726,6 +750,32 @@ export const getDefaultKeys = (
 };
 
 /**
+ * Whether a `createSV(defaults)` call's defaults make every variant required:
+ * false unless they can be read in full and set `requiredVariants: true`.
+ */
+export const getDefaultRequiresAll = (
+	factory: CallExpression,
+	ctx: StyledContext
+): boolean => {
+	const [defaults] = factory.arguments;
+
+	if (defaults === undefined) {
+		return false;
+	}
+
+	const properties = getStrictProperties(ctx.resolve(defaults));
+	const value = properties?.get('requiredVariants');
+
+	if (value === undefined) {
+		return false;
+	}
+
+	const resolved = ctx.resolve(value);
+
+	return resolved.type === 'Literal' && resolved.value === true;
+};
+
+/**
  * The keys a call inherits from the defaults of the `createSV()` factory its
  * callee came from, in this file or imported: none for `sv()` itself or a
  * factory called without any, and null when they can't be read in full.
@@ -746,6 +796,24 @@ export const getFactoryDefaults = (
 	}
 
 	return call.imported.defaultKeys;
+};
+
+/**
+ * Whether the `createSV()` factory a call's callee came from, in this file or
+ * imported, makes every variant required.
+ */
+export const getFactoryRequiresAll = (
+	node: CallExpression,
+	call: CallMatch,
+	ctx: StyledContext
+): boolean => {
+	const factory = resolveCalleeCall(node.callee, ctx);
+
+	if (factory !== null) {
+		return getDefaultRequiresAll(factory, ctx);
+	}
+
+	return call.imported?.requiresAll === true;
 };
 
 // The `base` a `createSV()` factory gives a call through it whose config sets
@@ -838,11 +906,60 @@ const mergePresets = (
 	return presets;
 };
 
+// The variants any layer gives a default, null when one can't be read or may
+// have defaults that can't.
+const mergeDefaulted = (
+	all: ReadonlyArray<InternalStyles>,
+	complete: boolean
+): ReadonlySet<string> | null => {
+	if (!complete) {
+		return null;
+	}
+
+	const defaulted = new Set<string>();
+
+	for (const styles of all) {
+		if (styles.defaulted === null) {
+			return null;
+		}
+
+		for (const key of styles.defaulted) {
+			defaulted.add(key);
+		}
+	}
+
+	return defaulted;
+};
+
+// The variants a layer declares that no layer gives a default. None when
+// that can't be known.
+const mergeOptional = (
+	all: ReadonlyArray<InternalStyles>,
+	defaulted: ReadonlySet<string> | null
+): ReadonlySet<string> => {
+	if (defaulted === null) {
+		return NO_KEYS;
+	}
+
+	const optional = new Set<string>();
+
+	for (const styles of all) {
+		for (const key of styles.optional) {
+			if (!defaulted.has(key)) {
+				optional.add(key);
+			}
+		}
+	}
+
+	return optional;
+};
+
 /**
  * The classes a config that extends others applies: its parents', then its
  * own. Defaults and presets are merged the way `extend` merges them, the
  * config's own winning, and a parent that can't be read leaves the presets
- * open. Which variants stay unset is left to the config's own reading.
+ * open. A variant stays unset only when no layer gives it a default, and none
+ * does when every parent is read in full.
  */
 const mergeStyles = (
 	{ parents, complete }: ParentStyles,
@@ -862,6 +979,7 @@ const mergeStyles = (
 	}
 
 	const groupSlots = joinLists(all.map((styles) => styles.groupSlots));
+	const defaulted = mergeDefaulted(all, complete);
 
 	return {
 		bySlot,
@@ -869,7 +987,8 @@ const mergeStyles = (
 		defaults: new Map(all.flatMap((styles) => [...styles.defaults])),
 		presets: mergePresets(all, complete),
 		openPresets: !complete || parents.some((styles) => styles.openPresets),
-		optional: own.optional,
+		optional: mergeOptional(all, defaulted),
+		defaulted,
 		groupSlots,
 		slotGroups: invertGroups(groupSlots)
 	};
@@ -1201,6 +1320,7 @@ const buildLiteralStyles = (entries: ReadonlyArray<Entry>): InternalStyles => ({
 	presets: NO_PRESETS,
 	openPresets: false,
 	optional: NO_KEYS,
+	defaulted: NO_KEYS,
 	groupSlots: EMPTY_GROUPS,
 	slotGroups: EMPTY_GROUPS
 });
@@ -1217,6 +1337,18 @@ export const literalStyles = (
 	slot: 'base',
 	...NO_MATCHERS
 });
+
+// Whether a component's result is a per-slot object rather than a string: it
+// has a slot besides `base`, or a group, which only a slot of its own reaches.
+const hasSlotsBesidesBase = ({ slotNames }: InternalStyles): boolean => {
+	for (const name of slotNames) {
+		if (name !== 'base') {
+			return true;
+		}
+	}
+
+	return false;
+};
 
 /**
  * Reads an already resolved node as a class-valued slot-variants expression: a
@@ -1264,7 +1396,7 @@ export const readStyledClasses = (
 
 	// Called without a slot, a slotted variant function returns a per-slot
 	// object, which carries no classes of its own until a slot is read off it.
-	if (invocation.slot === null && invocation.styles.slotNames.size > 0) {
+	if (invocation.slot === null && hasSlotsBesidesBase(invocation.styles)) {
 		return null;
 	}
 
@@ -1290,6 +1422,7 @@ export const forEachOverrideTarget = (
 	value: Node,
 	styles: InternalStyles,
 	pinnedSlot: string | null,
+	ctx: StyledContext,
 	visit: (slot: string, node: Node) => void
 ) => {
 	if (pinnedSlot !== null) {
@@ -1298,7 +1431,12 @@ export const forEachOverrideTarget = (
 		return;
 	}
 
-	const slotKeyed = collectSlotKeyedProperties(value, styles.slotNames);
+	// Read through `const` bindings and type-only wrappers, as the runtime
+	// sees the object itself.
+	const slotKeyed = collectSlotKeyedProperties(
+		ctx.resolve(value),
+		styles.slotNames
+	);
 
 	if (slotKeyed === null) {
 		visit('base', value);

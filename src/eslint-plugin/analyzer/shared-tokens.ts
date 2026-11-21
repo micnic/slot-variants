@@ -67,6 +67,9 @@ export type SharedTokensCall = {
 	// True where a `postProcess` inherited from a `createSV()` factory may
 	// merge classes; the config's own one is read here.
 	inheritsPostProcess: boolean;
+	// True where the `createSV()` factory makes every variant required, unless
+	// the config sets its own `requiredVariants`.
+	inheritsRequiresAll: boolean;
 };
 
 // A `base` property to create, as text inserted ahead of the config's first
@@ -524,12 +527,22 @@ const collectDefaultVariantKeys = (
 const isLiteralTrue = (node: Node): boolean =>
 	node.type === 'Literal' && node.value === true;
 
+const setAllRequired = (
+	coverage: Map<string, VariantCoverage>,
+	variantsMap: ReadonlyMap<string, Node>
+) => {
+	for (const key of variantsMap.keys()) {
+		coverage.set(key, 'required');
+	}
+};
+
 // How each covered variant is covered. A variant that's both defaulted and
 // required counts as required (sv() rejects that config anyway).
 const collectVariantCoverage = (
 	config: ReadonlyMap<string, Node>,
 	variantsMap: ReadonlyMap<string, Node>,
-	sourceCode: SourceCode
+	sourceCode: SourceCode,
+	inheritsRequiresAll: boolean
 ): Map<string, VariantCoverage> => {
 	const coverage = collectDefaultVariantKeys(
 		resolveContainer(config.get('defaultVariants'), sourceCode),
@@ -540,15 +553,18 @@ const collectVariantCoverage = (
 		sourceCode
 	);
 
+	// Without one of its own, the config takes the factory's.
 	if (!requiredVariants) {
+		if (inheritsRequiresAll) {
+			setAllRequired(coverage, variantsMap);
+		}
+
 		return coverage;
 	}
 
 	// `requiredVariants: true` makes every variant required.
 	if (isLiteralTrue(requiredVariants)) {
-		for (const key of variantsMap.keys()) {
-			coverage.set(key, 'required');
-		}
+		setAllRequired(coverage, variantsMap);
 
 		return coverage;
 	}
@@ -926,7 +942,12 @@ const analyzeExhaustiveVariants = (
 export const analyzeSharedTokens = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression,
-	{ canCreateBase, leadingArg, inheritsPostProcess }: SharedTokensCall
+	{
+		canCreateBase,
+		leadingArg,
+		inheritsPostProcess,
+		inheritsRequiresAll
+	}: SharedTokensCall
 ) => {
 	const { sourceCode } = context;
 	const config = getConfigProperties(configNode, sourceCode);
@@ -1024,7 +1045,12 @@ export const analyzeSharedTokens = (
 	analyzeExhaustiveVariants(
 		context,
 		variantsMap,
-		collectVariantCoverage(config, variantsMap, sourceCode),
+		collectVariantCoverage(
+			config,
+			variantsMap,
+			sourceCode,
+			inheritsRequiresAll
+		),
 		slotNames,
 		{ getTarget, canEdit, suggestOnly, inherits }
 	);

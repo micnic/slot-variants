@@ -262,10 +262,33 @@ export const NO_SHARED_TOKENS_VALID = [
 		`sv({
 			variants: { variant: { primary: 'a', link: 'b' } },
 			compoundVariants: [dynamicEntry, { variant: 'primary', size: 'sm', className: 'p-1' }]
-		});`
+		});`,
+	// A factory's `requiredVariants: true` is replaced by the call's own, and
+	// only counts when its defaults can be read and set it to `true`.
+	IMPORT_CREATE_SV +
+		"const strictSV = createSV({ requiredVariants: true });\nstrictSV({ variants: { size: { sm: 'p-2 a', md: 'p-2 b' } }, requiredVariants: false });",
+	IMPORT_CREATE_SV +
+		"const looseSV = createSV({ requiredVariants: false });\nlooseSV({ variants: { size: { sm: 'p-2 a', md: 'p-2 b' } } });",
+	IMPORT_CREATE_SV +
+		"const spreadSV = createSV({ ...defaults });\nspreadSV({ variants: { size: { sm: 'p-2 a', md: 'p-2 b' } } });",
+	IMPORT_CREATE_SV +
+		"const plainSV = createSV({ cacheSize: 10 });\nplainSV({ variants: { size: { sm: 'p-2 a', md: 'p-2 b' } } });",
+	IMPORT_CREATE_SV +
+		"const bareSV = createSV();\nbareSV({ variants: { size: { sm: 'p-2 a', md: 'p-2 b' } } });"
 ];
 
 export const NO_SHARED_TOKENS_INVALID = [
+	{
+		// A factory's `requiredVariants: true` makes every variant required,
+		// read through a `const` binding too.
+		code:
+			IMPORT_CREATE_SV +
+			"const all = true;\nconst strictSV = createSV({ requiredVariants: all });\nstrictSV({ variants: { size: { sm: 'p-2 a', md: 'p-2 b' } } });",
+		output:
+			IMPORT_CREATE_SV +
+			"const all = true;\nconst strictSV = createSV({ requiredVariants: all });\nstrictSV({ base: 'p-2', variants: { size: { sm: 'a', md: 'b' } } });",
+		errors: repeat(shared('p-2', 'size'), 2)
+	},
 	{
 		// A `defaultVariants` value read through a `const` still makes the
 		// variant exhaustive.

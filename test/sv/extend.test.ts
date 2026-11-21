@@ -470,6 +470,32 @@ t.test('a child default lifts an inherited requirement', (t) => {
 	t.end();
 });
 
+t.test('an undefined child preset value keeps the inherited one', (t) => {
+	const parent = sv('btn', {
+		variants: {
+			size: { sm: 'text-sm', lg: 'text-lg' },
+			tone: { a: 'bg-a', b: 'bg-b' }
+		},
+		presets: { cta: { size: 'lg', tone: 'a' } }
+	});
+	const child = sv({
+		extend: parent,
+		variants: {},
+		// An explicit undefined preset value is only reachable from untyped
+		// code, as with `exactOptionalPropertyTypes` off.
+		// @ts-expect-error explicit undefined preset value
+		presets: { cta: { size: undefined, tone: 'b' } }
+	});
+
+	t.equal(
+		child({ preset: 'cta' }),
+		'btn text-lg bg-b',
+		'inherited size kept, own tone wins'
+	);
+
+	t.end();
+});
+
 t.test('an undefined child default keeps an inherited requirement', (t) => {
 	const parent = sv('btn', {
 		variants: { intent: { primary: 'bg-blue-500', danger: 'bg-red-500' } },
@@ -804,6 +830,41 @@ t.test('a child name is checked against inherited presets and groups', (t) => {
 			sv({ extend: grouped, slots: { g: 'g' } }),
 		{ message: 'Group "g" cannot have the same name as a slot' },
 		'a slot named like an inherited group'
+	);
+
+	t.end();
+});
+
+t.test('parents must not give one name two meanings', (t) => {
+	const preset = sv({
+		variants: { size: { sm: 's' } },
+		presets: { tone: { size: 'sm' } }
+	});
+	const toned = sv({ variants: { tone: { warm: 'w' } } });
+	const grouped = sv({ slots: { a: 'a' }, groups: { g: ['a'] } });
+	const slotted = sv({ slots: { g: 'g' } });
+
+	t.throws(
+		// @ts-expect-error - one parent's preset is another's variant
+		() => sv({ extend: [preset, toned], variants: {} }),
+		{ message: 'Preset "tone" cannot have the same name as a variant' },
+		'a preset then a variant'
+	);
+	t.throws(
+		// @ts-expect-error - one parent's variant is another's preset
+		() => sv({ extend: [toned, preset], variants: {} }),
+		{ message: 'Preset "tone" cannot have the same name as a variant' },
+		'a variant then a preset'
+	);
+	t.throws(
+		// @ts-expect-error - one parent's group is another's slot
+		() => sv({ extend: [grouped, slotted], variants: {} }),
+		{ message: 'Group "g" cannot have the same name as a slot' },
+		'a group then a slot'
+	);
+	t.doesNotThrow(
+		() => sv({ extend: [preset, grouped], variants: {} }),
+		'distinct names'
 	);
 
 	t.end();

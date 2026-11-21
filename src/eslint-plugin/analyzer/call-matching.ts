@@ -12,9 +12,13 @@ import { isDefinedValue } from './static-predicates.ts';
 
 /**
  * A `createSV()` factory imported from another module: the keys its defaults
- * set, or null when they can't all be read.
+ * set, or null when they can't all be read, and whether they make every
+ * variant required.
  */
-export type ImportedFactory = { defaultKeys: ReadonlySet<string> | null };
+export type ImportedFactory = {
+	defaultKeys: ReadonlySet<string> | null;
+	requiresAll: boolean;
+};
 
 export type CallMatch = {
 	config: ObjectExpression | null;

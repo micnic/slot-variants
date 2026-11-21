@@ -233,6 +233,13 @@ export const NO_CONFLICTING_DUP_VALID = [
 
 export const NO_CONFLICTING_DUP_INVALID = [
 	{
+		// A config declaring only the `base` slot still takes slot objects.
+		code:
+			IMPORT +
+			"sv({ slots: { base: 'p-2' }, variants: { a: { x: { base: 'p-2 m-1' } } }, compoundVariants: [{ a: 'x', class: { base: 'm-1' } }] });",
+		errors: [dup('p-2'), dup('p-2'), dup('m-1'), dup('m-1')]
+	},
+	{
 		// A template's classes are placed on the source as written, CRLF line
 		// endings included.
 		code: IMPORT_CN + "cn(`a\r\nb\r\np-2 p-2 ${x ? 'c' : 'd'}`);",
@@ -1072,6 +1079,10 @@ export const NO_CONFLICTING_NS_VALID = [
 	// scale-3d enables 3D scaling and is independent of the scale factor.
 	IMPORT + "sv({ base: 'scale-150 scale-3d', variants: {} });",
 	IMPORT + "sv({ base: 'scale-x-50 scale-3d', variants: {} });",
+	// So does translate-3d for every translate amount.
+	IMPORT + "sv({ base: 'translate-2 translate-3d', variants: {} });",
+	IMPORT +
+		"sv({ base: 'translate-x-2 translate-z-4 translate-3d', variants: {} });",
 	// color-scheme is unrelated to background color.
 	IMPORT + "sv({ base: 'scheme-dark bg-red-500', variants: {} });",
 	// A bare perspective value and perspective-origin are distinct properties.
@@ -1174,12 +1185,41 @@ export const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(dup('p-2'), 2)
 	},
 	{
+		// Only the entries rendering with another token are reported and
+		// named: `p-4` never renders with the compound's `p-3`.
+		code:
+			IMPORT +
+			"sv({ variants: { size: { sm: 'p-2', lg: 'p-4' }, tone: { loud: 'x', quiet: 'y' } }, compoundVariants: [{ size: 'sm', tone: 'loud', class: 'p-3' }] });",
+		errors: repeat(conflict('p-2, p-3'), 2)
+	},
+	{
+		code: IMPORT_CN + "cn(a ? 'p-2' : 'p-4', a && 'p-6');",
+		errors: repeat(conflictCn('p-2, p-6'), 2)
+	},
+	{
+		// The same across covers edges: `px-2` never renders with `p-4`, and
+		// doesn't reach `pb-1`.
+		code:
+			IMPORT +
+			"sv({ base: 'pb-1', variants: { a: { x: 'px-2', y: 'p-4' } } });",
+		errors: repeat(conflict('p-4, pb-1'), 2)
+	},
+	{
+		// And for duplicates: the compound's `foo` never renders with either.
+		code:
+			IMPORT +
+			"sv({ variants: { v: { x: 'foo', y: 'bar' }, w: { p: 'baz', q: 'foo' } }, compoundVariants: [{ v: 'y', w: 'p', class: 'foo' }] });",
+		errors: repeat(dup('foo'), 2)
+	},
+	{
 		// The same in a cn() call.
 		code: IMPORT_CN + "cn(c ? 'p-2' : 'p-4', c && 'p-2');",
 		errors: repeat(dupCn('p-2'), 2)
 	},
 	{
-		// A base token still conflicts with every other token it renders with.
+		// A base token still conflicts with every other token it renders with,
+		// while the variant's own `p-2` never renders with `p-4` and only
+		// repeats the base one.
 		code:
 			IMPORT +
 			"sv({ base: 'p-2', variants: { size: { sm: 'p-2', md: 'p-4' } } });",
@@ -1187,7 +1227,6 @@ export const NO_CONFLICTING_NS_INVALID = [
 			dup('p-2'),
 			conflict('p-2, p-4'),
 			dup('p-2'),
-			conflict('p-2, p-4'),
 			conflict('p-2, p-4')
 		]
 	},

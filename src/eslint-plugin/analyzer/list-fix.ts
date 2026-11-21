@@ -44,16 +44,21 @@ const skipSpacesAndTabsBack = (text: string, to: number): number => {
 };
 
 // The offset of the line break introducing the element at `start`, when the
-// element sits on its own line and so owns the indentation before it. Null when
-// it shares a line with whatever precedes it.
+// element sits on its own line and so owns the indentation before it: the `\r`
+// of a `\r\n`, so the whole break goes with it. Null when it shares a line with
+// whatever precedes it.
 const startOfOwnLine = (text: string, start: number): number | null => {
 	const index = skipSpacesAndTabsBack(text, start);
 
-	if (text.charAt(index - 1) === '\n') {
-		return index - 1;
+	if (text.charAt(index - 1) !== '\n') {
+		return null;
 	}
 
-	return null;
+	if (text.charAt(index - 2) === '\r') {
+		return index - 2;
+	}
+
+	return index - 1;
 };
 
 // Whether `index` is where a line ends, at a `\n` or the `\r` of a `\r\n`.

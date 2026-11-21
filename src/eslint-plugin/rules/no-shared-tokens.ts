@@ -8,6 +8,7 @@ import {
 } from '../analyzer/shared-tokens.ts';
 import {
 	getFactoryDefaults,
+	getFactoryRequiresAll,
 	type StyledContext
 } from '../analyzer/styled-values.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
@@ -20,16 +21,22 @@ const getInheritedCall = (
 	ctx: StyledContext,
 	node: CallExpression,
 	call: CallMatch
-): Pick<SharedTokensCall, 'canCreateBase' | 'inheritsPostProcess'> => {
+): Omit<SharedTokensCall, 'leadingArg'> => {
 	const defaults = getFactoryDefaults(node, call, ctx);
+	const inheritsRequiresAll = getFactoryRequiresAll(node, call, ctx);
 
 	if (defaults === null) {
-		return { canCreateBase: false, inheritsPostProcess: true };
+		return {
+			canCreateBase: false,
+			inheritsPostProcess: true,
+			inheritsRequiresAll
+		};
 	}
 
 	return {
 		canCreateBase: !defaults.has('base'),
-		inheritsPostProcess: defaults.has('postProcess')
+		inheritsPostProcess: defaults.has('postProcess'),
+		inheritsRequiresAll
 	};
 };
 
@@ -65,6 +72,9 @@ const getLeadingArg = (
  * merging classes keeps the last of two conflicting ones, and the lift moves
  * classes ahead of later variants' ones. The same goes for the single-key
  * compound fix below.
+ *
+ * A `createSV()` factory's `requiredVariants: true` counts unless the config
+ * sets its own.
  *
  * Fixable when the fix is unambiguous: the `base`/`slots[slot]` target and
  * every variant value's contribution to that slot must each be a plain,

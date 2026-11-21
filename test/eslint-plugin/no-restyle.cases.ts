@@ -378,6 +378,98 @@ export const RESTYLE_VUE_VALID = [
 ];
 
 export const RESTYLE_INVALID = [
+	{
+		// A rest of the props leaves out the props its pattern destructures,
+		// unless another spread carries them; one leaving out `preset` passes
+		// none on.
+		code:
+			IMPORT +
+			RESTYLE_PRESET_BUTTON +
+			`function Rest({ className, size, ...rest }) {
+	return <button data-size={size} className={button({ ...rest, class: className })} />;
+}
+function Body(props) {
+	const { size, ...rest } = props;
+	return <button data-size={size} className={button({ ...rest, ...props, class: props.className })} />;
+}
+function NoPreset({ className, preset, ...rest }) {
+	return <button data-preset={preset} className={button({ ...rest, class: className })} />;
+}
+<Rest size="lg" className="mt-2" />;
+<Rest size="lg" className="text-lg" />;
+<Rest {...other} className="text-lg" />;
+<Body size="lg" className="mt-2" />;
+<NoPreset preset="big" className="text-lg" />;`,
+		errors: [
+			restyle('text-lg', 'text-sm'),
+			restyle('text-lg', 'text-sm'),
+			restyle('mt-2', 'mt-8'),
+			restyle('text-lg', 'text-sm')
+		]
+	},
+	{
+		// A variant read from a prop with no default is passed as `undefined`
+		// by an element leaving the prop out, so the element's preset sets
+		// it; an element passing it, or a prop default, still wins.
+		code:
+			IMPORT +
+			RESTYLE_PRESET_BUTTON +
+			`function Button({ preset, size, className }) {
+	return <button className={button({ preset, size, class: className })} />;
+}
+function Sized({ preset, size = 'sm', className }) {
+	return <button className={button({ preset, size, class: className })} />;
+}
+<Button preset="big" className="mt-2" />;
+<Button preset="big" className="text-lg" />;
+<Button preset={name} className="text-lg" />;
+<Button preset="big" size="sm" className="text-lg" />;
+<Sized preset="big" className="text-lg" />;`,
+		errors: [
+			restyle('mt-2', 'mt-8'),
+			restyle('text-lg', 'text-sm'),
+			restyle('text-lg', 'text-sm'),
+			restyle('text-lg', 'text-sm')
+		]
+	},
+	{
+		// A spread or later attribute passing `undefined` takes back a prop
+		// passed before it, leaving the default.
+		code:
+			IMPORT +
+			RESTYLE_SIZED +
+			`<Sized size="sm" {...{ size: undefined }} className="text-lg" />;
+<Sized size="sm" size={undefined} className="text-sm" />;`,
+		errors: [
+			restyle('text-lg', 'text-base'),
+			restyle('text-sm', 'text-base')
+		]
+	},
+	{
+		// A slot object held in a `const` targets its slots, and a key naming
+		// a slot is no `cn()` class.
+		code:
+			IMPORT +
+			`const card = sv('border p-2', { slots: { header: 'font-bold px-4', 'p-4': 'm-2' } });
+const o = { header: 'px-8' };
+const k = { 'p-4': 'm-1' };
+card({ class: o });
+card({ class: k });`,
+		errors: [
+			restyle('px-8', 'px-4', 'header'),
+			restyle('m-1', 'm-2', 'p-4')
+		]
+	},
+	{
+		// A config declaring only the `base` slot still takes slot objects,
+		// and its result is a string.
+		code:
+			IMPORT_SV_CN +
+			`const c = sv({ slots: { base: 'p-2' }, variants: { a: { x: { base: 'm-1' } } } });
+c({ a: 'x', class: 'm-2' });
+cn(c(), 'p-4');`,
+		errors: [restyle('m-2', 'm-1'), restyle('p-4', 'p-2')]
+	},
 	// An element's variant props select the classes a component applies:
 	// static text, a static expression and a bare boolean attribute are read;
 	// `undefined` or a namespaced attribute leaves the default; a spread that
@@ -1277,7 +1369,37 @@ const child = sv({
 	defaultVariants: { size: 'sm' }
 });\n`;
 
+// A variant no layer of a component read in full gives a default stays
+// unset; any layer's default, or one that can't be read, may set it.
+RESTYLE_VALID.push(
+	`${IMPORT}const parent = sv({ base: 'flex', variants: {} });
+const child = sv({ extend: parent, variants: { size: { sm: 'p-2', lg: 'm-2' } } });
+const grand = sv({ extend: child, variants: {}, defaultVariants: { size: undefined } });
+child({ class: 'p-4' });
+grand({ class: 'p-4' });`
+);
+
 RESTYLE_INVALID.push(
+	{
+		code: `${IMPORT}const parent = sv({ variants: { size: { sm: 'p-2', lg: 'm-2' } }, defaultVariants: { size: 'sm' } });
+const loose = sv({ variants: { size: { sm: 'p-2', lg: 'm-2' } } });
+const dynamic = sv({ variants: {}, defaultVariants: pick() });
+const open = sv({ extend: unknown, variants: {} });
+const a = sv({ extend: parent, variants: { size: { xl: 'gap-2' } } });
+const b = sv({ extend: loose, variants: {}, defaultVariants: { size: 'sm' } });
+const c = sv({ extend: dynamic, variants: { size: { sm: 'p-2' } } });
+const d = sv({ extend: open, variants: { size: { sm: 'p-2' } } });
+a({ class: 'p-4' });
+b({ class: 'p-4' });
+c({ class: 'p-4' });
+d({ class: 'p-4' });`,
+		errors: [
+			restyle('p-4', 'p-2'),
+			restyle('p-4', 'p-2'),
+			restyle('p-4', 'p-2'),
+			restyle('p-4', 'p-2')
+		]
+	},
 	{
 		code: `${IMPORT}${RESTYLE_EXTENDED}child({ class: 'p-4' });
 child({ preset: 'big', class: 'text-lg' });
