@@ -23,6 +23,20 @@ type NameList = RawConfig['requiredVariants'] | RawConfig['multiSlots'];
 
 type RawGroups = NonNullable<RawConfig['groups']>;
 
+// Anything a layer holds, down to its class names and option values.
+type LayerValue =
+	| string
+	| number
+	| boolean
+	| null
+	| undefined
+	| AnyFn
+	| readonly LayerValue[]
+	| LayerRecord;
+
+type LayerRecord = { readonly [key: string]: LayerValue };
+
+const { isArray } = Array;
 const { entries, fromEntries, keys } = Object;
 
 // Each config-based `sv()` result, mapped to the layers it was built from:
@@ -123,35 +137,8 @@ const getTargets = (groups: RawGroups, key: string): readonly string[] =>
 	getOwn(groups, key) ?? [key];
 
 /**
- * Whether joining the own record into the inherited one key by key would put
- * an own class ahead of an inherited one: an own key the inherited record
- * already has, followed there by a key reaching one of its slots.
- */
-const joinsAheadOfInherited = (
-	inherited: RawSlotRecord,
-	own: RawSlotRecord,
-	groups: RawGroups
-): boolean => {
-	const inheritedKeys = keys(inherited);
-
-	return inheritedKeys.some((key, index) => {
-		if (getOwn(own, key) === undefined) {
-			return false;
-		}
-
-		const slots = getTargets(groups, key);
-
-		return inheritedKeys
-			.slice(index + 1)
-			.some((later) =>
-				getTargets(groups, later).some((slot) => slots.includes(slot))
-			);
-	});
-};
-
-/**
  * Adds a slot record's classes to `into` per slot, in key order, a group key
- * standing for the slots it has now.
+ * standing for its slots.
  */
 const addPerSlot = (
 	into: RawSlotRecord,
@@ -165,11 +152,21 @@ const addPerSlot = (
 	}
 };
 
+// A slot record's classes per slot, in key order.
+const toPerSlot = (record: RawSlotRecord, groups: RawGroups): RawSlotRecord => {
+	const perSlot: RawSlotRecord = {};
+
+	addPerSlot(perSlot, record, groups);
+
+	return perSlot;
+};
+
 /**
  * Builds the merge of one variant value's classes: two class values are
  * joined, otherwise both become per-slot records, a class value standing for
- * `base`. Records are joined key by key, unless that would put an own class
- * ahead of an inherited one, in which case both are joined per slot.
+ * `base`. Records are joined key by key, which keeps their group keys, unless
+ * that leaves a slot with anything but the inherited classes followed by the
+ * own ones, each in their own order, in which case both are joined per slot.
  */
 const mergeVariantValue =
 	(groups: RawGroups): MergeValue<RawVariantValue> =>
@@ -180,20 +177,24 @@ const mergeVariantValue =
 
 		const inheritedRecord = toSlotRecord(inherited);
 		const ownRecord = toSlotRecord(own);
+		const joined = mergeRecords<ConfigClassValue>(cn)(
+			inheritedRecord,
+			ownRecord
+		);
+		const perSlot = toPerSlot(inheritedRecord, groups);
 
-		if (!joinsAheadOfInherited(inheritedRecord, ownRecord, groups)) {
-			return mergeRecords<ConfigClassValue>(cn)(
-				inheritedRecord,
-				ownRecord
-			);
+		addPerSlot(perSlot, ownRecord, groups);
+
+		const joinedPerSlot = toPerSlot(joined, groups);
+		const keepsOrder = keys(perSlot).every(
+			(slot) => perSlot[slot] === joinedPerSlot[slot]
+		);
+
+		if (keepsOrder) {
+			return joined;
 		}
 
-		const merged: RawSlotRecord = {};
-
-		addPerSlot(merged, inheritedRecord, groups);
-		addPerSlot(merged, ownRecord, groups);
-
-		return merged;
+		return perSlot;
 	};
 
 // A boolean shorthand stands for its `true` value.
@@ -306,22 +307,29 @@ const mergeMultiSlots = (
 	);
 };
 
+const mergeGroups = (
+	inherited: RawConfig['groups'],
+	own: RawConfig['groups']
+) => mergeOptional(inherited, own, mergeRecords(joinUnique));
+
 /**
  * Builds `own` on top of `inherited`: classes are appended after the
  * inherited ones, records are merged and lists joined, and the own
- * behaviour options win when set.
+ * behaviour options win when set. `allGroups` holds the groups of every
+ * layer being merged, as a group key of a variant value stands for the slots
+ * the group ends up with, those a later layer adds included.
  */
-const mergeConfigs = (inherited: RawConfig, config: RawConfig): RawConfig => {
+const mergeConfigs = (
+	inherited: RawConfig,
+	config: RawConfig,
+	allGroups: RawGroups
+): RawConfig => {
 	const own = placeOwnBase(inherited, config);
-	const groups = mergeOptional(
-		inherited.groups,
-		own.groups,
-		mergeRecords(joinUnique)
-	);
+	const groups = mergeGroups(inherited.groups, own.groups);
 	const variants = mergeOptional(
 		inherited.variants,
 		own.variants,
-		mergeRecords(mergeVariant(groups ?? {}))
+		mergeRecords(mergeVariant(allGroups))
 	);
 	const slots = mergeOptional(
 		inherited.slots,
@@ -366,30 +374,80 @@ const mergeConfigs = (inherited: RawConfig, config: RawConfig): RawConfig => {
 	};
 };
 
+const isSameList = (
+	first: readonly LayerValue[],
+	second: readonly LayerValue[]
+): boolean =>
+	first.length === second.length &&
+	first.every((item, index) => isSameValue(item, second[index]));
+
+const isSameRecord = (first: LayerRecord, second: LayerRecord): boolean => {
+	const firstKeys = keys(first);
+
+	return (
+		firstKeys.length === keys(second).length &&
+		firstKeys.every((key) => isSameValue(first[key], getOwn(second, key)))
+	);
+};
+
+/**
+ * Whether two layer values hold the same thing: the very same value, or lists
+ * and records of the same values. Functions are the same only by identity.
+ */
+const isSameValue = (first: LayerValue, second: LayerValue): boolean => {
+	if (first === second) {
+		return true;
+	}
+
+	if (typeof first === 'function' || typeof second === 'function') {
+		return false;
+	}
+
+	if (isArray(first) && isArray(second)) {
+		return isSameList(first, second);
+	}
+
+	if (isPlainObject(first) && isPlainObject(second)) {
+		return isSameRecord(first, second);
+	}
+
+	return false;
+};
+
 /**
  * The layers of the components a config extends, left to right, each layer
- * once: an ancestor two parents share is merged where it first appears.
+ * once: an ancestor two parents share is merged where it first appears. Two
+ * layers with the same config count as one, as their types can't be told
+ * apart either.
  */
 export const getParentLayers = (extend: ExtendInput): RawConfig[] => {
-	const layers = new Set<RawConfig>();
+	const layers: RawConfig[] = [];
 
 	for (const parent of toParentList(extend)) {
 		for (const layer of getLayers(parent)) {
-			layers.add(layer);
+			if (!layers.some((known) => isSameValue(known, layer))) {
+				layers.push(layer);
+			}
 		}
 	}
 
-	return [...layers];
+	return layers;
 };
 
 /**
  * Merges layers in order into one config that extends nothing.
  */
 export const mergeLayers = (layers: readonly RawConfig[]): RawConfig => {
+	let allGroups: RawConfig['groups'];
+
+	for (const layer of layers) {
+		allGroups = mergeGroups(allGroups, layer.groups);
+	}
+
 	let merged: RawConfig = {};
 
 	for (const layer of layers) {
-		merged = mergeConfigs(merged, layer);
+		merged = mergeConfigs(merged, layer, allGroups ?? {});
 	}
 
 	return merged;
@@ -418,13 +476,15 @@ const resolveMultiSlots = (names: NameList, resolved: RawConfig) => {
 };
 
 /**
- * A config as a layer other configs merge: its `true` required variants and
+ * A config as a layer other configs merge, without the parents it names, as
+ * their layers are kept beside it: its `true` required variants and
  * its multi slots named, as they cover only what it had, and its
  * introspection resolved, left unset when nothing sets it so that a config
  * extending it falls back to an earlier parent or its own factory default.
  */
 export const toLayer = (own: RawConfig, resolved: RawConfig): RawConfig => ({
 	...own,
+	extend: undefined,
 	requiredVariants: resolveOwnNames(
 		own.requiredVariants,
 		keys(resolved.variants ?? {})

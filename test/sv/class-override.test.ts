@@ -160,6 +160,44 @@ t.test('class wins when both class and className are passed', (t) => {
 	t.end();
 });
 
+t.test('a class object naming a slot is a slot object', (t) => {
+	const card = sv('border', {
+		slots: { header: 'font-bold', body: 'py-4' },
+		groups: { content: ['header', 'body'] }
+	});
+
+	t.same(
+		card({ class: { active: true, 'p-2': false } }),
+		{ base: 'border active', header: 'font-bold', body: 'py-4' },
+		'an object naming no slot is a class record'
+	);
+	t.same(
+		card({ class: ['mt-2', { header: true }] }).base,
+		'border mt-2 header',
+		'a record nested in a list is a class record'
+	);
+	t.same(
+		// @ts-expect-error a key beside a slot has to name a slot or group
+		card({ class: { header: 'text-blue-700', bodyy: 'min-h-24' } }),
+		{ base: 'border header bodyy', header: 'font-bold', body: 'py-4' },
+		'a mistyped slot is a type error'
+	);
+	t.same(
+		// @ts-expect-error the same holds beside a group
+		card({ className: { content: 'px-2', active: true } }).base,
+		'border content active',
+		'a class name beside a group is a type error'
+	);
+	t.equal(
+		// @ts-expect-error with no slots, `base` still names one
+		sv('btn', { variants: {} })({ class: { base: true, active: true } }),
+		'btn base active',
+		'a class name beside `base` is a type error'
+	);
+
+	t.end();
+});
+
 t.test('className prop as slot object targets specific slots', (t) => {
 	const card = sv('border rounded-lg', {
 		slots: {

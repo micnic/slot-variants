@@ -209,9 +209,21 @@ type ReturnValue<
 		: SlotResult<S, G, V, P, M, R>
 	: SlotResult<S, G, V, P, M, R>;
 
+// The record form of a class value: class names mapped to conditions.
+type ClassRecord = Record<string, unknown>;
+
+// A class record names no slot or group: an object that names one is a slot
+// object, whose every key has to name one.
+type SlotlessClassRecord<
+	S extends MaybeSlots,
+	G extends MaybeGroups<S>,
+	V
+> = Extract<V, ClassRecord> & Partial<Record<SlotTarget<S, G>, never>>;
+
 type SlotRecord<S extends MaybeSlots, G extends MaybeGroups<S>, V> =
 	| Partial<Record<SlotTarget<S, G>, V>>
-	| V;
+	| Exclude<V, ClassRecord>
+	| SlotlessClassRecord<S, G, V>;
 
 // Groups name targets even without `slots`, as `base` is always a slot.
 export type SlotValue<
@@ -228,7 +240,7 @@ type ClassProp<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V
-> = EitherClassProp<SlotValue<S, G, V>, true>;
+> = EitherClassProp<SlotRecord<S, G, V>, true>;
 
 export type Variants<S extends MaybeSlots, G extends MaybeGroups<S>> = Record<
 	string,

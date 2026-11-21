@@ -325,7 +325,7 @@ t.test('keeps child classes after a parent group class', (t) => {
 		'joined per slot'
 	);
 
-	// Joined per slot, the group stands for the slots it had then.
+	// Joined per slot, the group still stands for the slots it ends up with.
 	const grown = sv({
 		extend: child,
 		slots: { footer: 'f' },
@@ -335,8 +335,96 @@ t.test('keeps child classes after a parent group class', (t) => {
 
 	t.equal(
 		grown({ size: 'sm' }).footer,
-		'f',
+		'f p2',
 		'a slot added to the group later'
+	);
+
+	t.end();
+});
+
+t.test('parents with the same config count as one', (t) => {
+	const required = sv({
+		variants: { size: { sm: 'a', lg: 'b' } },
+		requiredVariants: ['size']
+	});
+	const defaulted = sv({
+		variants: { size: { sm: 'c', lg: 'd' } },
+		defaultVariants: { size: 'sm' }
+	});
+	const twin = sv({
+		variants: { size: { sm: 'a', lg: 'b' } },
+		requiredVariants: ['size']
+	});
+	const child = sv({ extend: [required, defaulted, twin], variants: {} });
+
+	// The types can't tell `twin` from `required`, so neither does the merge:
+	// it requires nothing again after `defaulted`.
+	t.equal(child(), 'a c', 'the twin adds nothing');
+
+	const list = sv({ base: ['x', 'y'], variants: {} });
+	const sameList = sv({ base: ['x', 'y'], variants: {} });
+	const otherItem = sv({ base: ['x', 'z'], variants: {} });
+	const shorter = sv({ base: ['x'], variants: {} });
+	const text = sv({ base: 'x', variants: {} });
+
+	t.equal(
+		sv({
+			extend: [list, sameList, otherItem, shorter, text],
+			variants: {}
+		})(),
+		'x y x z x x',
+		'a different class list is another config'
+	);
+
+	const upper = (className: string) => className.toUpperCase();
+	const shouting = sv({ base: 'x', variants: {}, postProcess: upper });
+	const sameFn = sv({ base: 'x', variants: {}, postProcess: upper });
+	const otherFn = sv({
+		base: 'x',
+		variants: {},
+		postProcess: (className: string) => className.toUpperCase()
+	});
+
+	t.equal(
+		sv({ extend: [shouting, sameFn, otherFn], variants: {} })(),
+		'X X',
+		'a different function is another config'
+	);
+
+	t.end();
+});
+
+t.test('keeps the own order of a group and one of its slots', (t) => {
+	const shared = {
+		slots: { header: 'h', body: 'b' },
+		groups: { content: ['header', 'body'] }
+	} as const;
+	const slotParent = sv({
+		...shared,
+		variants: { size: { lg: { header: 'm-1' } } }
+	});
+	const groupParent = sv({
+		...shared,
+		variants: { size: { lg: { content: 'm-1' } } }
+	});
+	const groupFirst = sv({
+		extend: slotParent,
+		variants: { size: { lg: { content: 'p-2', header: 'p-4' } } }
+	});
+	const slotFirst = sv({
+		extend: groupParent,
+		variants: { size: { lg: { header: 'p-4', content: 'p-2' } } }
+	});
+
+	t.same(
+		groupFirst({ size: 'lg' }),
+		{ base: '', header: 'h m-1 p-2 p-4', body: 'b p-2' },
+		'group class ahead of the slot class'
+	);
+	t.same(
+		slotFirst({ size: 'lg' }),
+		{ base: '', header: 'h m-1 p-4 p-2', body: 'b m-1 p-2' },
+		'slot class ahead of the group class'
 	);
 
 	t.end();
