@@ -34,12 +34,14 @@ type TemplateContainer = ParentedNode & {
 	references: ReadonlyArray<TemplateReference>;
 };
 
-// Type-only wrappers (`as`, `satisfies`, `!`, `<T>`), which the TypeScript
-// parser adds and ESTree's own node types don't list, and the optional-chain
-// wrapper around `a?.b` / `a?.()`.
+// Type-only wrappers (`as`, `satisfies`, `!`, `<T>`, and type arguments given
+// without a call, `sv<T>`), which the TypeScript parser adds and ESTree's own
+// node types don't list, and the optional-chain wrapper around `a?.b` /
+// `a?.()`.
 const TRANSPARENT_WRAPPER_TYPES: ReadonlySet<string> = new Set([
 	'ChainExpression',
 	'TSAsExpression',
+	'TSInstantiationExpression',
 	'TSNonNullExpression',
 	'TSSatisfiesExpression',
 	'TSTypeAssertion'

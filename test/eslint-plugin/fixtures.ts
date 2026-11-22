@@ -395,6 +395,29 @@ writeFixture(
 	"export { default as Button } from './Button.svelte';\n"
 );
 
+// Scripts the Svelte parser reads as the text of a component: a barrel with
+// no braces, and a factory.
+writeFixture('ui/svelte-star.js', "export * from './svelte-barrel.js';\n");
+
+writeFixture(
+	'ui/svelte-factory.js',
+	"import { createSV } from 'slot-variants';\nexport const plainSV = createSV();\n"
+);
+
+// Markup under a script's name, which reads as nothing either way.
+writeFixture('ui/markup.js', '<b>text</b>\n');
+
+// A module with no extension.
+writeFixture(
+	'ui/bare',
+	`${IMPORT}const bare = sv({ base: 'p-2', variants: {} });
+
+	export function Bare({ className }) {
+		return bare({ class: className });
+	}
+	`
+);
+
 writeFixture(
 	'ui/svelte-ts-barrel.ts',
 	"export type Size = 'sm' | 'lg';\nexport { default as Chip } from './Chip.svelte';\n"

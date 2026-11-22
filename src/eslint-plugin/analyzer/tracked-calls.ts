@@ -19,7 +19,11 @@ import {
 	resolveImportedFactory
 } from './module-loader.ts';
 import { getExportName } from './module-syntax.ts';
-import { createStyledContext, type StyledContext } from './styled-values.ts';
+import {
+	createStyledContext,
+	getMemberKey,
+	type StyledContext
+} from './styled-values.ts';
 
 // The tracked export each named-import local stands for, the locals bound to
 // a whole-module namespace import, and whether the file imports anything
@@ -78,25 +82,22 @@ const isTrackedNamespace = (match: MatchContext, node: Node): boolean => {
 	);
 };
 
-// The export a namespace member names — `SV.sv` for
+// The export a namespace member names — `SV.sv` or `SV['sv']` for
 // `import * as SV from 'slot-variants'`. Null when the callee isn't a member of
-// a tracked namespace binding, including a computed one (`SV[name]`), whose
-// export can't be read statically.
+// a tracked namespace binding, or names it by a key that can't be read
+// statically (`SV[name]`).
 const resolveNamespaceExportName = (
 	match: MatchContext,
 	callee: Node
 ): string | null => {
-	if (callee.type !== 'MemberExpression' || callee.computed) {
+	if (
+		callee.type !== 'MemberExpression' ||
+		!isTrackedNamespace(match, callee.object)
+	) {
 		return null;
 	}
 
-	const { object, property } = callee;
-
-	if (property.type !== 'Identifier' || !isTrackedNamespace(match, object)) {
-		return null;
-	}
-
-	return property.name;
+	return getMemberKey(callee, match.ctx);
 };
 
 // The export a name destructured off a tracked namespace import binds

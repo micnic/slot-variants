@@ -131,6 +131,19 @@ export const CROSS_FILE_VALID = [
 
 export const CROSS_FILE_INVALID = [
 	{
+		// An alias may map a root-absolute specifier.
+		code: `import { Button } from '/ui/button.tsx';\n<Button className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		options: [{ alias: { '/ui/': join(fixtureDir, 'ui') } }],
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
+		// A module with no extension is read like any other.
+		code: `import { Bare } from './ui/bare';\n<Bare className="p-4" />;`,
+		filename: join(fixtureDir, 'page.tsx'),
+		errors: [restyle('p-4', 'p-2')]
+	},
+	{
 		// A component read off a namespace import, of its module or a barrel.
 		code: `import * as UI from './ui/button.tsx';\n<UI.Button className="p-4" />;`,
 		filename: join(fixtureDir, 'page.tsx'),
@@ -313,6 +326,11 @@ export const TS_CROSS_FILE_INVALID = [
 
 export const SVELTE_CROSS_FILE_VALID = [
 	{
+		// A script that only reads as markup leads nowhere.
+		code: `<script>import { Button } from './ui/markup.js';</script>\n<Button class="p-4" />`,
+		filename: join(fixtureDir, 'page.svelte')
+	},
+	{
 		// A component that forwards no class prop, and one the module never
 		// imports.
 		code: `<script>import Plain from './ui/Plain.svelte';</script>\n<Plain class="p-4" /><Missing class="p-4" />`,
@@ -321,6 +339,13 @@ export const SVELTE_CROSS_FILE_VALID = [
 ];
 
 export const SVELTE_CROSS_FILE_INVALID = [
+	{
+		// A script the Svelte parser reads as a component's text is read as
+		// a plain script instead: a star barrel, and a factory module.
+		code: `<script>import { Button } from './ui/svelte-star.js';\nimport { plainSV } from './ui/svelte-factory.js';\nconst b = plainSV({ base: 'm-2', variants: {} });</script>\n<Button class="p-4" /><i class={b({ class: 'm-4' })} />`,
+		filename: join(fixtureDir, 'page.svelte'),
+		errors: [restyle('p-4', 'p-2'), restyle('m-4', 'm-2')]
+	},
 	{
 		// A component read off a namespace import.
 		code: `<script>import * as UI from './ui/svelte-barrel.js';</script>\n<UI.Button class="p-4" />`,

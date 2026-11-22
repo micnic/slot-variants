@@ -1130,8 +1130,8 @@ export const NO_CONFLICTING_NS_VALID = [
 	// A whole-module namespace import reaches the same exports, so an untracked
 	// member of it is left alone.
 	IMPORT_NS + "SV.other({ base: 'w-1 w-2' });",
-	// A computed member can't be read statically.
-	IMPORT_NS + "SV['sv']({ base: 'w-1 w-2' });",
+	// A computed member naming no static key can't be read.
+	IMPORT_NS + "SV[name]({ base: 'w-1 w-2', variants: {} });",
 	// Nor can a nested member path be a namespace binding.
 	IMPORT_NS + "a.b.sv({ base: 'w-1 w-2' });",
 	// A private-name member is not an export either.
@@ -1174,6 +1174,11 @@ export const NO_CONFLICTING_NS_VALID = [
 ];
 
 export const NO_CONFLICTING_NS_INVALID = [
+	{
+		// A namespace member named by a static key is the export it names.
+		code: IMPORT_NS + "SV['sv']({ base: 'w-1 w-2', variants: {} });",
+		errors: [conflict('w-1, w-2'), conflict('w-1, w-2')]
+	},
 	{
 		// A unary matcher that isn't a negated number could be any value.
 		code:

@@ -31,6 +31,10 @@ const REWRITABLE = new Map([
 	['.jsx', ['.tsx']]
 ]);
 
+/** Whether `path` names a plain script by its extension, not a component. */
+export const isScriptPath = (path: string): boolean =>
+	EXTENSIONS.includes(extname(path));
+
 // The file at `path`, or null for anything else. Most probes miss, and a miss
 // that doesn't throw is several times cheaper. Other errors (a name too long,
 // a symlink loop) still throw.
@@ -158,18 +162,20 @@ export const resolveModulePath = (
 		);
 	}
 
+	const aliased = applyAlias(specifier, aliases);
+
+	// An alias may map a root-absolute specifier (`/src/ui`) too, so it's
+	// tried first. Alias targets are already absolute; resolving only
+	// normalizes the path.
+	if (aliased !== null) {
+		return resolveSpecifierFile(specifier, resolve(aliased));
+	}
+
 	if (isAbsolute(specifier)) {
 		return resolveSpecifierFile(specifier, specifier);
 	}
 
-	const aliased = applyAlias(specifier, aliases);
-
-	if (aliased === null) {
-		return null;
-	}
-
-	// Alias targets are already absolute; resolving only normalizes the path.
-	return resolveSpecifierFile(specifier, resolve(aliased));
+	return null;
 };
 
 /** The `alias` option, with each target normalized against `cwd`. */

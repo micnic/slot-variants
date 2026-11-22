@@ -649,6 +649,14 @@ t.test('no-restyle reads callees through type-only wrappers', (t) => {
 					errors: [{ messageId: 'conflict' }]
 				},
 				{
+					// Type arguments given without a call name the same `sv`.
+					code:
+						IMPORT +
+						"const typed = sv<any>;\nconst b = typed({ base: 'p-2', variants: {} });\nb({ class: 'p-4' });",
+					filename: 'test.ts',
+					errors: [{ messageId: 'conflict' }]
+				},
+				{
 					code: IMPORT + list + "classes.item!({ class: 'px-4' });",
 					filename: 'test.ts',
 					errors: [{ messageId: 'conflict' }]
@@ -754,4 +762,45 @@ t.test('no-restyle keeps a module read with its own aliases', async (t) => {
 		),
 		['slot-variants/no-restyle']
 	);
+});
+
+// Modules importing each other are read from wherever the cycle is entered,
+// so neither is left with what the other could give it while under way.
+t.test('no-restyle reads modules importing each other whole', async (t) => {
+	const component = (name: string, factory: string, base: string) =>
+		`const styles = ${factory}({ base: '${base}', variants: {} });
+
+		export function ${name}({ className }) {
+			return <i className={styles({ class: className })} />;
+		}
+		`;
+
+	writeFixture(
+		'mutual/a.jsx',
+		`${IMPORT_CREATE_SV}import { svB } from './b.jsx';
+		export const svA = createSV();
+		${component('A', 'svB', 'm-2')}`
+	);
+	writeFixture(
+		'mutual/b.jsx',
+		`${IMPORT_CREATE_SV}import { svA } from './a.jsx';
+		export const svB = createSV();
+		${component('B', 'svA', 'p-2')}`
+	);
+
+	const eslint = createJsxLinter({ 'slot-variants/no-restyle': 2 });
+	const lintA = () =>
+		lintJsxPage(
+			eslint,
+			'import { A } from \'./mutual/a.jsx\';\n<A className="m-4" />;'
+		);
+	const lintB = () =>
+		lintJsxPage(
+			eslint,
+			'import { B } from \'./mutual/b.jsx\';\n<B className="p-4" />;'
+		);
+
+	t.same(await lintA(), ['slot-variants/no-restyle'], 'entered at a');
+	t.same(await lintB(), ['slot-variants/no-restyle'], 'entered at b');
+	t.same(await lintA(), ['slot-variants/no-restyle'], 'entered at a again');
 });

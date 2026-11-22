@@ -1247,9 +1247,11 @@ export const resolveInvocation = (
 	};
 };
 
-// The slot key a member read names: `classes.header`, or a static key like
-// `classes['header']`.
-const getMemberKey = (
+/**
+ * The key a member read names: `classes.header`, or a static key like
+ * `classes['header']`. Null for a key that can't be read.
+ */
+export const getMemberKey = (
 	node: MemberExpression,
 	ctx: StyledContext
 ): string | null => {

@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
+import { dirname, extname, resolve } from 'node:path';
 import type { Linter, Rule } from 'eslint';
 import type { Node } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
@@ -20,6 +20,7 @@ import { collectExportTable, type ExportTarget } from './module-exports.ts';
 import {
 	type AliasMap,
 	buildAliasMap,
+	isScriptPath,
 	type ModuleFile,
 	resolveModulePath,
 	statFile
@@ -80,8 +81,9 @@ type CacheEntry = {
 
 /**
  * Everything cross-file resolution needs from the rule's context: `aliasKey`
- * tells one set of aliases from another, and `dependencies` collects the
- * files the linted file's own imports led to.
+ * tells one set of aliases from another, `dependencies` collects the files
+ * the linted file's own imports led to, and `isMarkup` tells that the linted
+ * file is a component format (Svelte, Vue) rather than a plain script.
  */
 export type ModuleContext = {
 	aliases: AliasMap;
@@ -89,6 +91,7 @@ export type ModuleContext = {
 	cwd: string;
 	languageOptions: Linter.LanguageOptions;
 	dependencies: Dependencies;
+	isMarkup: boolean;
 };
 
 type SettingsRecord = Readonly<Record<string, unknown>>;
@@ -100,9 +103,10 @@ type SettingsRecord = Readonly<Record<string, unknown>>;
 // monorepo may each install their own.
 const linterConstructors = new Map<string, LinterConstructor | null>();
 
-// `**/*.*` matches any file with an extension, which every resolved module
-// path has — a bare `**/*` is treated as a universal pattern and matches
-// nothing on its own. The nested run is rooted at the module's own directory,
+// `**/*.*` matches any file with an extension — a bare `**/*` is treated as a
+// universal pattern and matches nothing on its own — so a module without one
+// is linted under a name with one. The nested run is rooted at the module's
+// own directory,
 // since a flat config never matches a path outside its base directory and an
 // imported module can sit anywhere.
 const FILE_PATTERN = ['**/*.*'];
@@ -137,9 +141,15 @@ const languageOptionsIds = new WeakMap<Linter.LanguageOptions, number>();
 // The plugin's key in ESLint's shared `settings`.
 const SETTINGS_KEY = 'slot-variants';
 
-// The paths whose analysis is under way, so modules importing each other
-// read as unknown rather than analyzing each other forever.
+// The paths whose analysis is under way, in the order they began, so modules
+// importing each other read as unknown rather than analyzing each other
+// forever.
 const loadingModules = new Set<string>();
+
+// The paths under way whose analysis read a module that was itself under way,
+// straight or through one that did: what they hold is cut short, and isn't
+// kept.
+const cutShortModules = new Set<string>();
 
 // One context per rule context, so everything a rule resolves for a file
 // collects its dependencies in the same place.
@@ -261,7 +271,8 @@ export const getModuleContext = (
 			aliasKey: JSON.stringify([...aliases]),
 			cwd: context.cwd,
 			languageOptions: context.languageOptions,
-			dependencies: new Map()
+			dependencies: new Map(),
+			isMarkup: !isScriptPath(context.filename)
 		};
 	});
 };
@@ -492,6 +503,16 @@ const toScriptOptions = (
 	return { ...rest, parserOptions };
 };
 
+// The name a module is linted under: its path, with an extension added when
+// it has none, which only the file pattern reads.
+const toLintFilename = (path: string): string => {
+	if (extname(path) === '') {
+		return `${path}.js`;
+	}
+
+	return path;
+};
+
 const collectModule = (
 	LinterClass: LinterConstructor,
 	path: string,
@@ -519,7 +540,7 @@ const collectModule = (
 					rules: { 'slot-variants-internal/collect': 'error' }
 				}
 			],
-			path
+			toLintFilename(path)
 		);
 	} finally {
 		nestedContext = outerContext;
@@ -527,6 +548,32 @@ const collectModule = (
 
 	return collected.analysis;
 };
+
+// Whether a module leads an import anywhere: a component forwarding its class
+// prop, a re-export, or itself as a single-file component.
+const leadsAnywhere = (analysis: ModuleAnalysis) => {
+	if (analysis.self !== null || analysis.starSources.length > 0) {
+		return true;
+	}
+
+	for (const steps of analysis.exports.values()) {
+		if (steps.length > 0) {
+			return true;
+		}
+	}
+
+	return false;
+};
+
+// Whether an analysis may have come from reading a plain script as markup: a
+// Svelte parser reads any file as a component, whose text holds no script, so
+// a script that seems to lead nowhere under a markup file's options may only
+// have been misread.
+const mayBeMisread = (
+	analysis: ModuleAnalysis,
+	path: string,
+	{ isMarkup }: ModuleContext
+): boolean => isMarkup && isScriptPath(path) && !leadsAnywhere(analysis);
 
 const analyzeModule = (
 	path: string,
@@ -550,19 +597,21 @@ const analyzeModule = (
 			moduleContext
 		);
 
-		if (analysis !== null) {
+		if (analysis !== null && !mayBeMisread(analysis, path, moduleContext)) {
 			return analysis;
 		}
 
 		// A parse failure leaves nothing collected: the module may be a
-		// plain script the importer's parser doesn't read
-		return collectModule(
+		// plain script the importer's parser doesn't read, or reads as markup
+		const script = collectModule(
 			LinterClass,
 			path,
 			text,
 			toScriptOptions(languageOptions),
 			moduleContext
 		);
+
+		return script ?? analysis;
 		/* c8 ignore next 6 -- a parse failure is reported, not thrown; this
 		   catches an I/O race (the file vanishing between stat and read) and a
 		   host parser that throws instead of reporting */
@@ -613,8 +662,23 @@ const hasFreshDependencies = ({ dependencies }: CacheEntry): boolean => {
 	return true;
 };
 
-// The module's cache entry, analyzed first when it has none that still holds.
-// Null for a module whose analysis is under way.
+// Marks the modules whose analysis led back to `path`, itself under way: it
+// and each one that began after it.
+const markCutShort = (path: string) => {
+	let isWithinCycle = false;
+
+	for (const loading of loadingModules) {
+		isWithinCycle ||= loading === path;
+
+		if (isWithinCycle) {
+			cutShortModules.add(loading);
+		}
+	}
+};
+
+// The module's analysis, with what it read on the way, analyzed first when the
+// cache has none that still holds. Null for a module whose analysis is under
+// way.
 const loadModule = (
 	{ path, mtimeMs }: ModuleFile,
 	moduleContext: ModuleContext
@@ -627,6 +691,8 @@ const loadModule = (
 	}
 
 	if (loadingModules.has(path)) {
+		markCutShort(path);
+
 		return null;
 	}
 
@@ -646,7 +712,10 @@ const loadModule = (
 
 	const entry: CacheEntry = { mtimeMs, analysis, dependencies };
 
-	storeModule(key, entry);
+	// Read whole the next time, from wherever the cycle is entered then
+	if (!cutShortModules.delete(path)) {
+		storeModule(key, entry);
+	}
 
 	return entry;
 };
@@ -669,22 +738,6 @@ const addDependencies = (
 	for (const [path, mtimeMs] of entry.dependencies) {
 		dependencies.set(path, mtimeMs);
 	}
-};
-
-// Whether a module leads an import anywhere: a component forwarding its class
-// prop, a re-export, or itself as a single-file component.
-const leadsAnywhere = (analysis: ModuleAnalysis) => {
-	if (analysis.self !== null || analysis.starSources.length > 0) {
-		return true;
-	}
-
-	for (const steps of analysis.exports.values()) {
-		if (steps.length > 0) {
-			return true;
-		}
-	}
-
-	return false;
 };
 
 // The file's text and modification time on disk, or null when it can't be
