@@ -167,6 +167,29 @@ t.test('no-restyle reads type-based Vue Boolean props', (t) => {
 		'Stringly',
 		'const props = defineProps<{ class?: string; flat?: string }>();'
 	);
+	component(
+		'Extended',
+		`interface Base { flat?: boolean }
+		interface Props extends Base, NS.Other { class?: string }
+		const props = defineProps<Props>();`
+	);
+	component(
+		'Overridden',
+		`interface Base { flat?: boolean }
+		interface Props extends Base { class?: string; flat?: string }
+		const props = defineProps<Props>();`
+	);
+	component(
+		'Merged',
+		`interface Props { class?: string }
+		interface Props { flat?: boolean }
+		const props = defineProps<Props>();`
+	);
+	component(
+		'Cyclic',
+		`interface Props extends Props { class?: string }
+		const props = defineProps<Props>();`
+	);
 	component('Bare', 'const props = withDefaults();');
 	component(
 		'Wrapped',
@@ -183,6 +206,10 @@ t.test('no-restyle reads type-based Vue Boolean props', (t) => {
 		'Composed',
 		'Intersection',
 		'Stringly',
+		'Extended',
+		'Overridden',
+		'Merged',
+		'Cyclic',
 		'Bare',
 		'Wrapped'
 	];
@@ -213,9 +240,13 @@ t.test('no-restyle reads type-based Vue Boolean props', (t) => {
 			'Class "shadow-lg" conflicts with "shadow" applied to the "base" slot.',
 			'Class "shadow-lg" conflicts with "shadow" applied to the "base" slot.',
 			'Class "shadow-lg" conflicts with "shadow" applied to the "base" slot.',
-			'Class "shadow-lg" conflicts with "shadow-none" applied to the "base" slot.'
+			'Class "shadow-lg" conflicts with "shadow-none" applied to the "base" slot.',
+			'Class "shadow-lg" conflicts with "shadow" applied to the "base" slot.',
+			'Class "shadow-lg" conflicts with "shadow" applied to the "base" slot.',
+			'Class "shadow-lg" conflicts with "shadow" applied to the "base" slot.',
+			'Class "shadow-lg" conflicts with "shadow" applied to the "base" slot.'
 		],
-		'Inline, Interface, Alias and Defaulted cast flat; the rest leave it unset'
+		'An inline type, an interface with those it extends or merges with, an alias and an intersection cast flat; the rest leave it unset'
 	);
 	t.end();
 });

@@ -33,6 +33,7 @@ import {
 	getSvelteTagRoot,
 	getVueAttributeName,
 	getVueComponentName,
+	getVueRootElements,
 	hasIsolatedSvelteParts,
 	type JsxAttribute,
 	type JsxOpeningElement,
@@ -40,7 +41,8 @@ import {
 	pushRawRangeTokens,
 	type SvelteAttributePart,
 	type SvelteStartTag,
-	type VAttribute
+	type VAttribute,
+	type VElement
 } from './markup.ts';
 import {
 	areExclusivePaths,
@@ -67,7 +69,7 @@ import {
 } from './styled-values.ts';
 import { forEachStringLiteralElement } from './token-extraction.ts';
 import { createTrackedCallResolver } from './tracked-calls.ts';
-import { readTypedBooleanProps } from './typed-props.ts';
+import { readTypedBooleanProps, readTypedProps } from './typed-props.ts';
 
 /**
  * A part a component merges its `class` prop into, as an element passing it
@@ -181,6 +183,7 @@ type PendingPosition = {
 	site: ComponentSite | null;
 	run: (emit: PartsCallback) => void;
 	forwards: () => boolean;
+	fallsThrough: boolean;
 };
 
 // Receives a position's class parts: filled by a collector, or read by an
@@ -215,6 +218,16 @@ const NO_SPREAD_OMITS: SpreadOmits = {
 	spreadPicks: null
 };
 
+// The path of a part outside any branch node.
+const ROOT_PATH: BranchPath = new Map();
+
+// The class attribute a Vue component's undeclared attributes carry to its
+// root element.
+const FALLTHROUGH_PROPS: ReadonlySet<string> = new Set(['class']);
+
+// The one class attribute Vue merges from a `v-bind` object.
+const VUE_CLASS: ReadonlySet<string> = new Set(['class']);
+
 // What Vue casts a `Boolean` prop the element leaves out to.
 const ABSENT_BOOLEAN: Node = { type: 'Literal', value: false, raw: 'false' };
 
@@ -244,6 +257,49 @@ const lookupBinding = <T>(
 	}
 
 	return bindings.get(variable) ?? null;
+};
+
+// The names of the attributes after the one at `index`, which replace a prop
+// a spread there passes.
+const getNamesAfter = <T>(
+	attributes: ReadonlyArray<T>,
+	index: number,
+	getName: (attribute: T) => string | null
+): ReadonlySet<string> => {
+	const names = new Set<string>();
+
+	for (const attribute of attributes.slice(index + 1)) {
+		const name = getName(attribute);
+
+		if (name !== null) {
+			names.add(name);
+		}
+	}
+
+	return names;
+};
+
+const getJsxSpreadReplacer = (
+	attribute: JsxOpeningElement['attributes'][number]
+): string | null => {
+	if (attribute.type !== 'JSXAttribute') {
+		return null;
+	}
+
+	return getJsxAttributeName(attribute);
+};
+
+const getSvelteReplacer = (
+	attribute: SvelteStartTag['attributes'][number]
+): string | null => {
+	if (
+		attribute.type === 'SvelteAttribute' ||
+		attribute.type === 'SvelteShorthandAttribute'
+	) {
+		return attribute.key.name;
+	}
+
+	return null;
 };
 
 const getJsxAttributeValue = (node: JsxAttribute): Node | null => {
@@ -597,16 +653,26 @@ export const createForwardingScan = (
 
 	// The values `const` declarations hold, read wherever the name is used.
 	const constValues = new Set<Node>();
+	// Whether a Vue component lets the attributes it doesn't declare as props
+	// fall through to its root element, and whether `class` is one it does.
+	let inheritsAttrs = true;
+	let declaresClass = false;
+	let vueRoots: ReadonlyArray<VElement> | null = null;
 
 	const moduleScope = (): Scope.Scope => getModuleScope(sourceCode);
 
-	const deferParts = (site: ComponentSite | null, collect: PartsCallback) => {
+	const deferParts = (
+		site: ComponentSite | null,
+		collect: PartsCallback,
+		fallsThrough = false
+	) => {
 		pending.push({
 			site,
 			run(emit) {
 				emitCollected(emit, collect);
 			},
-			forwards: () => true
+			forwards: () => true,
+			fallsThrough
 		});
 	};
 
@@ -1315,11 +1381,13 @@ export const createForwardingScan = (
 	// What a forwarded prop, written in `path`, is merged with at this
 	// position: the parts outside the other sides of its branch nodes. The
 	// literals inside a `cn()` list count too — `cn('p-2', className)` applies
-	// `p-2` just as a config would.
+	// `p-2` just as a config would — and with `mergesAll` every one does, for
+	// a class merged onto the whole position.
 	const getForwardTargets = (
 		parts: ClassParts,
 		path: BranchPath,
-		component: Component
+		component: Component,
+		mergesAll = false
 	): ForwardTarget[] => {
 		const { paths } = parts;
 		const styled = parts.styled
@@ -1330,7 +1398,7 @@ export const createForwardingScan = (
 			.map((part) => getForwardTarget(part, component));
 		const literals = parts.literals.filter(
 			(entry, index) =>
-				parts.merged.has(entry) &&
+				(mergesAll || parts.merged.has(entry)) &&
 				!areExclusivePaths(path, pathAt(paths.literals, index))
 		);
 
@@ -1391,6 +1459,96 @@ export const createForwardingScan = (
 				]
 			});
 		});
+	};
+
+	// The class a Vue component's element passes falls through to its root
+	// element, merged with every class written there.
+	const trackFallthrough = (parts: ClassParts) => {
+		const component = sourceCode.ast;
+		const targets = getForwardTargets(parts, ROOT_PATH, component, true);
+
+		if (targets.length === 0) {
+			return;
+		}
+
+		const kept = forwarded.get(component);
+
+		forwarded.set(component, {
+			prop: kept?.prop ?? null,
+			targets: [
+				...(kept?.targets ?? []),
+				...targets.map((target) => ({
+					...target,
+					spreadProps: FALLTHROUGH_PROPS
+				}))
+			]
+		});
+	};
+
+	// Whether a runtime props declaration names `class`: in an array of
+	// names, or as a key of an object.
+	const declaresClassProp = (declaration: Node): boolean => {
+		const resolved = ctx.resolve(declaration);
+
+		if (resolved.type === 'ObjectExpression') {
+			return getProperties(resolved).has('class');
+		}
+
+		let found = false;
+
+		forEachStringLiteralElement(resolved, sourceCode, (name) => {
+			found ||= name === 'class';
+		});
+
+		return found;
+	};
+
+	// A Vue component's options (`defineOptions()`, `defineComponent()` or
+	// the default export): an `inheritAttrs` that isn't `true` keeps the
+	// undeclared attributes off its root element, and `props` may declare
+	// `class`.
+	const recordComponentOptions = (options: Node) => {
+		const properties = getProperties(ctx.resolve(options));
+		const inherit = properties.get('inheritAttrs');
+		const props = properties.get('props');
+
+		if (inherit !== undefined) {
+			const value = ctx.resolve(inherit);
+
+			inheritsAttrs = value.type === 'Literal' && value.value === true;
+		}
+
+		if (props !== undefined && declaresClassProp(props)) {
+			declaresClass = true;
+		}
+	};
+
+	// The component options or props declaration a Vue macro is handed.
+	const recordComponentCall = (node: CallExpression) => {
+		const { callee } = node;
+		const [options] = node.arguments;
+
+		if (callee.type !== 'Identifier') {
+			return;
+		}
+
+		let declaration: Node | null = null;
+
+		if (options !== undefined && options.type !== 'SpreadElement') {
+			declaration = options;
+		}
+
+		if (callee.name === 'defineProps') {
+			declaresClass ||=
+				readTypedProps(node, sourceCode.ast).has('class') ||
+				(declaration !== null && declaresClassProp(declaration));
+		} else if (
+			declaration !== null &&
+			(callee.name === 'defineOptions' ||
+				callee.name === 'defineComponent')
+		) {
+			recordComponentOptions(declaration);
+		}
 	};
 
 	// A read of the class prop a spread of a component's props carries, made
@@ -1466,8 +1624,10 @@ export const createForwardingScan = (
 	// override it is passed.
 	const visitCall = (node: CallExpression) => {
 		recordTemplateProps(node);
+		recordComponentCall(node);
 		pending.push({
 			site: null,
+			fallsThrough: false,
 			// A class list that is a `const`'s value is read in full wherever
 			// the `const` is used, so a prop forwarded into it is tracked there.
 			forwards: () =>
@@ -1676,6 +1836,49 @@ export const createForwardingScan = (
 		}
 	};
 
+	// The class props an object spread into an element's attributes passes,
+	// read through `const` bindings; none unless it can be read in full.
+	const readSpreadClasses = (
+		argument: Node,
+		names: ReadonlySet<string>
+	): Map<string, Node> => {
+		const classes = new Map<string, Node>();
+		const properties = getStrictProperties(ctx.resolve(argument));
+
+		if (properties === null) {
+			return classes;
+		}
+
+		for (const name of names) {
+			const value = properties.get(name);
+
+			if (value !== undefined) {
+				classes.set(name, value);
+			}
+		}
+
+		return classes;
+	};
+
+	// Each class an object spread into an element's attributes passes, as a
+	// class attribute would, unless an attribute after it replaces it.
+	const visitClassSpread = (
+		argument: Node,
+		replaced: ReadonlySet<string>,
+		site: (prop: string) => ComponentSite | null
+	) => {
+		for (const [prop, value] of readSpreadClasses(
+			argument,
+			CLASS_ATTRIBUTES
+		)) {
+			if (!replaced.has(prop)) {
+				deferParts(site(prop), (parts) => {
+					collectParts(value, ctx, parts);
+				});
+			}
+		}
+	};
+
 	const visitJsxAttribute = (
 		attribute: JsxAttribute,
 		component: string | null,
@@ -1699,6 +1902,24 @@ export const createForwardingScan = (
 				collectParts(value, ctx, parts);
 			}
 		);
+	};
+
+	// The class a `v-bind="object"` directive passes, which Vue merges with
+	// the element's other classes: none unless the object can be read in full.
+	const readVueBoundClass = (attribute: VAttribute): Node[] => {
+		const { key, value } = attribute;
+
+		if (
+			key.type !== 'VDirectiveKey' ||
+			key.name.name !== 'bind' ||
+			key.argument !== null ||
+			value?.type !== 'VExpressionContainer' ||
+			value.expression === null
+		) {
+			return [];
+		}
+
+		return [...readSpreadClasses(value.expression, VUE_CLASS).values()];
 	};
 
 	const isVueClassAttribute = (attribute: VAttribute): boolean => {
@@ -1735,6 +1956,21 @@ export const createForwardingScan = (
 		},
 		VariableDeclarator: visitDeclarator,
 		CallExpression: visitCall,
+		ExportDefaultDeclaration(node: MarkupNode) {
+			/* c8 ignore next 3 -- the selector only matches this type */
+			if (node.type !== 'ExportDefaultDeclaration') {
+				return;
+			}
+
+			const { declaration } = node;
+
+			if (
+				declaration.type !== 'FunctionDeclaration' &&
+				declaration.type !== 'ClassDeclaration'
+			) {
+				recordComponentOptions(declaration);
+			}
+		},
 		JSXOpeningElement(node: MarkupNode) {
 			/* c8 ignore next 3 -- the selector only matches this type */
 			if (node.type !== 'JSXOpeningElement') {
@@ -1746,11 +1982,27 @@ export const createForwardingScan = (
 				readJsxProps(node, values);
 			});
 
-			for (const attribute of node.attributes) {
+			node.attributes.forEach((attribute, index) => {
 				if (attribute.type === 'JSXAttribute') {
 					visitJsxAttribute(attribute, component, props);
+
+					return;
 				}
-			}
+
+				const { argument } = attribute;
+
+				visitClassSpread(
+					argument,
+					getNamesAfter(node.attributes, index, getJsxSpreadReplacer),
+					(prop) =>
+						makeSite(
+							component,
+							prop,
+							sourceCode.getScope(argument),
+							props
+						)
+				);
+			});
 		},
 		SvelteElement(node: MarkupNode) {
 			/* c8 ignore next 3 -- the selector only matches this type */
@@ -1771,7 +2023,19 @@ export const createForwardingScan = (
 				scope = sourceCode.getScope(root);
 			}
 
-			for (const attribute of node.startTag.attributes) {
+			const { attributes } = node.startTag;
+
+			attributes.forEach((attribute, index) => {
+				if (attribute.type === 'SvelteSpreadAttribute') {
+					visitClassSpread(
+						attribute.argument,
+						getNamesAfter(attributes, index, getSvelteReplacer),
+						(prop) => makeSite(component, prop, scope, props)
+					);
+				}
+			});
+
+			for (const attribute of attributes) {
 				if (
 					attribute.type !== 'SvelteAttribute' ||
 					!CLASS_ATTRIBUTES.has(attribute.key.name) ||
@@ -1808,6 +2072,10 @@ export const createForwardingScan = (
 					if (item.forwards()) {
 						trackForwarding(parts);
 					}
+
+					if (item.fallsThrough && inheritsAttrs && !declaresClass) {
+						trackFallthrough(parts);
+					}
 				});
 			}
 
@@ -1837,8 +2105,9 @@ export const createForwardingScan = (
 
 			const attributes =
 				node.startTag.attributes.filter(isVueClassAttribute);
+			const bound = node.startTag.attributes.flatMap(readVueBoundClass);
 
-			if (attributes.length === 0) {
+			if (attributes.length === 0 && bound.length === 0) {
 				return;
 			}
 
@@ -1849,13 +2118,20 @@ export const createForwardingScan = (
 				}
 			});
 
+			vueRoots ??= getVueRootElements(sourceCode.ast);
+
 			deferParts(
 				makeSite(component, 'class', moduleScope(), props),
 				(parts) => {
 					for (const attribute of attributes) {
 						collectVueAttribute(attribute, parts);
 					}
-				}
+
+					for (const value of bound) {
+						collectParts(value, ctx, parts);
+					}
+				},
+				vueRoots.includes(node)
 			);
 		}
 	};

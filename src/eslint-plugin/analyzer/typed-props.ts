@@ -17,7 +17,8 @@ type PropertySignature = TypeNode & {
 
 type TypeLiteral = TypeNode & { members: TypeMembers };
 
-type UnionType = TypeNode & { types: ReadonlyArray<TypeNode> };
+// A union or an intersection of types.
+type CompositeType = TypeNode & { types: ReadonlyArray<TypeNode> };
 
 // A type named by an `Identifier`; a qualified name (`A.B`) has no `name`.
 type TypeReference = TypeNode & { typeName: { name?: string } };
@@ -26,9 +27,13 @@ type TypeArguments = { params: ReadonlyArray<TypeNode> };
 
 type DeclarationId = { id: { name: string } };
 
+// An interface an interface extends, named by an `Identifier` expression.
+type InterfaceHeritage = { expression: TypeNode & { name?: string } };
+
 type InterfaceDeclaration = TypeNode &
 	DeclarationId & {
 		body: { body: TypeMembers };
+		extends: ReadonlyArray<InterfaceHeritage>;
 	};
 
 type TypeAliasDeclaration = TypeNode &
@@ -38,11 +43,17 @@ type TypeAliasDeclaration = TypeNode &
 
 type ExportDeclaration = TypeNode & { declaration: TypeNode | null };
 
+// Whether each prop an object type declares has a type including `boolean`.
+type BooleanProps = Map<string, boolean>;
+
 const isTypeLiteral = (node: TypeNode): node is TypeLiteral =>
 	node.type === 'TSTypeLiteral' && 'members' in node;
 
-const isUnionType = (node: TypeNode): node is UnionType =>
+const isUnionType = (node: TypeNode): node is CompositeType =>
 	node.type === 'TSUnionType' && 'types' in node;
+
+const isIntersectionType = (node: TypeNode): node is CompositeType =>
+	node.type === 'TSIntersectionType' && 'types' in node;
 
 const isTypeReference = (node: TypeNode): node is TypeReference =>
 	node.type === 'TSTypeReference' && 'typeName' in node;
@@ -105,74 +116,161 @@ const getTopLevelTypes = (program: Program): TypeNode[] => {
 	});
 };
 
-// The members of an object type: written inline, or a same-file interface or
-// type alias of an inline one that it names. None for anything else.
-const getTypeMembers = (node: TypeNode, program: Program): TypeMembers => {
-	if (isTypeLiteral(node)) {
-		return node.members;
+// Whether a property signature's type includes `boolean`, by the name it
+// declares: none for any other member, or a computed or numeric key.
+const readMembers = (members: TypeMembers): BooleanProps => {
+	const props: BooleanProps = new Map();
+
+	for (const member of members) {
+		if (!isPropertySignature(member)) {
+			continue;
+		}
+
+		const name = getSignatureName(member);
+
+		if (name !== null) {
+			props.set(
+				name,
+				member.typeAnnotation !== undefined &&
+					includesBoolean(member.typeAnnotation.typeAnnotation)
+			);
+		}
 	}
 
-	if (!isTypeReference(node)) {
-		return [];
+	return props;
+};
+
+// Adds `added` to `props`: a prop either names keeps `boolean` when either
+// type includes it, as an intersection's does.
+const joinProps = (props: BooleanProps, added: BooleanProps) => {
+	for (const [name, isBoolean] of added) {
+		props.set(name, isBoolean || props.get(name) === true);
+	}
+};
+
+// Adds `added` to `props`, each prop `props` declares already keeping its own
+// type, as an interface's own member does over one it extends.
+const inheritProps = (props: BooleanProps, added: BooleanProps) => {
+	for (const [name, isBoolean] of added) {
+		if (!props.has(name)) {
+			props.set(name, isBoolean);
+		}
+	}
+};
+
+// The props of the same-file interfaces and type alias named `name`: every
+// declaration of an interface merges into one, its own members over those of
+// the interfaces it extends. `seen` holds the names on the way, so a type
+// naming itself reads as none.
+const readNamedProps = (
+	name: string,
+	program: Program,
+	seen: Set<string>
+): BooleanProps => {
+	const props: BooleanProps = new Map();
+
+	if (seen.has(name)) {
+		return props;
 	}
 
-	const { name } = node.typeName;
+	seen.add(name);
+
+	const inherited: BooleanProps = new Map();
 
 	for (const declaration of getTopLevelTypes(program)) {
 		if (
 			isInterfaceDeclaration(declaration) &&
 			declaration.id.name === name
 		) {
-			return declaration.body.body;
-		}
+			joinProps(props, readMembers(declaration.body.body));
 
-		if (
+			for (const { expression } of declaration.extends) {
+				if (expression.name !== undefined) {
+					joinProps(
+						inherited,
+						readNamedProps(expression.name, program, seen)
+					);
+				}
+			}
+		} else if (
 			isTypeAliasDeclaration(declaration) &&
-			declaration.id.name === name &&
-			isTypeLiteral(declaration.typeAnnotation)
+			declaration.id.name === name
 		) {
-			return declaration.typeAnnotation.members;
+			joinProps(
+				props,
+				readTypeProps(declaration.typeAnnotation, program, seen)
+			);
 		}
 	}
 
-	return [];
+	seen.delete(name);
+	inheritProps(props, inherited);
+
+	return props;
 };
 
-// A property signature's name when its type includes `boolean`.
-const getBooleanSignatureName = (member: TypeNode): string | null => {
-	if (!isPropertySignature(member) || member.typeAnnotation === undefined) {
-		return null;
+// The props of an object type: written inline, an intersection of object
+// types, or a same-file interface or type alias it names. None for anything
+// else.
+const readTypeProps = (
+	node: TypeNode,
+	program: Program,
+	seen: Set<string>
+): BooleanProps => {
+	if (isTypeLiteral(node)) {
+		return readMembers(node.members);
 	}
 
-	if (!includesBoolean(member.typeAnnotation.typeAnnotation)) {
-		return null;
+	if (isIntersectionType(node)) {
+		const props: BooleanProps = new Map();
+
+		for (const type of node.types) {
+			joinProps(props, readTypeProps(type, program, seen));
+		}
+
+		return props;
 	}
 
-	return getSignatureName(member);
+	if (!isTypeReference(node) || node.typeName.name === undefined) {
+		return new Map();
+	}
+
+	return readNamedProps(node.typeName.name, program, seen);
 };
 
 /**
- * The props a type-based `defineProps<…>()` declares with a type including
- * `boolean`, which Vue casts to `false` when an element leaves them out. Read
- * from an inline object type, or a same-file interface or type alias of one.
+ * The props a type-based `defineProps<…>()` declares, each with whether its
+ * type includes `boolean`, which Vue casts to `false` when an element leaves
+ * it out. Read from an inline object type, an intersection of them, or a
+ * same-file interface, with those it extends, or type alias of one.
  */
+export const readTypedProps = (
+	call: CallExpression,
+	program: Program
+): ReadonlyMap<string, boolean> => {
+	const props: BooleanProps = new Map();
+
+	if (!('typeArguments' in call) || !isTypeArguments(call.typeArguments)) {
+		return props;
+	}
+
+	for (const type of call.typeArguments.params) {
+		joinProps(props, readTypeProps(type, program, new Set()));
+	}
+
+	return props;
+};
+
+/** The props a type-based `defineProps<…>()` declares with a `boolean`. */
 export const readTypedBooleanProps = (
 	call: CallExpression,
 	program: Program
 ): string[] => {
-	if (!('typeArguments' in call) || !isTypeArguments(call.typeArguments)) {
-		return [];
-	}
-
 	const names: string[] = [];
 
-	for (const props of call.typeArguments.params) {
-		for (const member of getTypeMembers(props, program)) {
-			const name = getBooleanSignatureName(member);
-
-			if (name !== null) {
-				names.push(name);
-			}
+	for (const [name, isBoolean] of readTypedProps(call, program)) {
+		if (isBoolean) {
+			names.push(name);
 		}
 	}
 

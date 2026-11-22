@@ -465,6 +465,7 @@ writeFixture(
 	`<script setup>
 	${IMPORT}const tag = sv({ base: 'm-1', variants: {} });
 	const $attrs = { class: 'p-1' };
+	defineOptions({ inheritAttrs: false });
 	</script>
 	<template><span :class="[tag(), $attrs.class]">x</span></template>`
 );
@@ -475,6 +476,79 @@ writeFixture(
 	${IMPORT}const tag = sv({ base: 'm-1', variants: {} });
 	</script>
 	<template><span v-for="$attrs in items" :class="[tag(), $attrs.class]">x</span></template>`
+);
+
+// A Svelte component passing a class list that forwards its class through an
+// object it spreads into an element's attributes.
+writeFixture(
+	'ui/SpreadClass.svelte',
+	`<script>
+	${IMPORT_SV_CN}const tag = sv({ base: 'm-1', variants: {} });
+	let { class: c } = $props();
+	const classes = cn(tag(), c);
+	</script>
+	<i {...{ class: classes }}></i>`
+);
+
+// Components whose undeclared attributes fall through to their root element,
+// or don't.
+const writeRoot = (name: string, template: string, script = '') => {
+	writeFixture(
+		`ui/root/${name}.vue`,
+		`<script setup>
+		${IMPORT}const tag = sv({ base: 'm-1', variants: {} });
+		${script}
+		</script>
+		<template>${template}</template>`
+	);
+};
+
+writeRoot('Single', '\n<b :class="tag()">x</b>\n');
+writeRoot(
+	'Chain',
+	'<b v-if="a" :class="tag()">x</b><i v-else-if="b" class="p-2">y</i><i v-else class="w-2">z</i>'
+);
+writeRoot(
+	'Inherited',
+	'<b :class="tag()">x</b>',
+	'defineOptions({ inheritAttrs: true });'
+);
+writeRoot(
+	'Off',
+	'<b :class="tag()">x</b>',
+	'defineOptions({ inheritAttrs: false });'
+);
+writeRoot(
+	'Unread',
+	'<b :class="tag()">x</b>',
+	'defineOptions({ inheritAttrs: flag });'
+);
+writeRoot('Declared', '<b :class="tag()">x</b>', "defineProps(['class']);");
+writeRoot('Fragment', '<b :class="tag()">x</b><i>y</i>');
+writeRoot('Unchained', '<b v-if="a" :class="tag()">x</b><i v-if="b">y</i>');
+writeRoot('Unopened', '<b v-else :class="tag()">x</b><i v-else>y</i>');
+writeRoot('Text', 'text <b :class="tag()">x</b>');
+writeRoot('Looped', '<b v-for="i in items" :class="tag()">x</b>');
+writeRoot('Wrapped', '<template v-if="a"><b :class="tag()">x</b></template>');
+writeRoot('Empty', '');
+
+// The Options API spelling: options as the default export.
+writeFixture(
+	'ui/root/Options.vue',
+	`<script>
+	${IMPORT}const tag = sv({ base: 'm-1', variants: {} });
+	export default { inheritAttrs: false, setup: () => ({ tag }) };
+	</script>
+	<template><b :class="tag()">x</b></template>`
+);
+
+writeFixture(
+	'ui/root/OptionsProps.vue',
+	`<script>
+	${IMPORT}const tag = sv({ base: 'm-1', variants: {} });
+	export default defineComponent({ props: { class: String } });
+	</script>
+	<template><b :class="tag()">x</b></template>`
 );
 
 writeFixture(

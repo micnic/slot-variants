@@ -79,6 +79,22 @@ const RESTYLE_PRESET_BUTTON = `const button = sv({
 });\n`;
 
 export const RESTYLE_VALID = [
+	// A class a spread passes that an attribute after it replaces never
+	// renders, and one a spread that can't be read in full may pass isn't
+	// read.
+	IMPORT_SV_CN +
+		RESTYLE_BUTTON +
+		`function Button({ className }) {
+	const classes = cn(button(), className);
+	return <button {...{ className: classes }} className="x" />;
+}
+function Plain({ className }) {
+	return <button className={button({ class: className })} />;
+}
+<Button className="p-4" />;
+<Plain {...{ className: 'p-4' }} className="x" />;
+<Plain {...{ className: 'p-4', ...rest }} />;
+<Plain {...{ id: 'p-4' }} />;`,
 	// An object `splitProps()` picks holds only the props its key list names:
 	// its spread carries no other, the rest carries none of them, an element
 	// past the rest holds nothing, and a name it doesn't hold reads as no prop.
@@ -459,6 +475,12 @@ export const RESTYLE_SVELTE_VALID = [
 // directive argument, a `v-if`, and a class object with no styled sibling.
 export const RESTYLE_VUE_VALID = [
 	{
+		// A \`v-bind\` object that can't be read in full, one with no class, a
+		// bound attribute, and another directive pass no class.
+		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<template><div v-bind="{ class: 'p-4', ...rest }" :class="c">a</div><div v-bind="{ id: 'p-4' }" :class="c">b</div><div v-bind:title="'p-4'" v-on="handlers" :class="c">c</div><div v-bind="attrs" :class="c">d</div></template>`,
+		filename: 'a.vue'
+	},
+	{
 		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<template><div :id="c" v-if="on" :class="{ 'p-4': on }">a</div></template>`,
 		filename: 'a.vue'
 	},
@@ -469,6 +491,33 @@ export const RESTYLE_VUE_VALID = [
 ];
 
 export const RESTYLE_INVALID = [
+	{
+		// A class an object spread into an element's attributes passes is
+		// read as a class attribute: a \`const\` class list forwarding the
+		// component's class, and a class passed to a component, through a
+		// \`const\` or after an attribute it then replaces.
+		code:
+			IMPORT_SV_CN +
+			RESTYLE_BUTTON +
+			`function Button({ className }) {
+	const classes = cn(button(), className);
+	return <button {...{ className: classes }} />;
+}
+function Plain({ className }) {
+	return <button className={button({ class: className })} />;
+}
+const attrs = { className: 'p-6' };
+<Button className="p-4" />;
+<Plain {...attrs} />;
+<Plain className="x" {...{ className: 'p-8' }} />;
+<Plain {...{ className: 'p-1' }} {...other} />;`,
+		errors: [
+			restyle('p-6', 'p-2'),
+			restyle('p-4', 'p-2'),
+			restyle('p-8', 'p-2'),
+			restyle('p-1', 'p-2')
+		]
+	},
 	{
 		// An object `splitProps()` picks carries the props it names, bound to
 		// a name or destructured, those of an element's own spread included;
@@ -1783,6 +1832,12 @@ export const RESTYLE_SVELTE_INVALID = [
 ];
 
 export const RESTYLE_VUE_INVALID = [
+	{
+		// Vue merges the class a \`v-bind\` object passes with the element's.
+		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<template><div v-bind="{ class: c }" class="p-4">a</div><div v-bind="{ class: 'p-6' }" :class="c">b</div></template>`,
+		filename: 'a.vue',
+		errors: [restyle('p-4', 'p-2'), restyle('p-6', 'p-2')]
+	},
 	// Vue: a static `class` merged with a `:class` binding on one element, an
 	// array binding, a template binding, and a conditional inside one.
 	{

@@ -139,7 +139,14 @@ export type VAttribute = {
 	value: VLiteral | VExpressionContainer | null;
 };
 
-type VElement = {
+type VText = { type: 'VText'; value: string };
+
+type VTemplateChild = VElement | VText | { type: 'VExpressionContainer' };
+
+// The `<template>` element of a Vue file, as far as its children go.
+type VTemplateBody = { children: ReadonlyArray<VTemplateChild> };
+
+export type VElement = {
 	type: 'VElement';
 	rawName: string;
 	startTag: { attributes: ReadonlyArray<VAttribute> };
@@ -157,6 +164,74 @@ export type MarkupNode =
 	| VElement;
 
 export const CLASS_ATTRIBUTES = new Set(['class', 'className']);
+
+// The tags a Vue template's root may be that render no element of their own.
+const VUE_FRAGMENT_TAGS = new Set(['template', 'slot']);
+
+const isTemplateBody = (value: unknown): value is VTemplateBody =>
+	typeof value === 'object' &&
+	value !== null &&
+	'children' in value &&
+	Array.isArray(value.children);
+
+const hasVueDirective = (element: VElement, name: string): boolean =>
+	element.startTag.attributes.some(
+		({ key }) => key.type === 'VDirectiveKey' && key.name.name === name
+	);
+
+// Whether elements make up one `v-if` chain: the first with `v-if`, each one
+// after it with `v-else-if` or `v-else`.
+const isVueIfChain = (elements: ReadonlyArray<VElement>): boolean =>
+	elements.every((element, index) => {
+		if (index === 0) {
+			return hasVueDirective(element, 'if');
+		}
+
+		return (
+			hasVueDirective(element, 'else-if') ||
+			hasVueDirective(element, 'else')
+		);
+	});
+
+// Whether an element renders a single element of its own, rather than a
+// fragment or a list.
+const isSingleVueElement = (element: VElement): boolean =>
+	!VUE_FRAGMENT_TAGS.has(element.rawName) && !hasVueDirective(element, 'for');
+
+/**
+ * The elements a Vue template renders as its single root, which the
+ * attributes a component doesn't declare as props fall through to: the one
+ * element it holds, or each of a `v-if` chain. None for a template rendering
+ * a fragment, or a file without one.
+ */
+export const getVueRootElements = (
+	program: object
+): ReadonlyArray<VElement> => {
+	/* c8 ignore next 3 -- only a file with a template visits its elements */
+	if (!('templateBody' in program) || !isTemplateBody(program.templateBody)) {
+		return [];
+	}
+
+	const elements: VElement[] = [];
+
+	for (const child of program.templateBody.children) {
+		if (child.type === 'VElement') {
+			elements.push(child);
+		} else if (child.type !== 'VText' || child.value.trim() !== '') {
+			return [];
+		}
+	}
+
+	if (
+		elements.length === 0 ||
+		!elements.every(isSingleVueElement) ||
+		(elements.length > 1 && !isVueIfChain(elements))
+	) {
+		return [];
+	}
+
+	return elements;
+};
 
 /**
  * Tokenizes a run of raw class text addressed by source range, stripping a

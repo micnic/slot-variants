@@ -345,6 +345,13 @@ export const SVELTE_CROSS_FILE_VALID = [
 
 export const SVELTE_CROSS_FILE_INVALID = [
 	{
+		// A class an object spread into an element's attributes passes is
+		// read as a class attribute, unless an attribute after it replaces it.
+		code: `<script>import SpreadClass from './ui/SpreadClass.svelte';\nimport Button from './ui/Button.svelte';\nlet title = 'x';</script>\n<SpreadClass class="m-4" /><Button {...{ class: 'p-4' }} {title} {...more} /><Button {...{ class: 'p-6' }} class="x" />`,
+		filename: join(fixtureDir, 'page.svelte'),
+		errors: [restyle('m-4', 'm-1'), restyle('p-4', 'p-2')]
+	},
+	{
 		// A script the Svelte parser reads as a component's text is read as
 		// a plain script instead: a star barrel, and a factory module.
 		code: `<script>import { Button } from './ui/svelte-star.js';\nimport { plainSV } from './ui/svelte-factory.js';\nconst b = plainSV({ base: 'm-2', variants: {} });</script>\n<Button class="p-4" /><i class={b({ class: 'm-4' })} />`,
@@ -412,6 +419,13 @@ SVELTE_CROSS_FILE_INVALID.push({
 
 export const VUE_CROSS_FILE_VALID = [
 	{
+		// No class falls through: `inheritAttrs` isn't `true`, the component
+		// declares `class` as a prop, or its template renders a fragment, a
+		// list or nothing.
+		code: `<script setup>import Off from './ui/root/Off.vue';\nimport Unread from './ui/root/Unread.vue';\nimport Declared from './ui/root/Declared.vue';\nimport Fragment from './ui/root/Fragment.vue';\nimport Unchained from './ui/root/Unchained.vue';\nimport Unopened from './ui/root/Unopened.vue';\nimport Text from './ui/root/Text.vue';\nimport Looped from './ui/root/Looped.vue';\nimport Wrapped from './ui/root/Wrapped.vue';\nimport Empty from './ui/root/Empty.vue';\nimport Options from './ui/root/Options.vue';\nimport OptionsProps from './ui/root/OptionsProps.vue';</script>\n<template><Off class="m-4" /><Unread class="m-4" /><Declared class="m-4" /><Fragment class="m-4" /><Unchained class="m-4" /><Unopened class="m-4" /><Text class="m-4" /><Looped class="m-4" /><Wrapped class="m-4" /><Empty class="m-4" /><Options class="m-4" /><OptionsProps class="m-4" /></template>`,
+		filename: join(fixtureDir, 'page.vue')
+	},
+	{
 		// A component that forwards no class prop, a globally registered one
 		// the module never imports, and a host element.
 		code: `<script setup>import Plain from './ui/Plain.vue';</script>\n<template><Plain class="p-4" /><router-link class="p-4" /><div class="p-4" /></template>`,
@@ -420,6 +434,20 @@ export const VUE_CROSS_FILE_VALID = [
 ];
 
 export const VUE_CROSS_FILE_INVALID = [
+	{
+		// The class an element passes falls through to the component's root
+		// element, merged with every class written there: its one element,
+		// or each element of a `v-if` chain.
+		code: `<script setup>import Single from './ui/root/Single.vue';\nimport Chain from './ui/root/Chain.vue';\nimport Inherited from './ui/root/Inherited.vue';</script>\n<template><Single class="m-4" /><Chain class="m-5 p-5 w-5" /><Inherited class="m-6" /></template>`,
+		filename: join(fixtureDir, 'page.vue'),
+		errors: [
+			restyle('m-4', 'm-1'),
+			restyle('m-5', 'm-1'),
+			restyle('p-5', 'p-2'),
+			restyle('w-5', 'w-2'),
+			restyle('m-6', 'm-1')
+		]
+	},
 	{
 		// `$attrs.class` forwards the class the element passes; a binding
 		// named `$attrs` is no such forward.
