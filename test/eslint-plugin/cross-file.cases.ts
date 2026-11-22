@@ -326,6 +326,11 @@ export const TS_CROSS_FILE_INVALID = [
 
 export const SVELTE_CROSS_FILE_VALID = [
 	{
+		// A tag naming what a block or a snippet binds is no import.
+		code: `<script>import Button from './ui/Button.svelte';\nlet { items } = $props();</script>\n{#each items as Button}<Button class="p-4" />{/each}\n{#snippet row(Button)}<Button class="p-4" />{/snippet}`,
+		filename: join(fixtureDir, 'page.svelte')
+	},
+	{
 		// A script that only reads as markup leads nowhere.
 		code: `<script>import { Button } from './ui/markup.js';</script>\n<Button class="p-4" />`,
 		filename: join(fixtureDir, 'page.svelte')

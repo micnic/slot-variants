@@ -657,6 +657,18 @@ t.test('no-restyle reads callees through type-only wrappers', (t) => {
 					errors: [{ messageId: 'conflict' }]
 				},
 				{
+					// A props object behind a type-only wrapper is still one.
+					code:
+						IMPORT +
+						button +
+						'function Button(props: any) {\n\treturn <i className={b({ class: (props as P).className })} />;\n}\nfunction Sure(props: any) {\n\treturn <i className={b({ class: props!.className })} />;\n}\n<><Button className="p-4" /><Sure className="p-6" /></>;',
+					filename: 'test.tsx',
+					errors: [
+						{ messageId: 'conflict' },
+						{ messageId: 'conflict' }
+					]
+				},
+				{
 					code: IMPORT + list + "classes.item!({ class: 'px-4' });",
 					filename: 'test.ts',
 					errors: [{ messageId: 'conflict' }]

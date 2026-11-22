@@ -79,6 +79,39 @@ const RESTYLE_PRESET_BUTTON = `const button = sv({
 });\n`;
 
 export const RESTYLE_VALID = [
+	// An object `splitProps()` picks holds only the props its key list names:
+	// its spread carries no other, the rest carries none of them, an element
+	// past the rest holds nothing, and a name it doesn't hold reads as no prop.
+	IMPORT +
+		RESTYLE_BUTTON +
+		`function Picked(props) {
+	const [local, others] = splitProps(props, ['class']);
+	return <button class={button({ ...local, class: props.class })} />;
+}
+function Rest(props) {
+	const [local, others] = splitProps(props, ['class', 'size']);
+	return <button class={button(others)} />;
+}
+function Past(props) {
+	const [local, others, extra] = splitProps(props, ['class']);
+	return <button class={button(extra)} />;
+}
+function Missing(props) {
+	const [local] = splitProps(props, ['size']);
+	const { class: c } = local;
+	return <button class={button({ class: c, size: local.tone })} />;
+}
+function Twice(props) {
+	const [first] = splitProps(props, ['class', 'size']);
+	const [second] = splitProps(first, ['size', 'tone']);
+	return <button class={button(second)} />;
+}
+<Picked size="lg" class="mt-2" />;
+<Picked {...unknown} class="mt-2" />;
+<Rest class="p-4" />;
+<Past class="p-4" />;
+<Missing class="p-4" />;
+<Twice class="p-4" />;`,
 	// A spread of an object literal is read where it's written: its `size`
 	// replaces the one ahead of it, and the one after it replaces its own.
 	IMPORT +
@@ -436,6 +469,59 @@ export const RESTYLE_VUE_VALID = [
 ];
 
 export const RESTYLE_INVALID = [
+	{
+		// An object `splitProps()` picks carries the props it names, bound to
+		// a name or destructured, those of an element's own spread included;
+		// a key list that can't be read in full may name any, and a rest
+		// carries what its own source does.
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			`function Picked(props) {
+	const [local, others] = splitProps(props, ['class']);
+	return <button class={button({ ...local, class: props.class })} />;
+}
+function Destructured(props) {
+	const [{ class: cls }, others] = splitProps(props, ['class']);
+	return <button class={button({ class: cls })} />;
+}
+function Unread(props) {
+	const [local, others] = splitProps(props, keys);
+	return <button class={button(local)} />;
+}
+function Partly(props) {
+	const [local, , others = {}] = splitProps(props, ['size', key], [, 'x']);
+	return <button class={button({ ...local, class: props.class })} />;
+}
+function Both(props) {
+	const [local, others] = splitProps(props, ['size']);
+	return <button class={button({ ...local, ...others })} />;
+}
+function FromRest({ size, ...rest }) {
+	const [local] = splitProps(rest, ['size', 'class']);
+	return <button class={button(local)} />;
+}
+function Sized(props) {
+	const [local] = splitProps(props, ['size']);
+	return <button class={button({ ...local, class: props.class })} />;
+}
+<Picked size="lg" class="text-lg" />;
+<Sized {...unknown} class="mt-6" />;
+<Destructured class="p-4" />;
+<Unread class="p-6" />;
+<Partly size="lg" class="mt-2" />;
+<Both size="lg" class="mt-4" />;
+<FromRest size="lg" class="p-1 mt-1" />;`,
+		errors: [
+			restyle('text-lg', 'text-sm'),
+			restyle('mt-6', 'mt-8'),
+			restyle('p-4', 'p-2'),
+			restyle('p-6', 'p-2'),
+			restyle('mt-2', 'mt-8'),
+			restyle('mt-4', 'mt-8'),
+			restyle('p-1', 'p-2')
+		]
+	},
 	{
 		// A spread of an object literal is read where it's written, its
 		// class included, through a `const` or inline.

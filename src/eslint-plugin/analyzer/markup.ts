@@ -1,5 +1,5 @@
 import type { Rule, SourceCode } from 'eslint';
-import type { Expression, Node } from 'estree';
+import type { Expression, Identifier, Node } from 'estree';
 import { LEADING_SEPARATOR, TRAILING_SEPARATOR } from './literals.ts';
 import { pushBaseTokensFromText } from './token-extraction.ts';
 import type { Entry } from './token-model.ts';
@@ -263,6 +263,28 @@ export const getJsxComponentName = (node: JsxOpeningElement): string | null => {
  * The component a Svelte element renders, named as written (`Button`,
  * `UI.Button`), or null for a host element or a deeper member.
  */
+/**
+ * The name a Svelte component element's tag starts with (`UI` of
+ * `<UI.Button>`), which is looked up where the element is written. Null for
+ * a host element, or a member of a member.
+ */
+export const getSvelteTagRoot = (node: SvelteElement): Identifier | null => {
+	const { name } = node;
+
+	if (name.type === 'Identifier') {
+		return name;
+	}
+
+	if (
+		name.type === 'SvelteMemberExpressionName' &&
+		name.object.type === 'Identifier'
+	) {
+		return name.object;
+	}
+
+	return null;
+};
+
 export const getSvelteComponentName = (node: SvelteElement): string | null => {
 	// A component's name is never a `SvelteName`, which narrows it here.
 	if (node.kind !== 'component' || node.name.type === 'SvelteName') {
