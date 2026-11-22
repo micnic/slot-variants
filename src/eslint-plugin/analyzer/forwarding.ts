@@ -54,7 +54,7 @@ import {
 import { getStaticStringText } from './literals.ts';
 import { isDefinedValue, isUndefinedValue } from './static-predicates.ts';
 import {
-	getOverrideValue,
+	readOverride,
 	literalStyles,
 	type PresetValues,
 	readVariantValue,
@@ -73,7 +73,9 @@ import { readTypedBooleanProps } from './typed-props.ts';
  * prop each of its unread variant props is read from, the ones of those with
  * no default (an element leaving one out has the call pass `undefined`), the
  * prop its `preset` is read from, whether it spreads the component's props
- * into its own, and the props none of those spreads carries.
+ * into its own, and the props none of those spreads carries. `spreadProps`
+ * is set for a part the class reaches through such a spread rather than by
+ * name: the class props the spread carries.
  */
 export type ForwardTarget = StyledClasses & {
 	variantProps: ReadonlyMap<string, string>;
@@ -81,11 +83,15 @@ export type ForwardTarget = StyledClasses & {
 	presetProp: string | null;
 	forwardsProps: boolean;
 	spreadOmits: ReadonlySet<string>;
+	spreadProps: ReadonlySet<string> | null;
 };
 
-/** What a component merges its `class` prop into. */
+/**
+ * What a component merges its class prop into: the prop it reads by name,
+ * null when it only spreads its props, and each part.
+ */
 export type ForwardedStyles = {
-	prop: string;
+	prop: string | null;
 	targets: ReadonlyArray<ForwardTarget>;
 };
 
@@ -204,14 +210,22 @@ const TRUE_VALUE: ReadonlySet<string> = new Set(['true']);
 const isBooleanConstructor = (node: Node): boolean =>
 	node.type === 'Identifier' && node.name === 'Boolean';
 
+// Whether a variable is written to after it's declared, so it may hold
+// something else than what it was declared with.
+const isReassigned = (variable: Scope.Variable): boolean =>
+	variable.references.some(
+		(reference) => reference.isWrite() && !reference.init
+	);
+
 // What `bindings` holds for a variable. A null one is unbound, or a name a
 // Vue template binds itself (`v-for`, `v-slot`), which no script binding
-// stands for.
+// stands for. One assigned to again no longer stands for what it was bound
+// to.
 const lookupBinding = <T>(
 	bindings: ReadonlyMap<Scope.Variable, T>,
 	variable: Scope.Variable | null
 ): T | null => {
-	if (variable === null) {
+	if (variable === null || isReassigned(variable)) {
 		return null;
 	}
 
@@ -480,6 +494,18 @@ const getPresetProp = ({
 	return null;
 };
 
+// Whether the class attribute an element is written with reaches a part:
+// the one the component reads by name, or one its spread carries.
+const isTargetOf =
+	({ prop }: ForwardedStyles, site: ComponentSite) =>
+	({ spreadProps }: ForwardTarget): boolean => {
+		if (spreadProps !== null) {
+			return spreadProps.has(site.prop);
+		}
+
+		return prop === site.prop;
+	};
+
 /**
  * The classes a forwarded part applies at an element. Later steps win, as at
  * runtime: the preset the element passes, then the props a call spreading the
@@ -489,7 +515,7 @@ export const getSiteTargets = (
 	styles: ForwardedStyles,
 	site: ComponentSite
 ): StyledClasses[] =>
-	styles.targets.map((target) => {
+	styles.targets.filter(isTargetOf(styles, site)).map((target) => {
 		const matchers = new Map(target.matchers);
 		const presetProp = getPresetProp(target);
 		const passed = getSitePassed(target, site.props);
@@ -530,6 +556,8 @@ export const createForwardingScan = (
 	const forcedBindings = new Map<Scope.Variable, Node>();
 	const propsObjects = new Map<Scope.Variable, PropsObject>();
 	const pending: PendingPosition[] = [];
+	// The class props each read made up for a spread of the props stands for.
+	const spreadReads = new WeakMap<Node, ReadonlySet<string>>();
 	// The props a Vue `<script setup>` declares, which its template reads by
 	// name.
 	let templateProps: PropsObject | null = null;
@@ -1153,7 +1181,8 @@ export const createForwardingScan = (
 			optionalProps,
 			presetProp,
 			forwardsProps,
-			spreadOmits: spreadOmits ?? NO_PROPS
+			spreadOmits: spreadOmits ?? NO_PROPS,
+			spreadProps: null
 		};
 	};
 
@@ -1188,7 +1217,8 @@ export const createForwardingScan = (
 					optionalProps: EMPTY_VARIANT_PROPS,
 					presetProp: null,
 					forwardsProps: false,
-					spreadOmits: NO_PROPS
+					spreadOmits: NO_PROPS,
+					spreadProps: null
 				}
 			];
 		}
@@ -1198,7 +1228,8 @@ export const createForwardingScan = (
 
 	// Every position a component forwards its prop into is kept, as any of
 	// them may render: two elements, or the branches of an early return. A
-	// component forwarding both `class` and `className` keeps the first.
+	// component forwarding both `class` and `className` by name keeps the
+	// first; a spread of its props carries either.
 	const trackForwarding = (parts: ClassParts) => {
 		parts.dynamic.forEach((node, index) => {
 			const read = readProp(node);
@@ -1207,10 +1238,16 @@ export const createForwardingScan = (
 				return;
 			}
 
+			const spreadProps = spreadReads.get(node) ?? null;
 			const kept = forwarded.get(read.component);
+			let prop = kept?.prop ?? null;
 
-			if (kept !== undefined && kept.prop !== read.prop) {
-				return;
+			if (spreadProps === null) {
+				if (prop !== null && prop !== read.prop) {
+					return;
+				}
+
+				({ prop } = read);
 			}
 
 			const path = pathAt(parts.paths.dynamic, index);
@@ -1221,10 +1258,51 @@ export const createForwardingScan = (
 			}
 
 			forwarded.set(read.component, {
-				prop: read.prop,
-				targets: [...(kept?.targets ?? []), ...targets]
+				prop,
+				targets: [
+					...(kept?.targets ?? []),
+					...targets.map((target) => ({ ...target, spreadProps }))
+				]
 			});
 		});
+	};
+
+	// A read of the class prop a spread of a component's props carries, made
+	// up to stand for it: `props.class` for `button(props)`. Null for a spread
+	// of anything else, or of props that leave both class props out.
+	const readSpreadClass = (spread: Node): MemberExpression | null => {
+		const object = unwrapExpression(spread);
+
+		if (object.type !== 'Identifier') {
+			return null;
+		}
+
+		const source = getPropsObject(object) ?? readTemplateAttrs(object);
+
+		if (source === null) {
+			return null;
+		}
+
+		const carried = [...CLASS_ATTRIBUTES].filter(
+			(prop) => !source.omitted.has(prop) && !source.forced.has(prop)
+		);
+		const [name] = carried;
+
+		if (name === undefined) {
+			return null;
+		}
+
+		const read: MemberExpression = {
+			type: 'MemberExpression',
+			object,
+			property: { type: 'Identifier', name },
+			computed: false,
+			optional: false
+		};
+
+		spreadReads.set(read, new Set(carried));
+
+		return read;
 	};
 
 	// The props a `defineProps()` call declares, with the defaults it or a
@@ -1282,10 +1360,20 @@ export const createForwardingScan = (
 					return;
 				}
 
-				const value = getOverrideValue(node.arguments[0], ctx);
+				const { value, spreads } = readOverride(node.arguments[0], ctx);
 
 				if (value !== null) {
 					forEachOverrideParts(value, invocation, ctx, emit);
+				}
+
+				// The class an element passes reaches the call through a
+				// spread of the component's props too
+				for (const spread of spreads) {
+					const read = readSpreadClass(spread);
+
+					if (read !== null) {
+						forEachOverrideParts(read, invocation, ctx, emit);
+					}
 				}
 			}
 		});

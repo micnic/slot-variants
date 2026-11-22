@@ -79,6 +79,59 @@ const RESTYLE_PRESET_BUTTON = `const button = sv({
 });\n`;
 
 export const RESTYLE_VALID = [
+	// A spread of an object literal is read where it's written: its `size`
+	// replaces the one ahead of it, and the one after it replaces its own.
+	IMPORT +
+		RESTYLE_BUTTON +
+		`const big = { size: 'lg' };
+button({ size: 'sm', ...big, class: 'text-base' });
+button({ ...big, size: 'sm', class: 'mt-2' });`,
+	// A component's rest spread written after a prop may replace it, so the
+	// element's `size` applies; a rest that leaves the class out carries none.
+	IMPORT +
+		RESTYLE_BUTTON +
+		`function Button({ className, ...rest }) {
+	return <button className={button({ size: 'sm', ...rest, class: className })} />;
+}
+function Bare({ className, class: c, ...rest }) {
+	return <button className={button(rest)} />;
+}
+<Button size="lg" className="text-base" />;
+<Bare className="p-4" class="p-4" />;`,
+	// A spread of anything but the component's props carries no class of an
+	// element's, and a computed key tells nothing of what it passes.
+	IMPORT +
+		RESTYLE_BUTTON +
+		`function Button(props) {
+	return <button className={button({ ...other, ...props.nested, [key]: props })} />;
+}
+function Nested(props) {
+	return <button className={button({ ...props.nested })} />;
+}
+<Button className="p-4" />;
+<Nested className="p-4" />;`,
+	// A binding assigned to again no longer holds the element's prop, nor
+	// does a props object.
+	IMPORT +
+		RESTYLE_BUTTON +
+		`function Button({ className }) {
+	className = 'fixed';
+	return <button className={button({ class: className })} />;
+}
+function Whole(props) {
+	props = normalize(props);
+	return <button className={button({ class: props.className })} />;
+}
+<Button className="p-4" />;
+<Whole className="p-4" />;`,
+	// A class written after the spread is the one that applies, so only the
+	// prop it reads by name is forwarded.
+	IMPORT +
+		RESTYLE_BUTTON +
+		`function Button(props) {
+	return <button className={button({ ...props, class: props.className })} />;
+}
+<Button class="p-4" />;`,
 	// A slot function destructured off its own call names nothing.
 	IMPORT_SV_CN + "const { item } = item();\ncn(item(), 'p-2');",
 	// A `const` holding itself is left unread rather than walked forever.
@@ -383,6 +436,116 @@ export const RESTYLE_VUE_VALID = [
 ];
 
 export const RESTYLE_INVALID = [
+	{
+		// A spread of an object literal is read where it's written, its
+		// class included, through a `const` or inline.
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			`const big = { size: 'lg' };
+const extra = { class: 'p-4' };
+button({ size: 'sm', ...big, class: 'mt-2' });
+button({ ...extra });
+button({ ...{ class: 'p-6' } });`,
+		errors: [
+			restyle('p-4', 'p-2'),
+			restyle('mt-2', 'mt-8'),
+			restyle('p-6', 'p-2')
+		]
+	},
+	{
+		// A prop written ahead of a spread that can't be read may be
+		// replaced by it, so it takes any of its values.
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			`button({ size: 'sm', ...other, class: 'mt-2' });
+button({ size: 'sm', [key]: 1, class: 'mt-4' });`,
+		errors: [restyle('mt-2', 'mt-8'), restyle('mt-4', 'mt-8')]
+	},
+	{
+		// A component's rest spread written after a prop replaces it with
+		// the element's, and leaves it alone when the element passes none.
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			`function Button({ className, ...rest }) {
+	return <button className={button({ size: 'sm', ...rest, class: className })} />;
+}
+<Button size="lg" className="mt-2" />;
+<Button className="text-base" />;`,
+		errors: [restyle('mt-2', 'mt-8'), restyle('text-base', 'text-sm')]
+	},
+	{
+		// The class reaches a call through the props it's handed whole,
+		// spread, or as the rest of them, under either name.
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			`function Whole(props) {
+	return <button className={button(props)} />;
+}
+function Spread(props) {
+	return <button className={button({ ...props })} />;
+}
+const Rest = ({ children, ...rest }) => <button className={button(rest)} />;
+const Named = ({ class: c, ...rest }) => <button className={button(rest)} />;
+<Whole className="p-4" />;
+<Spread class="p-6" />;
+<Rest className="p-8" />;
+<Named className="p-1" class="p-3" />;`,
+		errors: [
+			restyle('p-4', 'p-2'),
+			restyle('p-6', 'p-2'),
+			restyle('p-8', 'p-2'),
+			restyle('p-1', 'p-2')
+		]
+	},
+	{
+		// A class written ahead of the spread applies unless the element
+		// passes one, so both are checked; a component reading one by name
+		// as well keeps that one for it.
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			`function Fallback(props) {
+	return <button className={button({ class: 'p-4', ...props })} />;
+}
+function Both(props) {
+	return <><i className={button({ class: props.className })} /><b className={button(props)} /></>;
+}
+function Reversed(props) {
+	return <><b className={button(props)} /><i className={button({ class: props.className })} /></>;
+}
+<Fallback className="p-6" />;
+<Both className="p-8" />;
+<Reversed className="p-1" />;`,
+		errors: [
+			restyle('p-4', 'p-2'),
+			restyle('p-6', 'p-2'),
+			restyle('p-8', 'p-2'),
+			restyle('p-1', 'p-2')
+		]
+	},
+	{
+		// A slot function's own prop replaces the outer call's, whatever
+		// that spreads.
+		code:
+			IMPORT +
+			`const list = sv({
+	slots: { item: 'px-2' },
+	multiSlots: ['item'],
+	variants: { size: { sm: { item: 'text-sm' }, lg: { item: 'mt-8' } } },
+	defaultVariants: { size: 'sm' }
+});
+const classes = list({ size: 'sm', ...other });
+classes.item({ size: 'lg', class: 'mt-2' });
+classes.item({ size: undefined, class: 'mt-4' });`,
+		errors: [
+			restyle('mt-2', 'mt-8', 'item'),
+			restyle('mt-4', 'mt-8', 'item')
+		]
+	},
 	{
 		// A nullish `class` falls back to `className`, as at runtime.
 		code:

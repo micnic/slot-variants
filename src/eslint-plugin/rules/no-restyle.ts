@@ -145,7 +145,7 @@ export const noRestyle: Rule.RuleModule = {
 					if (site !== null) {
 						const styles = resolveSiteComponent(site);
 
-						if (styles !== null && styles.prop === site.prop) {
+						if (styles !== null) {
 							reportLiterals(
 								getSiteTargets(styles, site),
 								parts.literals

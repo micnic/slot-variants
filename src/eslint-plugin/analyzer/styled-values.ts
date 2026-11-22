@@ -117,14 +117,32 @@ export type CallMatchers = {
 	inputs: CallInputs;
 };
 
-// A call's props: the ones that can be read, all of them when every one can
-// (null when a spread or computed key may pass others), and the objects it
-// spreads (null when a computed key may pass any prop).
+// A call's props: the ones that can be read, those of the object literals it
+// spreads included, all of them when every one can (null when a spread or
+// computed key may pass others), the objects it spreads that can't be read
+// (null when a computed key may pass any prop), and the props written ahead
+// of one of those, which it may replace.
 type CallProps = {
 	read: ReadonlyMap<string, Node>;
 	known: ReadonlyMap<string, Node> | null;
 	spreads: ReadonlyArray<Node> | null;
+	overridable: ReadonlySet<string>;
 };
+
+// A call's props while its object is walked.
+type CollectedProps = {
+	read: Map<string, Node>;
+	spreads: Node[];
+	overridable: Set<string>;
+	hasComputedKey: boolean;
+};
+
+/**
+ * The `class` / `className` a call's props pass: the value written for it,
+ * if any, and the objects the call spreads that may pass one instead — those
+ * that can't be read, when it writes none or writes it ahead of them.
+ */
+export type Override = { value: Node | null; spreads: ReadonlyArray<Node> };
 
 /** A class expression produced by slot-variants, and the slot it feeds. */
 export type StyledClasses = CallMatchers & {
@@ -161,6 +179,13 @@ const EMPTY_PROPS: ReadonlyMap<string, Node> = new Map();
 const NO_KEYS: ReadonlySet<string> = new Set();
 
 const NO_SPREADS: ReadonlyArray<Node> = [];
+
+const NO_CALL_PROPS: CallProps = {
+	read: EMPTY_PROPS,
+	known: EMPTY_PROPS,
+	spreads: NO_SPREADS,
+	overridable: NO_KEYS
+};
 
 const NO_INPUTS: CallInputs = {
 	passed: NO_KEYS,
@@ -435,49 +460,105 @@ const readPresetMatchers = (
 	return presets.get(name) ?? UNKNOWN_PRESET;
 };
 
-// A call's props: the ones that can be read, and whether that is all of them.
-// A call without any passes none; a spread or an object with a spread or
-// computed key may pass others.
+// Marks every prop read so far as one that what follows may replace.
+const markOverridable = (props: CollectedProps) => {
+	for (const key of props.read.keys()) {
+		props.overridable.add(key);
+	}
+};
+
+// Reads an object's props in source order, a later one winning as at runtime:
+// a spread of an object literal, read through `const` bindings, is entered,
+// and any other spread or a computed key may replace the props ahead of it.
+const collectProps = (
+	object: ObjectExpression,
+	ctx: StyledContext,
+	props: CollectedProps
+) => {
+	for (const property of object.properties) {
+		if (property.type === 'SpreadElement') {
+			const spread = ctx.resolve(property.argument);
+
+			if (spread.type === 'ObjectExpression') {
+				collectProps(spread, ctx, props);
+			} else {
+				props.spreads.push(property.argument);
+				markOverridable(props);
+			}
+
+			continue;
+		}
+
+		const key = getKeyName(property);
+
+		if (key === null) {
+			props.hasComputedKey = true;
+			markOverridable(props);
+		} else {
+			props.read.set(key, property.value);
+			props.overridable.delete(key);
+		}
+	}
+};
+
+// The props of an object literal a call is handed.
+const readObjectProps = (
+	object: ObjectExpression,
+	ctx: StyledContext
+): CallProps => {
+	const props: CollectedProps = {
+		read: new Map(),
+		spreads: [],
+		overridable: new Set(),
+		hasComputedKey: false
+	};
+
+	collectProps(object, ctx, props);
+
+	const { read, spreads, overridable } = props;
+
+	if (props.hasComputedKey) {
+		return { read, known: null, spreads: null, overridable };
+	}
+
+	if (spreads.length > 0) {
+		return { read, known: null, spreads, overridable };
+	}
+
+	return { read, known: read, spreads, overridable };
+};
+
+// A call's props. A call without any passes none; a spread argument or a
+// value that is no object literal (`button(props)`) may pass any.
 const readCallProps = (
 	arg: Expression | SpreadElement | undefined,
 	ctx: StyledContext
 ): CallProps => {
 	if (arg === undefined) {
-		return { read: EMPTY_PROPS, known: EMPTY_PROPS, spreads: NO_SPREADS };
+		return NO_CALL_PROPS;
 	}
 
 	if (arg.type === 'SpreadElement') {
-		return { read: EMPTY_PROPS, known: null, spreads: [arg.argument] };
+		return {
+			read: EMPTY_PROPS,
+			known: null,
+			spreads: [arg.argument],
+			overridable: NO_KEYS
+		};
 	}
 
 	const resolved = ctx.resolve(arg);
 
-	return {
-		read: getProperties(resolved),
-		known: getStrictProperties(resolved),
-		spreads: getSpreadArguments(resolved)
-	};
-};
-
-// The objects a props value spreads: each spread of an object literal, or the
-// value itself when it is no object literal (`button(props)`). Null for an
-// object with a computed key, which may pass any prop.
-const getSpreadArguments = (props: Node): ReadonlyArray<Node> | null => {
-	if (props.type !== 'ObjectExpression') {
-		return [props];
+	if (resolved.type !== 'ObjectExpression') {
+		return {
+			read: EMPTY_PROPS,
+			known: null,
+			spreads: [resolved],
+			overridable: NO_KEYS
+		};
 	}
 
-	const spreads: Node[] = [];
-
-	for (const property of props.properties) {
-		if (property.type === 'SpreadElement') {
-			spreads.push(property.argument);
-		} else if (getKeyName(property) === null) {
-			return null;
-		}
-	}
-
-	return spreads;
+	return readObjectProps(resolved, ctx);
 };
 
 // `outer` with each prop of `inner` that the runtime lets replace it: any but
@@ -517,15 +598,24 @@ const mergeCallProps = (
 	// Props of its own that can all be read spread nothing, so the outer
 	// call's spreads are all there is.
 	const read = mergeProps(outer.read, inner.read, ctx);
+	// A prop of its own replaces the outer call's, whatever that spreads
+	const overridable = new Set(outer.overridable);
+
+	for (const [key, value] of inner.read) {
+		if (isDefinedValue(value, ctx.resolve)) {
+			overridable.delete(key);
+		}
+	}
 
 	if (outer.known === null) {
-		return { read, known: null, spreads: outer.spreads };
+		return { read, known: null, spreads: outer.spreads, overridable };
 	}
 
 	return {
 		read,
 		known: mergeProps(outer.known, inner.known, ctx),
-		spreads: outer.spreads
+		spreads: outer.spreads,
+		overridable
 	};
 };
 
@@ -613,9 +703,10 @@ export const pickCallMatchers = ({
 	inputs
 });
 
-// The props a call passes, any but an `undefined` one or a class.
+// The props a call passes whatever it spreads: any but an `undefined` one, a
+// class, or one written ahead of a spread that may replace it.
 const readPassedKeys = (
-	read: ReadonlyMap<string, Node>,
+	{ read, overridable }: CallProps,
 	ctx: StyledContext
 ): ReadonlySet<string> => {
 	const passed = new Set<string>();
@@ -624,6 +715,7 @@ const readPassedKeys = (
 		if (
 			key !== 'class' &&
 			key !== 'className' &&
+			!overridable.has(key) &&
 			isDefinedValue(value, ctx.resolve)
 		) {
 			passed.add(key);
@@ -638,11 +730,12 @@ const readPassedKeys = (
 // the config's `defaultVariants` or the `optional` variants it leaves unset. A
 // variant prop that can't be read leaves `matchers` open for it.
 const buildCallMatchers = (
-	{ read, known, spreads }: CallProps,
+	props: CallProps,
 	base: VariantMatchers,
 	options: CallOptions,
 	ctx: StyledContext
 ): CallMatchers => {
+	const { read, known, spreads, overridable } = props;
 	const { optional } = options;
 	const preset = readPresetMatchers(read, options, ctx);
 	const propMatchers = readPropMatchers(read, ctx);
@@ -656,6 +749,11 @@ const buildCallMatchers = (
 	]);
 
 	for (const key of unreadProps.keys()) {
+		matchers.delete(key);
+	}
+
+	// A prop a spread may replace takes its value or the spread's
+	for (const key of overridable) {
 		matchers.delete(key);
 	}
 
@@ -680,7 +778,7 @@ const buildCallMatchers = (
 		]),
 		unreadProps,
 		inputs: {
-			passed: readPassedKeys(read, ctx),
+			passed: readPassedKeys(props, ctx),
 			preset: unreadPreset,
 			spreads
 		}
@@ -1467,6 +1565,26 @@ export const getOverrideValue = (
 	ctx: StyledContext
 ): Node | null => {
 	return getClassValue(readCallProps(arg, ctx).read) ?? null;
+};
+
+/** The `class` / `className` a call site's props pass, spread ones included. */
+export const readOverride = (
+	arg: Expression | SpreadElement | undefined,
+	ctx: StyledContext
+): Override => {
+	const { read, spreads, overridable } = readCallProps(arg, ctx);
+	const value = getClassValue(read) ?? null;
+
+	if (
+		spreads === null ||
+		(value !== null &&
+			!overridable.has('class') &&
+			!overridable.has('className'))
+	) {
+		return { value, spreads: NO_SPREADS };
+	}
+
+	return { value, spreads };
 };
 
 /**
