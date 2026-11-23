@@ -2,7 +2,7 @@ import type { Rule } from 'eslint';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import { checkCnArguments, checkSvConfig } from '../analyzer/static-values.ts';
 import { resolveStyledClasses } from '../analyzer/styled-values.ts';
-import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
+import { createTrackedCallListeners } from '../analyzer/call-listeners.ts';
 
 /**
  * Flags dynamic values in `sv()` and `cn()` calls. A class-bearing position

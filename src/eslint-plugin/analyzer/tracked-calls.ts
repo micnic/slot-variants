@@ -21,6 +21,7 @@ import { getDestructuredRead } from './const-bindings.ts';
 import {
 	getModuleContext,
 	type ModuleContext,
+	type ModuleScanner,
 	resolveImportedFactory
 } from './module-loader.ts';
 import { getExportName } from './module-syntax.ts';
@@ -348,6 +349,7 @@ const collectTrackedNames = (program: AST.Program): TrackedNames => {
 // for following imported factories (a rule's own option).
 export const createTrackedCallResolver = (
 	context: Rule.RuleContext,
+	scan: ModuleScanner,
 	alias?: Record<string, string>
 ): StyledContext => {
 	const names = collectTrackedNames(context.sourceCode.ast);
@@ -374,38 +376,9 @@ export const createTrackedCallResolver = (
 		names,
 		ctx,
 		filename: context.physicalFilename,
-		moduleContext: getModuleContext(context, alias),
+		moduleContext: getModuleContext(context, scan, alias),
 		factories: new Map()
 	};
 
 	return ctx;
-};
-
-// Calls in a Vue `<template>` are only walked by a template visitor, so one
-// is registered alongside the script's wherever the parser offers it.
-export const createTrackedCallListeners = (
-	context: Rule.RuleContext,
-	onCall: (node: CallExpression, call: CallMatch, ctx: StyledContext) => void,
-	onOtherCall?: (node: CallExpression, ctx: StyledContext) => void
-): Rule.RuleListener => {
-	const ctx = createTrackedCallResolver(context);
-	const visitors = {
-		CallExpression(node: CallExpression) {
-			const call = ctx.matchCall(node);
-
-			if (call) {
-				onCall(node, call, ctx);
-				return;
-			}
-
-			onOtherCall?.(node, ctx);
-		}
-	};
-	const { defineTemplateBodyVisitor } = context.sourceCode.parserServices;
-
-	if (typeof defineTemplateBodyVisitor === 'function') {
-		return defineTemplateBodyVisitor(visitors, visitors);
-	}
-
-	return visitors;
 };

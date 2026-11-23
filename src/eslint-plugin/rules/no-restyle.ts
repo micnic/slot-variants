@@ -100,7 +100,11 @@ export const noRestyle: Rule.RuleModule = {
 	create(context) {
 		const options = readConflictOptions(context.options[0]);
 		const alias = context.options[0]?.alias;
-		const moduleContext = getModuleContext(context, alias);
+		const moduleContext = getModuleContext(
+			context,
+			createForwardingScan,
+			alias
+		);
 		// Shared by every position, so a class list reached from two of
 		// them — a `cn()` call is its own site and a part of the attribute
 		// holding it — reports each literal once.

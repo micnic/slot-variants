@@ -12,7 +12,7 @@ import {
 	mayInheritKey,
 	type StyledContext
 } from '../analyzer/styled-values.ts';
-import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
+import { createTrackedCallListeners } from '../analyzer/call-listeners.ts';
 
 // A call through a `createSV()`-derived function takes the factory's `base`
 // unless it passes its own, so one is only created where the factory's

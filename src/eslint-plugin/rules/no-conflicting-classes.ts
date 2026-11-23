@@ -9,7 +9,7 @@ import {
 	analyzeConfigForRule,
 	reportClassPropOverlaps
 } from '../analyzer/conflicts.ts';
-import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
+import { createTrackedCallListeners } from '../analyzer/call-listeners.ts';
 
 /**
  * Flags class tokens that collide within the same slot output: exact-duplicate

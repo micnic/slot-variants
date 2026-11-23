@@ -11,11 +11,7 @@ import {
 	getConstDefInit,
 	isTransparentWrapper
 } from './const-bindings.ts';
-import {
-	createForwardingScan,
-	type ForwardedStyles,
-	type ModuleScan
-} from './forwarding.ts';
+import type { ForwardedStyles, ModuleScan } from './forwarding.ts';
 import { collectExportTable, type ExportTarget } from './module-exports.ts';
 import {
 	type AliasMap,
@@ -77,13 +73,23 @@ type CacheEntry = {
 	dependencies: ReadonlyMap<string, number>;
 };
 
+// Scans a file for the components it forwards a class prop through, calling
+// `onExit` with the scan once the file has been walked. Passed in by the rules
+// rather than imported, as the scan itself resolves imports through here.
+export type ModuleScanner = (
+	context: Rule.RuleContext,
+	handlers: { onExit: (scan: ModuleScan) => void }
+) => { listener: Rule.RuleListener };
+
 /**
- * Everything cross-file resolution needs from the rule's context: `aliasKey`
+ * Everything cross-file resolution needs from the rule's context: `scan`
+ * analyzes an imported module, `aliasKey`
  * tells one set of aliases from another, `dependencies` collects the files
  * the linted file's own imports led to, and `isMarkup` tells that the linted
  * file is a component format (Svelte, Vue) rather than a plain script.
  */
 export type ModuleContext = {
+	scan: ModuleScanner;
 	aliases: AliasMap;
 	aliasKey: string;
 	cwd: string;
@@ -274,6 +280,7 @@ const readAliasSetting = (
  */
 export const getModuleContext = (
 	context: Rule.RuleContext,
+	scan: ModuleScanner,
 	alias?: Record<string, string>
 ): ModuleContext => {
 	if (nestedContext !== null) {
@@ -287,6 +294,7 @@ export const getModuleContext = (
 		);
 
 		return {
+			scan,
 			aliases,
 			aliasKey: JSON.stringify([...aliases]),
 			cwd: context.cwd,
@@ -438,9 +446,12 @@ const analyzeScan = (scan: ModuleScan): ModuleAnalysis => {
 	};
 };
 
-const createCollector = (collected: Collected): Rule.RuleModule => ({
+const createCollector = (
+	collected: Collected,
+	scanModule: ModuleScanner
+): Rule.RuleModule => ({
 	create(context) {
-		const scan = createForwardingScan(context, {
+		const scan = scanModule(context, {
 			onExit(moduleScan) {
 				collected.analysis = analyzeScan(moduleScan);
 			}
@@ -533,7 +544,12 @@ const collectModule = (
 					languageOptions: toSyntaxOnly(languageOptions),
 					plugins: {
 						'slot-variants-internal': {
-							rules: { collect: createCollector(collected) }
+							rules: {
+								collect: createCollector(
+									collected,
+									moduleContext.scan
+								)
+							}
 						}
 					},
 					rules: { 'slot-variants-internal/collect': 'error' }

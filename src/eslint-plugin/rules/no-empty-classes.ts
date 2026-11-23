@@ -8,7 +8,7 @@ import {
 import { type EmptyFix, makeListFix } from '../analyzer/list-fix.ts';
 import { getFactoryDefaults } from '../analyzer/styled-values.ts';
 import { forEachStaticItem } from '../analyzer/token-extraction.ts';
-import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
+import { createTrackedCallListeners } from '../analyzer/call-listeners.ts';
 
 /**
  * Flags empty class values — empty strings, empty arrays, and empty objects —

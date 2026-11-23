@@ -737,7 +737,7 @@ export const createForwardingScan = (
 	alias?: Record<string, string>
 ): ForwardingScan => {
 	const { sourceCode } = context;
-	const ctx = createTrackedCallResolver(context, alias);
+	const ctx = createTrackedCallResolver(context, createForwardingScan, alias);
 	const forwarded = new Map<Component, ForwardedStyles>();
 	// Where a component's `class` prop can be read from: the binding a props
 	// pattern put it in, or an object holding the whole props — the props

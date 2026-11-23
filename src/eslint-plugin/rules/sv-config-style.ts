@@ -21,7 +21,7 @@ import {
 	getFactoryDefaults,
 	mayInheritKey
 } from '../analyzer/styled-values.ts';
-import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
+import { createTrackedCallListeners } from '../analyzer/call-listeners.ts';
 
 type KeyEntry = {
 	prop: Property;

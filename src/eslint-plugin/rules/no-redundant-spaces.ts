@@ -5,7 +5,7 @@ import {
 	visitForRedundantSpaces
 } from '../analyzer/redundant-spaces.ts';
 import { forEachStaticItem } from '../analyzer/token-extraction.ts';
-import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
+import { createTrackedCallListeners } from '../analyzer/call-listeners.ts';
 
 /**
  * Flags redundant whitespace inside class strings passed to `sv()` and `cn()`
