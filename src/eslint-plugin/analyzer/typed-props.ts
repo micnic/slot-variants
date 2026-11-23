@@ -1,4 +1,5 @@
 import type { CallExpression, Program } from 'estree';
+import { getOrCreate } from '../map-utils.ts';
 
 // TypeScript's type nodes, as far as they're read here: ESTree's own node
 // types don't list them, so each is told apart by its `type` first.
@@ -45,6 +46,13 @@ type ExportDeclaration = TypeNode & { declaration: TypeNode | null };
 
 // Whether each prop an object type declares has a type including `boolean`.
 type BooleanProps = Map<string, boolean>;
+
+// The props each `defineProps<…>()` call declares, read once per call: a
+// single-file component's props are asked for from several places.
+const typedPropsByCall = new WeakMap<
+	CallExpression,
+	ReadonlyMap<string, boolean>
+>();
 
 const isTypeLiteral = (node: TypeNode): node is TypeLiteral =>
 	node.type === 'TSTypeLiteral' && 'members' in node;
@@ -247,19 +255,23 @@ const readTypeProps = (
 export const readTypedProps = (
 	call: CallExpression,
 	program: Program
-): ReadonlyMap<string, boolean> => {
-	const props: BooleanProps = new Map();
+): ReadonlyMap<string, boolean> =>
+	getOrCreate(typedPropsByCall, call, () => {
+		const props: BooleanProps = new Map();
 
-	if (!('typeArguments' in call) || !isTypeArguments(call.typeArguments)) {
+		if (
+			!('typeArguments' in call) ||
+			!isTypeArguments(call.typeArguments)
+		) {
+			return props;
+		}
+
+		for (const type of call.typeArguments.params) {
+			joinProps(props, readTypeProps(type, program, new Set()));
+		}
+
 		return props;
-	}
-
-	for (const type of call.typeArguments.params) {
-		joinProps(props, readTypeProps(type, program, new Set()));
-	}
-
-	return props;
-};
+	});
 
 /** The props a type-based `defineProps<…>()` declares with a `boolean`. */
 export const readTypedBooleanProps = (

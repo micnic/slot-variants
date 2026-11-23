@@ -170,6 +170,10 @@ type PropsObject = {
 	forced: ReadonlyMap<string, Node>;
 };
 
+// The keys a `splitProps()` key list names that can be read, and whether
+// every one of them can.
+type KeyList = { keys: string[]; complete: boolean };
+
 // A props object a call is handed, and the index of the argument it is.
 type PropsArgument = { source: PropsObject; index: number };
 
@@ -972,16 +976,17 @@ export const createForwardingScan = (
 		return null;
 	};
 
-	// The keys a `splitProps()` key list names, null when they can't all be
-	// read.
-	const readKeyList = (list: Node): string[] | null => {
+	// The keys a `splitProps()` key list names that can be read, and whether
+	// that is all of them.
+	const readKeyList = (list: Node): KeyList => {
 		const array = resolveArray(list, sourceCode);
+		const keys: string[] = [];
 
 		if (array === null) {
-			return null;
+			return { keys, complete: false };
 		}
 
-		const keys: string[] = [];
+		let complete = true;
 
 		for (const element of array.elements) {
 			let key: string | null = null;
@@ -991,21 +996,22 @@ export const createForwardingScan = (
 			}
 
 			if (key === null) {
-				return null;
+				complete = false;
+			} else {
+				keys.push(key);
 			}
-
-			keys.push(key);
 		}
 
-		return keys;
+		return { keys, complete };
 	};
 
 	// A props object holding only the props a key list names, or all of
-	// them when the list can't be read.
-	const pickProps = (source: PropsObject, list: Node): PropsObject => {
-		const keys = readKeyList(list);
-
-		if (keys === null) {
+	// them when the list can't be read in full.
+	const pickProps = (
+		source: PropsObject,
+		{ keys, complete }: KeyList
+	): PropsObject => {
+		if (!complete) {
 			return source;
 		}
 
@@ -1029,23 +1035,24 @@ export const createForwardingScan = (
 		source: PropsObject
 	) => {
 		const [, ...lists] = init.arguments;
+		const keyLists = lists.map(readKeyList);
 		const listed = new Set(source.omitted);
 
-		for (const list of lists) {
-			forEachStringLiteralElement(list, sourceCode, (key) => {
+		for (const { keys } of keyLists) {
+			for (const key of keys) {
 				listed.add(key);
-			});
+			}
 		}
 
 		const rest: PropsObject = { ...source, omitted: listed };
 
 		pattern.elements.forEach((element, index) => {
 			// An element past the rest holds nothing
-			if (element === null || index > lists.length) {
+			if (element === null || index > keyLists.length) {
 				return;
 			}
 
-			const list = lists[index];
+			const list = keyLists[index];
 			let object = rest;
 
 			if (list !== undefined) {
