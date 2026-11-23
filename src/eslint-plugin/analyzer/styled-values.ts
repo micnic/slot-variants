@@ -135,12 +135,14 @@ export type CallMatchers = {
 // spreads included, all of them when every one can (null when a spread or
 // computed key may pass others), the objects it spreads that can't be read
 // (null when a computed key may pass any prop), and the props written ahead
-// of one of those, which it may replace.
+// of one of those, which it may replace. A slot call naming a preset also
+// keeps the outer call's preset beneath its own.
 type CallProps = {
 	read: ReadonlyMap<string, Node>;
 	known: ReadonlyMap<string, Node> | null;
 	spreads: ReadonlyArray<Node> | null;
 	overridable: ReadonlySet<string>;
+	basePreset?: Node | undefined;
 };
 
 // A call's props while its object is walked.
@@ -637,18 +639,57 @@ const mergeProps = (
 	return merged;
 };
 
+// The outer call's props a slot call keeps under the preset it names, as
+// `sv()` merges them: those for the variants the preset sets give way to it,
+// and any of them may when it can't be read in full.
+const readOuterProps = (
+	outer: CallProps,
+	inner: CallProps,
+	options: CallOptions,
+	ctx: StyledContext
+): CallProps => {
+	const preset = readPresetMatchers(inner.read, options, ctx);
+
+	if (preset === NO_PRESET) {
+		return outer;
+	}
+
+	const read = new Map(outer.read);
+	const overridable = new Set(outer.overridable);
+
+	for (const key of preset.matchers.keys()) {
+		read.delete(key);
+	}
+
+	if (!preset.complete) {
+		for (const key of read.keys()) {
+			overridable.add(key);
+		}
+	}
+
+	return {
+		read,
+		known: outer.known && read,
+		spreads: outer.spreads,
+		overridable,
+		basePreset: outer.read.get('preset')
+	};
+};
+
 // The props a slot call runs its variant function with: the outer call's,
 // with its own merged in. Props of its own that can't all be read may replace
 // any of the outer call's, so only its own are read then.
 const mergeCallProps = (
-	outer: CallProps,
+	outerProps: CallProps,
 	inner: CallProps,
+	options: CallOptions,
 	ctx: StyledContext
 ): CallProps => {
 	if (inner.known === null) {
 		return inner;
 	}
 
+	const outer = readOuterProps(outerProps, inner, options, ctx);
 	// Props of its own that can all be read spread nothing, so the outer
 	// call's spreads are all there is.
 	const read = mergeProps(outer.read, inner.read, ctx);
@@ -661,15 +702,18 @@ const mergeCallProps = (
 		}
 	}
 
+	const { basePreset, spreads } = outer;
+
 	if (outer.known === null) {
-		return { read, known: null, spreads: outer.spreads, overridable };
+		return { read, known: null, spreads, overridable, basePreset };
 	}
 
 	return {
 		read,
 		known: mergeProps(outer.known, inner.known, ctx),
-		spreads: outer.spreads,
-		overridable
+		spreads,
+		overridable,
+		basePreset
 	};
 };
 
@@ -779,6 +823,32 @@ const readPassedKeys = (
 	return passed;
 };
 
+// The preset values a call applies: those of the preset it names, over a slot
+// call's outer one, which it replaces only for the variants it sets. One that
+// can't be read in full leaves the pair unread too.
+const readCallPreset = (
+	{ read, basePreset }: CallProps,
+	options: CallOptions,
+	ctx: StyledContext
+): PresetValues => {
+	const preset = readPresetMatchers(read, options, ctx);
+
+	if (basePreset === undefined || preset === UNKNOWN_PRESET) {
+		return preset;
+	}
+
+	const base = readPresetMatchers(
+		new Map([['preset', basePreset]]),
+		options,
+		ctx
+	);
+
+	return {
+		matchers: new Map([...base.matchers, ...preset.matchers]),
+		complete: base.complete && preset.complete
+	};
+};
+
 // The matchers a call applies: `base`, refined by the props it passes. Later
 // matchers win: a call site's props over its preset's values, and those over
 // the config's `defaultVariants` or the `optional` variants it leaves unset. A
@@ -791,7 +861,7 @@ const buildCallMatchers = (
 ): CallMatchers => {
 	const { read, known, spreads, overridable } = props;
 	const { optional } = options;
-	const preset = readPresetMatchers(read, options, ctx);
+	const preset = readCallPreset(props, options, ctx);
 	const propMatchers = readPropMatchers(read, ctx);
 	const unreadProps = readUnreadProps(read, propMatchers, ctx);
 	const unset = readUnsetMatchers(known, unreadProps, optional, preset, ctx);
@@ -1403,10 +1473,11 @@ export const resolveInvocation = (
 	if (slotFn !== null) {
 		// A slot call runs the variant function again, with the props the
 		// result was produced with and its own merged in: a preset it names
-		// replaces the outer call's, and sits below the outer call's props.
+		// replaces the outer call's props and preset for the variants it sets.
 		const props = mergeCallProps(
 			slotFn.props,
 			readCallProps(node.arguments[0], ctx),
+			slotFn.styles,
 			ctx
 		);
 

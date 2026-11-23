@@ -216,12 +216,11 @@ function Whole(props) {
 	// Only literals inside the `cn()` list are merged with the prop.
 	IMPORT_SV_CN +
 		'function Inner({ className }) { return <div className={`${cn(\'x\', className)} m-2`} />; }\n<Inner className="m-4" />;',
-	// A slot call's preset replaces the outer call's, whose values are lost.
+	// A slot call's preset replaces the outer call's props for the variants it
+	// sets, and an outer prop still replaces the outer preset's value beneath
+	// it.
 	IMPORT +
-		"const card = sv({ slots: { header: '' }, multiSlots: ['header'], variants: { size: { sm: { header: 'm-1' }, lg: { header: 'p-2' } }, tone: { red: { header: 'text-red' } } }, presets: { big: { size: 'lg' }, compact: { tone: 'red' } }, defaultVariants: { size: 'sm' } });\nconst r = card({ preset: 'big' });\nr.header({ preset: 'compact', class: 'p-4' });",
-	// A slot call's preset can't change a variant the outer call passes.
-	IMPORT +
-		"const card = sv({ slots: { header: '' }, multiSlots: ['header'], variants: { size: { sm: { header: 'm-1' }, lg: { header: 'p-2' } } }, presets: { big: { size: 'lg' } }, defaultVariants: { size: 'sm' } });\nconst r = card({ size: 'sm' });\nr.header({ preset: 'big', class: 'p-4' });",
+		"const card = sv({ slots: { header: '' }, multiSlots: ['header'], variants: { size: { sm: { header: 'm-1' }, lg: { header: 'p-2' } }, tone: { red: { header: 'text-red' } } }, presets: { big: { size: 'lg' }, small: { size: 'sm' }, compact: { tone: 'red' } } });\ncard({ size: 'lg' }).header({ preset: 'small', class: 'p-4' });\ncard({ preset: 'big', size: null }).header({ preset: 'compact', class: 'p-4' });",
 	// A config's own `base` replaces the factory's, and a config that extends
 	// another takes the factory's only where no parent sets one.
 	IMPORT_CREATE_SV +
@@ -1144,20 +1143,21 @@ function Picked({ className }) {
 			call,
 		errors: [restyle('m-4', 'm-2', 'header')]
 	})),
-	// A slot call's preset sets the variants the outer call's own props leave
-	// alone, and may set any of them when its name or those props can't be
+	// A slot call's preset sets the variants it names over the outer call's
+	// props, and may set any of them when its name or those props can't be
 	// read.
 	...(
 		[
 			['card()', "'big'", 'p-4', 'p-2'],
 			["card({ class: 'x' })", "'big'", 'p-4', 'p-2'],
-			["card({ size: 'sm' })", "'big'", 'm-4', 'm-1'],
+			["card({ size: 'sm' })", "'big'", 'p-4', 'p-2'],
 			["card({ size: 'sm' })", 'name', 'm-4', 'm-1'],
 			["card({ size: 'sm', tone: 'red' })", 'name', 'm-4', 'm-1'],
 			['card()', 'name', 'p-4', 'p-2'],
 			['card({ ...p })', "'big'", 'p-4', 'p-2'],
-			// A slot call's preset replaces the outer call's.
-			["card({ preset: 'big' })", "'compact'", 'm-4', 'm-1']
+			// A slot call's preset keeps the outer call's for the variants it
+			// doesn't set.
+			["card({ preset: 'big' })", "'compact'", 'p-4', 'p-2']
 		] as const
 	).map(([outer, preset, cls, other]) => ({
 		code:
