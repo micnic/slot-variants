@@ -757,27 +757,34 @@ const readDiskModule = (path: string): DiskModule | null => {
  * in the same run reads it from there instead of parsing it again. Only a
  * file that leads an import anywhere is worth the disk read, and only text
  * that is what the file holds on disk is cached — not an unsaved editor
- * buffer, a fix pass, or a processor's code block.
+ * buffer, a fix pass, or a processor's code block. A full cache only takes it
+ * in place of its own entry, so it never evicts a module an import reads.
  */
 export const cacheLintedModule = (
 	context: Rule.RuleContext,
 	scan: ModuleScan,
 	moduleContext: ModuleContext
 ) => {
+	const path = context.physicalFilename;
+	const key = getCacheKey(path, moduleContext);
+
+	if (moduleCache.size >= MAX_CACHED_MODULES && !moduleCache.has(key)) {
+		return;
+	}
+
 	const analysis = analyzeScan(scan);
 
 	if (!leadsAnywhere(analysis)) {
 		return;
 	}
 
-	const path = context.physicalFilename;
 	const disk = readDiskModule(path);
 
 	if (disk === null || disk.text !== context.sourceCode.text) {
 		return;
 	}
 
-	storeModule(getCacheKey(path, moduleContext), {
+	storeModule(key, {
 		mtimeMs: disk.mtimeMs,
 		analysis,
 		dependencies: moduleContext.dependencies
