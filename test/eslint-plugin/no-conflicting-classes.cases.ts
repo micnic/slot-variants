@@ -13,6 +13,10 @@ import {
 } from './helpers.ts';
 
 export const NO_CONFLICTING_DUP_VALID = [
+	// A factory's `base` gives way to one a parent or the config itself sets.
+	IMPORT +
+		IMPORT_CREATE_SV +
+		"const mySv = createSV({ base: 'p-2' });\nconst based = sv({ base: 'm-1', variants: {} });\nconst plain = sv({ variants: {} });\nmySv({ extend: based, variants: { size: { sm: 'p-2' } } });\nmySv('gap-1', { extend: plain, base: 'mt-2', variants: { size: { sm: 'p-2' } } });",
 	// A compound slot naming an inherited group and one of its slots applies
 	// its class to that slot once, as `sv()` expands the group first.
 	IMPORT +
@@ -2907,5 +2911,31 @@ export const NO_CONFLICTING_NS_INVALID = [
 			IMPORT +
 			"import { parent } from './parent';\nsv({ extend: parent, base: 'p-1 p-2', variants: {} });",
 		errors: repeat(conflict('p-1, p-2'), 2)
+	},
+	{
+		// A config extending parents that set no `base` takes the factory's,
+		// beside its base args too.
+		code:
+			IMPORT +
+			IMPORT_CREATE_SV +
+			"const mySv = createSV({ base: 'p-2' });\nconst plain = sv({ variants: {} });\nmySv('p-3', { extend: plain, variants: {} });\nmySv({ extend: plain, variants: { size: { sm: 'p-4' } } });",
+		errors: [conflict('p-2, p-3'), conflict('p-2, p-4')]
+	},
+	{
+		// A parent's base slot doesn't set `base`, so the factory's still
+		// applies.
+		code:
+			IMPORT +
+			IMPORT_CREATE_SV +
+			"const mySv = createSV({ base: 'p-2' });\nconst slotted = sv({ slots: { base: 'm-1' } });\nmySv({ extend: slotted, variants: { size: { sm: 'p-4' } } });",
+		errors: [conflict('p-2, p-4')]
+	},
+	{
+		// A parent made through the factory brings its `base` once.
+		code:
+			IMPORT +
+			IMPORT_CREATE_SV +
+			"const mySv = createSV({ base: 'p-2' });\nconst parent = mySv({ variants: {} });\nmySv({ extend: parent, variants: { size: { sm: 'p-4' } } });",
+		errors: [conflict('p-2, p-4')]
 	}
 ];

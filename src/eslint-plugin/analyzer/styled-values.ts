@@ -67,6 +67,8 @@ export type InternalStyles = {
 	defaulted: ReadonlySet<string> | null;
 	groupSlots: GroupSlots;
 	slotGroups: ReadonlyMap<string, ReadonlyArray<string>>;
+	// Whether its config sets `base`: a field, base args, or its factory's.
+	setsBase: boolean;
 };
 
 // The parents an `extend` value names that can be read, each once, and
@@ -415,7 +417,9 @@ const buildStyles = (
 		openPresets: false,
 		optional: readOptionalVariants(config, defaulted, sourceCode),
 		defaulted,
-		...readGroups(getProperties(groups), sourceCode)
+		...readGroups(getProperties(groups), sourceCode),
+		// Base args are folded into `base`, so they set it too
+		setsBase: config.has('base') || args.length > 0
 	};
 };
 
@@ -995,9 +999,9 @@ export const getFactoryRequiresAll = (
 	);
 
 // The classes of the `base` a `createSV()` factory, in this file or imported,
-// gives a call through it whose config sets none: one with neither `base` nor
-// `extend`, whose parents' would take its place. Null for any other call, or
-// a config that can't be read in full.
+// gives a call through it whose config sets none. Null for any other call, or
+// a config that can't be read in full. A call extending parents takes it only
+// where none of them sets a `base`, which its caller checks.
 const getFactoryBaseStyles = (
 	call: CallExpression,
 	config: ObjectExpression,
@@ -1005,11 +1009,7 @@ const getFactoryBaseStyles = (
 ): InternalStyles | null => {
 	const properties = getStrictProperties(config);
 
-	if (
-		properties === null ||
-		properties.has('base') ||
-		properties.has('extend')
-	) {
+	if (properties === null || properties.has('base')) {
 		return null;
 	}
 
@@ -1163,7 +1163,8 @@ const mergeStyles = (
 		optional: mergeOptional(all, defaulted),
 		defaulted,
 		groupSlots,
-		slotGroups: invertGroups(groupSlots)
+		slotGroups: invertGroups(groupSlots),
+		setsBase: all.some((styles) => styles.setsBase)
 	};
 };
 
@@ -1182,11 +1183,35 @@ const withInherited = (
 	inherited: new Set(parentStyles.parents.flatMap(getAllEntries))
 });
 
+// The parents of a call through a `createSV()` factory, its factory's `base`
+// below them when none of them sets one, as in `sv()`. A parent that can't be
+// read may set one, so the factory's is then left out.
+const withFactoryBase = (
+	call: CallExpression,
+	config: ObjectExpression,
+	parentStyles: ParentStyles,
+	ctx: StyledContext
+): ParentStyles => {
+	const { parents, complete } = parentStyles;
+
+	if (!complete || parents.some((styles) => styles.setsBase)) {
+		return parentStyles;
+	}
+
+	const factoryBase = getFactoryBaseStyles(call, config, ctx);
+
+	if (factoryBase === null) {
+		return parentStyles;
+	}
+
+	return { parents: [factoryBase, ...parents], complete };
+};
+
 // The classes of a call extending other components, read with the slots its
 // parents give it. `visiting` holds the calls on the path to it.
 const getExtendedStyles = (
 	call: CallExpression,
-	properties: ReadonlyMap<string, Node>,
+	config: ObjectExpression,
 	extend: Node,
 	args: ReadonlyArray<Expression | SpreadElement>,
 	ctx: StyledContext,
@@ -1203,8 +1228,13 @@ const getExtendedStyles = (
 		};
 
 		return withInherited(
-			parentStyles,
-			buildStyles(properties, args, ctx.sourceCode, inherited)
+			withFactoryBase(call, config, parentStyles, ctx),
+			buildStyles(
+				getConfigProperties(config, ctx.sourceCode),
+				args,
+				ctx.sourceCode,
+				inherited
+			)
 		);
 	});
 
@@ -1223,14 +1253,7 @@ export const getCallStyles = (
 	const extend = properties.get('extend');
 
 	if (extend !== undefined) {
-		return getExtendedStyles(
-			call,
-			properties,
-			extend,
-			args,
-			ctx,
-			new Set()
-		);
+		return getExtendedStyles(call, config, extend, args, ctx, new Set());
 	}
 
 	const own = getConfigStyles(call, config, args, ctx.sourceCode);
@@ -1305,14 +1328,8 @@ const resolveVariantFnStyles = (
 	const extend = properties.get('extend');
 
 	if (extend !== undefined) {
-		return getExtendedStyles(
-			resolved,
-			properties,
-			extend,
-			args,
-			ctx,
-			visiting
-		).styles;
+		return getExtendedStyles(resolved, config, extend, args, ctx, visiting)
+			.styles;
 	}
 
 	const own = getConfigStyles(resolved, config, args, ctx.sourceCode);
@@ -1490,7 +1507,8 @@ const buildLiteralStyles = (entries: ReadonlyArray<Entry>): InternalStyles => ({
 	optional: NO_KEYS,
 	defaulted: NO_KEYS,
 	groupSlots: EMPTY_GROUPS,
-	slotGroups: EMPTY_GROUPS
+	slotGroups: EMPTY_GROUPS,
+	setsBase: false
 });
 
 /**

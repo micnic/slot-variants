@@ -495,6 +495,14 @@ export const RESTYLE_VUE_VALID = [
 
 export const RESTYLE_INVALID = [
 	{
+		// A config extending parents that set no `base` takes the factory's.
+		code:
+			IMPORT +
+			IMPORT_CREATE_SV +
+			"const mySv = createSV({ base: 'p-2' });\nconst plain = sv({ variants: {} });\nconst b = mySv({ extend: plain, variants: {} });\nb({ class: 'p-2' });",
+		errors: [dup('p-2')]
+	},
+	{
 		// A class an object spread into an element's attributes passes is
 		// read as a class attribute: a \`const\` class list forwarding the
 		// component's class, and a class passed to a component, through a
