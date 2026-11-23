@@ -370,7 +370,8 @@ const foldBaseArgs = (baseArgs: ClassValue[], config: RawConfig): RawConfig => {
 /**
  * Gives a config with base args the factory `base` when no layer sets one, so
  * the args folded into its `base` join the factory one instead of replacing
- * it.
+ * it. A parent's base slot leaves it out: the own `base` then moves after
+ * that slot, and the factory one still fills in `base` below the parents.
  */
 const withFactoryBase = (
 	defaults: RawConfig | undefined,
@@ -381,7 +382,10 @@ const withFactoryBase = (
 	if (
 		baseArgs.length === 0 ||
 		config.base !== undefined ||
-		parentLayers.some((layer) => layer.base !== undefined)
+		parentLayers.some(
+			(layer) =>
+				layer.base !== undefined || layer.slots?.base !== undefined
+		)
 	) {
 		return config;
 	}

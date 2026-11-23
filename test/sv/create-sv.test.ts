@@ -163,6 +163,20 @@ t.test('createSV default base merges with base args when extending', (t) => {
 		'no default base'
 	);
 
+	const slotted = sv({ slots: { base: 'card' } });
+	const child = factorySv('btn', { extend: slotted, variants: {} });
+
+	t.equal(
+		child(),
+		'box card btn',
+		'default base once, below an inherited base slot'
+	);
+	t.equal(
+		sv({ extend: child, variants: {} })(),
+		'box card btn',
+		'default base once for a component extending it'
+	);
+
 	t.end();
 });
 
