@@ -113,6 +113,27 @@ const COMPOUND_KINDS: readonly CompoundKind[] = [
 	'compoundSlots'
 ];
 
+// Each value's entries of `token` in `slot`, null when some value has none.
+const getEntryListsOfAll = (
+	tokensByValue: ReadonlyArray<TokenEntriesBySlot>,
+	slot: string,
+	token: string
+): Entry[][] | null => {
+	const entryLists: Entry[][] = [];
+
+	for (const valueMap of tokensByValue) {
+		const entryList = valueMap.get(slot)?.get(token);
+
+		if (!entryList) {
+			return null;
+		}
+
+		entryLists.push(entryList);
+	}
+
+	return entryLists;
+};
+
 // The tokens every value puts in a slot, with each value's entries of them.
 const intersectSharedTokensBySlot = (
 	tokensByValue: TokenEntriesBySlot[]
@@ -129,17 +150,9 @@ const intersectSharedTokensBySlot = (
 		const tokens = new Map<string, Entry[][]>();
 
 		for (const token of tokenMap.keys()) {
-			const entryLists: Entry[][] = [];
+			const entryLists = getEntryListsOfAll(tokensByValue, slot, token);
 
-			for (const valueMap of tokensByValue) {
-				const entryList = valueMap.get(slot)?.get(token);
-
-				if (entryList) {
-					entryLists.push(entryList);
-				}
-			}
-
-			if (entryLists.length === tokensByValue.length) {
+			if (entryLists !== null) {
 				tokens.set(token, entryLists);
 			}
 		}
@@ -151,6 +164,7 @@ const intersectSharedTokensBySlot = (
 
 	return sharedTokens;
 };
+
 // Appends to a literal whichever of `tokens` it doesn't already contain,
 // keeping the literal's own tokens first. Null when the literal isn't static
 // or the result can't be re-emitted safely.

@@ -345,7 +345,7 @@ const getCompoundIds = (
 	}
 
 	if (expected.has('undefined')) {
-		ids.add(variant.unsetId);
+		ids.add(variant.valueIds.size);
 	}
 
 	return ids;
@@ -390,7 +390,7 @@ const createVariantPlan = (
 		}
 	});
 
-	let undefinedId = variant.unsetId;
+	let undefinedId = variant.valueIds.size;
 
 	if (variant.required) {
 		undefinedId = missingValueId;

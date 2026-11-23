@@ -119,14 +119,6 @@ export const createExplain =
 		const presetValues = resolvePresetValues(config.presets, props.preset);
 		const resolved = resolveVariants(plan, props, presetValues);
 		const variants: RuntimeExplanation['variants'] = {};
-
-		for (const { variant, value } of resolved) {
-			variants[variant.data.key] = {
-				value,
-				from: getValueOrigin(variant.data, value, props, presetValues)
-			};
-		}
-
 		const sources: SlotSources[] = plan.slots.map(({ key, base }) => ({
 			key,
 			base: base.slice(1),
@@ -134,7 +126,12 @@ export const createExplain =
 			compounds: []
 		}));
 
-		for (const { variant, id } of resolved) {
+		for (const { variant, value, id } of resolved) {
+			variants[variant.data.key] = {
+				value,
+				from: getValueOrigin(variant.data, value, props, presetValues)
+			};
+
 			for (const { slot, fragments } of variant.tables) {
 				const fragment = fragments[id];
 				const source = sources[slot];

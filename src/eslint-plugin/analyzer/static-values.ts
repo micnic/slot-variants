@@ -56,27 +56,36 @@ const forEachItemReportingSpread = (
 	}
 };
 
-// The conditional forms of the cn() calling convention, each validated with the
-// same affordances as the position they sit in. True when the node was one of
-// the forms this position allows, so it needs no further checking.
-const checkConditionalClassValue = (
+// The shapes only a cn-style position can hold: a placeholder `cn()` skips,
+// the conditional forms of its calling convention, each validated with the
+// same affordances as the position they sit in, and a clsx-style record. True
+// when the node was one of them, so it needs no further checking.
+const checkCnStyleClassValue = (
 	context: Rule.RuleContext,
 	node: Node,
 	options: StaticClassValueOptions
 ): boolean => {
-	if (!options.cnStyle) {
-		return false;
+	if (isSkippedClassValue(node)) {
+		return true;
 	}
 
 	const isBranch = forEachCnBranch(node, (branch) => {
 		checkClassValueIsStatic(context, branch, options);
 	});
 
-	if (isBranch) {
+	if (isBranch || isStaticTernaryTemplate(node)) {
 		return true;
 	}
 
-	return isStaticTernaryTemplate(node);
+	// A record's keys are class names, its values runtime conditions. Only the
+	// keys must be statically known, so forEachStaticProperty reports dynamic
+	// ones; values are left alone.
+	if (node.type === 'ObjectExpression') {
+		forEachStaticProperty(context, node, () => {});
+		return true;
+	}
+
+	return false;
 };
 
 const checkArrayClassValue = (
@@ -104,29 +113,16 @@ const checkClassValueIsStatic = (
 ) => {
 	node = resolveStaticValue(node, context.sourceCode);
 
-	if (options.cnStyle && isSkippedClassValue(node)) {
-		return;
-	}
-
 	if (isStaticStringNode(node)) {
 		return;
 	}
 
-	if (checkConditionalClassValue(context, node, options)) {
+	if (options.cnStyle && checkCnStyleClassValue(context, node, options)) {
 		return;
 	}
 
 	if (node.type === 'ArrayExpression') {
 		checkArrayClassValue(context, node, options);
-		return;
-	}
-
-	// In cn-style arguments an ObjectExpression is a clsx-style record: keys
-	// are class names, values are runtime conditions. Only the keys must be
-	// statically known, so forEachStaticProperty reports dynamic ones; values
-	// are left alone.
-	if (options.cnStyle && node.type === 'ObjectExpression') {
-		forEachStaticProperty(context, node, () => {});
 		return;
 	}
 

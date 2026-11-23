@@ -18,6 +18,9 @@ type SingleBinding = {
 
 type VariableSet = Set<Scope.Variable>;
 
+// Looks a name up from a scope.
+type ScopeFinder<T> = (scope: Scope.Scope, name: string) => T | null;
+
 /** A name destructured off a value: the value, and the key it reads. */
 export type DestructuredRead = { object: Node; key: string };
 
@@ -165,19 +168,23 @@ export const findVariable = (
 	return null;
 };
 
-// The variable an identifier reads, looked up as `getLookupScope` describes.
-// Null when nothing binds it, or a Vue template does.
-export const findLookupVariable = (
+/**
+ * What `find` finds for an identifier's name, looked up from where
+ * `getLookupScope` says it's read. Null when nothing is found there, or a Vue
+ * template binds the name.
+ */
+export const findInLookupScope = <T>(
 	node: Identifier,
-	sourceCode: SourceCode
-): Scope.Variable | null => {
+	sourceCode: SourceCode,
+	find: ScopeFinder<T>
+): T | null => {
 	const scope = getLookupScope(node, sourceCode);
 
 	if (scope === null) {
 		return null;
 	}
 
-	return findVariable(scope, node.name);
+	return find(scope, node.name);
 };
 
 // Whether a definition the TypeScript parser records declares no value of its
@@ -216,20 +223,6 @@ export const findSingleBinding = (
 	}
 
 	return { variable, def };
-};
-
-/** The single binding `node` names where it's read, if it has one. */
-export const findLookupBinding = (
-	node: Identifier,
-	sourceCode: SourceCode
-): SingleBinding | null => {
-	const scope = getLookupScope(node, sourceCode);
-
-	if (scope === null) {
-		return null;
-	}
-
-	return findSingleBinding(scope, node.name);
 };
 
 const isRangeWithin = (
@@ -373,7 +366,7 @@ export const getDestructuredRead = (
 	node: Identifier,
 	sourceCode: SourceCode
 ): DestructuredRead | null => {
-	const binding = findLookupBinding(node, sourceCode);
+	const binding = findInLookupScope(node, sourceCode, findSingleBinding);
 
 	if (binding === null) {
 		return null;
@@ -421,7 +414,11 @@ const followConstBindings = (
 	let guarded = !entersCycle;
 
 	while (current.type === 'Identifier') {
-		const binding = findLookupBinding(current, sourceCode);
+		const binding = findInLookupScope(
+			current,
+			sourceCode,
+			findSingleBinding
+		);
 
 		if (binding === null) {
 			return current;

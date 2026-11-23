@@ -588,13 +588,9 @@ const analyzeModule = (
 
 	try {
 		const text = readFileSync(path, 'utf8');
-		const analysis = collectModule(
-			LinterClass,
-			path,
-			text,
-			languageOptions,
-			moduleContext
-		);
+		const collect = (options: Linter.LanguageOptions) =>
+			collectModule(LinterClass, path, text, options, moduleContext);
+		const analysis = collect(languageOptions);
 
 		if (analysis !== null && !mayBeMisread(analysis, path, moduleContext)) {
 			return analysis;
@@ -602,13 +598,7 @@ const analyzeModule = (
 
 		// A parse failure leaves nothing collected: the module may be a
 		// plain script the importer's parser doesn't read, or reads as markup
-		const script = collectModule(
-			LinterClass,
-			path,
-			text,
-			toScriptOptions(languageOptions),
-			moduleContext
-		);
+		const script = collect(toScriptOptions(languageOptions));
 
 		return script ?? analysis;
 		/* c8 ignore next 6 -- a parse failure is reported, not thrown; this
@@ -799,8 +789,8 @@ const resolveImport = <T>(
 	fromFile: string,
 	moduleContext: ModuleContext,
 	read: ExportReader<T>,
-	seen: Set<string>,
-	depth: number
+	seen: Set<string> = new Set(),
+	depth = 0
 ): T | null => {
 	if (depth >= MAX_MODULE_HOPS) {
 		return null;
@@ -905,9 +895,7 @@ export const resolveImportedComponent = (
 		exportName,
 		fromFile,
 		moduleContext,
-		STYLES_READER,
-		new Set(),
-		0
+		STYLES_READER
 	);
 
 /**
@@ -926,7 +914,5 @@ export const resolveImportedFactory = (
 		exportName,
 		fromFile,
 		moduleContext,
-		FACTORY_READER,
-		new Set(),
-		0
+		FACTORY_READER
 	);

@@ -750,17 +750,17 @@ const readPresetMatchers = (
 	compound: ReadonlyMap<string, Node>,
 	presets: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
-): Map<string, ReadonlySet<string>> => {
+): VariantMatchers => {
 	const preset = compound.get('preset');
 
 	if (preset === undefined) {
-		return new Map();
+		return baseSource;
 	}
 
 	const name = getStaticMatcherValue(preset, sourceCode);
 
 	if (name === null) {
-		return new Map();
+		return baseSource;
 	}
 
 	const { matchers, complete } = readPresetValues(
@@ -770,10 +770,10 @@ const readPresetMatchers = (
 
 	// A value that can't be read may be any, so it proves nothing
 	if (!complete) {
-		return new Map();
+		return baseSource;
 	}
 
-	return new Map(matchers);
+	return matchers;
 };
 
 // Derives an exclusivity source from a compound's matcher properties, so two
@@ -786,16 +786,11 @@ const getCompoundSource = (
 	compound: ReadonlyMap<string, Node>,
 	presets: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
-): Source => {
-	const matchers = readPresetMatchers(compound, presets, sourceCode);
-	const own = readMatchers(compound, sourceCode, COMPOUND_NON_MATCHER_KEYS);
-
-	for (const [key, values] of own) {
-		matchers.set(key, values);
-	}
-
-	return matchers;
-};
+): Source =>
+	new Map([
+		...readPresetMatchers(compound, presets, sourceCode),
+		...readMatchers(compound, sourceCode, COMPOUND_NON_MATCHER_KEYS)
+	]);
 
 // The slots a `compoundSlots` entry targets, each once: `sv()` expands a group
 // to its slots and applies the class to every slot a single time, however

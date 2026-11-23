@@ -15,7 +15,7 @@ import {
 } from '../analyzer/config-keys.ts';
 import { isWithinNode, resolveContainer } from '../analyzer/const-bindings.ts';
 import { removeFromList, removeSoleItem } from '../analyzer/list-fix.ts';
-import { getProperties } from '../analyzer/properties.ts';
+import { getProperties, hasSpreadProperty } from '../analyzer/properties.ts';
 import { isStaticStringNode } from '../analyzer/static-predicates.ts';
 import {
 	getFactoryDefaults,
@@ -245,9 +245,6 @@ const touchesHoistedSlots = (
 	);
 };
 
-const hasSpreadProperty = (obj: ObjectExpression): boolean =>
-	obj.properties.some((property) => property.type === 'SpreadElement');
-
 // Whether a base-style fix would move a base into or out of a `slots` record
 // with a spread, whose own `base` may override the moved one or join it.
 const touchesSpreadSlots = (
@@ -314,20 +311,6 @@ const isStaticallyMovableValue = (node: Node): boolean => {
 	);
 };
 
-// Null when removing the property would delete a comment beside it.
-const removePropertyFix = (
-	fixer: Rule.RuleFixer,
-	sourceCode: SourceCode,
-	obj: ObjectExpression,
-	prop: Property
-): Rule.Fix | null => {
-	if (obj.properties.length > 1) {
-		return removeFromList(fixer, sourceCode, prop, obj.properties);
-	}
-
-	return removeSoleItem(fixer, sourceCode, prop);
-};
-
 const insertAsFirstPropertyFix = (
 	fixer: Rule.RuleFixer,
 	sourceCode: SourceCode,
@@ -366,7 +349,17 @@ const removeBaseSourceFix = (
 		return fixer.removeRange([argStart, configStart]);
 	}
 
-	return removePropertyFix(fixer, sourceCode, source.container, source.node);
+	// Null when removing the property would delete a comment beside it.
+	if (source.container.properties.length > 1) {
+		return removeFromList(
+			fixer,
+			sourceCode,
+			source.node,
+			source.container.properties
+		);
+	}
+
+	return removeSoleItem(fixer, sourceCode, source.node);
 };
 
 // `insertInto` is the object that receives the `base` property, or null when

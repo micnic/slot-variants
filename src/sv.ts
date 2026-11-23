@@ -239,15 +239,6 @@ const buildDefaultSlotFn = (
 	};
 };
 
-const applyDefaultMultiSlots = (
-	config: CompiledConfig,
-	run: RunFn,
-	result: CacheValue
-) =>
-	wrapMultiSlots(config, result, (slotKey) =>
-		buildDefaultSlotFn(config, run, result, slotKey)
-	);
-
 // Gives the result of a call without props, rebuilt only when `run` returns
 // another value than last time, so a cache hit allocates nothing.
 const createDefaultResultGetter = (config: CompiledConfig, run: RunFn) => {
@@ -259,7 +250,9 @@ const createDefaultResultGetter = (config: CompiledConfig, run: RunFn) => {
 
 		if (result !== defaultSource) {
 			defaultSource = result;
-			defaultResult = applyDefaultMultiSlots(config, run, result);
+			defaultResult = wrapMultiSlots(config, result, (slotKey) =>
+				buildDefaultSlotFn(config, run, result, slotKey)
+			);
 		}
 
 		return defaultResult;

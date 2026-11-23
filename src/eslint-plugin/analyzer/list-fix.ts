@@ -15,6 +15,10 @@ type ListElement = {
 	after: AST.Token | null;
 };
 
+// Where a line ends, at a `\n` or the `\r` of a `\r\n`, or where the list
+// closes, right after a trailing comma.
+const LINE_OR_LIST_ENDS: ReadonlySet<string> = new Set(['\n', '\r', ')', ']']);
+
 // `charAt` returns '' past either end of the string, so neither of the walks
 // below needs a bounds check.
 const isSpaceOrTab = (char: string): boolean => char === ' ' || char === '\t';
@@ -59,20 +63,6 @@ const startOfOwnLine = (text: string, start: number): number | null => {
 	}
 
 	return index - 1;
-};
-
-// Whether `index` is where a line ends, at a `\n` or the `\r` of a `\r\n`.
-const isLineEnd = (text: string, index: number): boolean => {
-	const char = text.charAt(index);
-
-	return char === '\n' || char === '\r';
-};
-
-// Whether `index` is where the list closes, right after a trailing comma.
-const isListEnd = (text: string, index: number): boolean => {
-	const char = text.charAt(index);
-
-	return char === ')' || char === ']';
 };
 
 const isToken = (token: AST.Token | null, value: string): token is AST.Token =>
@@ -172,7 +162,7 @@ export const removeFromList = (
 		// The last element of its line, or of the list before a trailing
 		// comma, takes the whitespace on both sides of it, so no space is
 		// left trailing.
-		if (isLineEnd(source, spacesEnd) || isListEnd(source, spacesEnd)) {
+		if (LINE_OR_LIST_ENDS.has(source.charAt(spacesEnd))) {
 			return removeRangeKeepingComments(fixer, sourceCode, [
 				skipSpacesAndTabsBack(source, start),
 				spacesEnd
@@ -210,13 +200,8 @@ export const removeSoleItem = (
 		range: [start, end],
 		after
 	} = getListElement(sourceCode, node);
-	const ownLine = startOfOwnLine(sourceCode.getText(), start);
-	let removeStart = start;
+	const removeStart = startOfOwnLine(sourceCode.getText(), start) ?? start;
 	let removeEnd = end;
-
-	if (ownLine !== null) {
-		removeStart = ownLine;
-	}
 
 	if (isToken(after, ',')) {
 		[, removeEnd] = after.range;

@@ -18,8 +18,9 @@ import { getKeyName } from './config-keys.ts';
 import { getImportSource } from './components.ts';
 import {
 	type DestructuredRead,
-	findLookupVariable,
-	findLookupBinding,
+	findInLookupScope,
+	findSingleBinding,
+	findVariable,
 	getDestructuredRead,
 	isInTemplate,
 	resolveContainer,
@@ -425,7 +426,7 @@ export const createStyledContext = (
 ): StyledContext => ({
 	sourceCode,
 	matchCall,
-	variableOf: (node) => findLookupVariable(node, sourceCode),
+	variableOf: (node) => findInLookupScope(node, sourceCode, findVariable),
 	resolve: (node) => resolveStaticValue(node, sourceCode)
 });
 
@@ -1422,7 +1423,11 @@ const isFrameworkCall = (
 		return false;
 	}
 
-	const binding = findLookupBinding(value.callee, ctx.sourceCode);
+	const binding = findInLookupScope(
+		value.callee,
+		ctx.sourceCode,
+		findSingleBinding
+	);
 
 	if (binding?.def.type !== 'ImportBinding') {
 		return false;

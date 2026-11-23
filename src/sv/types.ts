@@ -120,7 +120,6 @@ export type VariantValueIds = ReadonlyMap<string, number>;
 export type VariantData = {
 	key: string;
 	valueIds: VariantValueIds;
-	unsetId: number;
 	stride: number;
 	values: NormalizedVariantValues;
 	defaultValue: RuntimeDefaultVariant;

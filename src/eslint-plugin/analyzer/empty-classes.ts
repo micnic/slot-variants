@@ -370,13 +370,14 @@ const getKeptMarker = (
 	context: Rule.RuleContext,
 	config: ObjectExpression
 ): string | null => {
-	const resolve = (node: Node) =>
-		resolveStaticValue(node, context.sourceCode);
 	const own = getProperties(config);
 	const isEmpty = (key: string) => {
 		const value = own.get(key);
 
-		return value !== undefined && isEmptyContainer(resolve(value));
+		return (
+			value !== undefined &&
+			isEmptyContainer(resolveStaticValue(value, context.sourceCode))
+		);
 	};
 	const marker = getMarkerToKeep(
 		getConfigMarkers(config, context.sourceCode),

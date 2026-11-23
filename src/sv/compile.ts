@@ -336,7 +336,6 @@ const createVariantData = (
 				valueIds: new Map(
 					valueKeys.map((valueKey, id) => [valueKey, id])
 				),
-				unsetId: valueKeys.length,
 				stride,
 				values: variantValues,
 				defaultValue: getOwn(defaultVariants, variantKey),

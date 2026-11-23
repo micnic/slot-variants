@@ -1,5 +1,5 @@
 import type { SourceCode } from 'eslint';
-import type { Node, ObjectExpression, Property, SpreadElement } from 'estree';
+import type { Node, ObjectExpression } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { getKeyName } from './config-keys.ts';
 import { resolveContainer, resolveEnteredValue } from './const-bindings.ts';
@@ -60,8 +60,9 @@ export const getProperties = (
 	return getOrCreate(propertiesCache, obj, () => buildPropertiesMap(obj));
 };
 
-const isSpreadElement = (prop: Property | SpreadElement): boolean =>
-	prop.type === 'SpreadElement';
+/** Whether `obj` spreads another object into its own properties. */
+export const hasSpreadProperty = (obj: ObjectExpression): boolean =>
+	obj.properties.some((property) => property.type === 'SpreadElement');
 
 // Sets each property of `obj` in `merged`, in source order, entering each
 // spread that reads as an object literal through same-file `const` bindings.
@@ -149,7 +150,7 @@ export const getConfigProperties = (
 	config: ObjectExpression,
 	sourceCode: SourceCode
 ): ReadonlyMap<string, Node> => {
-	if (!config.properties.some(isSpreadElement)) {
+	if (!hasSpreadProperty(config)) {
 		return getProperties(config);
 	}
 
