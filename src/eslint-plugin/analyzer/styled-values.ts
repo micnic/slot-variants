@@ -88,7 +88,7 @@ type ParentStyles = {
  * The classes a config's call applies, with the entries of those it inherits
  * rather than writes: its parents' in `extend`, or its factory's `base`.
  */
-export type CallStyles = {
+type CallStyles = {
 	styles: InternalStyles;
 	inherited: ReadonlySet<Entry>;
 };
@@ -123,7 +123,7 @@ export type CallInputs = {
  * that forwards its props to the call does when it passes none of them.
  * `unreadProps` holds the values of those props.
  */
-export type CallMatchers = {
+type CallMatchers = {
 	matchers: VariantMatchers;
 	defaultMatchers: VariantMatchers;
 	unreadProps: ReadonlyMap<string, Node>;
@@ -157,7 +157,7 @@ type CollectedProps = {
  * if any, and the objects the call spreads that may pass one instead — those
  * that can't be read, when it writes none or writes it ahead of them.
  */
-export type Override = { value: Node | null; spreads: ReadonlyArray<Node> };
+type Override = { value: Node | null; spreads: ReadonlyArray<Node> };
 
 /** A class expression produced by slot-variants, and the slot it feeds. */
 export type StyledClasses = CallMatchers & {
@@ -419,21 +419,6 @@ const buildStyles = (
 	};
 };
 
-/**
- * The classes an `sv(config)` call compiles to, memoized on the call node so a
- * config referenced from many call sites, or read by more than one rule, is
- * walked once per lint pass.
- */
-const getConfigStyles = (
-	node: CallExpression,
-	config: ObjectExpression,
-	args: ReadonlyArray<Expression | SpreadElement>,
-	sourceCode: SourceCode
-): InternalStyles =>
-	getOrCreate(stylesCache, node, () =>
-		buildStyles(getConfigProperties(config, sourceCode), args, sourceCode)
-	);
-
 export const createStyledContext = (
 	sourceCode: SourceCode,
 	matchCall: StyledContext['matchCall']
@@ -566,27 +551,27 @@ const readCallProps = (
 		return NO_CALL_PROPS;
 	}
 
+	// Props that aren't an object literal are one object spread into them.
+	let spread: Node;
+
 	if (arg.type === 'SpreadElement') {
-		return {
-			read: EMPTY_PROPS,
-			known: null,
-			spreads: [arg.argument],
-			overridable: NO_KEYS
-		};
+		spread = arg.argument;
+	} else {
+		const resolved = ctx.resolve(arg);
+
+		if (resolved.type === 'ObjectExpression') {
+			return readObjectProps(resolved, ctx);
+		}
+
+		spread = resolved;
 	}
 
-	const resolved = ctx.resolve(arg);
-
-	if (resolved.type !== 'ObjectExpression') {
-		return {
-			read: EMPTY_PROPS,
-			known: null,
-			spreads: [resolved],
-			overridable: NO_KEYS
-		};
-	}
-
-	return readObjectProps(resolved, ctx);
+	return {
+		read: EMPTY_PROPS,
+		known: null,
+		spreads: [spread],
+		overridable: NO_KEYS
+	};
 };
 
 // `outer` with each prop of `inner` that the runtime lets replace it: any but
@@ -689,13 +674,14 @@ const mergeCallProps = (
 	};
 };
 
-// The optional variants a call leaves unset: the ones it neither passes nor
-// gets from its preset, counting a prop whose value can't be read as not
-// passed. None when its props or preset can't be read in full.
-const readUnsetMatchers = (
+// The values a call keeps from its `defaultVariants`, and the optional
+// variants it leaves unset: the ones it neither passes nor gets from its
+// preset, counting a prop whose value can't be read as not passed. None when
+// its props or preset can't be read in full, and so may set any variant.
+const readBaseMatchers = (
 	props: ReadonlyMap<string, Node> | null,
 	unread: ReadonlyMap<string, Node>,
-	optional: ReadonlySet<string>,
+	{ defaults, optional }: CallOptions,
 	preset: PresetValues,
 	ctx: StyledContext
 ): VariantMatchers => {
@@ -703,34 +689,19 @@ const readUnsetMatchers = (
 		return EMPTY_MATCHERS;
 	}
 
-	const unset = new Map<string, ReadonlySet<string>>();
+	const matchers = new Map(defaults);
 
 	for (const key of optional) {
 		if (
 			(unread.has(key) || !isDefinedValue(props.get(key), ctx.resolve)) &&
 			!preset.matchers.has(key)
 		) {
-			unset.set(key, UNSET_MATCHER);
+			matchers.set(key, UNSET_MATCHER);
 		}
 	}
 
-	return unset;
+	return matchers;
 };
-
-// The values a call keeps from `base`: all of them, unless its props or
-// preset can't be read in full and so may set any variant.
-const readKeptMatchers = (
-	props: ReadonlyMap<string, Node> | null,
-	base: VariantMatchers,
-	preset: PresetValues
-): VariantMatchers => {
-	if (props === null || !preset.complete) {
-		return EMPTY_MATCHERS;
-	}
-
-	return base;
-};
-
 // A variant prop whose value can't be read: `undefined` leaves the variant to
 // its default, anything else may select any of its values.
 const isUnreadProp = (
@@ -804,24 +775,21 @@ const readCallPreset = (
 	};
 };
 
-// The matchers a call applies: `base`, refined by the props it passes. Later
-// matchers win: a call site's props over its preset's values, and those over
-// the config's `defaultVariants` or the `optional` variants it leaves unset. A
-// variant prop that can't be read leaves `matchers` open for it.
+// The matchers a call applies: its defaults, refined by the props it passes.
+// Later matchers win: a call site's props over its preset's values, and those
+// over the config's `defaultVariants` or the `optional` variants it leaves
+// unset. A variant prop that can't be read leaves `matchers` open for it.
 const buildCallMatchers = (
 	props: CallProps,
 	options: CallOptions,
 	ctx: StyledContext
 ): CallMatchers => {
 	const { read, known, spreads, overridable } = props;
-	const { defaults: base, optional } = options;
 	const preset = readCallPreset(props, options, ctx);
 	const propMatchers = readPropMatchers(read, ctx);
 	const unreadProps = readUnreadProps(read, propMatchers, ctx);
-	const unset = readUnsetMatchers(known, unreadProps, optional, preset, ctx);
 	const matchers = new Map([
-		...readKeptMatchers(known, base, preset),
-		...unset,
+		...readBaseMatchers(known, unreadProps, options, preset, ctx),
 		...preset.matchers,
 		...propMatchers
 	]);
@@ -849,8 +817,7 @@ const buildCallMatchers = (
 		matchers,
 		// A preset it names that isn't known in full may set any variant.
 		defaultMatchers: new Map([
-			...readKeptMatchers(read, base, readPreset),
-			...readUnsetMatchers(read, unreadProps, optional, readPreset, ctx),
+			...readBaseMatchers(read, unreadProps, options, readPreset, ctx),
 			...readPreset.matchers,
 			...propMatchers
 		]),
@@ -1292,7 +1259,12 @@ export const getCallStyles = (
 		return getExtendedStyles(call, config, extend, args, ctx, visiting);
 	}
 
-	const own = getConfigStyles(call, config, args, ctx.sourceCode);
+	// The call's own classes, memoized on the call node so a config referenced
+	// from many call sites, or read by more than one rule, is walked once per
+	// lint pass.
+	const own = getOrCreate(stylesCache, call, () =>
+		buildStyles(properties, args, ctx.sourceCode)
+	);
 	const factoryBase = getFactoryBaseStyles(call, config, ctx);
 
 	if (factoryBase === null) {
@@ -1546,7 +1518,7 @@ const getReactiveSource = (node: Node, ctx: StyledContext): Node | null => {
  * Resolves `node` like `ctx.resolve`, first reading through the reactive
  * wrappers frameworks hold a result in. One that holds itself ends the walk.
  */
-export const resolveReactive = (node: Node, ctx: StyledContext): Node => {
+const resolveReactive = (node: Node, ctx: StyledContext): Node => {
 	const seen = new Set<Node>();
 	let current = node;
 	let source = getReactiveSource(current, ctx);
@@ -1657,16 +1629,18 @@ const hasSlotsBesidesBase = ({ slotNames }: InternalStyles): boolean => {
 };
 
 /**
- * Reads an already resolved node as a class-valued slot-variants expression: a
- * `cn()` call, a config-less `sv()` call, a slotless variant function's result,
- * a slot read off a result object, or a multi-slot slot call. Null for anything
- * else, including a variant function itself (which yields no classes until
- * called).
+ * Reads a node, through `const` bindings, as a class-valued slot-variants
+ * expression: a `cn()` call, a config-less `sv()` call, a slotless variant
+ * function's result, a slot read off a result object, or a multi-slot slot
+ * call. Null for anything else, including a variant function itself (which
+ * yields no classes until called).
  */
-export const readStyledClasses = (
-	resolved: Node,
+export const resolveStyledClasses = (
+	node: Node,
 	ctx: StyledContext
 ): StyledClasses | null => {
+	const resolved = resolveReactive(node, ctx);
+
 	if (resolved.type !== 'CallExpression') {
 		return resolveStyledRead(resolved, ctx);
 	}
@@ -1701,12 +1675,6 @@ export const readStyledClasses = (
 
 	return { ...invocation, slot: invocation.slot ?? 'base' };
 };
-
-/** `readStyledClasses` for a node read through `const` bindings first. */
-export const resolveStyledClasses = (
-	node: Node,
-	ctx: StyledContext
-): StyledClasses | null => readStyledClasses(resolveReactive(node, ctx), ctx);
 
 /**
  * The `class` / `className` value a call site passes, split per targeted slot.

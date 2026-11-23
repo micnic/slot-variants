@@ -1978,28 +1978,6 @@ const splitUtility = (
 	return { variantPrefix, bare };
 };
 
-// A bare single-word utility (`rounded`, `border`) keys off the representative
-// value `BARE_UTILITIES` gives it. Null for a single word that names no family,
-// which is every project class name that reaches here.
-const getBareUtilityKey = (
-	firstSegment: string,
-	variantPrefix: string
-): ConflictKeyInfo | null => {
-	const bareValue = BARE_UTILITIES.get(firstSegment);
-
-	if (bareValue === undefined) {
-		return null;
-	}
-
-	const category = categorize(firstSegment, bareValue);
-
-	return {
-		key: `${variantPrefix}|${firstSegment}|${category}`,
-		variantPrefix,
-		overlap: getOverlapNode(firstSegment, category)
-	};
-};
-
 // `text-lg/6` sets both font-size and line-height, so it also conflicts with a
 // bare `leading-*` — but plain `text-lg` (no modifier) doesn't. The two get
 // distinct keys so a plain and a modifier-bearing font-size never share a group
@@ -2016,7 +1994,7 @@ const getFontSizeLeadingKey = (
 		return null;
 	}
 
-	/* c8 ignore next -- value is non-empty (the length === 0 case returned) */
+	/* c8 ignore next -- value is non-empty, a bare utility's included */
 	const lastValueSegment = value[value.length - 1] ?? '';
 
 	if (splitOutsideBrackets(lastValueSegment, '/').length < 2) {
@@ -2090,10 +2068,20 @@ const computeConflictKey = (
 		return arbitraryProperty;
 	}
 
-	const [firstSegment, ...value] = splitOutsideBrackets(bare, '-');
+	const [firstSegment, ...rest] = splitOutsideBrackets(bare, '-');
+	let value: ReadonlyArray<string> = rest;
 
-	if (value.length === 0) {
-		return getBareUtilityKey(firstSegment, variantPrefix);
+	// A bare single-word utility (`rounded`, `border`) keys off the
+	// representative value `BARE_UTILITIES` gives it. A single word that names
+	// no family is every project class name that reaches here.
+	if (rest.length === 0) {
+		const bareValue = BARE_UTILITIES.get(firstSegment);
+
+		if (bareValue === undefined) {
+			return null;
+		}
+
+		value = bareValue;
 	}
 
 	// A project class (`btn-primary`, `card-body`) shares a prefix with its

@@ -5,7 +5,7 @@ import { getKeyName } from './config-keys.ts';
 import { resolveArray, resolveStaticValue } from './const-bindings.ts';
 import { type EmptyFix, makeListFix } from './list-fix.ts';
 import { getStaticStringText } from './literals.ts';
-import { addSpreadKeys, getProperties } from './properties.ts';
+import { collectSpreadKeys, getProperties } from './properties.ts';
 import {
 	COMPOUND_NON_MATCHER_KEYS,
 	forEachCnBranch,
@@ -425,11 +425,18 @@ export const checkConfigForEmptyClasses = (
 
 	for (const prop of config.properties) {
 		if (prop.type !== 'Property') {
-			spreadKeys = addSpreadKeys(
-				prop.argument,
-				context.sourceCode,
-				spreadKeys
-			);
+			// Null once some spread's keys can't all be read.
+			if (
+				spreadKeys !== null &&
+				!collectSpreadKeys(
+					prop.argument,
+					context.sourceCode,
+					spreadKeys
+				)
+			) {
+				spreadKeys = null;
+			}
+
 			continue;
 		}
 

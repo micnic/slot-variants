@@ -64,9 +64,7 @@ type KeyValue<K> = K extends 'true'
 
 // The value `getVariantValues()` lists for a key: a numeric one as its
 // number, otherwise as for a prop.
-type ListedKeyValue<K> = [NumericKey<K>] extends [never]
-	? KeyValue<K>
-	: NumericKey<K>;
+type ListedKeyValue<K> = Exclude<KeyValue<K>, `${NumericKey<K>}`>;
 
 type SlotKey<S extends MaybeSlots> = 'base' | StringKeyof<S>;
 
@@ -218,12 +216,6 @@ export type SlotValue<S extends MaybeSlots, G extends MaybeGroups<S>, V> =
 	| Exclude<V, ClassRecord>
 	| SlotlessClassRecord<S, G, V>;
 
-type ClassProp<
-	S extends MaybeSlots,
-	G extends MaybeGroups<S>,
-	V
-> = EitherClassProp<SlotValue<S, G, V>, true>;
-
 export type Variants<S extends MaybeSlots, G extends MaybeGroups<S>> = Record<
 	string,
 	| Record<string | number, SlotValue<S, G, ConfigClassValue>>
@@ -274,25 +266,19 @@ type CompoundSlots<
 } & CompoundConditions<S, G, V, P> &
 	EitherClassProp<Exclude<ConfigClassValue, undefined>>)[];
 
-type VariantPropsInternal<
-	S extends MaybeSlots,
-	G extends MaybeGroups<S>,
-	V extends MaybeVariants<S, G>
-> = {
+type VariantPropsInternal<V extends AnyVariants> = {
 	[K in StringKeyof<V>]: VariantPropType<V[K]>;
 };
 
 // Variant props where the `K` variants must be passed and the `L` ones may be
 // left out but not unset with `null`, as something else gives them a value.
 type VariantPropsFor<
-	S extends MaybeSlots,
-	G extends MaybeGroups<S>,
-	V extends MaybeVariants<S, G>,
+	V extends AnyVariants,
 	K extends StringKeyof<V>,
 	L extends StringKeyof<V>
-> = Pick<VariantPropsInternal<S, G, V>, K> & {
-	[X in L]?: VariantPropsInternal<S, G, V>[X] | undefined;
-} & Omit<PartialNullable<VariantPropsInternal<S, G, V>>, K | L>;
+> = Pick<VariantPropsInternal<V>, K> & {
+	[X in L]?: VariantPropsInternal<V>[X] | undefined;
+} & Omit<PartialNullable<VariantPropsInternal<V>>, K | L>;
 
 type PresetProp<P> = P extends undefined
 	? unknown
@@ -309,40 +295,28 @@ type SetKeys<T> = keyof SetValues<T>;
 // The props of a call naming preset `K`: the required variants it doesn't set
 // still have to be passed.
 type NamedPresetProps<
-	S extends MaybeSlots,
-	G extends MaybeGroups<S>,
-	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, G, V>,
+	V extends AnyVariants,
+	P,
 	R extends StringKeyof<V>,
 	K extends StringKeyof<P>
-> = VariantPropsFor<
-	S,
-	G,
-	V,
-	Exclude<R, SetKeys<P[K]>>,
-	Extract<R, SetKeys<P[K]>>
-> & {
+> = VariantPropsFor<V, Exclude<R, SetKeys<P[K]>>, Extract<R, SetKeys<P[K]>>> & {
 	preset: K;
 };
 
 // Every variant is optional when none is required. Otherwise, a call passes
 // each required variant, or names a preset that sets it.
 type PresetVariantProps<
-	S extends MaybeSlots,
-	G extends MaybeGroups<S>,
-	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, G, V>,
+	V extends AnyVariants,
+	P,
 	R extends RequiredVariants<V>
 > = [RequiredVariantKeys<V, R>] extends [never]
-	? PartialNullable<VariantPropsInternal<S, G, V>> & PresetProp<P>
+	? PartialNullable<VariantPropsInternal<V>> & PresetProp<P>
 	:
-			| (VariantPropsFor<S, G, V, RequiredVariantKeys<V, R>, never> & {
+			| (VariantPropsFor<V, RequiredVariantKeys<V, R>, never> & {
 					preset?: undefined;
 			  })
 			| {
 					[K in StringKeyof<P>]: NamedPresetProps<
-						S,
-						G,
 						V,
 						P,
 						RequiredVariantKeys<V, R>,
@@ -359,7 +333,7 @@ type MultiSlotFnProps<
 	P extends MaybePresets<S, G, V>,
 	R extends RequiredVariants<V>
 > = Prettify<
-	VariantPropsFor<S, G, V, never, RequiredVariantKeys<V, R>> & PresetProp<P>
+	VariantPropsFor<V, never, RequiredVariantKeys<V, R>> & PresetProp<P>
 > &
 	EitherClassProp<ClassValue, true>;
 
@@ -372,7 +346,7 @@ type DefaultVariantFn<
 	P extends MaybePresets<S, G, V>,
 	R extends RequiredVariants<V>,
 	K extends StringKeyof<V>
-> = (props: VariantArgs<S, G, V, P, R>) => VariantPropType<V[K]> | undefined;
+> = (props: VariantArgs<V, P, R>) => VariantPropType<V[K]> | undefined;
 
 type DefaultVariantValue<
 	S extends MaybeSlots,
@@ -389,7 +363,7 @@ type Presets<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>
-> = Record<string, Partial<VariantPropsInternal<S, G, V>>>;
+> = Record<string, Partial<VariantPropsInternal<V>>>;
 
 export type MaybePresets<
 	S extends MaybeSlots,
@@ -630,10 +604,8 @@ type MergeVariantValue<A, B> = [A] extends [undefined]
 	? B
 	: [B] extends [undefined]
 		? A
-		: [A] extends [ConfigClassValue]
-			? [B] extends [ConfigClassValue]
-				? string
-				: MergeSlotRecords<A, B>
+		: [A | B] extends [ConfigClassValue]
+			? string
 			: MergeSlotRecords<A, B>;
 
 type MergeSlotRecords<A, B> = {
@@ -831,15 +803,13 @@ type ExtendedIntrospection<
 > = Defined<I, Defined<ParentTypes<E>['introspection'], B>>;
 
 type VariantArgs<
-	S extends MaybeSlots,
-	G extends MaybeGroups<S>,
-	V extends MaybeVariants<S, G>,
-	P extends MaybePresets<S, G, V>,
+	V extends AnyVariants,
+	P,
 	R extends RequiredVariants<V>
 > = Prettify<
 	P extends undefined
-		? VariantPropsFor<S, G, V, RequiredVariantKeys<V, R>, never>
-		: PresetVariantProps<S, G, V, P, R>
+		? VariantPropsFor<V, RequiredVariantKeys<V, R>, never>
+		: PresetVariantProps<V, P, R>
 >;
 
 type Props<
@@ -848,7 +818,7 @@ type Props<
 	V extends MaybeVariants<S, G>,
 	P extends MaybePresets<S, G, V>,
 	R extends RequiredVariants<V>
-> = VariantArgs<S, G, V, P, R> & ClassProp<S, G, ClassValue>;
+> = VariantArgs<V, P, R> & EitherClassProp<SlotValue<S, G, ClassValue>, true>;
 
 // The `introspection` value as written, `undefined` included, so an explicit
 // `undefined` is inferred as such instead of widening to `boolean`.
@@ -943,10 +913,8 @@ export type Config<
  * `variants`. Without either, the argument is a class value, so a config
  * overload doesn't match it.
  */
-export type ConfigMarker<S, V> = [S] extends [undefined]
-	? [V] extends [undefined]
-		? { variants: object }
-		: unknown
+export type ConfigMarker<S, V> = [S | V] extends [undefined]
+	? { variants: object }
 	: unknown;
 
 /** Props consumed by a variant function rather than forwarded to an element. */
@@ -1099,11 +1067,9 @@ type VariantFn<
 // names no key, so it's taken.
 export type NonConfigClassArg<T> =
 	T extends Record<string, unknown>
-		? string extends keyof T
+		? [Extract<keyof T, 'slots' | 'variants'>] extends [never]
 			? T
-			: [Extract<keyof T, 'slots' | 'variants'>] extends [never]
-				? T
-				: never
+			: never
 		: T;
 
 // The widest config the runtime handles, every name typed as a string.

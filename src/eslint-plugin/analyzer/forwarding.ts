@@ -88,7 +88,7 @@ import { readTypedProps } from './typed-props.ts';
  * picked props. `spreadProps` is set for a part the class reaches through
  * such a spread rather than by name: the class props the spread carries.
  */
-export type ForwardTarget = StyledClasses & {
+type ForwardTarget = StyledClasses & {
 	variantProps: ReadonlyMap<string, string>;
 	optionalProps: ReadonlyMap<string, string>;
 	presetProp: string | null;
@@ -115,7 +115,7 @@ type SitePropValues = Map<string, ReadonlySet<string> | null>;
  * read; a prop it doesn't pass, or passes as `undefined`, has no entry. `open`
  * tells that a spread may pass any prop without one.
  */
-export type SiteProps = {
+type SiteProps = {
 	values: ReadonlyMap<string, ReadonlySet<string> | null>;
 	open: boolean;
 };
@@ -257,6 +257,28 @@ const wholeProps = (
 	picked: null,
 	forced: NO_DEFAULTS
 });
+
+// The read of `prop` off a props object.
+const propReadOf = (source: PropsObject, prop: string): PropRead => ({
+	component: source.component,
+	prop,
+	defaultValue: source.defaults.get(prop) ?? null
+});
+
+// The object a `v-bind="object"` directive passes, null for any other
+// attribute.
+const getVueBindObject = ({ key, value }: VAttribute): Node | null => {
+	if (
+		key.type !== 'VDirectiveKey' ||
+		key.name.name !== 'bind' ||
+		key.argument !== null ||
+		value?.type !== 'VExpressionContainer'
+	) {
+		return null;
+	}
+
+	return value.expression;
+};
 
 const isBooleanConstructor = (node: Node): boolean =>
 	node.type === 'Identifier' && node.name === 'Boolean';
@@ -1268,11 +1290,7 @@ export const createForwardingScan = (
 			return null;
 		}
 
-		return {
-			component: source.component,
-			prop,
-			defaultValue: source.defaults.get(prop) ?? null
-		};
+		return propReadOf(source, prop);
 	};
 
 	// A name a Vue template reads that no `<script>` or template binding
@@ -1283,11 +1301,7 @@ export const createForwardingScan = (
 			return null;
 		}
 
-		return {
-			component: templateProps.component,
-			prop: node.name,
-			defaultValue: templateProps.defaults.get(node.name) ?? null
-		};
+		return propReadOf(templateProps, node.name);
 	};
 
 	// The prop a value reads, if it is one.
@@ -1540,40 +1554,32 @@ export const createForwardingScan = (
 	// them may render: two elements, or the branches of an early return. A
 	// component forwarding both `class` and `className` by name keeps the
 	// first; a spread of its props carries either.
-	const trackForwardedNode = (
-		parts: ClassParts,
-		node: Node,
-		index: number
-	) => {
-		const read = readProp(node);
-
-		if (read === null || !CLASS_ATTRIBUTES.has(read.prop)) {
-			return;
-		}
-
-		const spreadProps = spreadReads.get(node) ?? null;
-		const kept = forwarded.get(read.component);
-		const prop = getForwardedProp(read, spreadProps, kept);
-
-		if (prop === undefined) {
-			return;
-		}
-
-		addForwarded(
-			read.component,
-			prop,
-			getForwardTargets(
-				parts,
-				pathAt(parts.paths.dynamic, index),
-				read.component,
-				spreadProps
-			)
-		);
-	};
-
 	const trackForwarding = (parts: ClassParts) => {
 		parts.dynamic.forEach((node, index) => {
-			trackForwardedNode(parts, node, index);
+			const read = readProp(node);
+
+			if (read === null || !CLASS_ATTRIBUTES.has(read.prop)) {
+				return;
+			}
+
+			const spreadProps = spreadReads.get(node) ?? null;
+			const kept = forwarded.get(read.component);
+			const prop = getForwardedProp(read, spreadProps, kept);
+
+			if (prop === undefined) {
+				return;
+			}
+
+			addForwarded(
+				read.component,
+				prop,
+				getForwardTargets(
+					parts,
+					pathAt(parts.paths.dynamic, index),
+					read.component,
+					spreadProps
+				)
+			);
 		});
 	};
 
@@ -1875,7 +1881,7 @@ export const createForwardingScan = (
 	// a state it reads back, `v-bind="object"` each prop of the object, and
 	// `:[name]` a prop it can't name.
 	const setVueDirectiveValue = (props: SiteValues, attribute: VAttribute) => {
-		const { key, value } = attribute;
+		const { key } = attribute;
 
 		/* c8 ignore next 3 -- only a directive has no attribute name */
 		if (key.type !== 'VDirectiveKey') {
@@ -1894,13 +1900,7 @@ export const createForwardingScan = (
 			return;
 		}
 
-		let object: Node | null = null;
-
-		if (key.argument === null && value?.type === 'VExpressionContainer') {
-			object = value.expression;
-		}
-
-		setSpreadValues(props, object);
+		setSpreadValues(props, getVueBindObject(attribute));
 	};
 
 	// A Vue attribute's value: static text, or a `v-bind` expression. One
@@ -1997,19 +1997,13 @@ export const createForwardingScan = (
 	// The class a `v-bind="object"` directive passes, which Vue merges with
 	// the element's other classes: none unless the object can be read in full.
 	const readVueBoundClass = (attribute: VAttribute): Node[] => {
-		const { key, value } = attribute;
+		const object = getVueBindObject(attribute);
 
-		if (
-			key.type !== 'VDirectiveKey' ||
-			key.name.name !== 'bind' ||
-			key.argument !== null ||
-			value?.type !== 'VExpressionContainer' ||
-			value.expression === null
-		) {
+		if (object === null) {
 			return [];
 		}
 
-		return [...readSpreadClasses(value.expression, VUE_CLASS).values()];
+		return [...readSpreadClasses(object, VUE_CLASS).values()];
 	};
 
 	const isVueClassAttribute = (attribute: VAttribute): boolean => {

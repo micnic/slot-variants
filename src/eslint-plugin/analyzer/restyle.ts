@@ -20,8 +20,7 @@ import {
 	forEachOverrideTarget,
 	getSlotBuckets,
 	type Invocation,
-	readStyledClasses,
-	resolveReactive,
+	resolveStyledClasses,
 	resolveTargetSlots,
 	type StyledClasses,
 	type StyledContext
@@ -94,6 +93,13 @@ type LiteralReporter = (
 ) => void;
 
 const EMPTY_PATH: BranchPath = new Map();
+
+// The kinds of part a position holds.
+const PART_KINDS: ReadonlyArray<keyof PartCounts> = [
+	'styled',
+	'literals',
+	'dynamic'
+];
 
 export const emptyParts = (): ClassParts => ({
 	styled: [],
@@ -244,7 +250,7 @@ export const collectParts = (
 		collectHoistedParts(resolved, ctx, parts);
 	}
 
-	const styled = readStyledClasses(resolveReactive(node, ctx), ctx);
+	const styled = resolveStyledClasses(node, ctx);
 
 	if (styled !== null) {
 		parts.styled.push(styled);
@@ -345,17 +351,15 @@ const collectBranch = (
 
 	collectParts(branch, ctx, parts);
 
-	const { paths } = parts;
-
-	markRange(paths.styled, start.styled, parts.styled.length, node, side);
-	markRange(
-		paths.literals,
-		start.literals,
-		parts.literals.length,
-		node,
-		side
-	);
-	markRange(paths.dynamic, start.dynamic, parts.dynamic.length, node, side);
+	for (const kind of PART_KINDS) {
+		markRange(
+			parts.paths[kind],
+			start[kind],
+			parts[kind].length,
+			node,
+			side
+		);
+	}
 };
 
 /**

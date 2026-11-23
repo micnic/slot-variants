@@ -97,15 +97,17 @@ const mergeSpreadProperties = (
 	stack.delete(obj);
 };
 
-// Adds the keys spreading `node` may set to `keys`, entering the spreads it
-// holds itself. False when they can't all be read: a spread of anything but
-// an object literal, or a computed key. `stack` stops an object that spreads
-// itself (`const a = { ...a }`).
-const collectSpreadKeys = (
+/**
+ * Adds the keys spreading `node` may set to `keys`, entering the spreads it
+ * holds itself. False when they can't all be read: a spread of anything but
+ * an object literal, or a computed key. `stack` stops an object that spreads
+ * itself (`const a = { ...a }`).
+ */
+export const collectSpreadKeys = (
 	node: Node,
 	sourceCode: SourceCode,
 	keys: Set<string>,
-	stack: Set<ObjectExpression>
+	stack: Set<ObjectExpression> = new Set()
 ): boolean => {
 	const obj = resolveEnteredValue(node, sourceCode);
 
@@ -136,25 +138,6 @@ const collectSpreadKeys = (
 	stack.delete(obj);
 
 	return true;
-};
-
-/**
- * Adds the keys spreading `node` into an object may set to `keys`, or gives
- * null once some spread's keys can't all be read.
- */
-export const addSpreadKeys = (
-	node: Node,
-	sourceCode: SourceCode,
-	keys: Set<string> | null
-): Set<string> | null => {
-	if (
-		keys === null ||
-		!collectSpreadKeys(node, sourceCode, keys, new Set())
-	) {
-		return null;
-	}
-
-	return keys;
 };
 
 /**

@@ -325,9 +325,9 @@ export const getJsxComponentName = (node: JsxOpeningElement): string | null => {
 	}
 
 	const { name } = node.name;
-	const initial = name[0];
+	const initial = name.charAt(0);
 
-	if (initial === undefined || initial !== initial.toUpperCase()) {
+	if (initial !== initial.toUpperCase()) {
 		return null;
 	}
 
@@ -401,12 +401,11 @@ export const getVueAttributeName = (node: VAttribute): string | null => {
 		return node.key.name;
 	}
 
-	if (node.key.name.name !== 'bind' || node.key.argument === null) {
-		return null;
-	}
-
 	// A dynamic argument (`:[name]="…"`) names no attribute statically
-	if (node.key.argument.type !== 'VIdentifier') {
+	if (
+		node.key.name.name !== 'bind' ||
+		node.key.argument?.type !== 'VIdentifier'
+	) {
 		return null;
 	}
 

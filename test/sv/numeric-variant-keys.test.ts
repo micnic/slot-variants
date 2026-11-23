@@ -188,3 +188,16 @@ t.test('quoted numeric keys take their number as well', (t) => {
 
 	t.end();
 });
+t.test('a quoted numeric key leaves the other keys listed', (t) => {
+	const button = sv({
+		variants: { size: { sm: 'text-sm', '1': 'text-xs' } },
+		introspection: true
+	});
+	const values = button.getVariantValues('size');
+	// Typed with both kinds of key, as listed at runtime
+	const listed: typeof values = [1, 'sm'];
+
+	t.same(values, listed, 'the number and the other key');
+
+	t.end();
+});

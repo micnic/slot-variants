@@ -46,10 +46,7 @@ export type ImportSource = { specifier: string; exportName: string };
 // Reads what an import's export is, from its module.
 type ImportResolver<T> = (specifier: string, exportName: string) => T;
 
-export type ImportDefinition = Extract<
-	Scope.Definition,
-	{ type: 'ImportBinding' }
->;
+type ImportDefinition = Extract<Scope.Definition, { type: 'ImportBinding' }>;
 
 /** What a component name is bound to: a same-file function, or an import. */
 type ComponentBinding =

@@ -76,9 +76,10 @@ const resolveFile = (base: string): ModuleFile | null => {
 	const rewrites = REWRITABLE.get(extension);
 
 	if (rewrites) {
-		const stem = base.slice(0, -extension.length);
-
-		return findFile(stem, rewrites) ?? findFile(stem, [extension]);
+		return (
+			findFile(base.slice(0, -extension.length), rewrites) ??
+			statFile(base)
+		);
 	}
 
 	return (
