@@ -20,7 +20,8 @@ import {
 	collectSlotKeyedProperties,
 	getClassValue,
 	getProperties,
-	getStrictProperties
+	getStrictProperties,
+	type GroupSlots
 } from './properties.ts';
 import { isStaticTernaryTemplate } from './static-predicates.ts';
 import {
@@ -790,21 +791,31 @@ const getCompoundSource = (
 
 // The slots a `compoundSlots` entry targets, each once: `sv()` expands a group
 // to its slots and applies the class to every slot a single time, however
-// many of the targets reach it. A group whose slot list can't be read stays a
-// target of its own.
+// many of the targets reach it. A group also holds the slots its parents in
+// `extend` list under its name. A group of the config whose slot list can't
+// be read stays a target of its own.
 const getCompoundSlotTargets = (
 	targets: Node | undefined,
 	groups: ReadonlyMap<string, Node>,
+	inheritedGroups: GroupSlots,
 	sourceCode: SourceCode
 ): ReadonlySet<string> => {
 	const slots = new Set<string>();
 
 	forEachStringLiteralElement(targets, sourceCode, (target) => {
 		const group = groups.get(target);
+		const inherited = inheritedGroups.get(target);
 
-		if (group === undefined || resolveArray(group, sourceCode) === null) {
+		if (
+			(group === undefined && inherited === undefined) ||
+			(group !== undefined && resolveArray(group, sourceCode) === null)
+		) {
 			slots.add(target);
 			return;
+		}
+
+		for (const slot of inherited ?? []) {
+			slots.add(slot);
 		}
 
 		forEachStringLiteralElement(group, sourceCode, (slot) => {
@@ -817,6 +828,7 @@ const getCompoundSlotTargets = (
 
 const extractCompoundTokens = (
 	config: ReadonlyMap<string, Node>,
+	inheritedGroups: GroupSlots,
 	sourceCode: SourceCode,
 	extract: ExtractFn
 ) => {
@@ -847,6 +859,7 @@ const extractCompoundTokens = (
 			const targets = getCompoundSlotTargets(
 				compound.get('slots'),
 				groups,
+				inheritedGroups,
 				sourceCode
 			);
 
@@ -857,9 +870,11 @@ const extractCompoundTokens = (
 	);
 };
 
+// `inheritedGroups` holds the groups of the parents in `extend`.
 export const collectConfigEntries = (
 	config: ReadonlyMap<string, Node>,
 	slotNames: ReadonlySet<string>,
+	inheritedGroups: GroupSlots,
 	baseArgs: ReadonlyArray<Expression | SpreadElement>,
 	sourceCode: SourceCode
 ): Entry[] => {
@@ -894,7 +909,7 @@ export const collectConfigEntries = (
 		sourceCode,
 		extract
 	);
-	extractCompoundTokens(config, sourceCode, extract);
+	extractCompoundTokens(config, inheritedGroups, sourceCode, extract);
 
 	return entries;
 };

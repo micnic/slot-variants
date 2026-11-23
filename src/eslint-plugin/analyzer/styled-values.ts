@@ -91,6 +91,10 @@ export type CallStyles = {
  */
 export type PresetValues = { matchers: VariantMatchers; complete: boolean };
 
+// What a config takes from the parents in `extend`: the slot and group names
+// a slot object of it may name, and the slots of each group.
+type Inherited = { slots: ReadonlySet<string>; groups: GroupSlots };
+
 // What a call's props are read against: the presets it may name, and the
 // variants it leaves unset unless it passes them.
 type CallOptions = Pick<InternalStyles, 'presets' | 'openPresets' | 'optional'>;
@@ -218,6 +222,11 @@ const NO_MATCHERS: CallMatchers = {
 };
 
 const EMPTY_GROUPS: GroupSlots = new Map();
+
+const NO_INHERITED: Inherited = {
+	slots: EMPTY_SLOT_NAMES,
+	groups: EMPTY_GROUPS
+};
 
 const NO_SKIP: ReadonlySet<string> = new Set();
 
@@ -372,16 +381,14 @@ const readOptionalVariants = (
 	return optional;
 };
 
-// `inheritedSlots` holds the slot and group names of the parents in `extend`,
-// which a slot object of the config may name too.
 const buildStyles = (
 	config: ReadonlyMap<string, Node>,
 	args: ReadonlyArray<Expression | SpreadElement>,
 	sourceCode: SourceCode,
-	inheritedSlots: ReadonlySet<string> = EMPTY_SLOT_NAMES
+	inherited: Inherited = NO_INHERITED
 ): InternalStyles => {
 	const slotNames = new Set([
-		...inheritedSlots,
+		...inherited.slots,
 		...getConfigSlotNames(config, sourceCode)
 	]);
 	const defaults = resolveContainer(
@@ -394,7 +401,13 @@ const buildStyles = (
 
 	return {
 		bySlot: indexEntriesBySlotAndToken(
-			collectConfigEntries(config, slotNames, args, sourceCode)
+			collectConfigEntries(
+				config,
+				slotNames,
+				inherited.groups,
+				args,
+				sourceCode
+			)
 		),
 		slotNames,
 		defaults: readMatchers(getProperties(defaults), NO_SKIP, sourceCode),
@@ -1183,13 +1196,15 @@ const getExtendedStyles = (
 		visiting.add(call);
 
 		const parentStyles = resolveParentStyles(extend, ctx, visiting);
-		const inheritedSlots = new Set(
-			parentStyles.parents.flatMap((styles) => [...styles.slotNames])
-		);
+		const { parents } = parentStyles;
+		const inherited: Inherited = {
+			slots: new Set(parents.flatMap((styles) => [...styles.slotNames])),
+			groups: joinLists(parents.map((styles) => styles.groupSlots))
+		};
 
 		return withInherited(
 			parentStyles,
-			buildStyles(properties, args, ctx.sourceCode, inheritedSlots)
+			buildStyles(properties, args, ctx.sourceCode, inherited)
 		);
 	});
 

@@ -13,6 +13,13 @@ import {
 } from './helpers.ts';
 
 export const NO_CONFLICTING_DUP_VALID = [
+	// A compound slot naming an inherited group and one of its slots applies
+	// its class to that slot once, as `sv()` expands the group first.
+	IMPORT +
+		"const A = sv({ slots: { icon: 'hh' }, groups: { all: ['icon'] }, variants: {} });\nsv({ extend: A, slots: { label: 'dd' }, variants: { size: { sm: 'ii' } }, compoundSlots: [{ slots: ['all', 'icon'], size: 'sm', class: 'cc' }] });",
+	// A group the config adds slots to keeps the ones it inherits.
+	IMPORT +
+		"const A = sv({ slots: { icon: 'hh' }, groups: { all: ['icon'] }, variants: {} });\nsv({ extend: A, slots: { label: 'dd' }, groups: { all: ['label'] }, variants: { size: { sm: 'ii' } }, compoundSlots: [{ slots: ['all', 'icon', 'label'], size: 'sm', class: 'cc' }] });",
 	// A compound's `preset` matches the values the preset sets, so it never
 	// applies with another value of the variant it sets.
 	IMPORT +
@@ -242,6 +249,14 @@ export const NO_CONFLICTING_DUP_VALID = [
 ];
 
 export const NO_CONFLICTING_DUP_INVALID = [
+	{
+		// An inherited group a compound slot names reaches the parent's slot,
+		// and only the config's own class is reported.
+		code:
+			IMPORT +
+			"const A = sv({ slots: { icon: 'hh' }, groups: { all: ['icon'] }, variants: {} });\nsv({ extend: A, variants: { size: { sm: 'ii' } }, compoundSlots: [{ slots: ['all'], size: 'sm', class: 'hh' }] });",
+		errors: [dup('hh', 'icon')]
+	},
 	{
 		// A compound whose preset sets the value it shares a class with.
 		code:
