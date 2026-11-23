@@ -112,6 +112,9 @@ try {
 			'// @ts-expect-error a preset setting size to undefined leaves it required',
 			"void button({ preset: 'empty' });",
 			"void button({ preset: 'empty', size: 'sm' });",
+			"const preset = sv({ variants: { size: { sm: 'sm' } }, requiredVariants: ['size'], presets: { small: { size: 'sm' } } });",
+			'const kept = sv({ extend: preset, variants: {}, presets: { small: { size: undefined } } });',
+			"void kept({ preset: 'small' });",
 			''
 		].join('\n')
 	);

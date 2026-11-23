@@ -308,12 +308,13 @@ type PresetProp<P> = P extends undefined
 	? unknown
 	: { preset?: StringKeyof<P> | undefined };
 
-// The keys of `T` holding a value: an `undefined` one sets nothing, even
+// The entries of `T` holding a value: an `undefined` one sets nothing, even
 // where `exactOptionalPropertyTypes` is off and lets it be written.
-type SetKeys<T> = Exclude<
-	{ [K in keyof T]: undefined extends T[K] ? never : K }[keyof T],
-	undefined
->;
+type SetValues<T> = {
+	[K in keyof T as undefined extends T[K] ? never : K]: T[K];
+};
+
+type SetKeys<T> = keyof SetValues<T>;
 
 // The props of a call naming preset `K`: the required variants it doesn't set
 // still have to be passed.
@@ -655,13 +656,13 @@ type MergeVariantValues<A, B> = MergeRecords<
 >;
 
 // Keys on one side keep their value; keys on both are merged as variant
-// values, or as preset values with the own ones winning.
+// values, or as preset values with the own ones that hold a value winning.
 type MergeRecords<A, B, T extends 'variant' | 'preset'> = {
 	[K in keyof A | keyof B]: K extends keyof A
 		? K extends keyof B
 			? T extends 'variant'
 				? MergeVariantValue<A[K], B[K]>
-				: Prettify<Omit<A[K], keyof B[K]> & B[K]>
+				: Prettify<Omit<A[K], keyof SetValues<B[K]>> & SetValues<B[K]>>
 			: A[K]
 		: K extends keyof B
 			? B[K]

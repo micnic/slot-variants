@@ -126,8 +126,13 @@ const mergeSlotFnProps = (
 		addOuterPresetValues(config, mergedProps, outerProps.preset);
 
 		// An unknown preset sets nothing, and the run throws for it
-		for (const key of keys(getOwn(config.presets, preset) ?? {})) {
-			mergedProps[key] = undefined;
+		const presetValues = getOwn(config.presets, preset) ?? {};
+
+		// A value left `undefined` sets nothing, so its outer prop is kept
+		for (const [key, value] of entries(presetValues)) {
+			if (value !== undefined) {
+				mergedProps[key] = undefined;
+			}
 		}
 	}
 

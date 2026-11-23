@@ -199,6 +199,31 @@ t.test('multiSlots slot function preset keeps the outer preset values', (t) => {
 	t.end();
 });
 
+t.test('multiSlots slot function preset skips its undefined values', (t) => {
+	const card = sv({
+		slots: { header: 'font-bold' },
+		variants: {
+			tone: { danger: { header: 'text-red-600' } },
+			size: { lg: { header: 'text-lg' } }
+		},
+		requiredVariants: ['tone'],
+		// An explicit undefined preset value is only reachable from untyped
+		// code, as with `exactOptionalPropertyTypes` off.
+		// @ts-expect-error explicit undefined preset value
+		presets: { large: { tone: undefined, size: 'lg' } },
+		multiSlots: ['header']
+	});
+
+	t.equal(
+		// @ts-expect-error - the rejected presets leave no preset to name
+		card({ tone: 'danger' }).header({ preset: 'large' }),
+		'font-bold text-red-600 text-lg',
+		'an undefined preset value keeps the outer prop'
+	);
+
+	t.end();
+});
+
 t.test('multiSlots slot function throws for an unknown preset', (t) => {
 	const card = sv({
 		slots: {
