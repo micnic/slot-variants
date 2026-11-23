@@ -272,19 +272,3 @@ export const readTypedProps = (
 
 		return props;
 	});
-
-/** The props a type-based `defineProps<…>()` declares with a `boolean`. */
-export const readTypedBooleanProps = (
-	call: CallExpression,
-	program: Program
-): string[] => {
-	const names: string[] = [];
-
-	for (const [name, isBoolean] of readTypedProps(call, program)) {
-		if (isBoolean) {
-			names.push(name);
-		}
-	}
-
-	return names;
-};

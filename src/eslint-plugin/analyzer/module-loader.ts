@@ -275,12 +275,9 @@ export const getModuleContext = (
 	});
 };
 
-// The `createSV()` factory `node` is, read through `const` bindings and
-// type-only wrappers, or null for anything else.
-const readFactory = (
-	node: Node,
-	ctx: StyledContext
-): ImportedFactory | null => {
+// The step for the `createSV()` factory `node` is, read through `const`
+// bindings and type-only wrappers, or null for anything else.
+const readFactoryStep = (node: Node, ctx: StyledContext): ExportStep | null => {
 	const call = ctx.resolve(node);
 
 	if (
@@ -290,7 +287,7 @@ const readFactory = (
 		return null;
 	}
 
-	return readFactoryDefaults(call, ctx);
+	return { kind: 'factory', factory: readFactoryDefaults(call, ctx) };
 };
 
 // The factory a module-scope `const` holds, or null when it holds none.
@@ -310,13 +307,7 @@ const readFactoryBinding = (
 		return null;
 	}
 
-	const factory = readFactory(init, ctx);
-
-	if (factory === null) {
-		return null;
-	}
-
-	return { kind: 'factory', factory };
+	return readFactoryStep(init, ctx);
 };
 
 // The step for a component that forwards its class prop, or null when it
@@ -391,13 +382,7 @@ const readDefaultFactory = ({ ast, ctx }: ModuleScan): ExportStep | null => {
 			return null;
 		}
 
-		const factory = readFactory(declaration, ctx);
-
-		if (factory === null) {
-			return null;
-		}
-
-		return { kind: 'factory', factory };
+		return readFactoryStep(declaration, ctx);
 	}
 
 	return null;
@@ -413,7 +398,7 @@ const analyzeScan = (scan: ModuleScan): ModuleAnalysis => {
 	}
 
 	for (const [name, targets] of named) {
-		const steps: ExportStep[] = [];
+		const steps = getOrCreate(exports, name, () => []);
 
 		for (const target of targets) {
 			const step = toExportStep(target, scan);
@@ -422,8 +407,6 @@ const analyzeScan = (scan: ModuleScan): ModuleAnalysis => {
 				steps.push(step);
 			}
 		}
-
-		exports.set(name, [...(exports.get(name) ?? []), ...steps]);
 	}
 
 	return {

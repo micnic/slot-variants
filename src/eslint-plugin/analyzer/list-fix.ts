@@ -1,7 +1,7 @@
 import type { AST, Rule, SourceCode } from 'eslint';
 import type { Node } from 'estree';
 
-export type ListItems = ReadonlyArray<Node | null>;
+type ListItems = ReadonlyArray<Node | null>;
 
 // Built by `makeListFix` for a call/array list element, or supplied directly
 // for a config property.
@@ -108,7 +108,7 @@ const hasCommentInRange = (
 	});
 
 // Removes `range` unless a comment would go with it.
-export const removeRangeKeepingComments = (
+const removeRangeKeepingComments = (
 	fixer: Rule.RuleFixer,
 	sourceCode: SourceCode,
 	range: AST.Range

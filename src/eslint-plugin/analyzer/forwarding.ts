@@ -56,7 +56,11 @@ import {
 	pathAt
 } from './restyle.ts';
 import { getStaticStringText } from './literals.ts';
-import { isDefinedValue, isUndefinedValue } from './static-predicates.ts';
+import {
+	isDefinedValue,
+	isLiteralTrue,
+	isUndefinedValue
+} from './static-predicates.ts';
 import {
 	readOverride,
 	literalStyles,
@@ -69,7 +73,7 @@ import {
 } from './styled-values.ts';
 import { forEachStringLiteralElement } from './token-extraction.ts';
 import { createTrackedCallResolver } from './tracked-calls.ts';
-import { readTypedBooleanProps, readTypedProps } from './typed-props.ts';
+import { readTypedProps } from './typed-props.ts';
 
 /**
  * A part a component merges its `class` prop into, as an element passing it
@@ -216,8 +220,6 @@ const PROPS_SOURCES = new Set([
 
 const EMPTY_VARIANT_PROPS: ReadonlyMap<string, string> = new Map();
 
-const EMPTY_UNREAD_PROPS: ReadonlyMap<string, Node> = new Map();
-
 const NO_SITE_PROPS: SiteProps = { values: new Map(), open: false };
 
 const NO_DEFAULTS: ReadonlyMap<string, Node> = new Map();
@@ -232,11 +234,8 @@ const NO_SPREAD_OMITS: SpreadOmits = {
 // The path of a part outside any branch node.
 const ROOT_PATH: BranchPath = new Map();
 
-// The class attribute a Vue component's undeclared attributes carry to its
-// root element.
-const FALLTHROUGH_PROPS: ReadonlySet<string> = new Set(['class']);
-
-// The one class attribute Vue merges from a `v-bind` object.
+// Vue's one class attribute: the one a component's undeclared attributes carry
+// to its root element, and the one it merges from a `v-bind` object.
 const VUE_CLASS: ReadonlySet<string> = new Set(['class']);
 
 // What Vue casts a `Boolean` prop the element leaves out to.
@@ -244,6 +243,18 @@ const ABSENT_BOOLEAN: Node = { type: 'Literal', value: false, raw: 'false' };
 
 // What a JSX or Svelte attribute written without a value passes.
 const TRUE_VALUE: ReadonlySet<string> = new Set(['true']);
+
+// The props object of a component as a whole, with the defaults it gives.
+const wholeProps = (
+	component: Component,
+	defaults: ReadonlyMap<string, Node>
+): PropsObject => ({
+	component,
+	defaults,
+	omitted: NO_PROPS,
+	picked: null,
+	forced: NO_DEFAULTS
+});
 
 const isBooleanConstructor = (node: Node): boolean =>
 	node.type === 'Identifier' && node.name === 'Boolean';
@@ -814,13 +825,7 @@ export const createForwardingScan = (
 		}
 
 		const declared = sourceCode.getDeclaredVariables(fn);
-		const props: PropsObject = {
-			component: fn,
-			defaults: NO_DEFAULTS,
-			omitted: NO_PROPS,
-			picked: null,
-			forced: NO_DEFAULTS
-		};
+		const props = wholeProps(fn, NO_DEFAULTS);
 
 		if (param.type === 'ObjectPattern') {
 			registerBindings(declared, param, props);
@@ -887,8 +892,11 @@ export const createForwardingScan = (
 
 		const result = new Map(defaults);
 
-		for (const prop of readTypedBooleanProps(declaration, sourceCode.ast)) {
-			if (!result.has(prop)) {
+		for (const [prop, isBoolean] of readTypedProps(
+			declaration,
+			sourceCode.ast
+		)) {
+			if (isBoolean && !result.has(prop)) {
 				result.set(prop, ABSENT_BOOLEAN);
 			}
 		}
@@ -994,13 +1002,10 @@ export const createForwardingScan = (
 		const { callee } = init;
 
 		if (callee.type === 'Identifier' && PROPS_SOURCES.has(callee.name)) {
-			return {
-				component: sourceCode.ast,
-				defaults: readSourceDefaults(callee.name, init),
-				omitted: NO_PROPS,
-				picked: null,
-				forced: NO_DEFAULTS
-			};
+			return wholeProps(
+				sourceCode.ast,
+				readSourceDefaults(callee.name, init)
+			);
 		}
 
 		const found = findPropsArgument(init.arguments);
@@ -1234,13 +1239,7 @@ export const createForwardingScan = (
 			return null;
 		}
 
-		return {
-			component: sourceCode.ast,
-			defaults: NO_DEFAULTS,
-			omitted: NO_PROPS,
-			picked: null,
-			forced: NO_DEFAULTS
-		};
+		return wholeProps(sourceCode.ast, NO_DEFAULTS);
 	};
 
 	// `props.className` — a prop read off a props object, or off `$attrs` in
@@ -1449,7 +1448,8 @@ export const createForwardingScan = (
 	 */
 	const getForwardTarget = (
 		part: StyledClasses,
-		component: Component
+		component: Component,
+		spreadProps: ReadonlySet<string> | null
 	): ForwardTarget => {
 		const { passed, spreads } = part.inputs;
 		const matchers = new Map(part.defaultMatchers);
@@ -1464,12 +1464,12 @@ export const createForwardingScan = (
 		return {
 			...part,
 			matchers,
-			unreadProps: EMPTY_UNREAD_PROPS,
+			unreadProps: NO_DEFAULTS,
 			...readVariantProps(part.unreadProps, component, matchers),
 			presetProp,
 			forwardsProps,
 			...(omits ?? NO_SPREAD_OMITS),
-			spreadProps: null
+			spreadProps
 		};
 	};
 
@@ -1477,11 +1477,13 @@ export const createForwardingScan = (
 	// position: the parts outside the other sides of its branch nodes. The
 	// literals inside a `cn()` list count too — `cn('p-2', className)` applies
 	// `p-2` just as a config would — and with `mergesAll` every one does, for
-	// a class merged onto the whole position.
+	// a class merged onto the whole position. Each target reaches the class
+	// through `spreadProps`, when through a spread.
 	const getForwardTargets = (
 		parts: ClassParts,
 		path: BranchPath,
 		component: Component,
+		spreadProps: ReadonlySet<string> | null,
 		mergesAll = false
 	): ForwardTarget[] => {
 		const { paths } = parts;
@@ -1490,7 +1492,7 @@ export const createForwardingScan = (
 				(_part, index) =>
 					!areExclusivePaths(path, pathAt(paths.styled, index))
 			)
-			.map((part) => getForwardTarget(part, component));
+			.map((part) => getForwardTarget(part, component, spreadProps));
 		const literals = parts.literals.filter(
 			(entry, index) =>
 				(mergesAll || parts.merged.has(entry)) &&
@@ -1507,12 +1509,30 @@ export const createForwardingScan = (
 					presetProp: null,
 					forwardsProps: false,
 					...NO_SPREAD_OMITS,
-					spreadProps: null
+					spreadProps
 				}
 			];
 		}
 
 		return styled;
+	};
+
+	// Adds the targets a component forwards `prop` into to those kept for it.
+	const addForwarded = (
+		component: Component,
+		prop: string | null,
+		targets: ReadonlyArray<ForwardTarget>
+	) => {
+		if (targets.length === 0) {
+			return;
+		}
+
+		const kept = forwarded.get(component);
+
+		forwarded.set(component, {
+			prop,
+			targets: [...(kept?.targets ?? []), ...targets]
+		});
 	};
 
 	// Every position a component forwards its prop into is kept, as any of
@@ -1538,20 +1558,16 @@ export const createForwardingScan = (
 			return;
 		}
 
-		const path = pathAt(parts.paths.dynamic, index);
-		const targets = getForwardTargets(parts, path, read.component);
-
-		if (targets.length === 0) {
-			return;
-		}
-
-		forwarded.set(read.component, {
+		addForwarded(
+			read.component,
 			prop,
-			targets: [
-				...(kept?.targets ?? []),
-				...targets.map((target) => ({ ...target, spreadProps }))
-			]
-		});
+			getForwardTargets(
+				parts,
+				pathAt(parts.paths.dynamic, index),
+				read.component,
+				spreadProps
+			)
+		);
 	};
 
 	const trackForwarding = (parts: ClassParts) => {
@@ -1564,24 +1580,12 @@ export const createForwardingScan = (
 	// element, merged with every class written there.
 	const trackFallthrough = (parts: ClassParts) => {
 		const component = sourceCode.ast;
-		const targets = getForwardTargets(parts, ROOT_PATH, component, true);
 
-		if (targets.length === 0) {
-			return;
-		}
-
-		const kept = forwarded.get(component);
-
-		forwarded.set(component, {
-			prop: kept?.prop ?? null,
-			targets: [
-				...(kept?.targets ?? []),
-				...targets.map((target) => ({
-					...target,
-					spreadProps: FALLTHROUGH_PROPS
-				}))
-			]
-		});
+		addForwarded(
+			component,
+			forwarded.get(component)?.prop ?? null,
+			getForwardTargets(parts, ROOT_PATH, component, VUE_CLASS, true)
+		);
 	};
 
 	// Whether a runtime props declaration names `class`: in an array of
@@ -1614,7 +1618,7 @@ export const createForwardingScan = (
 		if (inherit !== undefined) {
 			const value = ctx.resolve(inherit);
 
-			inheritsAttrs = value.type === 'Literal' && value.value === true;
+			inheritsAttrs = isLiteralTrue(value);
 		}
 
 		if (props !== undefined && declaresClassProp(props)) {
@@ -1709,13 +1713,7 @@ export const createForwardingScan = (
 			}
 		}
 
-		templateProps = {
-			component: sourceCode.ast,
-			defaults,
-			omitted: NO_PROPS,
-			picked: null,
-			forced: NO_DEFAULTS
-		};
+		templateProps = wholeProps(sourceCode.ast, defaults);
 	};
 
 	// A `cn()` (or config-less `sv()`) call is a class list in its own right,
@@ -1806,16 +1804,8 @@ export const createForwardingScan = (
 		variant: string,
 		value: Node
 	) => {
-		if (isUndefinedValue(ctx.resolve(value))) {
-			return;
-		}
-
-		const values = readVariantValue(value, ctx);
-
-		if (values === null) {
-			matchers.delete(variant);
-		} else {
-			matchers.set(variant, values);
+		if (!isUndefinedValue(ctx.resolve(value))) {
+			setSiteVariant(matchers, variant, readVariantValue(value, ctx));
 		}
 	};
 

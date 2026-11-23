@@ -7,7 +7,7 @@ import type {
 	Property,
 	SpreadElement
 } from 'estree';
-import { type CallMatch, isLastArgument } from '../analyzer/call-matching.ts';
+import { isLastArgument } from '../analyzer/call-matching.ts';
 import {
 	CONFIG_KEY_ORDER,
 	docsUrl,
@@ -19,7 +19,7 @@ import { getProperties } from '../analyzer/properties.ts';
 import { isStaticStringNode } from '../analyzer/static-predicates.ts';
 import {
 	getFactoryDefaults,
-	type StyledContext
+	mayInheritKey
 } from '../analyzer/styled-values.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
 
@@ -36,6 +36,9 @@ type ReorderFix = (fixer: Rule.RuleFixer) => Rule.Fix;
 
 type BaseStyle = 'field' | 'separateArg' | 'slotsBase';
 
+// A base written as a property: the config's `base`, or `slots.base`.
+type PropertyBaseStyle = 'field' | 'slotsBase';
+
 // The three places base classes can live. `node` is what a mismatch is
 // reported on and `value` holds the classes; a property source also carries the
 // object it sits in (the config, or the resolved `slots` object) so a fix can
@@ -43,7 +46,7 @@ type BaseStyle = 'field' | 'separateArg' | 'slotsBase';
 type BaseSource =
 	| { style: 'separateArg'; node: Expression | SpreadElement; value: Node }
 	| {
-			style: 'field' | 'slotsBase';
+			style: PropertyBaseStyle;
 			node: Property;
 			value: Node;
 			container: ObjectExpression;
@@ -194,9 +197,9 @@ const checkKeyOrder = (
 	}
 };
 
-const findProperty = (obj: ObjectExpression, key: string): Property | null => {
+const findBaseProperty = (obj: ObjectExpression): Property | null => {
 	for (const prop of obj.properties) {
-		if (prop.type === 'Property' && getKeyName(prop) === key) {
+		if (prop.type === 'Property' && getKeyName(prop) === 'base') {
 			return prop;
 		}
 	}
@@ -261,14 +264,22 @@ const touchesSpreadSlots = (
 	return isTouched && hasSpreadProperty(slotsObj);
 };
 
-// Whether moving the base can change what the call applies: a spread in the
-// config may set `base` or `slots` over or under the moved one, and a factory
-// `base` is replaced by a config `base` but joined by a leading argument or a
-// `slots.base`.
-const mayChangeBase = (
-	configNode: ObjectExpression,
-	inheritsBase: boolean
-): boolean => inheritsBase || hasSpreadProperty(configNode);
+// Adds the `base` property of `container`, if it has one, as a base source.
+const addBaseProperty = (
+	sources: BaseSource[],
+	style: PropertyBaseStyle,
+	container: ObjectExpression | null
+) => {
+	if (container === null) {
+		return;
+	}
+
+	const node = findBaseProperty(container);
+
+	if (node !== null) {
+		sources.push({ style, node, value: node.value, container });
+	}
+};
 
 const detectBaseSources = (
 	configNode: ObjectExpression,
@@ -282,29 +293,8 @@ const detectBaseSources = (
 		sources.push({ style: 'separateArg', node: arg, value: arg });
 	}
 
-	const baseProp = findProperty(configNode, 'base');
-
-	if (baseProp) {
-		sources.push({
-			style: 'field',
-			node: baseProp,
-			value: baseProp.value,
-			container: configNode
-		});
-	}
-
-	if (slotsObj) {
-		const slotsBaseProp = findProperty(slotsObj, 'base');
-
-		if (slotsBaseProp) {
-			sources.push({
-				style: 'slotsBase',
-				node: slotsBaseProp,
-				value: slotsBaseProp.value,
-				container: slotsObj
-			});
-		}
-	}
+	addBaseProperty(sources, 'field', configNode);
+	addBaseProperty(sources, 'slotsBase', slotsObj);
 
 	return sources;
 };
@@ -493,17 +483,6 @@ const canFixBaseStyle = (
 	);
 };
 
-// Whether the call's `createSV()` factory may give it a `base`.
-const inheritsFactoryBase = (
-	node: CallExpression,
-	call: CallMatch,
-	ctx: StyledContext
-): boolean => {
-	const defaults = getFactoryDefaults(node, call, ctx);
-
-	return defaults === null || defaults.has('base');
-};
-
 const checkBaseStyle = (
 	context: Rule.RuleContext,
 	call: CallExpression,
@@ -546,7 +525,12 @@ const checkBaseStyle = (
 	if (
 		sources.length === 1 &&
 		onlySource &&
-		!mayChangeBase(configNode, inheritsBase) &&
+		// Moving the base can change what the call applies: a spread in the
+		// config may set `base` or `slots` over or under the moved one, and a
+		// factory `base` is replaced by a config `base` but joined by a
+		// leading argument or a `slots.base`.
+		!inheritsBase &&
+		!hasSpreadProperty(configNode) &&
 		canFixBaseStyle(
 			context.sourceCode,
 			call,
@@ -628,7 +612,8 @@ export const svConfigStyle: Rule.RuleModule = {
 				call.args,
 				baseStyle,
 				call.isFactoryConfig,
-				inheritsFactoryBase(node, call, ctx)
+				// The call's `createSV()` factory may give it a `base`.
+				mayInheritKey(getFactoryDefaults(node, call, ctx), 'base')
 			);
 		});
 	}

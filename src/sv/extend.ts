@@ -1,10 +1,16 @@
 import { cn } from '../cn.ts';
-import { getOwn, isPlainObject, resolveNames } from './compile.ts';
+import {
+	getOwn,
+	isPlainObject,
+	resolveNames,
+	type NameList
+} from './compile.ts';
 import {
 	type AnyFn,
 	type ConfigClassValue,
 	type ExtendInput,
-	type RawConfig
+	type RawConfig,
+	type RuntimeGroups
 } from './types.ts';
 
 type RawVariants = NonNullable<RawConfig['variants']>;
@@ -18,10 +24,6 @@ type RawVariantValue = RawVariantRecord[string];
 type RawSlotRecord = Exclude<RawVariantValue, ConfigClassValue>;
 
 type MergeValue<T> = (inherited: T, own: T) => T;
-
-type NameList = RawConfig['requiredVariants'] | RawConfig['multiSlots'];
-
-type RawGroups = NonNullable<RawConfig['groups']>;
 
 // Anything a layer holds, down to its class names and option values.
 type LayerValue =
@@ -133,7 +135,7 @@ const toSlotRecord = (value: RawVariantValue): RawSlotRecord => {
 };
 
 // The slots a slot record key reaches: the group's slots, or the slot itself.
-const getTargets = (groups: RawGroups, key: string): readonly string[] =>
+const getTargets = (groups: RuntimeGroups, key: string): readonly string[] =>
 	getOwn(groups, key) ?? [key];
 
 /**
@@ -143,7 +145,7 @@ const getTargets = (groups: RawGroups, key: string): readonly string[] =>
 const addPerSlot = (
 	into: RawSlotRecord,
 	record: RawSlotRecord,
-	groups: RawGroups
+	groups: RuntimeGroups
 ) => {
 	for (const [key, value] of entries(record)) {
 		for (const slot of getTargets(groups, key)) {
@@ -153,7 +155,10 @@ const addPerSlot = (
 };
 
 // A slot record's classes per slot, in key order.
-const toPerSlot = (record: RawSlotRecord, groups: RawGroups): RawSlotRecord => {
+const toPerSlot = (
+	record: RawSlotRecord,
+	groups: RuntimeGroups
+): RawSlotRecord => {
 	const perSlot: RawSlotRecord = {};
 
 	addPerSlot(perSlot, record, groups);
@@ -169,7 +174,7 @@ const toPerSlot = (record: RawSlotRecord, groups: RawGroups): RawSlotRecord => {
  * own ones, each in their own order, in which case both are joined per slot.
  */
 const mergeVariantValue =
-	(groups: RawGroups): MergeValue<RawVariantValue> =>
+	(groups: RuntimeGroups): MergeValue<RawVariantValue> =>
 	(inherited, own) => {
 		if (!isPlainObject(inherited) && !isPlainObject(own)) {
 			return cn(inherited, own);
@@ -207,7 +212,7 @@ const toVariantRecord = (variant: RawVariant): RawVariantRecord => {
 };
 
 const mergeVariant =
-	(groups: RawGroups): MergeValue<RawVariant> =>
+	(groups: RuntimeGroups): MergeValue<RawVariant> =>
 	(inherited, own) =>
 		mergeRecords(mergeVariantValue(groups))(
 			toVariantRecord(inherited),
@@ -322,7 +327,7 @@ const mergeGroups = (
 const mergeConfigs = (
 	inherited: RawConfig,
 	config: RawConfig,
-	allGroups: RawGroups
+	allGroups: RuntimeGroups
 ): RawConfig => {
 	const own = placeOwnBase(inherited, config);
 	const groups = mergeGroups(inherited.groups, own.groups);
@@ -471,8 +476,8 @@ const resolveMultiSlots = (names: NameList, resolved: RawConfig) => {
 
 	const groups = resolved.groups ?? {};
 
-	return resolveNames(names, getSlotNames(resolved.slots)).flatMap(
-		(name) => getOwn(groups, name) ?? [name]
+	return resolveNames(names, getSlotNames(resolved.slots)).flatMap((name) =>
+		getTargets(groups, name)
 	);
 };
 

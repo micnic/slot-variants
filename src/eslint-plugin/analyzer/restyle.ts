@@ -20,7 +20,6 @@ import {
 	forEachOverrideTarget,
 	getSlotBuckets,
 	type Invocation,
-	pickCallMatchers,
 	readStyledClasses,
 	resolveReactive,
 	resolveTargetSlots,
@@ -35,7 +34,6 @@ import {
 import {
 	areExclusiveMatchers,
 	type Entry,
-	getEntryMatchers,
 	reportEntryList,
 	type VariantMatchers
 } from './token-model.ts';
@@ -372,7 +370,6 @@ export const forEachOverrideParts = (
 	visit: (parts: ClassParts) => void
 ) => {
 	const { styles } = invocation;
-	const callMatchers = pickCallMatchers(invocation);
 
 	forEachOverrideTarget(
 		value,
@@ -383,7 +380,7 @@ export const forEachOverrideParts = (
 			const parts = emptyParts();
 
 			for (const slot of resolveTargetSlots(styles, slotKey)) {
-				parts.styled.push({ styles, slot, ...callMatchers });
+				parts.styled.push({ ...invocation, slot });
 			}
 
 			collectParts(node, ctx, parts);
@@ -395,15 +392,7 @@ export const forEachOverrideParts = (
 // An internal entry counts only when it can render under the variant values
 // fixed at the call site — a `size: 'sm'` call never emits `size.lg`'s classes.
 const canRender = (list: ReadonlyArray<Entry>, matchers: VariantMatchers) =>
-	list.some((entry) => {
-		const entryMatchers = getEntryMatchers(entry);
-
-		if (entryMatchers === null) {
-			return true;
-		}
-
-		return !areExclusiveMatchers(matchers, entryMatchers);
-	});
+	list.some((entry) => !areExclusiveMatchers(matchers, entry.source));
 
 // The slot's own bucket plus every group bucket naming it, flattened to the
 // tokens that can actually reach the slot's output.

@@ -3,7 +3,8 @@ import type {
 	CallExpression,
 	Identifier,
 	ImportDeclaration,
-	Node
+	Node,
+	ObjectExpression
 } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import {
@@ -167,26 +168,17 @@ const matchFactoryCall = (
 	node: CallExpression
 ): CallMatch => {
 	const [defaults] = node.arguments;
+	let config: ObjectExpression | null = null;
 
 	if (defaults) {
 		const resolved = match.ctx.resolve(defaults);
 
 		if (resolved.type === 'ObjectExpression') {
-			return {
-				config: resolved,
-				args: [],
-				isFactoryConfig: true,
-				keepsLastArg: false
-			};
+			config = resolved;
 		}
 	}
 
-	return {
-		config: null,
-		args: [],
-		isFactoryConfig: true,
-		keepsLastArg: false
-	};
+	return { config, args: [], isFactoryConfig: true, keepsLastArg: false };
 };
 
 // The import a call's callee names, through same-file `const` aliases and

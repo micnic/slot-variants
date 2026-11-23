@@ -26,7 +26,6 @@ import {
 import { isStaticTernaryTemplate } from './static-predicates.ts';
 import {
 	baseSource,
-	compoundSource,
 	EMPTY_SLOT_NAMES,
 	type Entry,
 	type Source,
@@ -41,6 +40,12 @@ type TokenExtractionContext = {
 	entries: Entry[];
 	sourceCode: SourceCode;
 };
+
+// Where the tokens of a class string land, and what they render under.
+type TokenSink = Pick<TokenExtractionContext, 'slot' | 'source' | 'entries'>;
+
+// A token sink that also reads the literals' source text.
+type LiteralSink = TokenSink & Pick<TokenExtractionContext, 'sourceCode'>;
 
 export type NodeVisitor = (node: Node) => void;
 
@@ -65,7 +70,7 @@ export const NON_MATCHER_KEYS: ReadonlySet<string> = new Set([
 	'preset'
 ]);
 
-// A preset's keys are all variant names, so none is skipped.
+// The keys `readMatchers` skips by default: none.
 const NO_MATCHER_SKIP: ReadonlySet<string> = new Set();
 
 // A compound entry's `slots` names the slots it targets, not a variant.
@@ -106,9 +111,7 @@ const getTokenRange = (
 const pushTokensFromText = (
 	text: string,
 	offsets: TokenOffsets,
-	slot: string,
-	source: Source,
-	entries: Entry[]
+	{ slot, source, entries }: TokenSink
 ) => {
 	for (const match of text.matchAll(CLASS_TOKEN)) {
 		const token = match[0];
@@ -125,7 +128,11 @@ export const pushBaseTokensFromText = (
 	base: number,
 	entries: Entry[]
 ) => {
-	pushTokensFromText(text, base, 'base', baseSource, entries);
+	pushTokensFromText(text, base, {
+		slot: 'base',
+		source: baseSource,
+		entries
+	});
 };
 
 // The tokens of a string literal or template quasi spanning `range`. Raw text
@@ -135,33 +142,27 @@ const pushLiteralTokens = (
 	raw: string,
 	cooked: string | null | undefined,
 	range: AST.Range,
-	slot: string,
-	source: Source,
-	entries: Entry[]
+	sink: TokenSink
 ) => {
 	if (hasEscape(raw)) {
 		/* c8 ignore next -- static literals and untagged quasis are cooked */
-		pushTokensFromText(cooked ?? raw, range, slot, source, entries);
+		pushTokensFromText(cooked ?? raw, range, sink);
 
 		return;
 	}
 
 	// String/template delimiters are single-char, so start offset + 1 is the
 	// first inner character.
-	pushTokensFromText(raw, range[0] + 1, slot, source, entries);
+	pushTokensFromText(raw, range[0] + 1, sink);
 };
 
 // The tokens of a template's quasis, the classes around its substitutions.
 // Callers make sure no token straddles a substitution. A quasi's text is read
 // from the source rather than its `raw` value, which turns a `\r\n` into a
 // `\n` and would shift every offset after one.
-const pushQuasiTokens = (
-	node: TemplateLiteral,
-	slot: string,
-	source: Source,
-	entries: Entry[],
-	sourceCode: SourceCode
-) => {
+const pushQuasiTokens = (node: TemplateLiteral, sink: LiteralSink) => {
+	const { sourceCode } = sink;
+
 	for (const quasi of node.quasis) {
 		const range = sourceCode.getRange(quasi);
 		// A quasi closes with the template's backtick, or with `${`.
@@ -175,9 +176,7 @@ const pushQuasiTokens = (
 			sourceCode.text.slice(range[0] + 1, range[1] - closing),
 			quasi.value.cooked,
 			range,
-			slot,
-			source,
-			entries
+			sink
 		);
 	}
 };
@@ -189,25 +188,27 @@ export const pushBaseQuasiTokens = (
 	entries: Entry[],
 	sourceCode: SourceCode
 ) => {
-	pushQuasiTokens(node, 'base', baseSource, entries, sourceCode);
+	pushQuasiTokens(node, {
+		slot: 'base',
+		source: baseSource,
+		entries,
+		sourceCode
+	});
 };
 
 // `text` is the literal's static (cooked) value, already read by the caller.
 const pushStringLiteralTokens = (
 	node: Node,
 	text: string,
-	slot: string,
-	source: Source,
-	entries: Entry[],
-	sourceCode: SourceCode
+	sink: LiteralSink
 ) => {
+	const { sourceCode } = sink;
+
 	pushLiteralTokens(
 		getInnerText(sourceCode, node),
 		text,
 		sourceCode.getRange(node),
-		slot,
-		source,
-		entries
+		sink
 	);
 };
 
@@ -223,53 +224,44 @@ const collectBranchLeaves = (node: Node, leaves: Node[]) => {
 	leaves.push(node);
 };
 
-// Keyed on the condition's source text so the same condition spelled twice
-// resolves to one matcher. Leading `!` flips the branch instead of the key,
-// so `cond && a` and `!cond && b` land on opposite values of one key.
-const conditionMatcher = (
+// `source` under the branch of `test` that renders, its truthy one unless
+// `truthy` is false. Keyed on the condition's source text so the same
+// condition spelled twice resolves to one matcher. Leading `!` flips the branch
+// instead of the key, so `cond && a` and `!cond && b` land on opposite values
+// of one key.
+const withCondition = (
+	source: Source,
 	test: Node,
-	sourceCode: SourceCode
-): readonly [string, boolean] => {
+	sourceCode: SourceCode,
+	truthy = true
+): Source => {
 	let condition = test;
-	let truthy = true;
+	let holds = truthy;
 
 	while (condition.type === 'UnaryExpression' && condition.operator === '!') {
 		condition = condition.argument;
-		truthy = !truthy;
+		holds = !holds;
 	}
 
-	return [`cond:${sourceCode.getText(condition)}`, truthy];
-};
+	let branch = 'falsy';
 
-const branchName = (truthy: boolean) => {
-	if (truthy) {
-		return 'truthy';
+	if (holds) {
+		branch = 'truthy';
 	}
 
-	return 'falsy';
+	return withMatcher(source, `cond:${sourceCode.getText(condition)}`, branch);
 };
 
 // A clsx-style record key is itself a class string, appended verbatim when its
 // (runtime) value is truthy — so a multi-token key like `'px-2 py-1'`
 // contributes each of its tokens. String-literal keys are tokenized like any
 // class string; identifier/numeric keys are a single, space-free token.
-const pushRecordKeyTokens = (
-	prop: Property,
-	source: Source,
-	context: TokenExtractionContext
-) => {
-	const { slot, entries, sourceCode } = context;
+const pushRecordKeyTokens = (prop: Property, sink: LiteralSink) => {
+	const { slot, source, entries, sourceCode } = sink;
 	const { key } = prop;
 
 	if (key.type === 'Literal' && typeof key.value === 'string') {
-		pushStringLiteralTokens(
-			key,
-			key.value,
-			slot,
-			source,
-			entries,
-			sourceCode
-		);
+		pushStringLiteralTokens(key, key.value, sink);
 		return;
 	}
 
@@ -298,10 +290,14 @@ const extractRecordTokens = (
 			continue;
 		}
 
-		const [key, truthy] = conditionMatcher(prop.value, context.sourceCode);
-		const keySource = withMatcher(context.source, key, branchName(truthy));
-
-		pushRecordKeyTokens(prop, keySource, context);
+		pushRecordKeyTokens(prop, {
+			...context,
+			source: withCondition(
+				context.source,
+				prop.value,
+				context.sourceCode
+			)
+		});
 	}
 };
 
@@ -316,19 +312,22 @@ const extractConditionalTokens = (
 		consequent.type !== 'ConditionalExpression' &&
 		alternate.type !== 'ConditionalExpression'
 	) {
-		const [key, truthy] = conditionMatcher(node.test, sourceCode);
-		const branches: ReadonlyArray<readonly [Node, string]> = [
-			[consequent, branchName(truthy)],
-			[alternate, branchName(!truthy)]
-		];
-
-		for (const [leaf, branch] of branches) {
-			extractTokens(
-				leaf,
-				{ ...context, source: withMatcher(source, key, branch) },
-				true
-			);
-		}
+		extractTokens(
+			consequent,
+			{
+				...context,
+				source: withCondition(source, node.test, sourceCode)
+			},
+			true
+		);
+		extractTokens(
+			alternate,
+			{
+				...context,
+				source: withCondition(source, node.test, sourceCode, false)
+			},
+			true
+		);
 		return;
 	}
 
@@ -353,9 +352,7 @@ const extractTernaryTemplateTokens = (
 	node: TemplateLiteral,
 	context: TokenExtractionContext
 ) => {
-	const { slot, source, entries, sourceCode } = context;
-
-	pushQuasiTokens(node, slot, source, entries, sourceCode);
+	pushQuasiTokens(node, context);
 
 	for (const expression of node.expressions) {
 		extractTokens(expression, context, true);
@@ -375,13 +372,11 @@ const extractCnStyleTokens = (
 	// truthy-branch matcher so a complementary `!cond && …` elsewhere resolves
 	// as mutually exclusive.
 	if (node.type === 'LogicalExpression' && node.operator === '&&') {
-		const [key, truthy] = conditionMatcher(node.left, sourceCode);
-
 		extractTokens(
 			node.right,
 			{
 				...context,
-				source: withMatcher(source, key, branchName(truthy))
+				source: withCondition(source, node.left, sourceCode)
 			},
 			true
 		);
@@ -425,14 +420,14 @@ export const extractTokens = (
 	context: TokenExtractionContext,
 	cnStyle = false
 ) => {
-	const { slot, source, slotNames, entries, sourceCode } = context;
+	const { slotNames, sourceCode } = context;
 
 	node = resolveStaticValue(node, sourceCode);
 
 	const text = getStaticStringText(node);
 
 	if (text !== null) {
-		pushStringLiteralTokens(node, text, slot, source, entries, sourceCode);
+		pushStringLiteralTokens(node, text, context);
 		return;
 	}
 
@@ -706,8 +701,8 @@ export const getStaticMatcherValues = (
 
 export const readMatchers = (
 	properties: ReadonlyMap<string, Node>,
-	skip: ReadonlySet<string>,
-	sourceCode: SourceCode
+	sourceCode: SourceCode,
+	skip: ReadonlySet<string> = NO_MATCHER_SKIP
 ): Map<string, ReadonlySet<string>> => {
 	const matchers = new Map<string, ReadonlySet<string>>();
 
@@ -754,7 +749,7 @@ const readPresetMatchers = (
 		return new Map();
 	}
 
-	const matchers = readMatchers(values, NO_MATCHER_SKIP, sourceCode);
+	const matchers = readMatchers(values, sourceCode);
 
 	// A value that can't be read may be any, so it proves nothing
 	if (matchers.size !== values.size) {
@@ -769,24 +764,20 @@ const readPresetMatchers = (
 // Its `preset` stands for the values it sets, which the compound's own
 // matchers override, as in `sv()`. Only fully read matchers count; any other
 // is skipped, which can only under-suppress, never wrongly suppress. With no
-// readable matcher left, falls back to the never-exclusive compound source.
+// readable matcher left, it is never exclusive, like the base.
 const getCompoundSource = (
 	compound: ReadonlyMap<string, Node>,
 	presets: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
 ): Source => {
 	const matchers = readPresetMatchers(compound, presets, sourceCode);
-	const own = readMatchers(compound, COMPOUND_NON_MATCHER_KEYS, sourceCode);
+	const own = readMatchers(compound, sourceCode, COMPOUND_NON_MATCHER_KEYS);
 
 	for (const [key, values] of own) {
 		matchers.set(key, values);
 	}
 
-	if (matchers.size === 0) {
-		return compoundSource;
-	}
-
-	return { kind: 'variant', matchers };
+	return matchers;
 };
 
 // The slots a `compoundSlots` entry targets, each once: `sv()` expands a group

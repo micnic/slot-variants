@@ -29,7 +29,7 @@ import {
 } from './properties.ts';
 import {
 	getCallStyles,
-	getOverrideValue,
+	readOverride,
 	getSlotBuckets,
 	resolveInvocation,
 	type StyledContext
@@ -51,29 +51,13 @@ import {
 } from './token-model.ts';
 
 type ConflictGroup = {
-	tokens: Set<string>;
 	entries: Entry[];
 	variantPrefix: string;
 	overlap: string | null;
 };
 
-type GroupMembers = Pick<ConflictGroup, 'tokens' | 'entries'>;
-
 // Overlap node -> that node's own group, for every node in one component.
 type OverlapComponent = Map<string, ConflictGroup>;
-
-// What reporting reads from a group: a merged overlap component keeps its
-// nodes' own groups, as its exclusivity is checked edge by edge.
-type ReportedGroup = GroupMembers & { component: OverlapComponent | null };
-
-// Adds `source`'s tokens and entries to `target`.
-const absorbGroup = (target: GroupMembers, source: GroupMembers) => {
-	for (const token of source.tokens) {
-		target.tokens.add(token);
-	}
-
-	target.entries.push(...source.entries);
-};
 
 const groupEntriesByConflictKey = (
 	tokenMap: Map<string, Entry[]>,
@@ -89,13 +73,11 @@ const groupEntriesByConflictKey = (
 		}
 
 		const group = getOrCreate(groups, info.key, () => ({
-			tokens: new Set<string>(),
 			entries: [],
 			variantPrefix: info.variantPrefix,
 			overlap: info.overlap
 		}));
 
-		group.tokens.add(token);
 		group.entries.push(...list);
 	}
 
@@ -163,46 +145,22 @@ const pickCollidingInComponent = (component: OverlapComponent): Entry[] => {
 	return colliding;
 };
 
-// The entries of a group that render with another token of it.
-const pickCollidingInGroup = (group: ReportedGroup): Entry[] => {
-	if (group.component === null) {
-		return pickColliding(group.entries, group.entries, areConflicting);
-	}
-
-	return pickCollidingInComponent(group.component);
-};
-
-const buildOverlapConflictGroup = (
-	component: OverlapComponent
-): ReportedGroup => {
-	const merged: ReportedGroup = {
-		tokens: new Set<string>(),
-		entries: [],
-		component
-	};
-
-	for (const group of component.values()) {
-		absorbGroup(merged, group);
-	}
-
-	return merged;
-};
-
 // Merges conflict groups related through a shorthand/longhand overlap. Groups
 // are bucketed per variant prefix and overlap node (distinct conflict keys of
 // one node collapse here — `mt-4` vs `mt-[calc(100%-1px)]` differ only in dash
 // count), then each connected component of present nodes is reported as a
-// single group. Longhand siblings without their shorthand stay separate.
-const mergeOverlappingGroups = (
-	groups: Map<string, ConflictGroup>
-): ReportedGroup[] => {
-	const result: ReportedGroup[] = [];
+// single group. Longhand siblings without their shorthand stay separate. Each
+// merged group yields the entries of it that render with another token of it.
+const collectCollisions = (groups: Map<string, ConflictGroup>): Entry[][] => {
+	const result: Entry[][] = [];
 	// variant prefix -> overlap node -> that node's own (pristine) group.
 	const overlap = new Map<string, Map<string, ConflictGroup>>();
 
 	for (const group of groups.values()) {
 		if (group.overlap === null) {
-			result.push({ ...group, component: null });
+			result.push(
+				pickColliding(group.entries, group.entries, areConflicting)
+			);
 			continue;
 		}
 
@@ -216,7 +174,7 @@ const mergeOverlappingGroups = (
 		// `groups` is discarded after this merge, so the first group seen for a
 		// node is stored as-is and later ones are absorbed into it.
 		if (existing) {
-			absorbGroup(existing, group);
+			existing.entries.push(...group.entries);
 		} else {
 			byNode.set(group.overlap, group);
 		}
@@ -237,7 +195,7 @@ const mergeOverlappingGroups = (
 				visited
 			);
 
-			result.push(buildOverlapConflictGroup(component));
+			result.push(pickCollidingInComponent(component));
 		}
 	}
 
@@ -254,15 +212,9 @@ const reportConflicts = (
 ) => {
 	const groups = groupEntriesByConflictKey(tokenMap, options);
 
-	for (const group of mergeOverlappingGroups(groups)) {
-		if (group.tokens.size < 2) {
-			continue;
-		}
-
-		// Only the entries rendering with another token are reported, and
-		// named: one exclusive with all of them never conflicts.
-		const colliding = pickCollidingInGroup(group);
-
+	// Only the entries rendering with another token are reported, and named:
+	// one exclusive with all of them never conflicts.
+	for (const colliding of collectCollisions(groups)) {
 		if (colliding.length === 0) {
 			continue;
 		}
@@ -363,7 +315,7 @@ export const reportClassPropOverlaps = (
 ) => {
 	// Most calls pass no class prop, which is cheaper to find out than whether
 	// the callee is a variant function.
-	const value = getOverrideValue(node.arguments[0], ctx);
+	const { value } = readOverride(node.arguments[0], ctx);
 
 	if (value === null) {
 		return;

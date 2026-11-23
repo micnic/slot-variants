@@ -211,48 +211,33 @@ const isEmptyArrayLiteral = (node: Node): boolean =>
 	node.type === 'ArrayExpression' && node.elements.length === 0;
 
 // A compound matcher (any entry key other than `class`, `className`, `slots`
-// and `preset`) whose value is a literal empty array could never match, so
-// `sv()` rejects it: the config throws when it's compiled.
-const checkCompoundMatchersForEmpty = (
+// and `preset`) whose value is a literal empty array could never match, and a
+// `compoundSlots` entry whose `slots` is one targets no slot, so `sv()`
+// rejects either: the config throws when it's compiled.
+const checkCompoundEntriesForEmpty = (
 	context: Rule.RuleContext,
-	compoundEntries: ArrayExpression
+	compoundEntries: ArrayExpression,
+	key: string
 ) => {
 	forEachStaticItem(compoundEntries.elements, (element) => {
 		const entry = resolveStaticValue(element, context.sourceCode);
 
-		for (const [key, raw] of getProperties(entry)) {
-			if (COMPOUND_NON_MATCHER_KEYS.has(key)) {
+		for (const [name, raw] of getProperties(entry)) {
+			const value = resolveStaticValue(raw, context.sourceCode);
+
+			if (!isEmptyArrayLiteral(value)) {
 				continue;
 			}
 
-			const value = resolveStaticValue(raw, context.sourceCode);
-
-			if (isEmptyArrayLiteral(value)) {
+			if (name === 'slots' && key === 'compoundSlots') {
+				context.report({ node: raw, messageId: 'emptySlotTargets' });
+			} else if (!COMPOUND_NON_MATCHER_KEYS.has(name)) {
 				context.report({
 					node: raw,
 					messageId: 'emptyMatcher',
-					data: { key }
+					data: { key: name }
 				});
 			}
-		}
-	});
-};
-
-// A `compoundSlots` entry whose `slots` is a literal empty array targets no
-// slot, so `sv()` rejects it: the config throws when it's compiled.
-const checkCompoundSlotTargets = (
-	context: Rule.RuleContext,
-	compoundEntries: ArrayExpression
-) => {
-	forEachStaticItem(compoundEntries.elements, (element) => {
-		const entry = resolveStaticValue(element, context.sourceCode);
-		const raw = getProperties(entry).get('slots');
-
-		if (
-			raw !== undefined &&
-			isEmptyArrayLiteral(resolveStaticValue(raw, context.sourceCode))
-		) {
-			context.report({ node: raw, messageId: 'emptySlotTargets' });
 		}
 	});
 };
@@ -278,11 +263,7 @@ const checkCompoundsForEmpty = (
 		return;
 	}
 
-	checkCompoundMatchersForEmpty(context, value);
-
-	if (key === 'compoundSlots') {
-		checkCompoundSlotTargets(context, value);
-	}
+	checkCompoundEntriesForEmpty(context, value, key);
 
 	forEachCompoundClass(value, context.sourceCode, (rawClass) => {
 		const isRecord = visitRecordForEmpty(

@@ -11,6 +11,10 @@ export type ResolveNode = (node: Node) => Node;
 export const isStaticStringNode = (node: Node): boolean =>
 	getStaticStringText(node) !== null;
 
+// The literal `true`.
+export const isLiteralTrue = (node: Node): boolean =>
+	node.type === 'Literal' && node.value === true;
+
 // `undefined`, or a `void` of a literal (`void 0`), which always evaluates to
 // it.
 export const isUndefinedValue = (node: Node): boolean => {

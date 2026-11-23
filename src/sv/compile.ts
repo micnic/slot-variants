@@ -40,7 +40,7 @@ type VariantLayout = {
 	maxEntries: number;
 };
 
-type NameList = boolean | readonly string[] | undefined;
+export type NameList = boolean | readonly string[] | undefined;
 
 type CompoundEntry = Record<string, unknown> & {
 	preset?: string | undefined;
@@ -340,12 +340,13 @@ const createVariantData = (
 				stride,
 				values: variantValues,
 				defaultValue: getOwn(defaultVariants, variantKey),
-				inherited: variantKey in Object.prototype
+				inherited: variantKey in Object.prototype,
+				required: required.has(variantKey)
 			};
 
 			stride *= valueKeys.length + 1;
 
-			if (required.has(variantKey)) {
+			if (variant.required) {
 				maxEntries *= valueKeys.length;
 			} else {
 				maxEntries *= valueKeys.length + 1;

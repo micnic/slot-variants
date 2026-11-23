@@ -21,7 +21,7 @@ import {
 	getProperties,
 	getStrictProperties
 } from './properties.ts';
-import { isUndefinedValue } from './static-predicates.ts';
+import { isLiteralTrue, isUndefinedValue } from './static-predicates.ts';
 import {
 	COMPOUND_NON_MATCHER_KEYS,
 	extractTokens,
@@ -84,6 +84,7 @@ type SharedTokensTarget = { node: Node } | { createBaseIn: ObjectExpression };
 // rewrite at all: only those inside the config object, never a `const`
 // container declared beside it that other configs may share.
 type SharedTokensScope = {
+	slotNames: ReadonlySet<string>;
 	getTarget: (slot: string) => SharedTokensTarget | null;
 	canEdit: (node: Node) => boolean;
 	// A merging `postProcess` keeps the last of two conflicting classes, so
@@ -112,73 +113,44 @@ const COMPOUND_KINDS: readonly CompoundKind[] = [
 	'compoundSlots'
 ];
 
-const intersectSharedTokensStep = (
-	sharedTokens: SharedEntries,
-	valueMap: TokenEntriesBySlot
-) => {
-	for (const [slot, tokens] of sharedTokens) {
-		const tokenMap = valueMap.get(slot);
-
-		if (!tokenMap) {
-			sharedTokens.delete(slot);
-			continue;
-		}
-
-		for (const [token, entryLists] of tokens) {
-			const entryList = tokenMap.get(token);
-
-			if (entryList) {
-				entryLists.push(entryList);
-			} else {
-				tokens.delete(token);
-			}
-		}
-
-		if (tokens.size === 0) {
-			sharedTokens.delete(slot);
-		}
-	}
-};
-
-const seedSharedTokens = (valueMap: TokenEntriesBySlot): SharedEntries => {
-	const sharedTokens: SharedEntries = new Map();
-
-	for (const [slot, tokenMap] of valueMap) {
-		const tokens = new Map<string, Entry[][]>();
-
-		for (const [token, entryList] of tokenMap) {
-			tokens.set(token, [entryList]);
-		}
-
-		sharedTokens.set(slot, tokens);
-	}
-
-	return sharedTokens;
-};
-
+// The tokens every value puts in a slot, with each value's entries of them.
 const intersectSharedTokensBySlot = (
 	tokensByValue: TokenEntriesBySlot[]
 ): SharedEntries => {
-	const firstValueMap = tokensByValue[0];
+	const sharedTokens: SharedEntries = new Map();
+	const [firstValueMap] = tokensByValue;
 
 	/* c8 ignore next 3 -- callers ensure tokensByValue has 1+ entries */
 	if (!firstValueMap) {
-		return new Map();
+		return sharedTokens;
 	}
 
-	const sharedTokens = seedSharedTokens(firstValueMap);
+	for (const [slot, tokenMap] of firstValueMap) {
+		const tokens = new Map<string, Entry[][]>();
 
-	for (const valueMap of tokensByValue.slice(1)) {
-		intersectSharedTokensStep(sharedTokens, valueMap);
+		for (const token of tokenMap.keys()) {
+			const entryLists: Entry[][] = [];
 
-		if (sharedTokens.size === 0) {
-			break;
+			for (const valueMap of tokensByValue) {
+				const entryList = valueMap.get(slot)?.get(token);
+
+				if (entryList) {
+					entryLists.push(entryList);
+				}
+			}
+
+			if (entryLists.length === tokensByValue.length) {
+				tokens.set(token, entryLists);
+			}
+		}
+
+		if (tokens.size > 0) {
+			sharedTokens.set(slot, tokens);
 		}
 	}
 
 	return sharedTokens;
 };
-
 // Appends to a literal whichever of `tokens` it doesn't already contain,
 // keeping the literal's own tokens first. Null when the literal isn't static
 // or the result can't be re-emitted safely.
@@ -421,7 +393,6 @@ const planSlotFix = (
 	slot: string,
 	sharedTokens: ReadonlySet<string>,
 	valueEntries: ReadonlyMap<string, Node>,
-	slotNames: ReadonlySet<string>,
 	scope: SharedTokensScope
 ): SharedTokensFixPlan | null => {
 	const target = scope.getTarget(slot);
@@ -435,7 +406,7 @@ const planSlotFix = (
 		slot,
 		sharedTokens,
 		valueEntries,
-		slotNames
+		scope.slotNames
 	);
 
 	if (values === null) {
@@ -469,46 +440,6 @@ const planSlotFix = (
 	return plan;
 };
 
-const reportSharedTokensBySlot = (
-	context: Rule.RuleContext,
-	sharedTokens: SharedEntries,
-	variantKey: string,
-	coverage: VariantCoverage,
-	valueEntries: ReadonlyMap<string, Node>,
-	slotNames: ReadonlySet<string>,
-	scope: SharedTokensScope
-) => {
-	for (const [slot, tokens] of sharedTokens) {
-		const plan = planSlotFix(
-			context,
-			slot,
-			new Set(tokens.keys()),
-			valueEntries,
-			slotNames,
-			scope
-		);
-		const remedy = getSharedTokensRemedy(
-			plan,
-			coverage,
-			variantKey,
-			slot,
-			scope
-		);
-
-		for (const [token, entryLists] of tokens) {
-			for (const entryList of entryLists) {
-				reportEntryList(
-					context,
-					entryList,
-					'shared',
-					{ token, variant: variantKey, slot },
-					remedy
-				);
-			}
-		}
-	}
-};
-
 const collectDefaultVariantKeys = (
 	defaultVariants: Node | undefined,
 	sourceCode: SourceCode
@@ -522,18 +453,6 @@ const collectDefaultVariantKeys = (
 	}
 
 	return coverage;
-};
-
-const isLiteralTrue = (node: Node): boolean =>
-	node.type === 'Literal' && node.value === true;
-
-const setAllRequired = (
-	coverage: Map<string, VariantCoverage>,
-	variantsMap: ReadonlyMap<string, Node>
-) => {
-	for (const key of variantsMap.keys()) {
-		coverage.set(key, 'required');
-	}
 };
 
 // How each covered variant is covered. A variant that's both defaulted and
@@ -554,19 +473,17 @@ const collectVariantCoverage = (
 	);
 
 	// Without one of its own, the config takes the factory's.
-	if (!requiredVariants) {
-		if (inheritsRequiresAll) {
-			setAllRequired(coverage, variantsMap);
-		}
+	let requiresAll = inheritsRequiresAll;
 
-		return coverage;
+	if (requiredVariants) {
+		requiresAll = isLiteralTrue(requiredVariants);
 	}
 
 	// `requiredVariants: true` makes every variant required.
-	if (isLiteralTrue(requiredVariants)) {
-		setAllRequired(coverage, variantsMap);
-
-		return coverage;
+	if (requiresAll) {
+		for (const key of variantsMap.keys()) {
+			coverage.set(key, 'required');
+		}
 	}
 
 	forEachStringLiteralElement(requiredVariants, sourceCode, (value) => {
@@ -612,7 +529,6 @@ const analyzeVariantSharedTokens = (
 	variantKey: string,
 	coverage: VariantCoverage,
 	rawValue: Node,
-	slotNames: ReadonlySet<string>,
 	scope: SharedTokensScope
 ) => {
 	const valueEntries = getStrictProperties(
@@ -635,24 +551,42 @@ const analyzeVariantSharedTokens = (
 		return;
 	}
 
-	const { sourceCode } = context;
-	const tokensByValue = collectVariantTokensByValue(
-		valueEntries,
-		slotNames,
-		sourceCode
+	const sharedTokens = intersectSharedTokensBySlot(
+		collectVariantTokensByValue(
+			valueEntries,
+			scope.slotNames,
+			context.sourceCode
+		)
 	);
 
-	const sharedTokens = intersectSharedTokensBySlot(tokensByValue);
+	for (const [slot, tokens] of sharedTokens) {
+		const plan = planSlotFix(
+			context,
+			slot,
+			new Set(tokens.keys()),
+			valueEntries,
+			scope
+		);
+		const remedy = getSharedTokensRemedy(
+			plan,
+			coverage,
+			variantKey,
+			slot,
+			scope
+		);
 
-	reportSharedTokensBySlot(
-		context,
-		sharedTokens,
-		variantKey,
-		coverage,
-		valueEntries,
-		slotNames,
-		scope
-	);
+		for (const [token, entryLists] of tokens) {
+			for (const entryList of entryLists) {
+				reportEntryList(
+					context,
+					entryList,
+					'shared',
+					{ token, variant: variantKey, slot },
+					remedy
+				);
+			}
+		}
+	}
 };
 
 // The one variant-key matcher on a compound entry, plus the class it applies,
@@ -914,31 +848,6 @@ const checkCompoundsForSingleKey = (
 	});
 };
 
-const analyzeExhaustiveVariants = (
-	context: Rule.RuleContext,
-	variantsMap: ReadonlyMap<string, Node>,
-	coverageByVariant: ReadonlyMap<string, VariantCoverage>,
-	slotNames: ReadonlySet<string>,
-	scope: SharedTokensScope
-) => {
-	for (const [variantKey, variantValue] of variantsMap) {
-		const coverage = coverageByVariant.get(variantKey);
-
-		if (coverage === undefined) {
-			continue;
-		}
-
-		analyzeVariantSharedTokens(
-			context,
-			variantKey,
-			coverage,
-			variantValue,
-			slotNames,
-			scope
-		);
-	}
-};
-
 export const analyzeSharedTokens = (
 	context: Rule.RuleContext,
 	configNode: ObjectExpression,
@@ -1042,16 +951,25 @@ export const analyzeSharedTokens = (
 		return { createBaseIn: configNode };
 	};
 
-	analyzeExhaustiveVariants(
-		context,
+	const coverageByVariant = collectVariantCoverage(
+		config,
 		variantsMap,
-		collectVariantCoverage(
-			config,
-			variantsMap,
-			sourceCode,
-			inheritsRequiresAll
-		),
-		slotNames,
-		{ getTarget, canEdit, suggestOnly, inherits }
+		sourceCode,
+		inheritsRequiresAll
 	);
+	const scope = { slotNames, getTarget, canEdit, suggestOnly, inherits };
+
+	for (const [variantKey, variantValue] of variantsMap) {
+		const coverage = coverageByVariant.get(variantKey);
+
+		if (coverage !== undefined) {
+			analyzeVariantSharedTokens(
+				context,
+				variantKey,
+				coverage,
+				variantValue,
+				scope
+			);
+		}
+	}
 };

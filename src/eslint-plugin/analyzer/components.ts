@@ -169,7 +169,11 @@ export const resolveComponentBinding = (
 	}
 
 	if (wrapped.type === 'Identifier') {
-		return resolveComponentBinding(wrapped.name, binding.scope, seen);
+		return resolveComponentBinding(
+			wrapped.name,
+			binding.variable.scope,
+			seen
+		);
 	}
 
 	return { kind: 'local', fn: wrapped };

@@ -9,6 +9,7 @@ import {
 import {
 	getFactoryDefaults,
 	getFactoryRequiresAll,
+	mayInheritKey,
 	type StyledContext
 } from '../analyzer/styled-values.ts';
 import { createTrackedCallListeners } from '../analyzer/tracked-calls.ts';
@@ -23,20 +24,11 @@ const getInheritedCall = (
 	call: CallMatch
 ): Omit<SharedTokensCall, 'leadingArg'> => {
 	const defaults = getFactoryDefaults(node, call, ctx);
-	const inheritsRequiresAll = getFactoryRequiresAll(node, call, ctx);
-
-	if (defaults === null) {
-		return {
-			canCreateBase: false,
-			inheritsPostProcess: true,
-			inheritsRequiresAll
-		};
-	}
 
 	return {
-		canCreateBase: !defaults.has('base'),
-		inheritsPostProcess: defaults.has('postProcess'),
-		inheritsRequiresAll
+		canCreateBase: !mayInheritKey(defaults, 'base'),
+		inheritsPostProcess: mayInheritKey(defaults, 'postProcess'),
+		inheritsRequiresAll: getFactoryRequiresAll(node, call, ctx)
 	};
 };
 

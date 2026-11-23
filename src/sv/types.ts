@@ -78,15 +78,6 @@ type SlotTarget<S extends MaybeSlots, G extends MaybeGroups<S>> =
 	| SlotKey<S>
 	| StringKeyof<G>;
 
-type GroupSlots<
-	G extends MaybeGroups<Slots>,
-	K extends string
-> = K extends keyof G
-	? G[K] extends readonly (infer U extends string)[]
-		? U
-		: never
-	: never;
-
 // `boolean` when a record's keys include `true` or `false`, so a record mixing
 // either with named keys takes both booleans.
 type BooleanKeys<K> = [Extract<K, 'true' | 'false'>] extends [never]
@@ -136,6 +127,7 @@ export type VariantData = {
 	values: NormalizedVariantValues;
 	defaultValue: RuntimeDefaultVariant;
 	inherited: boolean;
+	required: boolean;
 };
 
 export type CacheValue = string | Record<string, string>;
@@ -178,7 +170,7 @@ type MultiSlotKeys<
 > = M extends true
 	? SlotKey<S>
 	: M extends readonly string[]
-		? (M[number] & SlotKey<S>) | GroupSlots<G, M[number]>
+		? (M[number] & SlotKey<S>) | GroupEntry<G, M[number]>
 		: never;
 
 type SlotResult<
@@ -204,10 +196,8 @@ type ReturnValue<
 	P extends MaybePresets<S, G, V>,
 	M extends MultiSlots<S, G>,
 	R extends RequiredVariants<V>
-> = [Exclude<StringKeyof<S>, 'base'>] extends [never]
-	? [MultiSlotKeys<S, G, M>] extends [never]
-		? string
-		: SlotResult<S, G, V, P, M, R>
+> = [Exclude<StringKeyof<S>, 'base'> | MultiSlotKeys<S, G, M>] extends [never]
+	? string
 	: SlotResult<S, G, V, P, M, R>;
 
 // The record form of a class value: class names mapped to conditions.
@@ -840,17 +830,6 @@ type ExtendedIntrospection<
 	B extends MaybeIntrospection
 > = Defined<I, Defined<ParentTypes<E>['introspection'], B>>;
 
-type VariantPropsWithRequired<
-	S extends MaybeSlots,
-	G extends MaybeGroups<S>,
-	V extends MaybeVariants<S, G>,
-	R extends RequiredVariants<V>
-> = Pick<VariantPropsInternal<S, G, V>, RequiredVariantKeys<V, R>> &
-	Omit<
-		PartialNullable<VariantPropsInternal<S, G, V>>,
-		RequiredVariantKeys<V, R>
-	>;
-
 type VariantArgs<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
@@ -859,7 +838,7 @@ type VariantArgs<
 	R extends RequiredVariants<V>
 > = Prettify<
 	P extends undefined
-		? VariantPropsWithRequired<S, G, V, R>
+		? VariantPropsFor<S, G, V, RequiredVariantKeys<V, R>, never>
 		: PresetVariantProps<S, G, V, P, R>
 >;
 
@@ -886,9 +865,9 @@ export type Config<
 	>,
 	M extends MultiSlots<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>>,
 	R extends RequiredVariants<ExtendedVariants<E, S, G, V>>,
-	I extends MaybeIntrospection = false,
-	E extends ExtendInput | undefined = undefined,
-	D extends StringKeyof<ExtendedVariants<E, S, G, V>> = never
+	I extends MaybeIntrospection,
+	E extends ExtendInput | undefined,
+	D extends StringKeyof<ExtendedVariants<E, S, G, V>>
 > = {
 	/** Components whose config this one builds on, appending to theirs. */
 	extend?: E & ParentNameCollision<E>;
@@ -1100,7 +1079,7 @@ type IntrospectionValues<
 	getCacheSize: () => number;
 };
 
-export type VariantFn<
+type VariantFn<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
 	V extends MaybeVariants<S, G>,
@@ -1108,19 +1087,7 @@ export type VariantFn<
 	M extends MultiSlots<S, G>,
 	R extends RequiredVariants<V>,
 	I extends MaybeIntrospection,
-	D extends string = never,
-	L extends ComponentLayers = [
-		{
-			slots: S;
-			groups: G;
-			variants: V;
-			presets: P;
-			required: RequiredVariantKeys<V, R>;
-			multi: MultiSlotKeys<S, G, M>;
-			defaulted: D;
-			introspection: I;
-		}
-	]
+	L extends ComponentLayers
 > = {
 	(...args: VariantFnArgs<S, G, V, P, R>): ReturnValue<S, G, V, P, M, R>;
 	/** Type-only: the layers a component extending this one merges. */
@@ -1257,7 +1224,6 @@ export type ExtendedVariantFn<
 		RequiredVariants<ExtendedVariants<E, S, G, V>>
 	>,
 	ExtendedIntrospection<E, I, B>,
-	D,
 	ExtendedLayers<E, S, G, V, P, M, R, I, D, B>
 >;
 

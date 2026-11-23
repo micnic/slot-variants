@@ -10,11 +10,10 @@ import { getKeyName } from './config-keys.ts';
 // A node that only wraps another expression without changing its value.
 type TransparentWrapper = Node & { expression: Node };
 
-// A name's variable, its single definition, and the scope that declares it.
+// A name's variable and its single definition.
 type SingleBinding = {
 	variable: Scope.Variable;
 	def: Scope.Definition;
-	scope: Scope.Scope;
 };
 
 type VariableSet = Set<Scope.Variable>;
@@ -216,7 +215,21 @@ export const findSingleBinding = (
 		return null;
 	}
 
-	return { variable, def, scope: variable.scope };
+	return { variable, def };
+};
+
+/** The single binding `node` names where it's read, if it has one. */
+export const findLookupBinding = (
+	node: Identifier,
+	sourceCode: SourceCode
+): SingleBinding | null => {
+	const scope = getLookupScope(node, sourceCode);
+
+	if (scope === null) {
+		return null;
+	}
+
+	return findSingleBinding(scope, node.name);
 };
 
 const isRangeWithin = (
@@ -360,13 +373,7 @@ export const getDestructuredRead = (
 	node: Identifier,
 	sourceCode: SourceCode
 ): DestructuredRead | null => {
-	const scope = getLookupScope(node, sourceCode);
-
-	if (scope === null) {
-		return null;
-	}
-
-	const binding = findSingleBinding(scope, node.name);
+	const binding = findLookupBinding(node, sourceCode);
 
 	if (binding === null) {
 		return null;
@@ -414,13 +421,7 @@ const followConstBindings = (
 	let guarded = !entersCycle;
 
 	while (current.type === 'Identifier') {
-		const scope = getLookupScope(current, sourceCode);
-
-		if (scope === null) {
-			return current;
-		}
-
-		const binding = findSingleBinding(scope, current.name);
+		const binding = findLookupBinding(current, sourceCode);
 
 		if (binding === null) {
 			return current;

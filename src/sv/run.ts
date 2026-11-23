@@ -252,7 +252,7 @@ export const applyPostProcess = (
 	return result;
 };
 
-export const mergeSlotObjectIntoResult = (
+const mergeSlotObjectIntoResult = (
 	baseResult: Record<string, string>,
 	classProp: Partial<Record<string, ClassValue>>,
 	groups: CompiledGroups
@@ -354,7 +354,6 @@ const getCompoundIds = (
 const createVariantPlan = (
 	config: CompiledConfig,
 	variant: VariantData,
-	required: boolean,
 	planTables: FragmentTable[]
 ): VariantPlan => {
 	const { slotEntries, targetKeys, groups, compounds } = config;
@@ -393,7 +392,7 @@ const createVariantPlan = (
 
 	let undefinedId = variant.unsetId;
 
-	if (required) {
+	if (variant.required) {
 		undefinedId = missingValueId;
 	}
 
@@ -402,7 +401,6 @@ const createVariantPlan = (
 
 export const createRunPlan = (config: CompiledConfig): RunPlan => {
 	const { slotEntries, variantData, compounds, requiredVariants } = config;
-	const required = new Set(requiredVariants);
 	const tables: FragmentTable[] = [];
 	const hasPresets = keys(config.presets).length > 0;
 
@@ -412,12 +410,7 @@ export const createRunPlan = (config: CompiledConfig): RunPlan => {
 			base: toFragment(cn(value))
 		})),
 		variants: variantData.map((variant) =>
-			createVariantPlan(
-				config,
-				variant,
-				required.has(variant.key),
-				tables
-			)
+			createVariantPlan(config, variant, tables)
 		),
 		tables,
 		compounds: compounds.map(({ fragments }) => fragments),
@@ -719,8 +712,28 @@ const getRunSource = (config: CompiledConfig, plan: RunPlan) => {
 };
 
 /**
+ * The interpreted counterpart of `getValidationSource`.
+ */
+const assertResolvedVariants = (
+	plan: RunPlan,
+	resolved: readonly ResolvedVariant[]
+) => {
+	for (const { key, index } of plan.required) {
+		if (resolved[index]?.id === missingValueId) {
+			throw createMissingVariantError(key);
+		}
+	}
+
+	for (const { variant, value, id } of resolved) {
+		if (id === unknownValueId) {
+			throw createInvalidValueError(variant.data.key, value);
+		}
+	}
+};
+
+/**
  * The interpreted counterpart of `getVariantSource`, for every variant, given
- * the values of the call's preset.
+ * the values of the call's preset, then of `getValidationSource`.
  */
 export const resolveVariants = (
 	plan: RunPlan,
@@ -728,8 +741,7 @@ export const resolveVariants = (
 	presetValues: ResolvedVariantState | undefined
 ): ResolvedVariant[] => {
 	const defaultProps = createDefaultProps(plan, props, presetValues);
-
-	return plan.variants.map((variant) => {
+	const resolved = plan.variants.map((variant) => {
 		const value = resolveVariantValue(
 			variant.data,
 			props,
@@ -745,26 +757,10 @@ export const resolveVariants = (
 
 		return { variant, value, id };
 	});
-};
 
-/**
- * The interpreted counterpart of `getValidationSource`.
- */
-export const assertResolvedVariants = (
-	plan: RunPlan,
-	resolved: readonly ResolvedVariant[]
-) => {
-	for (const { key, index } of plan.required) {
-		if (resolved[index]?.id === missingValueId) {
-			throw createMissingVariantError(key);
-		}
-	}
+	assertResolvedVariants(plan, resolved);
 
-	for (const { variant, value, id } of resolved) {
-		if (id === unknownValueId) {
-			throw createInvalidValueError(variant.data.key, value);
-		}
-	}
+	return resolved;
 };
 
 /**
@@ -874,9 +870,6 @@ const createInterpretedRun =
 			props,
 			resolvePresetValues(config.presets, props.preset)
 		);
-
-		assertResolvedVariants(plan, resolved);
-
 		const entry = getEntry(config, plan, resolved);
 		const classProp = props.class ?? props.className;
 

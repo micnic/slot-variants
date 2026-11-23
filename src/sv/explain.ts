@@ -1,7 +1,6 @@
 import { cn } from '../cn.ts';
 import {
 	applyPostProcess,
-	assertResolvedVariants,
 	buildRaw,
 	getClassBySlot,
 	matchCompounds,
@@ -119,9 +118,6 @@ export const createExplain =
 	(props: RuntimeProps = {}): RuntimeExplanation => {
 		const presetValues = resolvePresetValues(config.presets, props.preset);
 		const resolved = resolveVariants(plan, props, presetValues);
-
-		assertResolvedVariants(plan, resolved);
-
 		const variants: RuntimeExplanation['variants'] = {};
 
 		for (const { variant, value } of resolved) {

@@ -24,21 +24,16 @@ import { forEachCnBranch, type NodeVisitor } from './token-extraction.ts';
 
 type StaticClassValueOptions = {
 	cnStyle: boolean;
-	allowUndefined?: boolean;
 	isStyled?: (node: Node) => boolean;
 };
 
 type PropertyVisitor = (prop: Property) => void;
 
+const CONFIG_CLASS_VALUE: StaticClassValueOptions = { cnStyle: false };
+
 const reportDynamic = (context: Rule.RuleContext, node: Node) => {
 	context.report({ node, messageId: 'dynamic' });
 };
-
-// The options that propagate into nested positions. `allowUndefined` is a
-// top-level-only concern and deliberately dropped.
-const branchOptions = (
-	options: StaticClassValueOptions
-): StaticClassValueOptions => ({ ...options, allowUndefined: false });
 
 // Like forEachStaticItem, but spreads
 // are reported as dynamic rather than skipped.
@@ -73,9 +68,8 @@ const checkConditionalClassValue = (
 		return false;
 	}
 
-	const nested = branchOptions(options);
 	const isBranch = forEachCnBranch(node, (branch) => {
-		checkClassValueIsStatic(context, branch, nested);
+		checkClassValueIsStatic(context, branch, options);
 	});
 
 	if (isBranch) {
@@ -90,8 +84,6 @@ const checkArrayClassValue = (
 	node: ArrayExpression,
 	options: StaticClassValueOptions
 ) => {
-	const nested = branchOptions(options);
-
 	forEachItemReportingSpread(context, node.elements, (element) => {
 		// A config class array is flat, read through `const` bindings too.
 		const resolved = resolveStaticValue(element, context.sourceCode);
@@ -101,7 +93,7 @@ const checkArrayClassValue = (
 			return;
 		}
 
-		checkClassValueIsStatic(context, element, nested);
+		checkClassValueIsStatic(context, element, options);
 	});
 };
 
@@ -111,10 +103,6 @@ const checkClassValueIsStatic = (
 	options: StaticClassValueOptions
 ) => {
 	node = resolveStaticValue(node, context.sourceCode);
-
-	if (options.allowUndefined && isUndefinedValue(node)) {
-		return;
-	}
 
 	if (options.cnStyle && isSkippedClassValue(node)) {
 		return;
@@ -149,10 +137,12 @@ const checkConfigClassValueIsStatic = (
 	context: Rule.RuleContext,
 	node: Node
 ) => {
-	checkClassValueIsStatic(context, node, {
-		cnStyle: false,
-		allowUndefined: true
-	});
+	// A config's class value may be `undefined` as a whole, not inside one.
+	if (isUndefinedValue(resolveStaticValue(node, context.sourceCode))) {
+		return;
+	}
+
+	checkClassValueIsStatic(context, node, CONFIG_CLASS_VALUE);
 };
 
 const visitStaticProperty = (
