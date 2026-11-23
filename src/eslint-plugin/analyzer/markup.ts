@@ -335,10 +335,6 @@ export const getJsxComponentName = (node: JsxOpeningElement): string | null => {
 };
 
 /**
- * The component a Svelte element renders, named as written (`Button`,
- * `UI.Button`), or null for a host element or a deeper member.
- */
-/**
  * The name a Svelte component element's tag starts with (`UI` of
  * `<UI.Button>`), which is looked up where the element is written. Null for
  * a host element, or a member of a member.
@@ -360,6 +356,10 @@ export const getSvelteTagRoot = (node: SvelteElement): Identifier | null => {
 	return null;
 };
 
+/**
+ * The component a Svelte element renders, named as written (`Button`,
+ * `UI.Button`), or null for a host element or a deeper member.
+ */
 export const getSvelteComponentName = (node: SvelteElement): string | null => {
 	// A component's name is never a `SvelteName`, which narrows it here.
 	if (node.kind !== 'component' || node.name.type === 'SvelteName') {

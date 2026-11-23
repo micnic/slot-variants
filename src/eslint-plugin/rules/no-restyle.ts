@@ -1,5 +1,8 @@
 import type { Rule } from 'eslint';
-import { resolveTagBinding } from '../analyzer/components.ts';
+import {
+	getOrResolveImport,
+	resolveTagBinding
+} from '../analyzer/components.ts';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import {
 	conflictOptionProperties,
@@ -17,7 +20,6 @@ import {
 	resolveImportedComponent
 } from '../analyzer/module-loader.ts';
 import { canPairParts, createLiteralReporter } from '../analyzer/restyle.ts';
-import { getOrCreate } from '../map-utils.ts';
 
 /**
  * Flags literal classes written on a component or element that collide with
@@ -123,12 +125,10 @@ export const noRestyle: Rule.RuleModule = {
 				return scan.forwarded.get(binding.fn) ?? null;
 			}
 
-			const { specifier, exportName } = binding.source;
-
-			return getOrCreate(
+			return getOrResolveImport(
 				importedStyles,
-				`${specifier}|${exportName}`,
-				() =>
+				binding.source,
+				(specifier, exportName) =>
 					resolveImportedComponent(
 						specifier,
 						exportName,

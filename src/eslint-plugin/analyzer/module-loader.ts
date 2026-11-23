@@ -169,6 +169,28 @@ let nextLanguageOptionsId = 0;
 // one barrel are the same depth, however many it has.
 const MAX_MODULE_HOPS = 10;
 
+const STYLES_READER: ExportReader<ForwardedStyles> = {
+	step(step) {
+		if (step.kind !== 'styles') {
+			return null;
+		}
+
+		return step.styles;
+	},
+	self: (analysis) => analysis.self
+};
+
+const FACTORY_READER: ExportReader<ImportedFactory> = {
+	step(step) {
+		if (step.kind !== 'factory') {
+			return null;
+		}
+
+		return step.factory;
+	},
+	self: () => null
+};
+
 const loadLinterFrom = (base: string): LinterConstructor | null => {
 	try {
 		const required = createRequire(resolve(base, 'slot-variants.js'));
@@ -865,28 +887,6 @@ const readExport = <T>(
 	}
 
 	return null;
-};
-
-const STYLES_READER: ExportReader<ForwardedStyles> = {
-	step(step) {
-		if (step.kind !== 'styles') {
-			return null;
-		}
-
-		return step.styles;
-	},
-	self: (analysis) => analysis.self
-};
-
-const FACTORY_READER: ExportReader<ImportedFactory> = {
-	step(step) {
-		if (step.kind !== 'factory') {
-			return null;
-		}
-
-		return step.factory;
-	},
-	self: () => null
 };
 
 /**

@@ -47,7 +47,9 @@ import {
 	forEachStringLiteralElement,
 	getStaticMatcherValue,
 	NON_MATCHER_KEYS,
-	readMatchers
+	type PresetValues,
+	readMatchers,
+	readPresetValues
 } from './token-extraction.ts';
 import {
 	EMPTY_SLOT_NAMES,
@@ -90,12 +92,6 @@ export type CallStyles = {
 	styles: InternalStyles;
 	inherited: ReadonlySet<Entry>;
 };
-
-/**
- * The variant values a preset sets that can be read, and whether that is all
- * of them: one with a spread or a value that can't be read may set others.
- */
-export type PresetValues = { matchers: VariantMatchers; complete: boolean };
 
 // What a config takes from the parents in `extend`: the slot and group names
 // a slot object of it may name, and the slots of each group.
@@ -310,21 +306,6 @@ const readGroups = (
 	}
 
 	return { groupSlots, slotGroups: invertGroups(groupSlots) };
-};
-
-// One preset's variant values, and whether every one of them was read.
-const readPresetValues = (
-	value: Node,
-	sourceCode: SourceCode
-): PresetValues => {
-	const container = resolveContainer(value, sourceCode);
-	const values = getStrictProperties(container);
-	const matchers = readMatchers(getProperties(container), sourceCode);
-
-	return {
-		matchers,
-		complete: values !== null && matchers.size === values.size
-	};
 };
 
 // Each preset's variant values, by preset name.

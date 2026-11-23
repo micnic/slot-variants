@@ -1894,12 +1894,17 @@ const getContainerConflictKey = (
 		return null;
 	}
 
-	const hasName = splitOutsideBrackets(bare, '/').length > 1;
+	// A named container (`@container/main`) and an unnamed one never overlap.
+	let kind = 'type';
+
+	if (splitOutsideBrackets(bare, '/').length > 1) {
+		kind = 'named';
+	}
 
 	return {
-		key: `${variantPrefix}|container|${hasName ? 'named' : 'type'}`,
+		key: `${variantPrefix}|container|${kind}`,
 		variantPrefix,
-		overlap: hasName ? 'container-named' : 'container-type'
+		overlap: `container-${kind}`
 	};
 };
 

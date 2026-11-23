@@ -121,8 +121,12 @@ const checkClassValueIsStatic = (
 		return;
 	}
 
+	// In cn-style arguments an ObjectExpression is a clsx-style record: keys
+	// are class names, values are runtime conditions. Only the keys must be
+	// statically known, so forEachStaticProperty reports dynamic ones; values
+	// are left alone.
 	if (options.cnStyle && node.type === 'ObjectExpression') {
-		checkClassRecordKeys(context, node);
+		forEachStaticProperty(context, node, () => {});
 		return;
 	}
 
@@ -203,16 +207,6 @@ const forEachConfigProperty = (
 	}
 };
 
-// In cn-style arguments an ObjectExpression is a clsx-style record: keys are
-// class names, values are runtime conditions. Only the keys must be statically
-// known, so forEachStaticProperty reports dynamic ones; values are left alone.
-const checkClassRecordKeys = (
-	context: Rule.RuleContext,
-	node: ObjectExpression
-) => {
-	forEachStaticProperty(context, node, () => {});
-};
-
 // Visits each property of the record `raw` resolves to; anything else is
 // reported as dynamic.
 const forEachResolvedProperty = (
@@ -287,14 +281,6 @@ const checkVariantDefinition = (
 	checkConfigClassValueIsStatic(context, node);
 };
 
-const checkCompoundSlotsArray = (context: Rule.RuleContext, raw: Node) => {
-	forEachResolvedElement(context, raw, (element) => {
-		if (!isStaticStringNode(element)) {
-			reportDynamic(context, element);
-		}
-	});
-};
-
 // Other keys on compound entries are runtime matchers and are not validated.
 const checkCompoundEntryProperty = (
 	context: Rule.RuleContext,
@@ -318,7 +304,11 @@ const checkCompoundEntryProperty = (
 	}
 
 	if (key === 'slots' && hasSlotsKey) {
-		checkCompoundSlotsArray(context, prop.value);
+		forEachResolvedElement(context, prop.value, (element) => {
+			if (!isStaticStringNode(element)) {
+				reportDynamic(context, element);
+			}
+		});
 	}
 };
 

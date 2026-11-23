@@ -59,6 +59,10 @@ type ConflictGroup = {
 // Overlap node -> that node's own group, for every node in one component.
 type OverlapComponent = Map<string, ConflictGroup>;
 
+const REPORT_ALL: PickReported = (entries) => entries;
+
+const REPORT_NONE: ReadonlyArray<Entry> = [];
+
 const groupEntriesByConflictKey = (
 	tokenMap: Map<string, Entry[]>,
 	options: ConflictOptions
@@ -229,10 +233,6 @@ const reportConflicts = (
 		});
 	}
 };
-
-const REPORT_ALL: PickReported = (entries) => entries;
-
-const REPORT_NONE: ReadonlyArray<Entry> = [];
 
 // The token entries of several slot buckets, as one.
 const mergeTokenMaps = (

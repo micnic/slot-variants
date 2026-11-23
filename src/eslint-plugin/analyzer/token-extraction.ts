@@ -29,6 +29,7 @@ import {
 	EMPTY_SLOT_NAMES,
 	type Entry,
 	type Source,
+	type VariantMatchers,
 	variantSource,
 	withMatcher
 } from './token-model.ts';
@@ -48,6 +49,12 @@ type TokenSink = Pick<TokenExtractionContext, 'slot' | 'source' | 'entries'>;
 type LiteralSink = TokenSink & Pick<TokenExtractionContext, 'sourceCode'>;
 
 export type NodeVisitor = (node: Node) => void;
+
+/**
+ * The variant values a preset sets that can be read, and whether that is all
+ * of them: one with a spread or a value that can't be read may set others.
+ */
+export type PresetValues = { matchers: VariantMatchers; complete: boolean };
 
 type TokenOffsets = number | AST.Range;
 
@@ -721,6 +728,21 @@ export const readMatchers = (
 	return matchers;
 };
 
+/** One preset's variant values, and whether every one of them was read. */
+export const readPresetValues = (
+	value: Node | undefined,
+	sourceCode: SourceCode
+): PresetValues => {
+	const container = resolveContainer(value, sourceCode);
+	const values = getStrictProperties(container);
+	const matchers = readMatchers(getProperties(container), sourceCode);
+
+	return {
+		matchers,
+		complete: values !== null && matchers.size === values.size
+	};
+};
+
 // The variant values a compound's `preset` stands for, as matchers, the way
 // `sv()` reads them: none when the preset can't be named, isn't one of the
 // config's own or can't be read in full, which can only under-suppress.
@@ -741,22 +763,17 @@ const readPresetMatchers = (
 		return new Map();
 	}
 
-	const values = getStrictProperties(
-		resolveContainer(presets.get(name), sourceCode)
+	const { matchers, complete } = readPresetValues(
+		presets.get(name),
+		sourceCode
 	);
 
-	if (values === null) {
-		return new Map();
-	}
-
-	const matchers = readMatchers(values, sourceCode);
-
 	// A value that can't be read may be any, so it proves nothing
-	if (matchers.size !== values.size) {
+	if (!complete) {
 		return new Map();
 	}
 
-	return matchers;
+	return new Map(matchers);
 };
 
 // Derives an exclusivity source from a compound's matcher properties, so two

@@ -64,14 +64,16 @@ import {
 import {
 	readOverride,
 	literalStyles,
-	type PresetValues,
 	readVariantValue,
 	resolveInvocation,
 	type CallInputs,
 	type StyledClasses,
 	type StyledContext
 } from './styled-values.ts';
-import { forEachStringLiteralElement } from './token-extraction.ts';
+import {
+	forEachStringLiteralElement,
+	type PresetValues
+} from './token-extraction.ts';
 import { createTrackedCallResolver } from './tracked-calls.ts';
 import { readTypedProps } from './typed-props.ts';
 
@@ -1226,16 +1228,22 @@ export const createForwardingScan = (
 		return source.forced.get(read.prop) ?? null;
 	};
 
-	// `$attrs` in a Vue template: the attributes the component is passed,
-	// unless a binding of that name shadows it.
-	const readTemplateAttrs = (node: Identifier): PropsObject | null => {
-		if (node.name !== '$attrs' || !isInTemplate(node, sourceCode)) {
-			return null;
+	// A name a Vue template reads that no `<script>` or template binding
+	// declares.
+	const isUnboundTemplateName = (node: Identifier): boolean => {
+		if (!isInTemplate(node, sourceCode)) {
+			return false;
 		}
 
 		const scope = getLookupScope(node, sourceCode);
 
-		if (scope === null || findVariable(scope, node.name) !== null) {
+		return scope !== null && findVariable(scope, node.name) === null;
+	};
+
+	// `$attrs` in a Vue template: the attributes the component is passed,
+	// unless a binding of that name shadows it.
+	const readTemplateAttrs = (node: Identifier): PropsObject | null => {
+		if (node.name !== '$attrs' || !isUnboundTemplateName(node)) {
 			return null;
 		}
 
@@ -1271,14 +1279,7 @@ export const createForwardingScan = (
 	// declares: a prop `defineProps()` declares, which the template reaches
 	// by name.
 	const readTemplateProp = (node: Identifier): PropRead | null => {
-		const scope = getLookupScope(node, sourceCode);
-
-		if (
-			templateProps === null ||
-			scope === null ||
-			findVariable(scope, node.name) !== null ||
-			!isInTemplate(node, sourceCode)
-		) {
+		if (templateProps === null || !isUnboundTemplateName(node)) {
 			return null;
 		}
 

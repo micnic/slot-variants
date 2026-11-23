@@ -9,6 +9,7 @@ import type {
 	Node,
 	Program
 } from 'estree';
+import { getOrCreate } from '../map-utils.ts';
 import {
 	findSingleBinding,
 	getConstDefInit,
@@ -42,6 +43,9 @@ export type Component = ComponentFunction | Program;
 /** The module an identifier is imported from, and under which name. */
 export type ImportSource = { specifier: string; exportName: string };
 
+// Reads what an import's export is, from its module.
+type ImportResolver<T> = (specifier: string, exportName: string) => T;
+
 export type ImportDefinition = Extract<
 	Scope.Definition,
 	{ type: 'ImportBinding' }
@@ -52,6 +56,16 @@ type ComponentBinding =
 	| { kind: 'local'; fn: ComponentFunction }
 	| { kind: 'import'; source: ImportSource }
 	| null;
+
+/** What an import's export is, resolved once per `cache`. */
+export const getOrResolveImport = <T>(
+	cache: Map<string, T>,
+	{ specifier, exportName }: ImportSource,
+	resolve: ImportResolver<T>
+): T =>
+	getOrCreate(cache, `${specifier}|${exportName}`, () =>
+		resolve(specifier, exportName)
+	);
 
 // Takes the structural minimum so framework node unions narrow through it too.
 export const isComponentFunction = (node: {
