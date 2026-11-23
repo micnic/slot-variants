@@ -170,6 +170,9 @@ type PropsObject = {
 	forced: ReadonlyMap<string, Node>;
 };
 
+// A props object a call is handed, and the index of the argument it is.
+type PropsArgument = { source: PropsObject; index: number };
+
 // The props a call's spreads of a component's props leave out.
 type SpreadOmits = Pick<ForwardTarget, 'spreadOmits' | 'spreadPicks'>;
 
@@ -900,6 +903,24 @@ export const createForwardingScan = (
 		};
 	};
 
+	// The first argument of a call that names a props object, or null when
+	// none does.
+	const findPropsArgument = (
+		args: CallExpression['arguments']
+	): PropsArgument | null => {
+		for (const [index, arg] of args.entries()) {
+			if (arg.type === 'Identifier') {
+				const source = getPropsObject(arg);
+
+				if (source !== null) {
+					return { source, index };
+				}
+			}
+		}
+
+		return null;
+	};
+
 	// The props object a call yields: the module's, for a props source like
 	// `$props()`; a view of a props object the call is handed, for a derived
 	// one like `omit(props, …)`, whose defaults gain the objects `merge()`
@@ -917,23 +938,23 @@ export const createForwardingScan = (
 			};
 		}
 
+		const found = findPropsArgument(init.arguments);
+
+		// Most calls are handed no props object, so their arguments are
+		// never read as defaults.
+		if (found === null) {
+			return null;
+		}
+
 		const defaults = new Map<string, Node>();
 
-		for (const [index, arg] of init.arguments.entries()) {
-			if (arg.type === 'Identifier') {
-				const source = getPropsObject(arg);
-
-				if (source !== null) {
-					return getPropsView(source, defaults, init, index);
-				}
-			}
-
+		for (const arg of init.arguments.slice(0, found.index)) {
 			for (const [key, value] of readObjectArgument(arg)) {
 				defaults.set(key, value);
 			}
 		}
 
-		return null;
+		return getPropsView(found.source, defaults, init, found.index);
 	};
 
 	// The props object a declarator's initializer holds: a props call's
