@@ -1,5 +1,10 @@
 import type { AST, Scope, SourceCode } from 'eslint';
-import type { ArrayExpression, Identifier, Node } from 'estree';
+import type {
+	ArrayExpression,
+	Identifier,
+	Node,
+	VariableDeclarator
+} from 'estree';
 import { getKeyName } from './config-keys.ts';
 
 // A node that only wraps another expression without changing its value.
@@ -219,46 +224,41 @@ const isRangeWithin = (
 	[containerStart, containerEnd]: AST.Range
 ): boolean => start >= containerStart && end <= containerEnd;
 
-// Whether `def` declares a variable with an initializer written around `range`.
-const hasInitializerAround = (
-	def: Scope.Definition,
-	range: AST.Range,
-	sourceCode: SourceCode
-): boolean => {
-	if (def.type !== 'Variable' || !def.node.init) {
-		return false;
-	}
+// Whether `node` is a function, whose body runs later than where it's written.
+const isFunctionNode = (node: ParentedNode): boolean =>
+	node.type === 'ArrowFunctionExpression' ||
+	node.type === 'FunctionDeclaration' ||
+	node.type === 'FunctionExpression';
 
-	return isRangeWithin(range, sourceCode.getRange(def.node.init));
-};
+const isDeclarator = (
+	node: ParentedNode
+): node is ParentedNode & VariableDeclarator =>
+	node.type === 'VariableDeclarator';
 
 // Adds to `readers` each variable whose initializer evaluates what's written
-// at `range` in the scope `from`: one declared around it, up to the nearest
-// function, whose body runs later.
+// at `range`, from `node` on: one declared around it, up to the nearest
+// function, whose body runs later. Only the declarators among its ancestors
+// can hold it, so only those are read.
 const addReaders = (
+	node: ParentedNode,
 	range: AST.Range,
-	from: Scope.Scope,
 	sourceCode: SourceCode,
 	readers: VariableSet
 ) => {
-	let scope: Scope.Scope | null = from;
+	let current = node.parent;
 
-	while (scope) {
-		for (const variable of scope.variables) {
-			const isReader = variable.defs.some((def) =>
-				hasInitializerAround(def, range, sourceCode)
-			);
-
-			if (isReader) {
+	while (current && !isFunctionNode(current)) {
+		if (
+			isDeclarator(current) &&
+			current.init &&
+			isRangeWithin(range, sourceCode.getRange(current.init))
+		) {
+			for (const variable of sourceCode.getDeclaredVariables(current)) {
 				readers.add(variable);
 			}
 		}
 
-		if (scope.type === 'function') {
-			return;
-		}
-
-		scope = scope.upper;
+		current = current.parent;
 	}
 };
 
@@ -268,14 +268,14 @@ const addVariableReaders = (
 	readers: VariableSet
 ) => {
 	for (const reference of variable.references) {
-		const { range } = reference.identifier;
+		const { identifier } = reference;
 
 		/* c8 ignore next 3 -- every parsed node has a range */
-		if (!range) {
+		if (!identifier.range) {
 			continue;
 		}
 
-		addReaders(range, reference.from, sourceCode, readers);
+		addReaders(identifier, identifier.range, sourceCode, readers);
 	}
 };
 
@@ -311,12 +311,11 @@ const getDependents = (
 const closesCycle = (
 	node: Identifier,
 	variable: Scope.Variable,
-	scope: Scope.Scope,
 	sourceCode: SourceCode
 ): boolean => {
 	const readers: VariableSet = new Set();
 
-	addReaders(sourceCode.getRange(node), scope, sourceCode, readers);
+	addReaders(node, sourceCode.getRange(node), sourceCode, readers);
 
 	for (const reader of readers) {
 		if (
@@ -433,10 +432,7 @@ const followConstBindings = (
 			return current;
 		}
 
-		if (
-			guarded &&
-			closesCycle(current, binding.variable, scope, sourceCode)
-		) {
+		if (guarded && closesCycle(current, binding.variable, sourceCode)) {
 			return current;
 		}
 
