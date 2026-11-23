@@ -9,7 +9,11 @@ import type {
 	SpreadElement
 } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
-import { type CallMatch, isClassListMatch } from './call-matching.ts';
+import {
+	type CallMatch,
+	type ImportedFactory,
+	isClassListMatch
+} from './call-matching.ts';
 import { getKeyName } from './config-keys.ts';
 import {
 	type DestructuredRead,
@@ -172,6 +176,12 @@ export type Invocation = CallMatchers & {
 	props: CallProps;
 };
 
+// Reads one of a `createSV(defaults)` call's settings from the call itself.
+type FactoryReader<K extends keyof ImportedFactory> = (
+	factory: CallExpression,
+	ctx: StyledContext
+) => ImportedFactory[K];
+
 const EMPTY_MATCHERS: VariantMatchers = new Map();
 
 const EMPTY_PROPS: ReadonlyMap<string, Node> = new Map();
@@ -179,6 +189,13 @@ const EMPTY_PROPS: ReadonlyMap<string, Node> = new Map();
 const NO_KEYS: ReadonlySet<string> = new Set();
 
 const NO_SPREADS: ReadonlyArray<Node> = [];
+
+// What a call inherits when it goes through no factory: `sv()` itself.
+const NO_FACTORY: ImportedFactory = {
+	defaultKeys: NO_KEYS,
+	requiresAll: false,
+	base: null
+};
 
 const NO_CALL_PROPS: CallProps = {
 	read: EMPTY_PROPS,
@@ -829,7 +846,7 @@ export const resolveCalleeCall = (
  * The keys a `createSV(defaults)` call's defaults set: none when it's called
  * without any, and null when they can't be read in full.
  */
-export const getDefaultKeys = (
+const getDefaultKeys = (
 	factory: CallExpression,
 	ctx: StyledContext
 ): ReadonlySet<string> | null => {
@@ -852,7 +869,7 @@ export const getDefaultKeys = (
  * Whether a `createSV(defaults)` call's defaults make every variant required:
  * false unless they can be read in full and set `requiredVariants: true`.
  */
-export const getDefaultRequiresAll = (
+const getDefaultRequiresAll = (
 	factory: CallExpression,
 	ctx: StyledContext
 ): boolean => {
@@ -875,51 +892,10 @@ export const getDefaultRequiresAll = (
 };
 
 /**
- * The keys a call inherits from the defaults of the `createSV()` factory its
- * callee came from, in this file or imported: none for `sv()` itself or a
- * factory called without any, and null when they can't be read in full.
- */
-export const getFactoryDefaults = (
-	node: CallExpression,
-	call: CallMatch,
-	ctx: StyledContext
-): ReadonlySet<string> | null => {
-	const factory = resolveCalleeCall(node.callee, ctx);
-
-	if (factory !== null) {
-		return getDefaultKeys(factory, ctx);
-	}
-
-	if (call.imported === undefined) {
-		return NO_KEYS;
-	}
-
-	return call.imported.defaultKeys;
-};
-
-/**
- * Whether the `createSV()` factory a call's callee came from, in this file or
- * imported, makes every variant required.
- */
-export const getFactoryRequiresAll = (
-	node: CallExpression,
-	call: CallMatch,
-	ctx: StyledContext
-): boolean => {
-	const factory = resolveCalleeCall(node.callee, ctx);
-
-	if (factory !== null) {
-		return getDefaultRequiresAll(factory, ctx);
-	}
-
-	return call.imported?.requiresAll === true;
-};
-
-/**
  * The classes of the `base` a `createSV(defaults)` call's defaults set, null
  * when they set none.
  */
-export const getDefaultBaseStyles = (
+const getDefaultBaseStyles = (
 	factory: CallExpression,
 	ctx: StyledContext
 ): InternalStyles | null => {
@@ -937,6 +913,73 @@ export const getDefaultBaseStyles = (
 
 	return buildStyles(new Map([['base', base]]), NO_ARGS, ctx.sourceCode);
 };
+
+/**
+ * The settings of a `createSV(defaults)` call's defaults, read as an importer
+ * of the module holding it does.
+ */
+export const readFactoryDefaults = (
+	factory: CallExpression,
+	ctx: StyledContext
+): ImportedFactory => ({
+	defaultKeys: getDefaultKeys(factory, ctx),
+	requiresAll: getDefaultRequiresAll(factory, ctx),
+	base: getDefaultBaseStyles(factory, ctx)
+});
+
+// One setting of the `createSV()` factory a callee came from: read from the
+// factory call in this file, or else from the imported one, or what `sv()`
+// itself has.
+const readFactorySetting = <K extends keyof ImportedFactory>(
+	callee: Node,
+	imported: ImportedFactory | undefined,
+	ctx: StyledContext,
+	key: K,
+	readLocal: FactoryReader<K>
+): ImportedFactory[K] => {
+	const factory = resolveCalleeCall(callee, ctx);
+
+	if (factory !== null) {
+		return readLocal(factory, ctx);
+	}
+
+	return (imported ?? NO_FACTORY)[key];
+};
+
+/**
+ * The keys a call inherits from the defaults of the `createSV()` factory its
+ * callee came from, in this file or imported: none for `sv()` itself or a
+ * factory called without any, and null when they can't be read in full.
+ */
+export const getFactoryDefaults = (
+	node: CallExpression,
+	call: CallMatch,
+	ctx: StyledContext
+): ReadonlySet<string> | null =>
+	readFactorySetting(
+		node.callee,
+		call.imported,
+		ctx,
+		'defaultKeys',
+		getDefaultKeys
+	);
+
+/**
+ * Whether the `createSV()` factory a call's callee came from, in this file or
+ * imported, makes every variant required.
+ */
+export const getFactoryRequiresAll = (
+	node: CallExpression,
+	call: CallMatch,
+	ctx: StyledContext
+): boolean =>
+	readFactorySetting(
+		node.callee,
+		call.imported,
+		ctx,
+		'requiresAll',
+		getDefaultRequiresAll
+	);
 
 // The classes of the `base` a `createSV()` factory, in this file or imported,
 // gives a call through it whose config sets none: one with neither `base` nor
@@ -957,13 +1000,13 @@ const getFactoryBaseStyles = (
 		return null;
 	}
 
-	const factory = resolveCalleeCall(call.callee, ctx);
-
-	if (factory !== null) {
-		return getDefaultBaseStyles(factory, ctx);
-	}
-
-	return ctx.matchCall(call)?.imported?.base ?? null;
+	return readFactorySetting(
+		call.callee,
+		ctx.matchCall(call)?.imported,
+		ctx,
+		'base',
+		getDefaultBaseStyles
+	);
 };
 
 // Joins `items`' lists per key, each value once, in order.

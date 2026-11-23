@@ -26,12 +26,7 @@ import {
 	statFile
 } from './module-paths.ts';
 import { DEFAULT_EXPORT } from './module-syntax.ts';
-import {
-	getDefaultBaseStyles,
-	getDefaultKeys,
-	getDefaultRequiresAll,
-	type StyledContext
-} from './styled-values.ts';
+import { readFactoryDefaults, type StyledContext } from './styled-values.ts';
 
 /**
  * One place an export name leads: a component of the module, already resolved
@@ -292,11 +287,7 @@ const readFactory = (
 		return null;
 	}
 
-	return {
-		defaultKeys: getDefaultKeys(call, ctx),
-		requiresAll: getDefaultRequiresAll(call, ctx),
-		base: getDefaultBaseStyles(call, ctx)
-	};
+	return readFactoryDefaults(call, ctx);
 };
 
 // The factory a module-scope `const` holds, or null when it holds none.
