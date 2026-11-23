@@ -108,6 +108,8 @@ try {
 			"const parent = sv({ variants: { size: { sm: 'sm' } }, requiredVariants: ['size'] });",
 			'// @ts-expect-error an undefined default leaves size required',
 			'void sv({ extend: parent, variants: {}, defaultVariants: { size: undefined } });',
+			'// @ts-expect-error an undefined default sets nothing',
+			"void sv({ variants: { size: { sm: 'sm' } }, defaultVariants: { size: undefined } });",
 			"const button = sv({ variants: { size: { sm: 'sm' } }, requiredVariants: ['size'], presets: { empty: { size: undefined } } });",
 			'// @ts-expect-error a preset setting size to undefined leaves it required',
 			"void button({ preset: 'empty' });",

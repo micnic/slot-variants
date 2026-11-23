@@ -557,12 +557,13 @@ type RequiredDefaultCollision<
 // Infers the keys a config's `defaultVariants` names.
 type DefaultKeys<D extends string> = { [K in D]?: unknown };
 
-// A default for a variant a parent requires must have a value: an `undefined`
-// one is omitted, so the variant would stay required. Mapped over the keys
-// written (`D`) rather than made optional, so it holds even where
+// A written default must have a value: an `undefined` one is omitted, so its
+// variant would stay unset, and stay required where another layer requires
+// it, while the types record it as defaulted. Mapped over the keys written
+// (`D`) rather than made optional, so it holds even where
 // `exactOptionalPropertyTypes` is off.
-type InheritedRequiredDefaults<E, D extends string> = {
-	[K in Extract<D, ParentTypes<E>['required']>]: NonNullable<unknown> | null;
+type DefinedDefaults<D extends string> = {
+	[K in D]: NonNullable<unknown> | null;
 };
 
 // What a component records about itself for the components extending it.
@@ -937,7 +938,7 @@ export type Config<
 				R
 		  > &
 				RequiredDefaultCollision<ExtendedVariants<E, S, G, V>, R> &
-				InheritedRequiredDefaults<E, D> &
+				DefinedDefaults<D> &
 				DefaultKeys<D>)
 		| undefined;
 	/** Variants the caller must always pass, so their props lose the `?`. */
