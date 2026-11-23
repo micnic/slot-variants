@@ -342,6 +342,44 @@ t.test('keeps child classes after a parent group class', (t) => {
 	t.end();
 });
 
+t.test('a config repeated along one chain is kept', (t) => {
+	const required = sv({
+		variants: { size: { sm: 'a', lg: 'b' } },
+		requiredVariants: ['size']
+	});
+	const defaulted = sv({
+		extend: required,
+		variants: {},
+		defaultVariants: { size: 'sm' }
+	});
+	const requiredAgain = sv({
+		extend: defaulted,
+		variants: { size: { sm: 'a', lg: 'b' } },
+		requiredVariants: ['size']
+	});
+	const child = sv({ extend: requiredAgain, variants: {} });
+	const other = sv({ base: 'o', variants: {} });
+	const listed = sv({ extend: [other, requiredAgain], variants: {} });
+
+	t.throws(
+		// @ts-expect-error - the parent requires size again
+		() => child(),
+		{ message: 'Missing required variant: "size"' },
+		'the requirement the parent restores stays'
+	);
+	t.equal(child({ size: 'lg' }), 'b b', 'the parent classes stay');
+
+	t.throws(
+		// @ts-expect-error - the listed parent requires size again
+		() => listed(),
+		{ message: 'Missing required variant: "size"' },
+		'the requirement a listed parent restores stays'
+	);
+	t.equal(listed({ size: 'lg' }), 'o b b', 'a listed parent classes stay');
+
+	t.end();
+});
+
 t.test('parents with the same config count as one', (t) => {
 	const required = sv({
 		variants: { size: { sm: 'a', lg: 'b' } },

@@ -690,10 +690,6 @@ type LayersOf<T> = T extends {
 	? L
 	: [];
 
-type FlattenLayers<E> = E extends readonly [infer H, ...infer Rest]
-	? [...LayersOf<H>, ...FlattenLayers<Rest>]
-	: [];
-
 type IsSame<A, B> =
 	(<X>() => X extends A ? 1 : 2) extends <X>() => X extends B ? 1 : 2
 		? true
@@ -708,25 +704,33 @@ type HasLayer<L extends ComponentLayers, H> = L extends readonly [
 		: HasLayer<Rest, H>
 	: false;
 
-// Each layer once, where it first appears, as the runtime merges a shared
-// ancestor once. Layers are told apart by type, so two components with the
-// very same config types count as one.
-type DedupeLayers<
+// The layers of `L` that `Seen` lacks. Layers are told apart by type, so two
+// components with the very same config types count as one.
+type NewLayers<
 	L extends ComponentLayers,
-	Seen extends ComponentLayers = []
+	Seen extends ComponentLayers
 > = L extends readonly [
 	infer H extends ComponentTypes,
 	...infer Rest extends ComponentLayers
 ]
 	? HasLayer<Seen, H> extends true
-		? DedupeLayers<Rest, Seen>
-		: DedupeLayers<Rest, [...Seen, H]>
+		? NewLayers<Rest, Seen>
+		: [H, ...NewLayers<Rest, Seen>]
+	: [];
+
+// Every parent's layers but those an earlier parent has, as the runtime
+// merges a shared ancestor once, where it first appears.
+type FlattenLayers<E, Seen extends ComponentLayers = []> = E extends readonly [
+	infer H,
+	...infer Rest
+]
+	? FlattenLayers<Rest, [...Seen, ...NewLayers<LayersOf<H>, Seen>]>
 	: Seen;
 
-/** The layers of every component `E` extends, left to right, each once. */
-type ParentLayers<E> = DedupeLayers<
-	E extends readonly unknown[] ? FlattenLayers<E> : LayersOf<E>
->;
+/** The layers of every component `E` extends, left to right. */
+type ParentLayers<E> = E extends readonly unknown[]
+	? FlattenLayers<E>
+	: LayersOf<E>;
 
 type FoldLayers<L, Acc extends ComponentTypes> = L extends readonly [
 	infer H extends ComponentTypes,

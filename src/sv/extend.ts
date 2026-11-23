@@ -415,20 +415,21 @@ const isSameValue = (first: LayerValue, second: LayerValue): boolean => {
 };
 
 /**
- * The layers of the components a config extends, left to right, each layer
- * once: an ancestor two parents share is merged where it first appears. Two
- * layers with the same config count as one, as their types can't be told
- * apart either.
+ * The layers of the components a config extends, left to right: an ancestor
+ * two parents share is merged where it first appears. A parent's layer with
+ * the same config as one of an earlier parent counts as that one, as their
+ * types can't be told apart either; a parent's own layers are all kept.
  */
 export const getParentLayers = (extend: ExtendInput): RawConfig[] => {
 	const layers: RawConfig[] = [];
 
 	for (const parent of toParentList(extend)) {
-		for (const layer of getLayers(parent)) {
-			if (!layers.some((known) => isSameValue(known, layer))) {
-				layers.push(layer);
-			}
-		}
+		// Filtered before any is added, so only earlier parents are compared
+		const added = getLayers(parent).filter(
+			(layer) => !layers.some((known) => isSameValue(known, layer))
+		);
+
+		layers.push(...added);
 	}
 
 	return layers;
