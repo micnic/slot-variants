@@ -180,6 +180,10 @@ type PropsArgument = { source: PropsObject; index: number };
 // The props a call's spreads of a component's props leave out.
 type SpreadOmits = Pick<ForwardTarget, 'spreadOmits' | 'spreadPicks'>;
 
+// The variants a call reads from a component's props, and those of them whose
+// prop has no default.
+type VariantProps = Pick<ForwardTarget, 'variantProps' | 'optionalProps'>;
+
 // A prop read off an object by name: `props.size`.
 type MemberRead = { object: Identifier; prop: string };
 
@@ -531,6 +535,63 @@ const lacksProp = (
 	omitted.has(prop) ||
 	forced.has(prop) ||
 	(picked !== null && !picked.has(prop));
+
+// Adds the props a picked object holds of the element's: those it picks, less
+// the ones it lacks.
+const addPickedProps = (
+	source: PropsObject,
+	picked: ReadonlySet<string>,
+	picks: Set<string>
+) => {
+	for (const key of picked) {
+		if (!lacksProp(source, key)) {
+			picks.add(key);
+		}
+	}
+};
+
+// The props every rest in `whole` leaves out, less those a picked object
+// holds.
+const getWholeOmits = (
+	whole: readonly PropsObject[],
+	picks: ReadonlySet<string>
+): Set<string> => {
+	const omitted = new Set<string>();
+
+	for (const source of whole) {
+		for (const key of source.omitted) {
+			if (
+				!picks.has(key) &&
+				whole.every((other) => other.omitted.has(key))
+			) {
+				omitted.add(key);
+			}
+		}
+	}
+
+	return omitted;
+};
+
+// The class prop a component forwards once a read of it is added: the one it
+// already forwards by name, or the read's own when it is read by name.
+// Undefined when that names a second one, as the first is kept.
+const getForwardedProp = (
+	read: PropRead,
+	spreadProps: ReadonlySet<string> | null,
+	kept: ForwardedStyles | undefined
+): string | null | undefined => {
+	const prop = kept?.prop ?? null;
+
+	if (spreadProps !== null) {
+		return prop;
+	}
+
+	if (prop !== null && prop !== read.prop) {
+		return undefined;
+	}
+
+	return read.prop;
+};
 
 // Whether the spreads of a component's props a call holds carry a prop.
 const carriesProp = (
@@ -1305,13 +1366,8 @@ export const createForwardingScan = (
 
 			if (source.picked === null) {
 				whole.push(source);
-				continue;
-			}
-
-			for (const key of source.picked) {
-				if (!lacksProp(source, key)) {
-					picks.add(key);
-				}
+			} else {
+				addPickedProps(source, source.picked, picks);
 			}
 		}
 
@@ -1319,57 +1375,44 @@ export const createForwardingScan = (
 			return { spreadOmits: NO_PROPS, spreadPicks: picks };
 		}
 
-		const omitted = new Set<string>();
-
-		for (const source of whole) {
-			for (const key of source.omitted) {
-				if (
-					!picks.has(key) &&
-					whole.every((other) => other.omitted.has(key))
-				) {
-					omitted.add(key);
-				}
-			}
-		}
-
-		return { spreadOmits: omitted, spreadPicks: null };
+		return { spreadOmits: getWholeOmits(whole, picks), spreadPicks: null };
 	};
 
-	/**
-	 * A part a component forwards its prop into, as an element passing it no
-	 * props renders it: a variant read from a prop takes the prop's default,
-	 * if it has one, and the call's spread of the component's props passes
-	 * nothing. Anything else the call can't read may set any variant it
-	 * doesn't pass itself: a variant or preset not read from a prop, a preset
-	 * read from a prop with a default, and any other spread.
-	 */
-	const getForwardTarget = (
-		part: StyledClasses,
-		component: Component
-	): ForwardTarget => {
-		const { passed, preset, spreads } = part.inputs;
-		const matchers = new Map(part.defaultMatchers);
+	// The component prop a call's preset is read from, null when it reads
+	// none. One that can't be read, or is read with a default, may set any
+	// variant the call doesn't pass itself.
+	const readPresetProp = (
+		{ passed, preset }: CallInputs,
+		component: Component,
+		matchers: Map<string, ReadonlySet<string>>
+	): string | null => {
+		if (preset === undefined) {
+			return null;
+		}
+
+		const read = readComponentProp(preset, component);
+
+		if (read === null || read.defaultValue !== null) {
+			openUnpassed(matchers, passed);
+
+			return null;
+		}
+
+		return read.prop;
+	};
+
+	// The variants a call reads from `component`'s props, setting each to the
+	// value it is forced to or the default of its prop, and opening each the
+	// call sets to something else it can't read.
+	const readVariantProps = (
+		unreadProps: ReadonlyMap<string, Node>,
+		component: Component,
+		matchers: Map<string, ReadonlySet<string>>
+	): VariantProps => {
 		const variantProps = new Map<string, string>();
 		const optionalProps = new Map<string, string>();
-		const omits = getSpreadOmits(spreads, component);
-		const forwardsProps = omits !== null;
-		let presetProp: string | null = null;
 
-		if (preset !== undefined) {
-			const read = readComponentProp(preset, component);
-
-			if (read === null || read.defaultValue !== null) {
-				openUnpassed(matchers, passed);
-			} else {
-				presetProp = read.prop;
-			}
-		}
-
-		if (spreads === null || (spreads.length > 0 && !forwardsProps)) {
-			openUnpassed(matchers, passed);
-		}
-
-		for (const [variant, value] of part.unreadProps) {
+		for (const [variant, value] of unreadProps) {
 			const forced = readForcedValue(ctx.resolve(value));
 
 			if (forced !== null) {
@@ -1393,12 +1436,36 @@ export const createForwardingScan = (
 			}
 		}
 
+		return { variantProps, optionalProps };
+	};
+
+	/**
+	 * A part a component forwards its prop into, as an element passing it no
+	 * props renders it: a variant read from a prop takes the prop's default,
+	 * if it has one, and the call's spread of the component's props passes
+	 * nothing. Anything else the call can't read may set any variant it
+	 * doesn't pass itself: a variant or preset not read from a prop, a preset
+	 * read from a prop with a default, and any other spread.
+	 */
+	const getForwardTarget = (
+		part: StyledClasses,
+		component: Component
+	): ForwardTarget => {
+		const { passed, spreads } = part.inputs;
+		const matchers = new Map(part.defaultMatchers);
+		const omits = getSpreadOmits(spreads, component);
+		const forwardsProps = omits !== null;
+		const presetProp = readPresetProp(part.inputs, component, matchers);
+
+		if (spreads === null || (spreads.length > 0 && !forwardsProps)) {
+			openUnpassed(matchers, passed);
+		}
+
 		return {
 			...part,
 			matchers,
 			unreadProps: EMPTY_UNREAD_PROPS,
-			variantProps,
-			optionalProps,
+			...readVariantProps(part.unreadProps, component, matchers),
 			presetProp,
 			forwardsProps,
 			...(omits ?? NO_SPREAD_OMITS),
@@ -1452,40 +1519,44 @@ export const createForwardingScan = (
 	// them may render: two elements, or the branches of an early return. A
 	// component forwarding both `class` and `className` by name keeps the
 	// first; a spread of its props carries either.
+	const trackForwardedNode = (
+		parts: ClassParts,
+		node: Node,
+		index: number
+	) => {
+		const read = readProp(node);
+
+		if (read === null || !CLASS_ATTRIBUTES.has(read.prop)) {
+			return;
+		}
+
+		const spreadProps = spreadReads.get(node) ?? null;
+		const kept = forwarded.get(read.component);
+		const prop = getForwardedProp(read, spreadProps, kept);
+
+		if (prop === undefined) {
+			return;
+		}
+
+		const path = pathAt(parts.paths.dynamic, index);
+		const targets = getForwardTargets(parts, path, read.component);
+
+		if (targets.length === 0) {
+			return;
+		}
+
+		forwarded.set(read.component, {
+			prop,
+			targets: [
+				...(kept?.targets ?? []),
+				...targets.map((target) => ({ ...target, spreadProps }))
+			]
+		});
+	};
+
 	const trackForwarding = (parts: ClassParts) => {
 		parts.dynamic.forEach((node, index) => {
-			const read = readProp(node);
-
-			if (read === null || !CLASS_ATTRIBUTES.has(read.prop)) {
-				return;
-			}
-
-			const spreadProps = spreadReads.get(node) ?? null;
-			const kept = forwarded.get(read.component);
-			let prop = kept?.prop ?? null;
-
-			if (spreadProps === null) {
-				if (prop !== null && prop !== read.prop) {
-					return;
-				}
-
-				({ prop } = read);
-			}
-
-			const path = pathAt(parts.paths.dynamic, index);
-			const targets = getForwardTargets(parts, path, read.component);
-
-			if (targets.length === 0) {
-				return;
-			}
-
-			forwarded.set(read.component, {
-				prop,
-				targets: [
-					...(kept?.targets ?? []),
-					...targets.map((target) => ({ ...target, spreadProps }))
-				]
-			});
+			trackForwardedNode(parts, node, index);
 		});
 	};
 

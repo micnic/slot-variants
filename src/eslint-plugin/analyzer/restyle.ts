@@ -5,7 +5,8 @@ import type {
 	Identifier,
 	LogicalExpression,
 	MemberExpression,
-	Node
+	Node,
+	TemplateLiteral
 } from 'estree';
 import {
 	areConflictingKeys,
@@ -276,14 +277,8 @@ export const collectParts = (
 		return;
 	}
 
-	// `a && b` renders `b` or nothing; `a || b` and `a ?? b` render one side.
 	if (resolved.type === 'LogicalExpression') {
-		if (resolved.operator === '&&') {
-			collectParts(resolved.right, ctx, parts);
-		} else {
-			collectBranch(resolved, resolved.left, true, ctx, parts);
-			collectBranch(resolved, resolved.right, false, ctx, parts);
-		}
+		collectLogicalParts(resolved, ctx, parts);
 
 		return;
 	}
@@ -295,19 +290,45 @@ export const collectParts = (
 		resolved.type === 'TemplateLiteral' &&
 		resolved.expressions.length > 0
 	) {
-		// Substitutions are whitespace-separated, so no token straddles one.
-		if (hasIsolatedQuasis(resolved)) {
-			pushBaseQuasiTokens(resolved, parts.literals, ctx.sourceCode);
-
-			for (const expression of resolved.expressions) {
-				collectParts(expression, ctx, parts);
-			}
-		}
+		collectTemplateParts(resolved, ctx, parts);
 
 		return;
 	}
 
 	extractCnTokens(resolved, parts.literals, ctx.sourceCode);
+};
+
+// `a && b` renders `b` or nothing; `a || b` and `a ?? b` render one side.
+const collectLogicalParts = (
+	node: LogicalExpression,
+	ctx: StyledContext,
+	parts: ClassParts
+) => {
+	if (node.operator === '&&') {
+		collectParts(node.right, ctx, parts);
+	} else {
+		collectBranch(node, node.left, true, ctx, parts);
+		collectBranch(node, node.right, false, ctx, parts);
+	}
+};
+
+// The literal classes around a template's substitutions, and the parts of
+// each substitution. Substitutions are whitespace-separated, so no token
+// straddles one; a template where one could is left alone.
+const collectTemplateParts = (
+	node: TemplateLiteral,
+	ctx: StyledContext,
+	parts: ClassParts
+) => {
+	if (!hasIsolatedQuasis(node)) {
+		return;
+	}
+
+	pushBaseQuasiTokens(node, parts.literals, ctx.sourceCode);
+
+	for (const expression of node.expressions) {
+		collectParts(expression, ctx, parts);
+	}
 };
 
 /**

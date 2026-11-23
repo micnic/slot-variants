@@ -45,6 +45,9 @@ type ExportReader<T> = {
 	self: (analysis: ModuleAnalysis) => T | null;
 };
 
+// Resolves what a module names under an export of another module it imports.
+type ImportFollower<T> = (specifier: string, name: string) => T | null;
+
 /**
  * What one imported module contributes, resolved while it's analyzed so the
  * cache holds no AST: each export name's steps, most direct first, the
@@ -833,18 +836,25 @@ const resolveImport = <T>(
 			depth + 1
 		);
 
+	return readExport(analysis, exportName, read, follow);
+};
+
+// What a module's export answers to `read`, its own steps first, then the
+// modules it re-exports everything from; `follow` resolves an import of it.
+const readExport = <T>(
+	analysis: ModuleAnalysis,
+	exportName: string,
+	read: ExportReader<T>,
+	follow: ImportFollower<T>
+): T | null => {
 	for (const step of analysis.exports.get(exportName) ?? []) {
-		if (step.kind !== 'forward') {
-			const found = read.step(step);
+		let found: T | null;
 
-			if (found !== null) {
-				return found;
-			}
-
-			continue;
+		if (step.kind === 'forward') {
+			found = follow(step.specifier, step.name);
+		} else {
+			found = read.step(step);
 		}
-
-		const found = follow(step.specifier, step.name);
 
 		if (found !== null) {
 			return found;
