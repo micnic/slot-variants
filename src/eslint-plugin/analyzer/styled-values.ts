@@ -15,10 +15,14 @@ import {
 	isClassListMatch
 } from './call-matching.ts';
 import { getKeyName } from './config-keys.ts';
+import { getImportSource } from './components.ts';
 import {
 	type DestructuredRead,
 	findLookupVariable,
+	findSingleBinding,
 	getDestructuredRead,
+	getLookupScope,
+	isInTemplate,
 	resolveContainer,
 	resolveStaticValue
 } from './const-bindings.ts';
@@ -188,6 +192,9 @@ type FactoryReader<K extends keyof ImportedFactory> = (
 	ctx: StyledContext
 ) => ImportedFactory[K];
 
+// A framework function, by the module and export name it's imported as.
+type FrameworkImport = { specifier: string; exportName: string };
+
 const EMPTY_MATCHERS: VariantMatchers = new Map();
 
 const EMPTY_PROPS: ReadonlyMap<string, Node> = new Map();
@@ -231,6 +238,19 @@ const NO_INHERITED: Inherited = {
 };
 
 const NO_SKIP: ReadonlySet<string> = new Set();
+
+// Vue's `computed()`, a ref its template reads unwrapped and its script
+// through `.value`.
+const VUE_COMPUTED: FrameworkImport = {
+	specifier: 'vue',
+	exportName: 'computed'
+};
+
+// Solid's `createMemo()`, an accessor read by calling it.
+const SOLID_MEMO: FrameworkImport = {
+	specifier: 'solid-js',
+	exportName: 'createMemo'
+};
 
 const NO_PRESETS: ReadonlyMap<string, PresetValues> = new Map();
 
@@ -1439,6 +1459,141 @@ export const getMemberKey = (
 	return node.property.name;
 };
 
+// What a reactive wrapper's function computes: an arrow's expression body.
+// Null for anything else, as a block body may compute anything.
+const getArrowBody = (fn: Node | undefined): Node | null => {
+	if (
+		fn?.type !== 'ArrowFunctionExpression' ||
+		fn.body.type === 'BlockStatement'
+	) {
+		return null;
+	}
+
+	return fn.body;
+};
+
+// Whether `value` calls the framework function `source` names, imported under
+// any name.
+const isFrameworkCall = (
+	value: Node,
+	source: FrameworkImport,
+	ctx: StyledContext
+): value is CallExpression => {
+	if (value.type !== 'CallExpression' || value.callee.type !== 'Identifier') {
+		return false;
+	}
+
+	const scope = getLookupScope(value.callee, ctx.sourceCode);
+	const binding = scope && findSingleBinding(scope, value.callee.name);
+
+	if (binding?.def.type !== 'ImportBinding') {
+		return false;
+	}
+
+	const imported = getImportSource(binding.def);
+
+	return (
+		imported?.specifier === source.specifier &&
+		imported.exportName === source.exportName
+	);
+};
+
+// The value a framework function computes, read through `fn`'s arrow.
+const readFrameworkCall = (
+	value: Node,
+	source: FrameworkImport,
+	ctx: StyledContext
+): Node | null => {
+	if (!isFrameworkCall(value, source, ctx)) {
+		return null;
+	}
+
+	return getArrowBody(value.arguments[0]);
+};
+
+// The value a Svelte `$derived(x)` or `$derived.by(() => x)` rune holds.
+const readDerived = (value: Node): Node | null => {
+	if (value.type !== 'CallExpression') {
+		return null;
+	}
+
+	const { callee } = value;
+	const [argument] = value.arguments;
+
+	if (callee.type === 'Identifier' && callee.name === '$derived') {
+		return argument ?? null;
+	}
+
+	if (
+		callee.type === 'MemberExpression' &&
+		callee.object.type === 'Identifier' &&
+		callee.object.name === '$derived' &&
+		getMemberName(callee) === 'by'
+	) {
+		return getArrowBody(argument);
+	}
+
+	return null;
+};
+
+// A non-computed member read's name, null for any other.
+const getMemberName = (node: MemberExpression): string | null => {
+	if (node.computed || node.property.type !== 'Identifier') {
+		return null;
+	}
+
+	return node.property.name;
+};
+
+/**
+ * The expression a reactive wrapper of a value stands for where `node` reads
+ * it: a Svelte `$derived`, a Vue `computed` in its template or through
+ * `.value`, or a Solid `createMemo` accessor's call. Null for any other read.
+ */
+const getReactiveSource = (node: Node, ctx: StyledContext): Node | null => {
+	if (node.type === 'MemberExpression' && getMemberName(node) === 'value') {
+		return readFrameworkCall(ctx.resolve(node.object), VUE_COMPUTED, ctx);
+	}
+
+	if (node.type === 'CallExpression' && node.arguments.length === 0) {
+		const memo = readFrameworkCall(
+			ctx.resolve(node.callee),
+			SOLID_MEMO,
+			ctx
+		);
+
+		if (memo !== null) {
+			return memo;
+		}
+	}
+
+	const value = ctx.resolve(node);
+
+	if (isInTemplate(node, ctx.sourceCode)) {
+		return readFrameworkCall(value, VUE_COMPUTED, ctx);
+	}
+
+	return readDerived(value);
+};
+
+/**
+ * Resolves `node` like `ctx.resolve`, first reading through the reactive
+ * wrappers frameworks hold a result in. One that holds itself ends the walk.
+ */
+export const resolveReactive = (node: Node, ctx: StyledContext): Node => {
+	const seen = new Set<Node>();
+	let current = node;
+	let source = getReactiveSource(current, ctx);
+
+	while (source !== null && !seen.has(source)) {
+		seen.add(source);
+		current = source;
+		source = getReactiveSource(current, ctx);
+	}
+
+	return ctx.resolve(current);
+};
+
 // The value and key a slot read takes: a member read, or a name destructured
 // off the value.
 const getSlotRead = (
@@ -1471,7 +1626,7 @@ const resolveStyledRead = (
 		return null;
 	}
 
-	const object = ctx.resolve(read.object);
+	const object = resolveReactive(read.object, ctx);
 
 	if (object.type !== 'CallExpression') {
 		return null;
@@ -1597,7 +1752,7 @@ export const readStyledClasses = (
 export const resolveStyledClasses = (
 	node: Node,
 	ctx: StyledContext
-): StyledClasses | null => readStyledClasses(ctx.resolve(node), ctx);
+): StyledClasses | null => readStyledClasses(resolveReactive(node, ctx), ctx);
 
 /**
  * The `class` / `className` value a call site passes, split per targeted slot.

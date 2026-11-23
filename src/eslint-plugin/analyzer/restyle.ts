@@ -22,6 +22,7 @@ import {
 	type Invocation,
 	pickCallMatchers,
 	readStyledClasses,
+	resolveReactive,
 	resolveTargetSlots,
 	type StyledClasses,
 	type StyledContext
@@ -245,7 +246,7 @@ export const collectParts = (
 		collectHoistedParts(resolved, ctx, parts);
 	}
 
-	const styled = readStyledClasses(resolved, ctx);
+	const styled = readStyledClasses(resolveReactive(node, ctx), ctx);
 
 	if (styled !== null) {
 		parts.styled.push(styled);

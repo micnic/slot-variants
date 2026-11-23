@@ -79,6 +79,10 @@ const RESTYLE_PRESET_BUTTON = `const button = sv({
 });\n`;
 
 export const RESTYLE_VALID = [
+	// A `createMemo` that isn't Solid's, or whose accessor is passed
+	// arguments, isn't read as the result it computes.
+	IMPORT_SV_CN +
+		"import { createMemo as own } from './own';\nimport { createMemo } from 'solid-js';\nconst card = sv({ base: 'p-2', variants: {} });\nconst mine = own(() => card());\nconst memo = createMemo(() => card());\n<div class={cn(mine().base, 'p-4')} />;\n<div class={cn(memo(1).base, 'p-4')} />;",
 	// A compound's `preset` only applies with the values the preset sets.
 	IMPORT +
 		"const c = sv({ variants: { on: { true: 'x', false: 'y' } }, presets: { off: { on: false } }, compoundVariants: [{ preset: 'off', class: 'gg' }] });\nc({ on: true, class: 'gg' });",
@@ -457,6 +461,13 @@ function Whole(props) {
 // Svelte: a class attribute with no slot-variants substitution, and a
 // directive rather than a plain attribute.
 export const RESTYLE_SVELTE_VALID = [
+	// A `$derived` holding itself is left unread rather than followed forever,
+	// and a `$derived` without a value or `$derived.by` without a function
+	// computes nothing to read.
+	{
+		code: `<script>import { sv, cn } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst a = $derived(a);\nconst b = $derived.by();\nconst c = $derived.other(() => card());\nconst d = $derived();</script>\n<div class="p-4 {a}">x</div><div class="p-4 {b}">y</div><div class="p-4 {c}">z</div><div class="p-4 {d}">w</div>`,
+		filename: 'a.svelte'
+	},
 	// Text glued to a substitution is part of the same class name.
 	{
 		code: `<script>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<div class="{c}p-4">y</div><div class="p-4{c}">z</div>`,
@@ -477,6 +488,13 @@ export const RESTYLE_SVELTE_VALID = [
 // Vue: a bound attribute that isn't `class`, an empty binding, a dynamic
 // directive argument, a `v-if`, and a class object with no styled sibling.
 export const RESTYLE_VUE_VALID = [
+	// A `computed` read in the script without `.value` is the ref, not the
+	// result; a `computed` that isn't Vue's, or whose function has a block
+	// body, isn't read either.
+	{
+		code: `<script setup>import { computed } from 'vue';\nimport { computed as own } from './own';\nimport { sv, cn } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst classes = computed(() => card());\nconst mine = own(() => card());\nconst block = computed(() => { return card(); });\nconst empty = computed();\nconst x = cn(classes.base, 'p-4');</script>\n<template><div :class="[mine.base, 'p-4']">a</div><div :class="[block.base, 'p-4']">b</div><div :class="[empty.base, 'p-4']">c</div></template>`,
+		filename: 'a.vue'
+	},
 	{
 		// A \`v-bind\` object that can't be read in full, one with no class, a
 		// bound attribute, and another directive pass no class.
@@ -494,6 +512,13 @@ export const RESTYLE_VUE_VALID = [
 ];
 
 export const RESTYLE_INVALID = [
+	{
+		// A Solid `createMemo` accessor's call reads like the result itself.
+		code:
+			IMPORT_SV_CN +
+			"import { createMemo } from 'solid-js';\nconst card = sv({ base: 'p-2', slots: { head: 'px-4' } });\nfunction Card(props) {\n\tconst classes = createMemo(() => card({ class: props.class }));\n\treturn <div class={cn(classes().base, 'p-4')}><i class={`${classes().head} px-8`} /></div>;\n}",
+		errors: [restyle('p-4', 'p-2'), restyle('px-8', 'px-4', 'head')]
+	},
 	{
 		// A config extending parents that set no `base` takes the factory's.
 		code:
@@ -1828,6 +1853,17 @@ looped({ class: 'p-4' });`,
 );
 
 export const RESTYLE_SVELTE_INVALID = [
+	// A result held in `$derived` or `$derived.by` reads like the result
+	// itself.
+	{
+		code: `<script>import { sv, cn } from 'slot-variants';\nconst card = sv({ base: 'p-2', slots: { head: 'px-4' } });\nconst button = sv({ base: 'm-1', variants: {} });\nlet { klass } = $props();\nconst classes = $derived(card({ class: klass }));\nconst lazy = $derived.by(() => card());\nconst b = $derived(button());</script>\n<div class="p-4 {classes.base}">a</div><div class={cn(lazy.head, 'px-8')}>b</div><div class="m-2 {b}">c</div>`,
+		filename: 'a.svelte',
+		errors: [
+			restyle('p-4', 'p-2'),
+			restyle('px-8', 'px-4', 'head'),
+			restyle('m-2', 'm-1')
+		]
+	},
 	// Svelte: literal runs around a substitution, and a `class` attribute that
 	// is a single substitution beside a static one.
 	{
@@ -1843,6 +1879,17 @@ export const RESTYLE_SVELTE_INVALID = [
 ];
 
 export const RESTYLE_VUE_INVALID = [
+	// A `computed` result reads like the result itself in the template, and
+	// through `.value` in the script.
+	{
+		code: `<script setup>import { computed } from 'vue';\nimport { sv, cn } from 'slot-variants';\nconst card = sv({ base: 'p-2', slots: { head: 'px-4' } });\nconst button = sv({ base: 'm-1', variants: {} });\nconst classes = computed(() => card());\nconst b = computed(() => button());\nconst head = cn(classes.value.head, 'px-8');</script>\n<template><div :class="[classes.base, 'p-4']">a</div><div class="m-2" :class="b">b</div></template>`,
+		filename: 'a.vue',
+		errors: [
+			restyle('px-8', 'px-4', 'head'),
+			restyle('p-4', 'p-2'),
+			restyle('m-2', 'm-1')
+		]
+	},
 	{
 		// Vue merges the class a \`v-bind\` object passes with the element's.
 		code: `<script setup>import { sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<template><div v-bind="{ class: c }" class="p-4">a</div><div v-bind="{ class: 'p-6' }" :class="c">b</div></template>`,
