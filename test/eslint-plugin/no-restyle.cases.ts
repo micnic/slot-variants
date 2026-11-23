@@ -79,6 +79,9 @@ const RESTYLE_PRESET_BUTTON = `const button = sv({
 });\n`;
 
 export const RESTYLE_VALID = [
+	// A compound's `preset` only applies with the values the preset sets.
+	IMPORT +
+		"const c = sv({ variants: { on: { true: 'x', false: 'y' } }, presets: { off: { on: false } }, compoundVariants: [{ preset: 'off', class: 'gg' }] });\nc({ on: true, class: 'gg' });",
 	// A class a spread passes that an attribute after it replaces never
 	// renders, and one a spread that can't be read in full may pass isn't
 	// read.

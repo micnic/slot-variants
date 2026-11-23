@@ -19,7 +19,8 @@ import { CLASS_TOKEN, getInnerText, getStaticStringText } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
 	getClassValue,
-	getProperties
+	getProperties,
+	getStrictProperties
 } from './properties.ts';
 import { isStaticTernaryTemplate } from './static-predicates.ts';
 import {
@@ -62,6 +63,9 @@ export const NON_MATCHER_KEYS: ReadonlySet<string> = new Set([
 	'className',
 	'preset'
 ]);
+
+// A preset's keys are all variant names, so none is skipped.
+const NO_MATCHER_SKIP: ReadonlySet<string> = new Set();
 
 // A compound entry's `slots` names the slots it targets, not a variant.
 export const COMPOUND_NON_MATCHER_KEYS: ReadonlySet<string> = new Set([
@@ -721,20 +725,61 @@ export const readMatchers = (
 	return matchers;
 };
 
+// The variant values a compound's `preset` stands for, as matchers, the way
+// `sv()` reads them: none when the preset can't be named, isn't one of the
+// config's own or can't be read in full, which can only under-suppress.
+const readPresetMatchers = (
+	compound: ReadonlyMap<string, Node>,
+	presets: ReadonlyMap<string, Node>,
+	sourceCode: SourceCode
+): Map<string, ReadonlySet<string>> => {
+	const preset = compound.get('preset');
+
+	if (preset === undefined) {
+		return new Map();
+	}
+
+	const name = getStaticMatcherValue(preset, sourceCode);
+
+	if (name === null) {
+		return new Map();
+	}
+
+	const values = getStrictProperties(
+		resolveContainer(presets.get(name), sourceCode)
+	);
+
+	if (values === null) {
+		return new Map();
+	}
+
+	const matchers = readMatchers(values, NO_MATCHER_SKIP, sourceCode);
+
+	// A value that can't be read may be any, so it proves nothing
+	if (matchers.size !== values.size) {
+		return new Map();
+	}
+
+	return matchers;
+};
+
 // Derives an exclusivity source from a compound's matcher properties, so two
 // compounds requiring disjoint variant values aren't reported as conflicts.
-// Only fully read matchers count; any other is skipped, which can only
-// under-suppress, never wrongly suppress. With no readable matcher left,
-// falls back to the never-exclusive compound source.
+// Its `preset` stands for the values it sets, which the compound's own
+// matchers override, as in `sv()`. Only fully read matchers count; any other
+// is skipped, which can only under-suppress, never wrongly suppress. With no
+// readable matcher left, falls back to the never-exclusive compound source.
 const getCompoundSource = (
 	compound: ReadonlyMap<string, Node>,
+	presets: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
 ): Source => {
-	const matchers = readMatchers(
-		compound,
-		COMPOUND_NON_MATCHER_KEYS,
-		sourceCode
-	);
+	const matchers = readPresetMatchers(compound, presets, sourceCode);
+	const own = readMatchers(compound, COMPOUND_NON_MATCHER_KEYS, sourceCode);
+
+	for (const [key, values] of own) {
+		matchers.set(key, values);
+	}
 
 	if (matchers.size === 0) {
 		return compoundSource;
@@ -778,12 +823,19 @@ const extractCompoundTokens = (
 	const groups = getProperties(
 		resolveContainer(config.get('groups'), sourceCode)
 	);
+	const presets = getProperties(
+		resolveContainer(config.get('presets'), sourceCode)
+	);
 
 	forEachCompoundClass(
 		config.get('compoundVariants'),
 		sourceCode,
 		(cls, compound) => {
-			extract(cls, 'base', getCompoundSource(compound, sourceCode));
+			extract(
+				cls,
+				'base',
+				getCompoundSource(compound, presets, sourceCode)
+			);
 		}
 	);
 
@@ -791,7 +843,7 @@ const extractCompoundTokens = (
 		config.get('compoundSlots'),
 		sourceCode,
 		(cls, compound) => {
-			const source = getCompoundSource(compound, sourceCode);
+			const source = getCompoundSource(compound, presets, sourceCode);
 			const targets = getCompoundSlotTargets(
 				compound.get('slots'),
 				groups,

@@ -13,6 +13,16 @@ import {
 } from './helpers.ts';
 
 export const NO_CONFLICTING_DUP_VALID = [
+	// A compound's `preset` matches the values the preset sets, so it never
+	// applies with another value of the variant it sets.
+	IMPORT +
+		"sv({ variants: { on: { true: 'gg', false: 'x' } }, presets: { off: { on: false } }, compoundVariants: [{ preset: 'off', class: 'gg' }] });",
+	// Two presets setting different values of a variant exclude each other.
+	IMPORT +
+		"sv({ variants: { size: { sm: 'a', lg: 'b' } }, presets: { small: { size: 'sm' }, large: { size: 'lg' } }, compoundVariants: [{ preset: 'small', class: 'gg' }, { preset: 'large', class: 'gg' }] });",
+	// A compound's own matcher overrides the value its preset sets.
+	IMPORT +
+		"sv({ variants: { size: { sm: 'gg', lg: 'x' } }, presets: { small: { size: 'sm' } }, compoundVariants: [{ preset: 'small', size: 'lg', class: 'gg' }] });",
 	IMPORT +
 		"sv({ base: 'flex items-center', variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });",
 	IMPORT +
@@ -232,6 +242,42 @@ export const NO_CONFLICTING_DUP_VALID = [
 ];
 
 export const NO_CONFLICTING_DUP_INVALID = [
+	{
+		// A compound whose preset sets the value it shares a class with.
+		code:
+			IMPORT +
+			"sv({ variants: { on: { true: 'gg', false: 'x' } }, presets: { on: { on: true } }, compoundVariants: [{ preset: 'on', class: 'gg' }] });",
+		errors: repeat(dup('gg'), 2)
+	},
+	{
+		// A preset a spread may add to can set any value, even one it sets
+		// before the spread.
+		code:
+			IMPORT +
+			"sv({ variants: { on: { true: 'gg', false: 'x' } }, presets: { off: { on: false, ...rest } }, compoundVariants: [{ preset: 'off', class: 'gg' }] });",
+		errors: repeat(dup('gg'), 2)
+	},
+	{
+		// A preset value that can't be read may be the value that clashes.
+		code:
+			IMPORT +
+			"sv({ variants: { on: { true: 'gg', false: 'x' } }, presets: { off: { on: flag } }, compoundVariants: [{ preset: 'off', class: 'gg' }] });",
+		errors: repeat(dup('gg'), 2)
+	},
+	{
+		// A preset named by a value that can't be read may be any of them.
+		code:
+			IMPORT +
+			"sv({ variants: { on: { true: 'gg', false: 'x' } }, presets: { off: { on: false } }, compoundVariants: [{ preset: name, class: 'gg' }] });",
+		errors: repeat(dup('gg'), 2)
+	},
+	{
+		// A preset that can't be read in full may set any value.
+		code:
+			IMPORT +
+			"sv({ variants: { on: { true: 'gg', false: 'x' } }, presets: { off: { ...rest } }, compoundVariants: [{ preset: 'off', class: 'gg' }] });",
+		errors: repeat(dup('gg'), 2)
+	},
 	{
 		// A config declaring only the `base` slot still takes slot objects.
 		code:
