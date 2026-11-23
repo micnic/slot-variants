@@ -14,7 +14,12 @@ import {
 	recordLayers,
 	toLayer
 } from './sv/extend.ts';
-import { createRun, createRunPlan, getClassBySlot } from './sv/run.ts';
+import {
+	createRun,
+	createRunPlan,
+	getClassBySlot,
+	resolvePresetValues
+} from './sv/run.ts';
 import {
 	type AnyFn,
 	type CacheValue,
@@ -80,10 +85,34 @@ const mergeMultiSlotClass = (
 };
 
 /**
+ * Fills in the outer preset's values as props where the outer props pass
+ * none, so the slot function's own preset replaces only the variants it sets.
+ */
+const addOuterPresetValues = (
+	config: CompiledConfig,
+	mergedProps: RuntimeProps,
+	outerPreset: string | undefined
+) => {
+	// The outer call already threw for an unknown preset
+	const presetValues = resolvePresetValues(config.presets, outerPreset);
+
+	if (presetValues === undefined) {
+		return;
+	}
+
+	for (const [key, value] of entries(presetValues)) {
+		if (getOwn(mergedProps, key) === undefined) {
+			mergedProps[key] = value;
+		}
+	}
+};
+
+/**
  * Overrides the outer variant props with the slot function's own, skipping
  * the ones left `undefined` so they keep the outer value, like an omitted
- * prop. Its own preset also unsets the outer props for the variants it sets,
- * which would otherwise override it. The class props are merged separately.
+ * prop. Its own preset replaces the outer one only for the variants it sets,
+ * and also unsets the outer props for them, which would otherwise override
+ * it. The class props are merged separately.
  */
 const mergeSlotFnProps = (
 	config: CompiledConfig,
@@ -94,6 +123,8 @@ const mergeSlotFnProps = (
 	const { preset } = innerProps;
 
 	if (preset !== undefined) {
+		addOuterPresetValues(config, mergedProps, outerProps.preset);
+
 		// An unknown preset sets nothing, and the run throws for it
 		for (const key of keys(getOwn(config.presets, preset) ?? {})) {
 			mergedProps[key] = undefined;

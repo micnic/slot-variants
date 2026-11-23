@@ -21,7 +21,8 @@ const compilers = [
 // Each consumer file with the module setting it is checked under.
 const typeChecks = [
 	{ module: 'NodeNext', file: 'consumer.ts' },
-	{ module: 'Node16', file: 'consumer-commonjs.cts' }
+	{ module: 'Node16', file: 'consumer-commonjs.cts' },
+	{ module: 'NodeNext', file: 'consumer-undefined.ts' }
 ];
 
 const run = (command, args, cwd = root) =>
@@ -96,6 +97,23 @@ try {
 	writeFileSync(
 		join(consumerDirectory, 'consumer-commonjs.cts'),
 		"import { sv, type VariantProps } from 'slot-variants';\nimport { rules } from 'slot-variants/eslint-plugin';\nconst button = sv({ variants: { size: { sm: 'sm', lg: 'lg' } } });\nconst props: VariantProps<typeof button> = { size: 'sm' };\nvoid button(props);\nvoid rules['no-conflicting-classes'];\n"
+	);
+
+	// Without `exactOptionalPropertyTypes`, as consumers often compile, an
+	// explicit `undefined` sets nothing, so it can't satisfy a requirement.
+	writeFileSync(
+		join(consumerDirectory, 'consumer-undefined.ts'),
+		[
+			"import { sv } from 'slot-variants';",
+			"const parent = sv({ variants: { size: { sm: 'sm' } }, requiredVariants: ['size'] });",
+			'// @ts-expect-error an undefined default leaves size required',
+			'void sv({ extend: parent, variants: {}, defaultVariants: { size: undefined } });',
+			"const button = sv({ variants: { size: { sm: 'sm' } }, requiredVariants: ['size'], presets: { empty: { size: undefined } } });",
+			'// @ts-expect-error a preset setting size to undefined leaves it required',
+			"void button({ preset: 'empty' });",
+			"void button({ preset: 'empty', size: 'sm' });",
+			''
+		].join('\n')
 	);
 
 	run('node', ['esm.mjs'], consumerDirectory);

@@ -308,6 +308,13 @@ type PresetProp<P> = P extends undefined
 	? unknown
 	: { preset?: StringKeyof<P> | undefined };
 
+// The keys of `T` holding a value: an `undefined` one sets nothing, even
+// where `exactOptionalPropertyTypes` is off and lets it be written.
+type SetKeys<T> = Exclude<
+	{ [K in keyof T]: undefined extends T[K] ? never : K }[keyof T],
+	undefined
+>;
+
 // The props of a call naming preset `K`: the required variants it doesn't set
 // still have to be passed.
 type NamedPresetProps<
@@ -317,7 +324,13 @@ type NamedPresetProps<
 	P extends MaybePresets<S, G, V>,
 	R extends StringKeyof<V>,
 	K extends StringKeyof<P>
-> = VariantPropsFor<S, G, V, Exclude<R, keyof P[K]>, Extract<R, keyof P[K]>> & {
+> = VariantPropsFor<
+	S,
+	G,
+	V,
+	Exclude<R, SetKeys<P[K]>>,
+	Extract<R, SetKeys<P[K]>>
+> & {
 	preset: K;
 };
 
@@ -544,9 +557,11 @@ type RequiredDefaultCollision<
 type DefaultKeys<D extends string> = { [K in D]?: unknown };
 
 // A default for a variant a parent requires must have a value: an `undefined`
-// one is omitted, so the variant would stay required.
-type InheritedRequiredDefaults<E> = {
-	[K in ParentTypes<E>['required']]?: NonNullable<unknown> | null;
+// one is omitted, so the variant would stay required. Mapped over the keys
+// written (`D`) rather than made optional, so it holds even where
+// `exactOptionalPropertyTypes` is off.
+type InheritedRequiredDefaults<E, D extends string> = {
+	[K in Extract<D, ParentTypes<E>['required']>]: NonNullable<unknown> | null;
 };
 
 // What a component records about itself for the components extending it.
@@ -921,7 +936,7 @@ export type Config<
 				R
 		  > &
 				RequiredDefaultCollision<ExtendedVariants<E, S, G, V>, R> &
-				InheritedRequiredDefaults<E> &
+				InheritedRequiredDefaults<E, D> &
 				DefaultKeys<D>)
 		| undefined;
 	/** Variants the caller must always pass, so their props lose the `?`. */
@@ -1333,7 +1348,9 @@ export type SV<
  */
 export type VariantProps<T extends AnyFn, E extends string = never> = Prettify<
 	Omit<
-		Exclude<Parameters<T>[0], undefined>,
+		// The props naming a preset are left out with `preset` itself, so a
+		// required variant one sets stays required
+		Exclude<Parameters<T>[0], undefined | { preset: string }>,
 		'class' | 'className' | 'preset' | E
 	>
 >;

@@ -38,9 +38,25 @@ type AssertPresetProp = Parameters<typeof _presetFn>[0] extends
 	: false;
 const _assertPresetProp: AssertPresetProp = true;
 
+// A preset setting a required variant doesn't make it optional in
+// VariantProps, which has no `preset` to set it with
+const _requiredPresetFn = sv('btn', {
+	variants: { size: { sm: 'text-sm' }, intent: { primary: 'bg-blue-500' } },
+	requiredVariants: ['size'],
+	presets: { small: { size: 'sm' } }
+});
+
+type RequiredPresetProps = VariantProps<typeof _requiredPresetFn>;
+
+// @ts-expect-error - size stays required
+const _requiredPresetProps: RequiredPresetProps = { intent: 'primary' };
+const _requiredPresetPropsOk: RequiredPresetProps = { size: 'sm' };
+
 void _presetFn;
 void _assertPresetExcluded;
 void _assertPresetProp;
+void _requiredPresetProps;
+void _requiredPresetPropsOk;
 
 t.test('preset applies variant values', (t) => {
 	const button = sv('btn', {
