@@ -28,6 +28,8 @@ import {
 	RESTYLE_INVALID,
 	RESTYLE_SVELTE_INVALID,
 	RESTYLE_SVELTE_VALID,
+	RESTYLE_TS_INVALID,
+	RESTYLE_TS_VALID,
 	RESTYLE_VALID,
 	RESTYLE_VUE_INVALID,
 	RESTYLE_VUE_VALID
@@ -38,11 +40,13 @@ t.test('no-restyle', (t) => {
 		jsxTester.run('no-restyle', rules['no-restyle'], {
 			valid: [
 				...RESTYLE_VALID,
+				...RESTYLE_TS_VALID,
 				...CROSS_FILE_VALID,
 				...TS_CROSS_FILE_VALID
 			],
 			invalid: [
 				...RESTYLE_INVALID,
+				...RESTYLE_TS_INVALID,
 				...CROSS_FILE_INVALID,
 				...TS_CROSS_FILE_INVALID
 			]

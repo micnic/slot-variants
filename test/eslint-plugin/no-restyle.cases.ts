@@ -1,3 +1,5 @@
+import { parser as tsParser } from 'typescript-eslint';
+
 import {
 	IMPORT,
 	IMPORT_CN,
@@ -1920,5 +1922,35 @@ export const RESTYLE_VUE_INVALID = [
 		code: `<script setup>import { cn, sv } from 'slot-variants';\nconst card = sv({ base: 'p-2', variants: {} });\nconst c = card();</script>\n<template><div :class="cn(c, 'p-8')">a</div><div :class="card({ class: 'p-6' })">b</div></template>`,
 		filename: 'a.vue',
 		errors: [restyle('p-8', 'p-2'), restyle('p-6', 'p-2')]
+	}
+];
+// A `splitProps()` call is read through a type-only wrapper: the rest carries
+// none of the listed props, and a picked one keeps its own.
+export const RESTYLE_TS_VALID = [
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			`function Rest(props) {
+	const [local, others] = splitProps(props, ['class']) as const;
+	return <button class={button(others)} />;
+}
+<Rest class="p-4" />;`,
+		languageOptions: { parser: tsParser }
+	}
+];
+
+export const RESTYLE_TS_INVALID = [
+	{
+		code:
+			IMPORT +
+			RESTYLE_BUTTON +
+			`function Picked(props) {
+	const [{ class: cls }] = splitProps(props, ['class']) satisfies unknown;
+	return <button class={button({ class: cls })} />;
+}
+<Picked class="p-4" />;`,
+		languageOptions: { parser: tsParser },
+		errors: [restyle('p-4', 'p-2')]
 	}
 ];

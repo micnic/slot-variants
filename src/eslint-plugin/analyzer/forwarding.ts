@@ -1185,7 +1185,8 @@ export const createForwardingScan = (
 			}
 		}
 
-		const source = getInitSource(unwrapExpression(init));
+		const value = unwrapExpression(init);
+		const source = getInitSource(value);
 
 		if (source === null) {
 			return;
@@ -1197,8 +1198,8 @@ export const createForwardingScan = (
 			return;
 		}
 
-		if (id.type === 'ArrayPattern' && isSplitPropsCall(init)) {
-			registerSplitProps(declared, id, init, source);
+		if (id.type === 'ArrayPattern' && isSplitPropsCall(value)) {
+			registerSplitProps(declared, id, value, source);
 
 			return;
 		}
