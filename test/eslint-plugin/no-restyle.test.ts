@@ -22,6 +22,7 @@ import {
 	IMPORT_CREATE_SV,
 	jsxTester,
 	svelteTester,
+	tsTester,
 	vueTester
 } from './helpers.ts';
 import {
@@ -401,78 +402,86 @@ t.test('no-restyle refreshes a stale module without evicting', async (t) => {
 
 // A linted file is only cached while there's room, or in place of its own
 // entry, so it never evicts a module an import reads.
-t.test('no-restyle caches a linted file only while there is room', async (t) => {
-	// The loader's cache limit, filled exactly
-	const moduleCount = 200;
-	const reads = new Map<string, number>();
-	const fresh = await t.mockImport<
-		typeof import('../../src/eslint-plugin.ts')
-	>('../../src/eslint-plugin.ts', {
-		'node:fs': {
-			...fs,
-			readFileSync: new Proxy(fs.readFileSync, {
-				apply: (target, thisArg, args) => {
-					const path = `${args[0]}`;
+t.test(
+	'no-restyle caches a linted file only while there is room',
+	async (t) => {
+		// The loader's cache limit, filled exactly
+		const moduleCount = 200;
+		const reads = new Map<string, number>();
+		const fresh = await t.mockImport<
+			typeof import('../../src/eslint-plugin.ts')
+		>('../../src/eslint-plugin.ts', {
+			'node:fs': {
+				...fs,
+				readFileSync: new Proxy(fs.readFileSync, {
+					apply: (target, thisArg, args) => {
+						const path = `${args[0]}`;
 
-					reads.set(path, (reads.get(path) ?? 0) + 1);
+						reads.set(path, (reads.get(path) ?? 0) + 1);
 
-					return Reflect.apply(target, thisArg, args);
-				}
-			})
-		}
-	});
-	const component = (name: string) =>
-		`${IMPORT}const styles = sv({ base: 'p-2', variants: {} });
+						return Reflect.apply(target, thisArg, args);
+					}
+				})
+			}
+		});
+		const component = (name: string) =>
+			`${IMPORT}const styles = sv({ base: 'p-2', variants: {} });
 
 		export function ${name}({ className }) {
 			return <i className={styles({ class: className })} />;
 		}
 		`;
-	const paths = Array.from({ length: moduleCount }, (_value, index) =>
-		writeFixture(`full/Mod${index}.tsx`, component(`Mod${index}`))
-	);
-	const linted = writeFixture('full/Linted.tsx', component('Linted'));
-	// One ESLint instance keeps one config, as a real run does, so the
-	// parser options the cache is keyed by stay the same between files
-	const eslint = new ESLint({
-		cwd: fixtureDir,
-		overrideConfigFile: true,
-		overrideConfig: {
-			files: ['**/*.tsx'],
-			plugins: { 'slot-variants': fresh.default },
-			rules: { 'slot-variants/no-restyle': 2 },
-			languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } }
-		}
-	});
-	const lintImports = async (names: readonly string[]) => {
-		const imports = names.map(
-			(name) => `import { ${name} } from './full/${name}.tsx';`
+		const paths = Array.from({ length: moduleCount }, (_value, index) =>
+			writeFixture(`full/Mod${index}.tsx`, component(`Mod${index}`))
 		);
-		const usages = names.map((name) => `<${name} className="p-4" />;`);
-
-		await eslint.lintText(`${imports.join('\n')}\n${usages.join('\n')}`, {
-			filePath: join(fixtureDir, 'page.tsx')
+		const linted = writeFixture('full/Linted.tsx', component('Linted'));
+		// One ESLint instance keeps one config, as a real run does, so the
+		// parser options the cache is keyed by stay the same between files
+		const eslint = new ESLint({
+			cwd: fixtureDir,
+			overrideConfigFile: true,
+			overrideConfig: {
+				files: ['**/*.tsx'],
+				plugins: { 'slot-variants': fresh.default },
+				rules: { 'slot-variants/no-restyle': 2 },
+				languageOptions: {
+					parserOptions: { ecmaFeatures: { jsx: true } }
+				}
+			}
 		});
-	};
-	const [oldest] = paths;
+		const lintImports = async (names: readonly string[]) => {
+			const imports = names.map(
+				(name) => `import { ${name} } from './full/${name}.tsx';`
+			);
+			const usages = names.map((name) => `<${name} className="p-4" />;`);
 
-	if (oldest === undefined) {
-		throw new Error('No modules were written');
+			await eslint.lintText(
+				`${imports.join('\n')}\n${usages.join('\n')}`,
+				{
+					filePath: join(fixtureDir, 'page.tsx')
+				}
+			);
+		};
+		const [oldest] = paths;
+
+		if (oldest === undefined) {
+			throw new Error('No modules were written');
+		}
+
+		await lintImports(paths.map((_path, index) => `Mod${index}`));
+		await eslint.lintFiles([linted]);
+		t.notOk(reads.has(linted), 'a full cache skips the linted file');
+
+		await lintImports(['Mod0']);
+		t.equal(reads.get(oldest), 1, 'the oldest module is still cached');
+
+		// Imported, the file takes a cache entry, which its next lint replaces
+		await lintImports(['Linted']);
+		t.equal(reads.get(linted), 1, 'the imported file is parsed');
+		await eslint.lintFiles([linted]);
+		t.equal(reads.get(linted), 2, 'its own entry is refreshed');
 	}
-
-	await lintImports(paths.map((_path, index) => `Mod${index}`));
-	await eslint.lintFiles([linted]);
-	t.notOk(reads.has(linted), 'a full cache skips the linted file');
-
-	await lintImports(['Mod0']);
-	t.equal(reads.get(oldest), 1, 'the oldest module is still cached');
-
-	// Imported, the file takes a cache entry, which its next lint replaces
-	await lintImports(['Linted']);
-	t.equal(reads.get(linted), 1, 'the imported file is parsed');
-	await eslint.lintFiles([linted]);
-	t.equal(reads.get(linted), 2, 'its own entry is refreshed');
-});
+);
 
 // Config blocks with different language options keep their own cache entry
 // for a module they share, rather than evicting each other's.
@@ -766,7 +775,6 @@ t.test('no-restyle reads a name a type also declares', (t) => {
 
 // A callee in a type-only wrapper is read through it, like any other value.
 t.test('no-restyle reads callees through type-only wrappers', (t) => {
-	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
 	const button = "const b = sv({ base: 'p-2', variants: {} });\n";
 	const list =
 		"const list = sv({ slots: { item: 'px-2' }, multiSlots: ['item'] });\nconst classes = list();\n";

@@ -61,6 +61,9 @@ const tvNoMerge = createTV({ twMerge: false });
 // skipped, so only cases with other props get uncached tv runs.
 const tvNoCache = { noCache: () => '' };
 
+// The props the "with props" slot comparisons pass.
+const lgFilled = { size: 'lg', variant: 'filled' } as const;
+
 const bench = new Bench({ warmupIterations: 1000 });
 
 const compoundButtonConfig = createCompoundButtonConfig();
@@ -203,10 +206,9 @@ addTvComparison(
 addTvComparison(
 	'slots with props',
 	slots,
-	(fn) => fn({ size: 'lg', variant: 'filled' }),
-	(fn) => materializeSlots(fn({ size: 'lg', variant: 'filled' })),
-	(fn) =>
-		materializeSlots(fn({ size: 'lg', variant: 'filled', ...tvNoCache }))
+	(fn) => fn(lgFilled),
+	(fn) => materializeSlots(fn(lgFilled)),
+	(fn) => materializeSlots(fn({ ...lgFilled, ...tvNoCache }))
 );
 
 // --- Multi slots (every sv() slot a function, like tailwind-variants) ---
@@ -231,17 +233,16 @@ addTvComparison(
 addTvComparison(
 	'multi slots with props',
 	multiSlots,
-	(fn) => materializeSlots(fn({ size: 'lg', variant: 'filled' })),
-	(fn) => materializeSlots(fn({ size: 'lg', variant: 'filled' })),
-	(fn) =>
-		materializeSlots(fn({ size: 'lg', variant: 'filled', ...tvNoCache }))
+	(fn) => materializeSlots(fn(lgFilled)),
+	(fn) => materializeSlots(fn(lgFilled)),
+	(fn) => materializeSlots(fn({ ...lgFilled, ...tvNoCache }))
 );
 
 addTvComparison(
 	'multi slots with slot props',
 	multiSlots,
-	(fn) => materializeSlots(fn(), { size: 'lg', variant: 'filled' }),
-	(fn) => materializeSlots(fn(), { size: 'lg', variant: 'filled' })
+	(fn) => materializeSlots(fn(), lgFilled),
+	(fn) => materializeSlots(fn(), lgFilled)
 );
 
 // --- Extend ---

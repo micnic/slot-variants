@@ -1,8 +1,6 @@
 import t from 'tap';
-import { RuleTester } from 'eslint';
-import { parser as tsParser } from 'typescript-eslint';
 import { rules } from '../../src/eslint-plugin.ts';
-import { dup, IMPORT, IMPORT_NS, rule, tester } from './helpers.ts';
+import { dup, IMPORT, IMPORT_NS, rule, tester, tsTester } from './helpers.ts';
 import {
 	NO_CONFLICTING_DUP_INVALID,
 	NO_CONFLICTING_DUP_VALID,
@@ -82,7 +80,6 @@ t.test('no-conflicting-classes (exclusiveGroups validation)', (t) => {
 // Callees behind type-only wrappers, and namespace members read through a
 // `const` alias or destructured, still name their export.
 t.test('no-conflicting-classes (wrapped and destructured callees)', (t) => {
-	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
 	const config = "({ base: 'w-1 w-1', variants: {} });";
 
 	t.doesNotThrow(() => {

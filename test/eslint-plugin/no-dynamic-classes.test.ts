@@ -1,8 +1,6 @@
 import t from 'tap';
-import { RuleTester } from 'eslint';
-import { parser as tsParser } from 'typescript-eslint';
 import { rules } from '../../src/eslint-plugin.ts';
-import { IMPORT, IMPORT_CN, tester } from './helpers.ts';
+import { IMPORT, IMPORT_CN, tester, tsTester } from './helpers.ts';
 import {
 	NO_DYNAMIC_CLASSES_INVALID,
 	NO_DYNAMIC_CLASSES_VALID
@@ -22,8 +20,6 @@ t.test('no-dynamic-classes', (t) => {
 // A type named like a `const` (`type Size = keyof typeof Size`) declares no
 // other value, so the `const` is still read as its value.
 t.test('no-dynamic-classes reads a const a type also names', (t) => {
-	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
-
 	t.doesNotThrow(() => {
 		tsTester.run('no-dynamic-classes', rules['no-dynamic-classes'], {
 			valid: [
@@ -49,8 +45,6 @@ t.test('no-dynamic-classes reads a const a type also names', (t) => {
 // An ambient `declare const` destructures a type, not a value, so the name it
 // binds holds no slot of any call.
 t.test('no-dynamic-classes reports an ambient destructured name', (t) => {
-	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
-
 	t.doesNotThrow(() => {
 		tsTester.run('no-dynamic-classes', rules['no-dynamic-classes'], {
 			valid: [],

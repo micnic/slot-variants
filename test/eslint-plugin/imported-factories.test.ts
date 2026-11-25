@@ -1,7 +1,5 @@
 import { join } from 'node:path';
 import t from 'tap';
-import { RuleTester } from 'eslint';
-import { parser as tsParser } from 'typescript-eslint';
 import { rules } from '../../src/eslint-plugin.ts';
 import { fixtureDir, writeFixture } from './fixtures.ts';
 import {
@@ -12,7 +10,8 @@ import {
 	repeat,
 	restyle,
 	shared,
-	tester
+	tester,
+	tsTester
 } from './helpers.ts';
 
 // A page beside the factory modules, so relative imports reach them.
@@ -211,8 +210,6 @@ t.test('module specifiers resolve as Node reads them', (t) => {
 });
 
 t.test('a default-exported factory behind a type assertion', (t) => {
-	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
-
 	t.doesNotThrow(() => {
 		tsTester.run(
 			'no-conflicting-classes',

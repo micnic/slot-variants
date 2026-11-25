@@ -1,5 +1,6 @@
 import { RuleTester } from 'eslint';
 import * as svelteParser from 'svelte-eslint-parser';
+import { parser as tsParser } from 'typescript-eslint';
 import * as vueParser from 'vue-eslint-parser';
 import { rules } from '../../src/eslint-plugin.ts';
 
@@ -34,6 +35,10 @@ export const vueTester = new RuleTester({
 		ecmaVersion: 'latest',
 		sourceType: 'module'
 	}
+});
+
+export const tsTester = new RuleTester({
+	languageOptions: { parser: tsParser }
 });
 
 export const rule = rules['no-conflicting-classes'];

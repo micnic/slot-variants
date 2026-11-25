@@ -1,8 +1,6 @@
 import t from 'tap';
-import { RuleTester } from 'eslint';
-import { parser as tsParser } from 'typescript-eslint';
 import { rules } from '../../src/eslint-plugin.ts';
-import { IMPORT, tester } from './helpers.ts';
+import { IMPORT, tester, tsTester } from './helpers.ts';
 import {
 	NO_SHARED_TOKENS_INVALID,
 	NO_SHARED_TOKENS_VALID
@@ -22,7 +20,6 @@ t.test('no-shared-tokens', (t) => {
 
 // A compound entry with a TS wrapper is removed whole, wrapper included.
 t.test('no-shared-tokens removes a wrapped compound entry whole', (t) => {
-	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
 	const variants =
 		"variants: { size: { sm: 'a', lg: 'b' }, on: { true: 'o' } }";
 	const lift = "{ size: { sm: 'a x', lg: 'b' }, on: { true: 'o' } }";
@@ -53,8 +50,6 @@ t.test('no-shared-tokens removes a wrapped compound entry whole', (t) => {
 // A compound list wrapped in `as const` isn't the config property's value
 // itself, so emptying it leaves no property the fix knows how to remove.
 t.test('no-shared-tokens leaves a wrapped compound list unfixed', (t) => {
-	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
-
 	t.doesNotThrow(() => {
 		tsTester.run('no-shared-tokens', rules['no-shared-tokens'], {
 			valid: [],
