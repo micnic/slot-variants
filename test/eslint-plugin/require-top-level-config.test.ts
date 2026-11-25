@@ -1,8 +1,6 @@
 import t from 'tap';
-import { RuleTester } from 'eslint';
-import { parser as tsParser } from 'typescript-eslint';
 import { rules } from '../../src/eslint-plugin.ts';
-import { svelteTester, tester, vueTester } from './helpers.ts';
+import { svelteTester, tester, tsTester, vueTester } from './helpers.ts';
 import {
 	REQUIRE_TOP_LEVEL_CONFIG_INVALID,
 	REQUIRE_TOP_LEVEL_CONFIG_SVELTE_INVALID,
@@ -45,8 +43,6 @@ t.test('require-top-level-config (svelte, vue)', (t) => {
 });
 
 t.test('require-top-level-config (typescript)', (t) => {
-	const tsTester = new RuleTester({ languageOptions: { parser: tsParser } });
-
 	t.doesNotThrow(() => {
 		tsTester.run(
 			'require-top-level-config',

@@ -985,20 +985,6 @@ const [_spInterfaceVariantProps, _spInterfaceRest] =
 // The variant half is accepted by the variant function
 _spFn(_spVariantProps);
 
-void _spFn;
-void _spProps;
-void _spInterfaceProps;
-void _spVariantProps;
-void _spRest;
-void _assertSpVariantSize;
-void _assertSpVariantClass;
-void _assertSpRestHasNoSize;
-void _assertSpRestHasNoClass;
-void _assertSpRestOnClick;
-void _assertSpRestId;
-void _spInterfaceVariantProps;
-void _spInterfaceRest;
-
 // --- getVariantValues type tests ---
 
 const _gvvFn = sv('btn', {
@@ -1036,15 +1022,6 @@ const _gvvMaxEntries = _gvvFn.getMaxEntries();
 type AssertGvvMaxEntries = typeof _gvvMaxEntries extends number ? true : false;
 const _assertGvvMaxEntries: AssertGvvMaxEntries = true;
 
-void _gvvFn;
-void _gvvSizeValues;
-void _assertGvvSizeValues;
-void _gvvDisabledValues;
-void _assertGvvDisabledValues;
-void _gvvColsValues;
-void _assertGvvColsValues;
-void _gvvMaxEntries;
-void _assertGvvMaxEntries;
 // --- base and compound type tests ---
 
 const _cmpFn = sv('btn', {
@@ -1073,9 +1050,3 @@ const _assertCmpVariantSizeNarrow: AssertCmpVariantSizeNarrow = false;
 type CmpSlotTargets = (typeof _cmpFn.compoundSlots)[number]['slots'][number];
 type AssertCmpSlotTargets = 'icon' extends CmpSlotTargets ? true : false;
 const _assertCmpSlotTargets: AssertCmpSlotTargets = true;
-
-void _cmpFn;
-void _assertCmpBase;
-void _assertCmpVariantSize;
-void _assertCmpVariantSizeNarrow;
-void _assertCmpSlotTargets;

@@ -63,8 +63,6 @@ type AssertMixedBool = MixedBoolProps extends {
 	: false;
 const _assertMixedBool: AssertMixedBool = true;
 
-void _boolRecordFn;
-void _assertBoolRecord;
 // a record mixing a boolean key with named keys takes both booleans
 const _mixedBooleanFn = sv('badge', {
 	variants: {
@@ -87,14 +85,6 @@ type AssertMixedLevel = [MixedLevel] extends [boolean | 1 | '1']
 	: false;
 const _assertMixedSize: AssertMixedSize = true;
 const _assertMixedLevel: AssertMixedLevel = true;
-
-void _mixedBooleanFn;
-void _assertMixedSize;
-void _assertMixedLevel;
-void _boolShorthandFn;
-void _assertBoolShorthand;
-void _mixedBoolFn;
-void _assertMixedBool;
 
 t.test('boolean variant with true/false record', (t) => {
 	const button = sv('rounded-lg font-medium', {

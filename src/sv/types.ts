@@ -205,7 +205,7 @@ type SlotlessClassRecord<
 
 // A class value, or one per slot or group: `base` is always a slot, so a
 // config with no `slots` takes a slot object too.
-export type SlotValue<S extends MaybeSlots, G extends MaybeGroups<S>, V> =
+type SlotValue<S extends MaybeSlots, G extends MaybeGroups<S>, V> =
 	| Partial<Record<SlotTarget<S, G>, V>>
 	| Exclude<V, ClassRecord>
 	| SlotlessClassRecord<S, G, V>;
@@ -233,7 +233,7 @@ type CompoundConditions<
 	V extends AnyVariants,
 	P extends MaybePresets<V>
 > = VariantConditions<V> & {
-	preset?: (keyof P & string) | undefined;
+	preset?: StringKeyof<P> | undefined;
 };
 
 type CompoundVariants<
@@ -443,10 +443,10 @@ export type CompiledConfig = {
 	originalVariants: Variants<MaybeSlots, undefined>;
 	normalizedVariants: NormalizedVariants;
 	variantData: readonly VariantData[];
-	defaultVariants: Record<string, RuntimeDefaultVariant>;
+	defaultVariants: RuntimeDefaultVariants;
 	requiredVariants: readonly string[];
 	multiSlots: ReadonlySet<string>;
-	presets: Record<string, ResolvedVariantState>;
+	presets: RuntimePresets;
 	originalCompoundVariants: RawCompoundVariants;
 	originalCompoundSlots: RawCompoundSlots;
 	compounds: readonly CompiledCompound[];
@@ -455,7 +455,7 @@ export type CompiledConfig = {
 	maxEntries: number;
 	introspection: boolean;
 	cacheReturn: CacheReturn;
-	postProcess: ((className: string) => string) | undefined;
+	postProcess: PostProcess | undefined;
 };
 
 export type RequiredVariants<V extends AnyVariants> =
@@ -600,7 +600,7 @@ type MergeRecords<A, B, T extends 'variant' | 'preset'> = {
 		? K extends keyof B
 			? T extends 'variant'
 				? MergeVariantValue<A[K], B[K]>
-				: Prettify<Omit<A[K], keyof SetValues<B[K]>> & SetValues<B[K]>>
+				: Prettify<Omit<A[K], SetKeys<B[K]>> & SetValues<B[K]>>
 			: A[K]
 		: K extends keyof B
 			? B[K]
@@ -1038,7 +1038,11 @@ export type NonConfigClassArg<T> =
 // The widest config the runtime handles, every name typed as a string.
 type RuntimeVariants = Variants<Slots, RuntimeGroups>;
 
-type RuntimePresets = Record<string, ResolvedVariantState>;
+export type RuntimePresets = Record<string, ResolvedVariantState>;
+
+export type RuntimeDefaultVariants = Record<string, RuntimeDefaultVariant>;
+
+export type PostProcess = (className: string) => string;
 
 export type RawConfig = {
 	extend?: ExtendInput | undefined;
@@ -1057,7 +1061,7 @@ export type RawConfig = {
 	compoundSlots?:
 		| CompoundSlots<Slots, RuntimeGroups, RuntimeVariants, RuntimePresets>
 		| undefined;
-	defaultVariants?: Record<string, RuntimeDefaultVariant> | undefined;
+	defaultVariants?: RuntimeDefaultVariants | undefined;
 	requiredVariants?: RequiredVariants<RuntimeVariants> | undefined;
 	multiSlots?: MultiSlots<Slots, RuntimeGroups> | undefined;
 	presets?: RuntimePresets | undefined;

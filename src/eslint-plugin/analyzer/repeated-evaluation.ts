@@ -215,7 +215,7 @@ const getAncestorReason = (
 
 	if (
 		isClassField(ancestor) &&
-		ancestor.static === false &&
+		!ancestor.static &&
 		ancestor.value === child
 	) {
 		return 'field';

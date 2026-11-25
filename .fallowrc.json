@@ -15,6 +15,5 @@
 		}
 	],
 	"ignorePatterns": ["scripts/**"],
-	"ignoreDependencies": ["typescript7"],
-	"rules": {}
+	"ignoreDependencies": ["typescript7"]
 }

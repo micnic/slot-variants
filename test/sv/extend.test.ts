@@ -1353,22 +1353,3 @@ const _tErrors = () => {
 	// @ts-expect-error - intent is still required
 	_tReqChild({ size: 'sm' });
 };
-
-void _tParent;
-void _tChild;
-void _assertTSize;
-void _assertTRound;
-void _tReq;
-void _tReqChild;
-void _assertTIntentRequired;
-void _assertTSlots;
-void _assertTMultiSlot;
-void _tLifted;
-void _assertTLifted;
-void _tOther;
-void _tMulti;
-void _assertTMulti;
-void _tIntro;
-void _tIntroChild;
-void _assertTIntro;
-void _tErrors;

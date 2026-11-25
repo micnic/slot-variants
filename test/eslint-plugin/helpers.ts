@@ -4,36 +4,25 @@ import { parser as tsParser } from 'typescript-eslint';
 import * as vueParser from 'vue-eslint-parser';
 import { rules } from '../../src/eslint-plugin.ts';
 
-export const tester = new RuleTester({
-	languageOptions: {
-		ecmaVersion: 'latest',
-		sourceType: 'module'
-	}
-});
+export const tester = new RuleTester();
 
 // `no-restyle` reads JSX and the two template dialects, so it needs testers of
 // its own alongside the plain-script one above.
 export const jsxTester = new RuleTester({
 	languageOptions: {
-		ecmaVersion: 'latest',
-		sourceType: 'module',
 		parserOptions: { ecmaFeatures: { jsx: true } }
 	}
 });
 
 export const svelteTester = new RuleTester({
 	languageOptions: {
-		parser: svelteParser,
-		ecmaVersion: 'latest',
-		sourceType: 'module'
+		parser: svelteParser
 	}
 });
 
 export const vueTester = new RuleTester({
 	languageOptions: {
-		parser: vueParser,
-		ecmaVersion: 'latest',
-		sourceType: 'module'
+		parser: vueParser
 	}
 });
 

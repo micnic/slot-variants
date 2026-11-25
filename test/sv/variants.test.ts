@@ -72,15 +72,6 @@ type AssertIntentExcluded = 'intent' extends keyof ExcludedVariantProps
 	: true;
 const _assertIntentExcluded: AssertIntentExcluded = true;
 
-void _singleVariantFn;
-void _assertSingleVariant;
-void _assertNoClass;
-void _assertNoClassName;
-void _multiVariantFn;
-void _assertMultiVariant;
-void _assertExcludedVariant;
-void _assertIntentExcluded;
-
 t.test('single variant', (t) => {
 	const button = sv('rounded-lg font-medium', {
 		variants: {
@@ -314,9 +305,6 @@ type NoSlotsReturn = ReturnType<typeof _typeNoSlotsFn>;
 type AssertStringReturn = NoSlotsReturn extends string ? true : false;
 const _assertStringReturn: AssertStringReturn = true;
 
-void _typeNoSlotsFn;
-void _assertStringReturn;
-
 // Return type is slot record when slots exist
 const _typeWithSlotsFn = sv('flex', {
 	slots: {
@@ -334,9 +322,6 @@ type AssertSlotRecord = WithSlotsReturn extends {
 	? true
 	: false;
 const _assertSlotRecord: AssertSlotRecord = true;
-
-void _typeWithSlotsFn;
-void _assertSlotRecord;
 
 // VariantProps excludes class and className props
 const _typeExcludeClassFn = sv('flex', {
@@ -358,10 +343,6 @@ type AssertNoClassNameProp = 'className' extends keyof ExcludeClassProps
 	: true;
 const _assertNoClassProp: AssertNoClassProp = true;
 const _assertNoClassNameProp: AssertNoClassNameProp = true;
-
-void _typeExcludeClassFn;
-void _assertNoClassProp;
-void _assertNoClassNameProp;
 
 // VariantProps with required variants (non-optional)
 const _typeRequiredFn = sv('flex', {
@@ -388,9 +369,6 @@ type AssertSizeRequired = RequiredTypeProps extends {
 	: false;
 const _assertSizeRequired: AssertSizeRequired = true;
 
-void _typeRequiredFn;
-void _assertSizeRequired;
-
 // VariantProps with all required variants
 const _typeAllRequiredFn = sv('flex', {
 	variants: {
@@ -415,9 +393,6 @@ type AssertAllRequired = AllRequiredProps extends {
 	: false;
 const _assertAllRequired: AssertAllRequired = true;
 
-void _typeAllRequiredFn;
-void _assertAllRequired;
-
 // ClassProp with slots accepts string or slot object
 const _typeClassPropFn = sv('flex', {
 	slots: {
@@ -434,28 +409,24 @@ const _typeClassPropFn = sv('flex', {
 
 // Should accept string for class prop
 const _testClassString = _typeClassPropFn({ size: 'sm', class: 'mt-4' });
-void _testClassString;
 
 // Should accept slot object for class prop
 const _testClassObject = _typeClassPropFn({
 	size: 'sm',
 	class: { base: 'mt-4', header: 'mb-2' }
 });
-void _testClassObject;
 
 // Should accept string for className prop
 const _testClassNameString = _typeClassPropFn({
 	size: 'lg',
 	className: 'mx-auto'
 });
-void _testClassNameString;
 
 // Should accept slot object for className prop
 const _testClassNameObject = _typeClassPropFn({
 	size: 'lg',
 	className: { base: 'mx-auto', body: 'p-4' }
 });
-void _testClassNameObject;
 
 // VariantProps with numeric keys
 const _typeNumericKeysFn = sv('flex', {
@@ -476,9 +447,6 @@ type AssertNumericKeys = NumericKeysProps extends {
 	: false;
 const _assertNumericKeys: AssertNumericKeys = true;
 
-void _typeNumericKeysFn;
-void _assertNumericKeys;
-
 // VariantProps with boolean shorthand
 const _typeBoolShorthandFn = sv('flex', {
 	variants: {
@@ -493,9 +461,6 @@ type AssertBoolShorthandType = BoolShorthandPropsType extends {
 	? true
 	: false;
 const _assertBoolShorthandType: AssertBoolShorthandType = true;
-
-void _typeBoolShorthandFn;
-void _assertBoolShorthandType;
 
 // Complex type: slots + variants + required + defaults
 const _typeComplexFn = sv('flex', {
@@ -540,10 +505,6 @@ type AssertComplexReturn = ComplexReturn extends {
 	: false;
 const _assertComplexReturn: AssertComplexReturn = true;
 
-void _typeComplexFn;
-void _assertComplexType;
-void _assertComplexReturn;
-
 // Empty config returns base only as string
 const _typeEmptyConfigFn = sv('flex items-center', { variants: {} });
 
@@ -556,10 +517,6 @@ type AssertEmptyConfigProps = keyof EmptyConfigProps extends never
 	? true
 	: false;
 const _assertEmptyConfigProps: AssertEmptyConfigProps = true;
-
-void _typeEmptyConfigFn;
-void _assertEmptyConfigString;
-void _assertEmptyConfigProps;
 
 // =============================================================================
 // VariantValue type
@@ -624,10 +581,3 @@ type AssertVVLevel = VVLevel extends 1 | 2 | '1' | '2'
 		: false
 	: false;
 const _assertVVLevel: AssertVVLevel = true;
-
-void _variantValueFn;
-void _assertVVSize;
-void _assertVVSizeNoUndefined;
-void _assertVVIntent;
-void _assertVVDisabled;
-void _assertVVLevel;

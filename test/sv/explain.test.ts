@@ -436,11 +436,3 @@ const _assertExSlotVariantKeys: AssertExSlotVariantKeys = true;
 const _exMissingSize = () =>
 	// @ts-expect-error - size is required
 	_exFn.explain({});
-
-void _exFn;
-void _exTrace;
-void _exMissingSize;
-void _assertExSizeValue;
-void _assertExDisabledValue;
-void _assertExSlotKeys;
-void _assertExSlotVariantKeys;

@@ -86,14 +86,6 @@ type AssertAllRequiredBool = AllRequiredBoolProps extends {
 	: false;
 const _assertAllRequiredBool: AssertAllRequiredBool = true;
 
-void _requiredFn;
-void _assertRequiredSize;
-void _assertOptionalIntent;
-void _multiRequiredFn;
-void _assertMultiRequired;
-void _allRequiredFn;
-void _assertAllRequiredBool;
-
 t.test('required variant works when provided', (t) => {
 	const button = sv('rounded-lg font-medium', {
 		variants: {

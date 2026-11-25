@@ -1,5 +1,4 @@
 import t from 'tap';
-import { rules } from '../../src/eslint-plugin.ts';
 import { dup, IMPORT, IMPORT_NS, rule, tester, tsTester } from './helpers.ts';
 import {
 	NO_CONFLICTING_DUP_INVALID,
@@ -19,10 +18,8 @@ t.test('no-conflicting-classes (duplicate detection)', (t) => {
 });
 
 t.test('no-conflicting-classes (namespace conflicts)', (t) => {
-	const conflictRule = rules['no-conflicting-classes'];
-
 	t.doesNotThrow(() => {
-		tester.run('no-conflicting-classes', conflictRule, {
+		tester.run('no-conflicting-classes', rule, {
 			valid: NO_CONFLICTING_NS_VALID,
 			invalid: NO_CONFLICTING_NS_INVALID
 		});
@@ -31,10 +28,8 @@ t.test('no-conflicting-classes (namespace conflicts)', (t) => {
 });
 
 t.test('no-conflicting-classes (exclusiveGroups validation)', (t) => {
-	const conflictRule = rules['no-conflicting-classes'];
-
 	t.doesNotThrow(() => {
-		tester.run('no-conflicting-classes', conflictRule, {
+		tester.run('no-conflicting-classes', rule, {
 			valid: [
 				{
 					code: IMPORT + "sv('flex');",
@@ -54,7 +49,7 @@ t.test('no-conflicting-classes (exclusiveGroups validation)', (t) => {
 
 	t.throws(
 		() => {
-			tester.run('no-conflicting-classes', conflictRule, {
+			tester.run('no-conflicting-classes', rule, {
 				valid: [
 					{
 						code: IMPORT + "sv('flex');",

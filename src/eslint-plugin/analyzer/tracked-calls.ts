@@ -44,9 +44,9 @@ type MatchContext = {
 	factories: Map<string, ImportedFactory | null>;
 };
 
-const TRACKED_EXPORTS = new Set(['sv', 'cn', 'createSV']);
-
 type MatchedCalls = WeakMap<CallExpression, CallMatch | null>;
+
+const TRACKED_EXPORTS = new Set(['sv', 'cn', 'createSV']);
 
 // Every rule classifies every call of a file, and the outcome depends only on
 // the file's AST and scopes, which the rules share, so it is worked out once.
@@ -299,8 +299,8 @@ const collectTrackedNames = (
 	imports: ReadonlyArray<ImportDeclaration>
 ): TrackedNames => {
 	const names: TrackedNames = {
-		exportByLocal: new Map<string, string>(),
-		namespaceNames: new Set<string>()
+		exportByLocal: new Map(),
+		namespaceNames: new Set()
 	};
 
 	for (const node of imports) {

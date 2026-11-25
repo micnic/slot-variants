@@ -43,7 +43,8 @@ import {
 	areExclusiveMatchers,
 	type Entry,
 	indexEntriesBySlotAndToken,
-	reportEntryList
+	reportEntryList,
+	type TokenEntries
 } from './token-model.ts';
 
 type ConflictGroup = {
@@ -99,7 +100,7 @@ const pickColliding = (
 	);
 
 const groupEntriesByConflictKey = (
-	tokenMap: Map<string, Entry[]>,
+	tokenMap: TokenEntries,
 	options: ConflictOptions
 ): Map<string, ConflictGroup> => {
 	const groups = new Map<string, ConflictGroup>();
@@ -238,7 +239,7 @@ const collectCollisions = (groups: Map<string, ConflictGroup>): Entry[][] => {
 
 const reportConflicts = (
 	context: Rule.RuleContext,
-	tokenMap: Map<string, Entry[]>,
+	tokenMap: TokenEntries,
 	messageId: string,
 	data: Record<string, string>,
 	options: ConflictOptions,
@@ -267,8 +268,8 @@ const reportConflicts = (
 // The token entries of several slot buckets, as one.
 const mergeTokenMaps = (
 	tokenMaps: ReadonlyArray<ReadonlyMap<string, Entry[]>>
-): Map<string, Entry[]> => {
-	const merged = new Map<string, Entry[]>();
+): TokenEntries => {
+	const merged: TokenEntries = new Map();
 
 	for (const tokenMap of tokenMaps) {
 		for (const [token, entries] of tokenMap) {
@@ -420,13 +421,13 @@ const reportDuplicateGroupSlots = (
 // exclusive, so base-only token lists are always reported.
 const reportDuplicateTokens = (
 	context: Rule.RuleContext,
-	tokenMap: Map<string, Entry[]>,
+	tokenMap: TokenEntries,
 	messageId: string,
 	data: Record<string, string>,
 	pickReported: PickReported
 ) => {
-	for (const [token, list] of tokenMap.entries()) {
-		const repeated = pickColliding(list, (a, b) => canCoRender(a, b));
+	for (const [token, list] of tokenMap) {
+		const repeated = pickColliding(list, canCoRender);
 
 		if (repeated.length > 0) {
 			reportEntryList(context, pickReported(repeated), messageId, {
@@ -440,7 +441,7 @@ const reportDuplicateTokens = (
 // Reports the repeated and the conflicting tokens of one token map.
 const reportTokenCollisions = (
 	context: Rule.RuleContext,
-	tokenMap: Map<string, Entry[]>,
+	tokenMap: TokenEntries,
 	messages: TokenMessages,
 	data: Record<string, string>,
 	options: ConflictOptions,
@@ -486,7 +487,7 @@ export const analyzeConfigForRule = (
 	);
 	const { bySlot, slotNames, groupSlots } = styles;
 	const report = (
-		tokenMap: Map<string, Entry[]>,
+		tokenMap: TokenEntries,
 		slot: string,
 		pickReported: PickReported
 	) => {
@@ -552,10 +553,10 @@ export const analyzeCnForRule = (
 ) => {
 	// Every entry of a class list is in `base`, and there are none when it
 	// holds no static class.
-	const tokenMap =
+	const tokenMap: TokenEntries =
 		indexEntriesBySlotAndToken(
 			collectCnEntries(args, context.sourceCode)
-		).get('base') ?? new Map<string, Entry[]>();
+		).get('base') ?? new Map();
 
 	reportTokenCollisions(
 		context,

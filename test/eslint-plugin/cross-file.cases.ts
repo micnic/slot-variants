@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import * as svelteParser from 'svelte-eslint-parser';
 import { parser as tsParser } from 'typescript-eslint';
 import { cacheImports, cacheUsages, fixtureDir } from './fixtures.ts';
-import { dup, restyle } from './helpers.ts';
+import { dup, repeat, restyle } from './helpers.ts';
 
 // Lints each of `cases` as `file`, a page beside the fixture modules.
 const onPage = <T extends object>(file: string, cases: T[]) =>
@@ -273,7 +273,7 @@ export const TS_CROSS_FILE_INVALID = onPage('page.tsx', [
 		// A type-only or erased export leaves the value to `export *`.
 		code: `import { Chip, Pill, Ghost, Phantom, Shade, Mist } from './ui/shadowing-declarations.ts';\n<><Chip className="p-4" /><Pill className="p-4" /><Ghost className="p-4" /><Phantom className="p-4" /><Shade className="p-4" /><Mist className="p-4" /></>;`,
 		languageOptions: { parser: tsParser },
-		errors: Array.from({ length: 6 }, () => restyle('p-4', 'p-2'))
+		errors: repeat(restyle('p-4', 'p-2'), 6)
 	}
 ]);
 

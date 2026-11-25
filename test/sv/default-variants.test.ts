@@ -39,11 +39,6 @@ const _assertDefaultVariantProps: AssertDefaultVariantProps = true;
 const _defaultCallNoArgs: string = _defaultVariantFn();
 const _defaultCallEmpty: string = _defaultVariantFn({});
 
-void _defaultVariantFn;
-void _assertDefaultVariantProps;
-void _defaultCallNoArgs;
-void _defaultCallEmpty;
-
 t.test('default variant applied when no props', (t) => {
 	const button = sv('rounded-lg font-medium', {
 		variants: {

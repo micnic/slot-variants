@@ -1,7 +1,6 @@
 import * as fs from 'node:fs';
-import { rmSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
-import t from 'tap';
+import t, { type Test } from 'tap';
 import { ESLint, Linter, RuleTester } from 'eslint';
 import { parser as tsParser } from 'typescript-eslint';
 import * as vueParser from 'vue-eslint-parser';
@@ -35,6 +34,43 @@ import {
 	RESTYLE_VUE_INVALID,
 	RESTYLE_VUE_VALID
 } from './no-restyle.cases.ts';
+
+type CountingImport = {
+	fresh: typeof import('../../src/eslint-plugin.ts');
+	reads: Map<string, number>;
+};
+
+// A fresh copy of the plugin, with every file it reads counted by path.
+const importCountingReads = async (t: Test): Promise<CountingImport> => {
+	const reads = new Map<string, number>();
+	const fresh = await t.mockImport<
+		typeof import('../../src/eslint-plugin.ts')
+	>('../../src/eslint-plugin.ts', {
+		'node:fs': {
+			...fs,
+			readFileSync: new Proxy(fs.readFileSync, {
+				apply: (target, thisArg, args) => {
+					const path = `${args[0]}`;
+
+					reads.set(path, (reads.get(path) ?? 0) + 1);
+
+					return Reflect.apply(target, thisArg, args);
+				}
+			})
+		}
+	});
+
+	return { fresh, reads };
+};
+
+// A component that forwards its class to an sv() call of its own.
+const forwardingComponent = (name: string) =>
+	`${IMPORT}const styles = sv({ base: 'p-2', variants: {} });
+
+	export function ${name}({ className }) {
+		return <i className={styles({ class: className })} />;
+	}
+	`;
 
 t.test('no-restyle', (t) => {
 	t.doesNotThrow(() => {
@@ -327,23 +363,7 @@ t.test('no-restyle reparses a module for other parser options', (t) => {
 t.test('no-restyle refreshes a stale module without evicting', async (t) => {
 	// The loader's cache limit, filled exactly
 	const moduleCount = 200;
-	const reads = new Map<string, number>();
-	const fresh = await t.mockImport<
-		typeof import('../../src/eslint-plugin.ts')
-	>('../../src/eslint-plugin.ts', {
-		'node:fs': {
-			...fs,
-			readFileSync: new Proxy(fs.readFileSync, {
-				apply: (target, thisArg, args) => {
-					const path = `${args[0]}`;
-
-					reads.set(path, (reads.get(path) ?? 0) + 1);
-
-					return Reflect.apply(target, thisArg, args);
-				}
-			})
-		}
-	});
+	const { fresh, reads } = await importCountingReads(t);
 	const paths = Array.from({ length: moduleCount }, (_value, index) =>
 		writeFixture(
 			`evict/mod${index}.tsx`,
@@ -392,7 +412,7 @@ t.test('no-restyle refreshes a stale module without evicting', async (t) => {
 
 	const later = new Date(Date.now() + 60_000);
 
-	utimesSync(newest, later, later);
+	fs.utimesSync(newest, later, later);
 	await lintUsages([moduleCount - 1]);
 	t.equal(reads.get(newest), 2, 'the stale module is read again');
 
@@ -407,34 +427,17 @@ t.test(
 	async (t) => {
 		// The loader's cache limit, filled exactly
 		const moduleCount = 200;
-		const reads = new Map<string, number>();
-		const fresh = await t.mockImport<
-			typeof import('../../src/eslint-plugin.ts')
-		>('../../src/eslint-plugin.ts', {
-			'node:fs': {
-				...fs,
-				readFileSync: new Proxy(fs.readFileSync, {
-					apply: (target, thisArg, args) => {
-						const path = `${args[0]}`;
-
-						reads.set(path, (reads.get(path) ?? 0) + 1);
-
-						return Reflect.apply(target, thisArg, args);
-					}
-				})
-			}
-		});
-		const component = (name: string) =>
-			`${IMPORT}const styles = sv({ base: 'p-2', variants: {} });
-
-		export function ${name}({ className }) {
-			return <i className={styles({ class: className })} />;
-		}
-		`;
+		const { fresh, reads } = await importCountingReads(t);
 		const paths = Array.from({ length: moduleCount }, (_value, index) =>
-			writeFixture(`full/Mod${index}.tsx`, component(`Mod${index}`))
+			writeFixture(
+				`full/Mod${index}.tsx`,
+				forwardingComponent(`Mod${index}`)
+			)
 		);
-		const linted = writeFixture('full/Linted.tsx', component('Linted'));
+		const linted = writeFixture(
+			'full/Linted.tsx',
+			forwardingComponent('Linted')
+		);
 		// One ESLint instance keeps one config, as a real run does, so the
 		// parser options the cache is keyed by stay the same between files
 		const eslint = new ESLint({
@@ -486,23 +489,7 @@ t.test(
 // Config blocks with different language options keep their own cache entry
 // for a module they share, rather than evicting each other's.
 t.test('no-restyle caches a module per set of language options', async (t) => {
-	const reads = new Map<string, number>();
-	const fresh = await t.mockImport<
-		typeof import('../../src/eslint-plugin.ts')
-	>('../../src/eslint-plugin.ts', {
-		'node:fs': {
-			...fs,
-			readFileSync: new Proxy(fs.readFileSync, {
-				apply: (target, thisArg, args) => {
-					const path = `${args[0]}`;
-
-					reads.set(path, (reads.get(path) ?? 0) + 1);
-
-					return Reflect.apply(target, thisArg, args);
-				}
-			})
-		}
-	});
+	const { fresh, reads } = await importCountingReads(t);
 	const shared = writeFixture(
 		'per-options/shared.jsx',
 		`${IMPORT}const shared = sv({ base: 'p-2', variants: {} });
@@ -603,36 +590,19 @@ t.test('no-restyle reads a module outside the typed project', (t) => {
 // rather than parsed again for the file importing it — but only when that
 // scan is of the text the file holds on disk.
 t.test('no-restyle reuses the scan of a module linted earlier', async (t) => {
-	const reads = new Map<string, number>();
-	const fresh = await t.mockImport<
-		typeof import('../../src/eslint-plugin.ts')
-	>('../../src/eslint-plugin.ts', {
-		'node:fs': {
-			...fs,
-			readFileSync: new Proxy(fs.readFileSync, {
-				apply: (target, thisArg, args) => {
-					const path = `${args[0]}`;
-
-					reads.set(path, (reads.get(path) ?? 0) + 1);
-
-					return Reflect.apply(target, thisArg, args);
-				}
-			})
-		}
-	});
-	const component = (name: string) =>
-		`${IMPORT}const styles = sv({ base: 'p-2', variants: {} });
-
-		export function ${name}({ className }) {
-			return <i className={styles({ class: className })} />;
-		}
-		`;
-	const seeded = writeFixture('seed/seeded.tsx', component('Seeded'));
+	const { fresh, reads } = await importCountingReads(t);
+	const seeded = writeFixture(
+		'seed/seeded.tsx',
+		forwardingComponent('Seeded')
+	);
 	const barrel = writeFixture(
 		'seed/index.ts',
 		"export * from './other.tsx';\n"
 	);
-	const edited = writeFixture('seed/edited.tsx', component('Edited'));
+	const edited = writeFixture(
+		'seed/edited.tsx',
+		forwardingComponent('Edited')
+	);
 	const single = writeFixture(
 		'seed/Single.vue',
 		`<script setup>
@@ -642,7 +612,7 @@ t.test('no-restyle reuses the scan of a module linted earlier', async (t) => {
 		<template><b :class="single({ class: props.class })">x</b></template>`
 	);
 
-	writeFixture('seed/other.tsx', component('Other'));
+	writeFixture('seed/other.tsx', forwardingComponent('Other'));
 
 	const plugins = { 'slot-variants': fresh.default };
 	const rules: Linter.RulesRecord = { 'slot-variants/no-restyle': 2 };
@@ -709,7 +679,7 @@ t.test('no-restyle reuses the scan of a module linted earlier', async (t) => {
 	);
 
 	// An unsaved editor buffer isn't what an importer reads from disk
-	await eslint.lintText(`${component('Edited')}// unsaved\n`, {
+	await eslint.lintText(`${forwardingComponent('Edited')}// unsaved\n`, {
 		filePath: edited
 	});
 	t.equal(reads.get(edited), 1, 'the buffer is compared to the file');
@@ -724,7 +694,7 @@ t.test('no-restyle reuses the scan of a module linted earlier', async (t) => {
 
 	// A file that isn't on disk is never cached
 	t.same(
-		await lintPage(component('Ghost'), 'seed/ghost.tsx'),
+		await lintPage(forwardingComponent('Ghost'), 'seed/ghost.tsx'),
 		[],
 		'a file missing from disk lints without errors'
 	);
@@ -881,14 +851,14 @@ t.test('no-restyle reads a module again when its imports change', async (t) => {
 		'stale/sv.js',
 		`${IMPORT_CREATE_SV}export const mk = createSV();\n`
 	);
-	utimesSync(factory, later, later);
+	fs.utimesSync(factory, later, later);
 	t.same(
 		await lintPage(),
 		['slot-variants/no-restyle'],
 		'the import became a factory'
 	);
 
-	rmSync(factory);
+	fs.rmSync(factory);
 	t.same(await lintPage(), [], 'the import is gone');
 });
 

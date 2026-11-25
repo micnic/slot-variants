@@ -12,9 +12,9 @@ import {
 	type NormalizedVariantValues,
 	type NormalizedVariants,
 	type RawConfig,
-	type ResolvedVariantState,
-	type RuntimeDefaultVariant,
+	type RuntimeDefaultVariants,
 	type RuntimeGroups,
+	type RuntimePresets,
 	type RuntimeVariantValue,
 	type SlotClasses,
 	type SlotEntry,
@@ -124,13 +124,9 @@ const resolveCompoundMatcherExpected = (
 		);
 	}
 
-	const expected = new Set<string>();
-
-	for (const item of value) {
-		expected.add(toExpectedValue(variant, item, variantValues));
-	}
-
-	return expected;
+	return new Set(
+		value.map((item) => toExpectedValue(variant, item, variantValues))
+	);
 };
 
 /**
@@ -162,7 +158,7 @@ export const getOwnOrThrow = <T>(
 
 const seedPresetMatchers = (
 	matchers: Map<string, CompoundMatcher>,
-	presets: Record<string, ResolvedVariantState>,
+	presets: RuntimePresets,
 	preset: string | undefined
 ) => {
 	if (preset === undefined) {
@@ -185,7 +181,7 @@ const seedPresetMatchers = (
 const compileCompoundMatchers = (
 	compound: CompoundEntry,
 	normalizedVariants: NormalizedVariants,
-	presets: Record<string, ResolvedVariantState>
+	presets: RuntimePresets
 ): ReadonlyMap<string, CompoundMatcher> => {
 	const matchers = new Map<string, CompoundMatcher>();
 
@@ -290,8 +286,8 @@ export const isConfig = (value: ClassValue | RawConfig): value is RawConfig =>
 	isPlainObject(value) &&
 	(value.slots !== undefined || value.variants !== undefined);
 
-const createNormalizedVariants = <S extends MaybeSlots>(
-	variants: Variants<S, undefined>
+const createNormalizedVariants = (
+	variants: Variants<MaybeSlots, undefined>
 ) => {
 	const result: NormalizedVariants = {};
 
@@ -319,7 +315,7 @@ const createNormalizedVariants = <S extends MaybeSlots>(
  */
 const createVariantData = (
 	normalizedVariants: NormalizedVariants,
-	defaultVariants: Record<string, RuntimeDefaultVariant>,
+	defaultVariants: RuntimeDefaultVariants,
 	requiredVariants: readonly string[]
 ): VariantLayout => {
 	const required = new Set(requiredVariants);
@@ -393,13 +389,13 @@ export const getTargetSlots = (
 const expandSlotTargets = (
 	targets: readonly string[],
 	groups: CompiledGroups,
-	slotKeys: ReadonlySet<string>,
+	targetKeys: ReadonlySet<string>,
 	label: 'Compound slot' | 'Multi slot'
 ): ReadonlySet<string> => {
 	const result = new Set<string>();
 
 	for (const target of targets) {
-		if (!groups.has(target) && !slotKeys.has(target)) {
+		if (!targetKeys.has(target)) {
 			throw new Error(`${label} references unknown slot "${target}"`);
 		}
 
@@ -414,7 +410,7 @@ const expandSlotTargets = (
 const assertValidRequiredVariantConfig = (
 	requiredVariants: readonly string[],
 	normalizedVariants: NormalizedVariants,
-	defaultVariants: Record<string, RuntimeDefaultVariant>
+	defaultVariants: RuntimeDefaultVariants
 ) => {
 	for (const variant of requiredVariants) {
 		if (!hasOwn(normalizedVariants, variant)) {
@@ -433,7 +429,7 @@ const assertValidRequiredVariantConfig = (
 };
 
 const assertKnownDefaultVariants = (
-	defaultVariants: Record<string, RuntimeDefaultVariant>,
+	defaultVariants: RuntimeDefaultVariants,
 	normalizedVariants: NormalizedVariants
 ) => {
 	for (const [variant, value] of entries(defaultVariants)) {
@@ -456,7 +452,7 @@ const assertKnownDefaultVariants = (
 };
 
 const assertValidPresets = (
-	presets: Record<string, ResolvedVariantState>,
+	presets: RuntimePresets,
 	normalizedVariants: NormalizedVariants
 ) => {
 	for (const [presetName, presetValues] of entries(presets)) {
@@ -663,7 +659,7 @@ export const compileConfig = (config: RawConfig): CompiledConfig => {
 	const resolvedMultiSlots = expandSlotTargets(
 		resolveNames(multiSlots, [...slotKeys]),
 		resolvedGroups,
-		slotKeys,
+		targetKeys,
 		'Multi slot'
 	);
 
@@ -713,7 +709,7 @@ export const compileConfig = (config: RawConfig): CompiledConfig => {
 			const targetSlots = expandSlotTargets(
 				compound.slots,
 				resolvedGroups,
-				slotKeys,
+				targetKeys,
 				'Compound slot'
 			);
 

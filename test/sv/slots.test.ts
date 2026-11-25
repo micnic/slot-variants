@@ -88,15 +88,6 @@ type AssertSlotNamedValues =
 		: false;
 const _assertSlotNamedValues: AssertSlotNamedValues = true;
 
-void _slotNamedValuesFn;
-void _assertSlotNamedValues;
-void _slotFn;
-void _assertSlotReturn;
-void _slotVariantFn;
-void _assertSlotVariantProps;
-void _slotBoolFn;
-void _assertSlotBool;
-
 t.test('empty slots object returns string not record', (t) => {
 	const box = sv('border rounded-lg', {
 		slots: {}

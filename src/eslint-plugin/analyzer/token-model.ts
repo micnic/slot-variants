@@ -18,7 +18,10 @@ export type Entry = {
 	end: number;
 };
 
-export type TokenEntriesBySlot = Map<string, Map<string, Entry[]>>;
+/** The entries of each token. */
+export type TokenEntries = Map<string, Entry[]>;
+
+export type TokenEntriesBySlot = Map<string, TokenEntries>;
 
 /** How a finding can be resolved: an autofix, suggestions, or neither. */
 export type EntryRemedy = Pick<Rule.ReportDescriptorOptions, 'fix' | 'suggest'>;
@@ -74,14 +77,10 @@ export const areExclusiveMatchers = (
 export const indexEntriesBySlotAndToken = (
 	entries: Iterable<Entry>
 ): TokenEntriesBySlot => {
-	const bySlot = new Map<string, Map<string, Entry[]>>();
+	const bySlot: TokenEntriesBySlot = new Map();
 
 	for (const entry of entries) {
-		const tokenMap = getOrCreate(
-			bySlot,
-			entry.slot,
-			() => new Map<string, Entry[]>()
-		);
+		const tokenMap = getOrCreate(bySlot, entry.slot, () => new Map());
 		const list = getOrCreate(tokenMap, entry.token, () => []);
 
 		list.push(entry);

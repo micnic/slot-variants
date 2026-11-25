@@ -9,6 +9,10 @@ import pkg from '../../package.json' with { type: 'json' };
 import plugin, { rules } from '../../src/eslint-plugin.ts';
 import { IMPORT, IMPORT_CN, IMPORT_SV_CN, repeat } from './helpers.ts';
 
+const ALL_RULES: Linter.RulesRecord = Object.fromEntries(
+	Object.keys(rules).map((name) => [`slot-variants/${name}`, 2])
+);
+
 t.test('shared plugin run reuses cached property analysis', (t) => {
 	const linter = new Linter();
 	const code = `${IMPORT}const rest = { body: 'ignored' };
@@ -31,10 +35,6 @@ t.test('shared plugin run reuses cached property analysis', (t) => {
 				'slot-variants/no-empty-classes': 2,
 				'slot-variants/no-conflicting-classes': 2,
 				'slot-variants/no-shared-tokens': 2
-			},
-			languageOptions: {
-				ecmaVersion: 'latest',
-				sourceType: 'module'
 			}
 		}
 	];
@@ -91,9 +91,7 @@ t.test('TypeScript wrappers are read through to the value they wrap', (t) => {
 		{
 			files: ['**/*.ts', '**/*.tsx'],
 			plugins: { 'slot-variants': plugin },
-			rules: Object.fromEntries(
-				Object.keys(rules).map((name) => [`slot-variants/${name}`, 2])
-			),
+			rules: ALL_RULES,
 			languageOptions: {
 				parser: tsParser,
 				parserOptions: { ecmaFeatures: { jsx: true } }
@@ -188,12 +186,8 @@ t.test('const containers are read like inline ones', (t) => {
 		{
 			files: ['**/*.jsx'],
 			plugins: { 'slot-variants': plugin },
-			rules: Object.fromEntries(
-				Object.keys(rules).map((name) => [`slot-variants/${name}`, 2])
-			),
+			rules: ALL_RULES,
 			languageOptions: {
-				ecmaVersion: 'latest',
-				sourceType: 'module',
 				parserOptions: { ecmaFeatures: { jsx: true } }
 			}
 		}
@@ -279,25 +273,18 @@ t.test('const containers are read like inline ones', (t) => {
 
 t.test('Svelte and Vue templates are checked like script code', (t) => {
 	const linter = new Linter();
-	const allRules: Linter.RulesRecord = Object.fromEntries(
-		Object.keys(rules).map((name) => [`slot-variants/${name}`, 2])
-	);
 	const config: Linter.Config[] = [
 		{
 			files: ['**/*.svelte'],
 			plugins: { 'slot-variants': plugin },
-			rules: allRules,
+			rules: ALL_RULES,
 			languageOptions: { parser: svelteParser }
 		},
 		{
 			files: ['**/*.vue'],
 			plugins: { 'slot-variants': plugin },
-			rules: allRules,
-			languageOptions: {
-				parser: vueParser,
-				ecmaVersion: 'latest',
-				sourceType: 'module'
-			}
+			rules: ALL_RULES,
+			languageOptions: { parser: vueParser }
 		}
 	];
 	const lint = (code: string, filename: string) =>
@@ -362,12 +349,8 @@ t.test('call cycles through const bindings terminate', (t) => {
 		{
 			files: ['**/*.jsx'],
 			plugins: { 'slot-variants': plugin },
-			rules: Object.fromEntries(
-				Object.keys(rules).map((name) => [`slot-variants/${name}`, 2])
-			),
+			rules: ALL_RULES,
 			languageOptions: {
-				ecmaVersion: 'latest',
-				sourceType: 'module',
 				parserOptions: { ecmaFeatures: { jsx: true } }
 			}
 		}
@@ -515,8 +498,7 @@ t.test('configs.recommended preset', (t) => {
 		[
 			recommended,
 			{
-				files: ['**/*.ts'],
-				languageOptions: { ecmaVersion: 'latest', sourceType: 'module' }
+				files: ['**/*.ts']
 			}
 		],
 		{ filename: 'test.ts' }

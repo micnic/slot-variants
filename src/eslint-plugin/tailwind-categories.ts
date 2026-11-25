@@ -643,6 +643,8 @@ const getBorderOverlapNode = (category: string): string | null => {
 	return null;
 };
 
+const NO_KEYWORDS: ReadonlyMap<string, string> = new Map();
+
 // x/y/z axis utilities (`gap-x`, `translate-y`, …); a bare value sets all axes.
 const axisSpec: PrefixSpec = {
 	keywords: selfMap(['x', 'y', 'z']),
@@ -716,7 +718,7 @@ const shadowSizeSpec: PrefixSpec = {
 // — the bare `drop-shadow` is the default preset, itself a size, and the two
 // compose (`drop-shadow-sm drop-shadow-red-500` is valid together).
 const dropShadowSpec: PrefixSpec = {
-	keywords: new Map<string, string>(),
+	keywords: NO_KEYWORDS,
 	nested: new Map([['shadow', shadowSizeSpec]]),
 	fallback: 'other'
 };
@@ -752,7 +754,7 @@ const panSpec: PrefixSpec = {
 // Single-property color utilities (`fill`, `accent`, `caret`): every value is a
 // color, so they all share one category regardless of shape.
 const colorSpec: PrefixSpec = {
-	keywords: new Map<string, string>(),
+	keywords: NO_KEYWORDS,
 	short: 'color',
 	long: 'color',
 	fallback: 'color'
@@ -775,7 +777,7 @@ const gradientStopSpec: PrefixSpec = {
 // category regardless of shape, so a one-segment value collides with a
 // hyphenated one (`ease-in`/`ease-in-out`, `scheme-dark`/`scheme-only-dark`).
 const unifiedSpec: PrefixSpec = {
-	keywords: new Map<string, string>(),
+	keywords: NO_KEYWORDS,
 	short: 'value',
 	long: 'value',
 	fallback: 'value'
@@ -787,7 +789,7 @@ const unifiedSpec: PrefixSpec = {
 // than the generic dash-count fallback (which would wrongly split 2-segment
 // keywords like `normal` from 3-segment ones like `color-dodge`).
 const mixSpec: PrefixSpec = {
-	keywords: new Map<string, string>(),
+	keywords: NO_KEYWORDS,
 	nested: new Map([['blend', unifiedSpec]]),
 	fallback: 'other'
 };
@@ -798,7 +800,7 @@ const mixSpec: PrefixSpec = {
 // mix-blend has, since a two-word origin keyword (`top-left`) has one more
 // segment than a one-word one (`center`).
 const perspectiveSpec: PrefixSpec = {
-	keywords: new Map<string, string>(),
+	keywords: NO_KEYWORDS,
 	nested: new Map([['origin', unifiedSpec]]),
 	fallback: 'value'
 };
@@ -846,26 +848,26 @@ const maskStopSpec: PrefixSpec = {
 	fallback: 'pos'
 };
 
+// The `from`/`to` stops every mask gradient family takes.
+const MASK_STOPS: ReadonlyMap<string, PrefixSpec> = new Map([
+	['from', maskStopSpec],
+	['to', maskStopSpec]
+]);
+
 // A directional mask gradient (`mask-t-from-*`, `mask-r-to-*`, …its `x`/`y`
 // axis siblings): only its `from`/`to` stops are meaningful, classified by
 // `maskStopSpec`.
 const maskDirectionSpec: PrefixSpec = {
-	keywords: new Map<string, string>(),
-	nested: new Map([
-		['from', maskStopSpec],
-		['to', maskStopSpec]
-	]),
+	keywords: NO_KEYWORDS,
+	nested: MASK_STOPS,
 	fallback: 'other'
 };
 
 // `mask-linear-*`/`mask-conic-*`: a bare angle (`mask-linear-45`) alongside
 // the same `from`/`to` stops as the directional families.
 const maskAngleStopSpec: PrefixSpec = {
-	keywords: new Map<string, string>(),
-	nested: new Map([
-		['from', maskStopSpec],
-		['to', maskStopSpec]
-	]),
+	keywords: NO_KEYWORDS,
+	nested: MASK_STOPS,
 	short: 'angle',
 	fallback: 'angle'
 };
@@ -882,10 +884,7 @@ const maskRadialSpec: PrefixSpec = {
 		['size', ['closest', 'farthest']],
 		['at', ['at']]
 	]),
-	nested: new Map([
-		['from', maskStopSpec],
-		['to', maskStopSpec]
-	]),
+	nested: MASK_STOPS,
 	fallback: 'value'
 };
 
@@ -1429,7 +1428,7 @@ const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
 	[
 		'line-clamp',
 		[
-			...DISPLAY_KEYWORDS.map((word) => `display-${word}`),
+			...DISPLAY_OVERLAP_NODES.values(),
 			'overflow',
 			'overflow-x',
 			'overflow-y'

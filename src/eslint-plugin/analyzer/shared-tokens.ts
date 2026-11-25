@@ -599,7 +599,7 @@ const analyzeVariantSharedTokens = (
 // whole entry is skipped rather than risk under-reporting a hidden key as if it
 // weren't there). A key left `undefined` is omitted, as `sv()` reads it.
 const getSingleCompoundMatcher = (
-	element: ObjectExpression,
+	element: Node,
 	sourceCode: SourceCode
 ): SingleMatcher | null => {
 	const properties = getStrictProperties(element);
@@ -650,7 +650,7 @@ const getSingleCompoundMatcher = (
 // value, aborts the whole plan, leaving the finding reported without a fix.
 const planSingleKeyCompoundFix = (
 	context: Rule.RuleContext,
-	element: ObjectExpression,
+	element: Node,
 	matcher: SingleMatcher,
 	variantValue: Node,
 	getRemoval: GetEntryRemoval,
@@ -742,7 +742,7 @@ const getSingleKeyCompoundRemedy = (
 
 const checkCompoundEntryForSingleKey = (
 	context: Rule.RuleContext,
-	element: ObjectExpression,
+	element: Node,
 	kind: CompoundKind,
 	variantsMap: ReadonlyMap<string, Node>,
 	getRemoval: GetEntryRemoval,
@@ -834,10 +834,6 @@ const checkCompoundsForSingleKey = (
 	forEachStaticItem(compounds.elements, (item) => {
 		const element = resolveStaticValue(item, context.sourceCode);
 
-		if (element.type !== 'ObjectExpression') {
-			return;
-		}
-
 		// The entry is removed as written in the list, with any `as`/
 		// `satisfies` wrapper, while its resolved object is what's analyzed.
 		checkCompoundEntryForSingleKey(
@@ -885,6 +881,8 @@ export const analyzeSharedTokens = (
 	const suggestOnly =
 		inheritsPostProcess || inherits || config.has('postProcess');
 
+	const compoundScope: CompoundScope = { canEdit, suggestOnly };
+
 	for (const kind of COMPOUND_KINDS) {
 		checkCompoundsForSingleKey(
 			context,
@@ -892,10 +890,7 @@ export const analyzeSharedTokens = (
 			config,
 			kind,
 			variantsMap,
-			{
-				canEdit,
-				suggestOnly
-			}
+			compoundScope
 		);
 	}
 

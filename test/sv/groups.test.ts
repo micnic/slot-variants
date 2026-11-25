@@ -653,12 +653,3 @@ const _assertGroupShorthand: AssertGroupShorthand = true;
 
 // The group name is accepted by the class prop
 _groupsFn({ class: { content: 'px-2' } });
-
-void _groupsFn;
-void _assertNoGroupKey;
-void _assertGroupHeaderIsFn;
-void _assertGroupBodyIsFn;
-void _assertGroupFooterIsString;
-void _assertGroupSizeProp;
-void _groupShorthandFn;
-void _assertGroupShorthand;

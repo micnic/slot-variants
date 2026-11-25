@@ -15,7 +15,7 @@ import {
 	isClassListMatch
 } from './call-matching.ts';
 import { getKeyName } from './config-keys.ts';
-import { getImportSource } from './components.ts';
+import { getImportSource, type ImportSource } from './components.ts';
 import {
 	type DestructuredRead,
 	findInLookupScope,
@@ -190,9 +190,6 @@ export type Invocation = CallMatchers & {
 	props: CallProps;
 };
 
-// A framework function, by the module and export name it's imported as.
-type FrameworkImport = { specifier: string; exportName: string };
-
 const EMPTY_PROPS: ReadonlyMap<string, Node> = new Map();
 
 const NO_KEYS: ReadonlySet<string> = new Set();
@@ -234,13 +231,13 @@ const NO_INHERITED: Inherited = {
 
 // Vue's `computed()`, a ref its template reads unwrapped and its script
 // through `.value`.
-const VUE_COMPUTED: FrameworkImport = {
+const VUE_COMPUTED: ImportSource = {
 	specifier: 'vue',
 	exportName: 'computed'
 };
 
 // Solid's `createMemo()`, an accessor read by calling it.
-const SOLID_MEMO: FrameworkImport = {
+const SOLID_MEMO: ImportSource = {
 	specifier: 'solid-js',
 	exportName: 'createMemo'
 };
@@ -668,6 +665,7 @@ const readBaseMatchers = (
 
 	return matchers;
 };
+
 // The variant props a call passes whose values can't be read: one passing
 // `undefined` leaves the variant to its default, anything else may select any
 // of its values.
@@ -1310,7 +1308,7 @@ const getArrowBody = (fn: Node | undefined): Node | null => {
 // unless `value` calls the function `source` names, imported under any name.
 const readFrameworkCall = (
 	value: Node,
-	source: FrameworkImport,
+	source: ImportSource,
 	ctx: StyledContext
 ): Node | null => {
 	if (value.type !== 'CallExpression' || value.callee.type !== 'Identifier') {
@@ -1486,11 +1484,6 @@ const buildLiteralStyles = (entries: ReadonlyArray<Entry>): InternalStyles => ({
 	setsBase: false
 });
 
-/**
- * The literal classes a `cn()`-style list applies on its own, as a styled part
- * — what a forwarded `class` prop is merged with when the list holds no
- * slot-variants part beside it.
- */
 // Styles read as a plain class list's: their `base`, matched by no variant.
 const asBaseStyled = (styles: InternalStyles): StyledClasses => ({
 	styles,
@@ -1498,6 +1491,11 @@ const asBaseStyled = (styles: InternalStyles): StyledClasses => ({
 	...NO_MATCHERS
 });
 
+/**
+ * The literal classes a `cn()`-style list applies on its own, as a styled part
+ * — what a forwarded `class` prop is merged with when the list holds no
+ * slot-variants part beside it.
+ */
 export const literalStyles = (literals: ReadonlyArray<Entry>): StyledClasses =>
 	asBaseStyled(buildLiteralStyles(literals));
 

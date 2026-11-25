@@ -382,18 +382,3 @@ t.test('a SlotClassProps object with a group reaches its slots', (t) => {
 
 	t.end();
 });
-
-void _scpGroupsFn;
-void _scpSlotlessFn;
-void _assertSCPGroups;
-void _assertSCPInheritedGroups;
-void _assertSCPSlotlessGroups;
-void _scpNoSlotsFn;
-void _assertSCPNoSlotsHasBase;
-void _assertSCPNoSlotsOnlyBase;
-void _scpSlotsFn;
-void _assertSCPSlotsHasBase;
-void _assertSCPSlotsHasHeader;
-void _assertSCPSlotsHasBody;
-void _assertSCPAllOptional;
-void _assertSCPNoExtraKeys;

@@ -1,10 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
-const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const root = join(import.meta.dirname, '..');
 const temporaryDirectory = mkdtempSync(
 	join(tmpdir(), 'slot-variants-package-')
 );

@@ -52,12 +52,6 @@ type RequiredPresetProps = VariantProps<typeof _requiredPresetFn>;
 const _requiredPresetProps: RequiredPresetProps = { intent: 'primary' };
 const _requiredPresetPropsOk: RequiredPresetProps = { size: 'sm' };
 
-void _presetFn;
-void _assertPresetExcluded;
-void _assertPresetProp;
-void _requiredPresetProps;
-void _requiredPresetPropsOk;
-
 t.test('preset applies variant values', (t) => {
 	const button = sv('btn', {
 		variants: {

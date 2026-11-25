@@ -44,7 +44,6 @@ type ComponentBinding =
 	| { kind: 'import'; source: ImportSource }
 	| null;
 
-// Takes the structural minimum so framework node unions narrow through it too.
 /**
  * The component `node` is, or wraps: a function, or the name of one, handed to
  * `forwardRef()`, `memo()` or any other call, however deeply nested

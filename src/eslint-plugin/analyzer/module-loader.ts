@@ -389,7 +389,7 @@ const analyzeScan = (scan: ModuleScan): ModuleAnalysis => {
 		scan.ctx.sourceCode
 	);
 	const exports = new Map<string, ExportStep[]>();
-	const self = scan.forwarded.get(scan.ast);
+	const self = toStylesStep(scan.ast, scan.forwarded);
 
 	for (const [name, targets] of named) {
 		const steps = getOrCreate(exports, name, () => []);
@@ -403,11 +403,8 @@ const analyzeScan = (scan: ModuleScan): ModuleAnalysis => {
 		}
 	}
 
-	if (self !== undefined) {
-		getOrCreate(exports, DEFAULT_EXPORT, () => []).push({
-			kind: 'styles',
-			styles: self
-		});
+	if (self !== null) {
+		getOrCreate(exports, DEFAULT_EXPORT, () => []).push(self);
 	}
 
 	return { exports, starSources };

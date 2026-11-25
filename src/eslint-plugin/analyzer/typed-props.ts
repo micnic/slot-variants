@@ -172,7 +172,7 @@ const inheritProps = (props: BooleanProps, added: BooleanProps) => {
 // naming itself reads as none.
 const readNamedProps = (
 	name: string,
-	program: Program,
+	declarations: ReadonlyArray<TypeNode>,
 	seen: Set<string>
 ): BooleanProps => {
 	const props: BooleanProps = new Map();
@@ -185,7 +185,7 @@ const readNamedProps = (
 
 	const inherited: BooleanProps = new Map();
 
-	for (const declaration of getTopLevelTypes(program)) {
+	for (const declaration of declarations) {
 		if (
 			isInterfaceDeclaration(declaration) &&
 			declaration.id.name === name
@@ -196,7 +196,7 @@ const readNamedProps = (
 				if (expression.name !== undefined) {
 					joinProps(
 						inherited,
-						readNamedProps(expression.name, program, seen)
+						readNamedProps(expression.name, declarations, seen)
 					);
 				}
 			}
@@ -206,7 +206,7 @@ const readNamedProps = (
 		) {
 			joinProps(
 				props,
-				readTypeProps(declaration.typeAnnotation, program, seen)
+				readTypeProps(declaration.typeAnnotation, declarations, seen)
 			);
 		}
 	}
@@ -220,13 +220,13 @@ const readNamedProps = (
 // The props of every one of `types`, joined as an intersection's are.
 const readJoinedProps = (
 	types: ReadonlyArray<TypeNode>,
-	program: Program,
+	declarations: ReadonlyArray<TypeNode>,
 	seen: Set<string>
 ): BooleanProps => {
 	const props: BooleanProps = new Map();
 
 	for (const type of types) {
-		joinProps(props, readTypeProps(type, program, seen));
+		joinProps(props, readTypeProps(type, declarations, seen));
 	}
 
 	return props;
@@ -237,7 +237,7 @@ const readJoinedProps = (
 // else.
 const readTypeProps = (
 	node: TypeNode,
-	program: Program,
+	declarations: ReadonlyArray<TypeNode>,
 	seen: Set<string>
 ): BooleanProps => {
 	if (isTypeLiteral(node)) {
@@ -245,14 +245,14 @@ const readTypeProps = (
 	}
 
 	if (isIntersectionType(node)) {
-		return readJoinedProps(node.types, program, seen);
+		return readJoinedProps(node.types, declarations, seen);
 	}
 
 	if (!isTypeReference(node) || node.typeName.name === undefined) {
 		return new Map();
 	}
 
-	return readNamedProps(node.typeName.name, program, seen);
+	return readNamedProps(node.typeName.name, declarations, seen);
 };
 
 /**
@@ -273,5 +273,9 @@ export const readTypedProps = (
 			return new Map();
 		}
 
-		return readJoinedProps(call.typeArguments.params, program, new Set());
+		return readJoinedProps(
+			call.typeArguments.params,
+			getTopLevelTypes(program),
+			new Set()
+		);
 	});

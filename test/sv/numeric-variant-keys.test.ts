@@ -49,11 +49,6 @@ type AssertMixedKeys = MixedKeysProps extends {
 	: false;
 const _assertMixedKeys: AssertMixedKeys = true;
 
-void _numericVariantFn;
-void _assertNumericVariant;
-void _mixedKeysFn;
-void _assertMixedKeys;
-
 t.test('numeric variant keys', (t) => {
 	const heading = sv('font-bold', {
 		variants: {

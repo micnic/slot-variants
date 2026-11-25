@@ -32,7 +32,7 @@ type OrderViolation = { entry: KeyEntry; before: KeyEntry };
 type BaseStyle = 'field' | 'separateArg' | 'slotsBase';
 
 // A base written as a property: the config's `base`, or `slots.base`.
-type PropertyBaseStyle = 'field' | 'slotsBase';
+type PropertyBaseStyle = Exclude<BaseStyle, 'separateArg'>;
 
 // The three places base classes can live. `node` is what a mismatch is
 // reported on and `value` holds the classes; a property source also carries the
@@ -202,7 +202,7 @@ const getSlotsObject = (
 		sourceCode
 	);
 
-	if (slots !== undefined && slots.type === 'ObjectExpression') {
+	if (slots?.type === 'ObjectExpression') {
 		return slots;
 	}
 

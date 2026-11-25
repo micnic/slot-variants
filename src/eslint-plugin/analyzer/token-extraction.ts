@@ -587,10 +587,6 @@ export const forEachCompoundClass = (
 	visit: (cls: Node, compound: ReadonlyMap<string, Node>) => void
 ) => {
 	forEachResolvedItem(node, sourceCode, (element) => {
-		if (element.type !== 'ObjectExpression') {
-			return;
-		}
-
 		const compound = getProperties(element);
 		const cls = getClassValue(compound);
 
@@ -605,7 +601,7 @@ const extractVariantTokens = (
 	sourceCode: SourceCode,
 	extract: ExtractFn
 ) => {
-	for (const [variantKey, rawValue] of variantsMap.entries()) {
+	for (const [variantKey, rawValue] of variantsMap) {
 		const variantValue = resolveStaticValue(rawValue, sourceCode);
 
 		if (isBooleanShorthandVariant(variantValue)) {

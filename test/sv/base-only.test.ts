@@ -290,9 +290,6 @@ type AssertHelperRequiredConfig = HelperRequiredConfigProps extends {
 	: false;
 const _assertHelperRequiredConfig: AssertHelperRequiredConfig = true;
 
-void _helperRequiredConfigFn;
-void _assertHelperRequiredConfig;
-
 t.test(
 	'helper-returned compound slot configs support readonly matcher arrays',
 	(t) => {

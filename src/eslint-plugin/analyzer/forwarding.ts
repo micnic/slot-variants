@@ -6,6 +6,7 @@ import type {
 	MemberExpression,
 	Node,
 	ObjectPattern,
+	Pattern,
 	Program,
 	VariableDeclarator
 } from 'estree';
@@ -49,6 +50,7 @@ import {
 	type ClassParts,
 	collectCallParts,
 	collectParts,
+	EMPTY_PATH,
 	emptyParts,
 	forEachOverrideParts,
 	isClassListCall,
@@ -235,9 +237,6 @@ const PROPS_SOURCES = new Set([
 const NO_DEFAULTS: ReadonlyMap<string, Node> = new Map();
 
 const NO_PROPS: ReadonlySet<string> = new Set();
-
-// The path of a part outside any branch node.
-const ROOT_PATH: BranchPath = new Map();
 
 // Vue's one class attribute: the one a component's undeclared attributes carry
 // to its root element, and the one it merges from a `v-bind` object.
@@ -742,6 +741,19 @@ export const createForwardingScan = (
 		}
 	};
 
+	// A props object bound to a name, or destructured by a pattern.
+	const registerPropsTarget = (
+		declared: ReadonlyArray<Scope.Variable>,
+		target: Pattern,
+		object: PropsObject
+	) => {
+		if (target.type === 'ObjectPattern') {
+			registerBindings(declared, target, object);
+		} else if (target.type === 'Identifier') {
+			bindPropsObject(declared, target.name, object);
+		}
+	};
+
 	// A name a pattern destructures a prop into: the element's prop, or the
 	// value the props object forces over it.
 	const registerBinding = (
@@ -787,17 +799,7 @@ export const createForwardingScan = (
 		const declared = sourceCode.getDeclaredVariables(fn);
 		const props = wholeProps(fn, NO_DEFAULTS);
 
-		if (param.type === 'ObjectPattern') {
-			registerBindings(declared, param, props);
-
-			return;
-		}
-
-		if (param.type !== 'Identifier') {
-			return;
-		}
-
-		bindPropsObject(declared, param.name, props);
+		registerPropsTarget(declared, param, props);
 	};
 
 	// The props object a name refers to.
@@ -921,10 +923,9 @@ export const createForwardingScan = (
 		}
 
 		return {
-			component: source.component,
+			...source,
 			defaults: new Map([...defaults, ...source.defaults]),
 			omitted,
-			picked: source.picked,
 			forced
 		};
 	};
@@ -1076,15 +1077,7 @@ export const createForwardingScan = (
 				object = pickProps(source, list);
 			}
 
-			if (element.type === 'ObjectPattern') {
-				registerBindings(declared, element, object);
-
-				return;
-			}
-
-			if (element.type === 'Identifier') {
-				bindPropsObject(declared, element.name, object);
-			}
+			registerPropsTarget(declared, element, object);
 		});
 	};
 
@@ -1520,7 +1513,7 @@ export const createForwardingScan = (
 		addForwarded(
 			component,
 			null,
-			getForwardTargets(parts, ROOT_PATH, component, VUE_CLASS, true)
+			getForwardTargets(parts, EMPTY_PATH, component, VUE_CLASS, true)
 		);
 	};
 

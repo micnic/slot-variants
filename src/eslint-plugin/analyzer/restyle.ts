@@ -92,7 +92,8 @@ type LiteralReporter = (
 	canPair?: CanPair
 ) => void;
 
-const EMPTY_PATH: BranchPath = new Map();
+// The path of a part outside any branch node.
+export const EMPTY_PATH: BranchPath = new Map();
 
 // The kinds of part a position holds.
 const PART_KINDS: ReadonlyArray<keyof PartCounts> = [

@@ -404,12 +404,6 @@ const _factoryString = _factorySv('flex', 'gap-2');
 type AssertFactoryString = typeof _factoryString extends string ? true : false;
 const _assertFactoryString: AssertFactoryString = true;
 
-void _factoryButton;
-void _assertFactoryIntrospection;
-void _assertFactoryProps;
-void _factoryString;
-void _assertFactoryString;
-
 // --- multiSlots type tests ---
 
 const _multiSlotFn = sv('border', {
@@ -454,11 +448,3 @@ type AssertMultiSlotAll = MultiSlotAllReturn['base'] extends AnyFunction
 	? true
 	: false;
 const _assertMultiSlotAll: AssertMultiSlotAll = true;
-
-void _multiSlotFn;
-void _assertHeaderIsFn;
-void _assertBaseIsString;
-void _assertBodyIsString;
-void _assertHeaderReturn;
-void _multiSlotAllFn;
-void _assertMultiSlotAll;
