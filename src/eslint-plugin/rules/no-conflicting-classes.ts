@@ -70,7 +70,10 @@ export const noConflictingClasses: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const options = readConflictOptions(context.options[0]);
+		const options = readConflictOptions(
+			'no-conflicting-classes',
+			context.options[0]
+		);
 
 		return createTrackedCallListeners(
 			context,

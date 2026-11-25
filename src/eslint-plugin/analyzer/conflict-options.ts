@@ -43,11 +43,17 @@ const noOption: ConflictRuleOption = {};
 // the options read from it, and the conflict keys they cache, are reused.
 const readOptions = new WeakMap<ConflictRuleOption, ConflictOptions>();
 
+// The rule's name is only for the error a bad option throws: nothing is cached
+// then, so a shared options object always reports the rule reading it.
 export const readConflictOptions = (
+	ruleName: string,
 	option: ConflictRuleOption = noOption
 ): ConflictOptions =>
 	getOrCreate(readOptions, option, () => ({
-		exclusiveGroups: buildExclusiveGroupMap(option.exclusiveGroups),
+		exclusiveGroups: buildExclusiveGroupMap(
+			ruleName,
+			option.exclusiveGroups
+		),
 		prefix: normalizePrefix(option.prefix),
 		conflictKeys: new Map()
 	}));

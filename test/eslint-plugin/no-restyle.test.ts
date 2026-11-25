@@ -55,6 +55,33 @@ t.test('no-restyle', (t) => {
 	t.end();
 });
 
+// A bad shared option is reported under the rule that reads it.
+t.test('no-restyle names itself in an option error', (t) => {
+	t.throws(
+		() => {
+			jsxTester.run('no-restyle', rules['no-restyle'], {
+				valid: [
+					{
+						code: IMPORT + "sv('flex');",
+						options: [
+							{
+								exclusiveGroups: [
+									['a', 'b'],
+									['b', 'c']
+								]
+							}
+						]
+					}
+				],
+				invalid: []
+			});
+		},
+		/slot-variants\/no-restyle: "exclusiveGroups" lists "b" in more than one group/,
+		'a token listed in two custom groups throws'
+	);
+	t.end();
+});
+
 t.test('no-restyle (svelte)', (t) => {
 	t.doesNotThrow(() => {
 		svelteTester.run('no-restyle', rules['no-restyle'], {

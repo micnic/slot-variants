@@ -98,7 +98,10 @@ export const noRestyle: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const options = readConflictOptions(context.options[0]);
+		const options = readConflictOptions(
+			'no-restyle',
+			context.options[0]
+		);
 		const alias = context.options[0]?.alias;
 		const moduleContext = getModuleContext(
 			context,

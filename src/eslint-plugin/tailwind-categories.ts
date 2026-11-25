@@ -92,18 +92,20 @@ const resolveExclusiveGroups = (
 // coherent meaning — which group's id should the token's conflict key use? —
 // so it's rejected outright rather than silently resolved (last group wins).
 const createOverlappingExclusiveGroupError = (
+	ruleName: string,
 	token: string,
 	firstGroupId: string,
 	secondGroupId: string
 ): Error =>
 	new Error(
-		`slot-variants/no-conflicting-classes: "exclusiveGroups" lists "${token}" in more than one group (groups ${firstGroupId} and ${secondGroupId}) — remove it from all but one.`
+		`slot-variants/${ruleName}: "exclusiveGroups" lists "${token}" in more than one group (groups ${firstGroupId} and ${secondGroupId}) — remove it from all but one.`
 	);
 
 // A lookup from each grouped utility to a stable per-group id, so tokens in the
 // same exclusive group share a conflict key. Empty when grouping is disabled,
 // in which case getConflictKey behaves exactly as before.
 export const buildExclusiveGroupMap = (
+	ruleName: string,
 	option: ExclusiveGroupsOption
 ): ReadonlyMap<string, string> => {
 	const map = new Map<string, string>();
@@ -116,6 +118,7 @@ export const buildExclusiveGroupMap = (
 
 			if (firstGroupId !== undefined) {
 				throw createOverlappingExclusiveGroupError(
+					ruleName,
 					token,
 					firstGroupId,
 					groupId

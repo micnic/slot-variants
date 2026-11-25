@@ -73,7 +73,7 @@ t.test('no-conflicting-classes (exclusiveGroups validation)', (t) => {
 				invalid: []
 			});
 		},
-		/"exclusiveGroups" lists "b" in more than one group \(groups 0 and 1\)/,
+		/slot-variants\/no-conflicting-classes: "exclusiveGroups" lists "b" in more than one group \(groups 0 and 1\)/,
 		'a token listed in two custom groups throws'
 	);
 
