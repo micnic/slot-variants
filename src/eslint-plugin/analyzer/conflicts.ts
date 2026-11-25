@@ -550,18 +550,19 @@ export const analyzeCnForRule = (
 	args: ReadonlyArray<Expression | SpreadElement>,
 	options: ConflictOptions
 ) => {
-	const tokenMap = indexEntriesBySlotAndToken(
-		collectCnEntries(args, context.sourceCode)
-	).get('base');
+	// Every entry of a class list is in `base`, and there are none when it
+	// holds no static class.
+	const tokenMap =
+		indexEntriesBySlotAndToken(
+			collectCnEntries(args, context.sourceCode)
+		).get('base') ?? new Map<string, Entry[]>();
 
-	if (tokenMap) {
-		reportTokenCollisions(
-			context,
-			tokenMap,
-			CN_MESSAGES,
-			{},
-			options,
-			REPORT_ALL
-		);
-	}
+	reportTokenCollisions(
+		context,
+		tokenMap,
+		CN_MESSAGES,
+		{},
+		options,
+		REPORT_ALL
+	);
 };

@@ -952,6 +952,12 @@ type Explanation<S extends MaybeSlots, V extends AnyVariants> = {
 	slots: Record<SlotKey<S>, ExplainedSlot<StringKeyof<V>>>;
 };
 
+// A config map as passed in, or an empty record when it's unset.
+type ConfigOrEmpty<T> = T extends undefined ? Record<string, never> : T;
+
+// The names a config map declares, or an empty tuple when it's unset.
+type KeysOrEmpty<T> = T extends undefined ? [] : StringKeyof<T>[];
+
 type IntrospectionValues<
 	S extends MaybeSlots,
 	G extends MaybeGroups<S>,
@@ -963,17 +969,17 @@ type IntrospectionValues<
 	/** Base classes: the base args, `base` and `slots.base`, merged. */
 	base: string;
 	/** The `variants` config passed in, as-is. */
-	variants: V extends undefined ? Record<string, never> : V;
+	variants: ConfigOrEmpty<V>;
 	/** Names of all declared variants. */
 	variantKeys: StringKeyof<V>[];
 	/** The `slots` config passed in, as-is. */
-	slots: S extends undefined ? Record<string, never> : S;
+	slots: ConfigOrEmpty<S>;
 	/** Names of all declared slots (including `'base'`). */
 	slotKeys: SlotKey<S>[];
 	/** The `groups` config passed in, as-is. */
-	groups: G extends undefined ? Record<string, never> : G;
+	groups: ConfigOrEmpty<G>;
 	/** Names of all declared groups. */
-	groupKeys: G extends undefined ? [] : StringKeyof<G>[];
+	groupKeys: KeysOrEmpty<G>;
 	/** The `defaultVariants` config passed in, as-is. */
 	defaultVariants: DefaultVariants<V, P, R>;
 	/** Names of the variants the caller must always provide. */
@@ -981,9 +987,9 @@ type IntrospectionValues<
 	/** Slots exposed as functions, with groups expanded to their slots. */
 	multiSlots: MultiSlotKeys<S, G, M>[];
 	/** The `presets` config passed in, as-is. */
-	presets: P extends undefined ? Record<string, never> : P;
+	presets: ConfigOrEmpty<P>;
 	/** Names of all declared presets. */
-	presetKeys: P extends undefined ? [] : StringKeyof<P>[];
+	presetKeys: KeysOrEmpty<P>;
 	/** The `compoundVariants` config passed in, as-is, or `[]` if unset. */
 	compoundVariants: CompoundVariants<S, G, V, P>;
 	/** The `compoundSlots` config passed in, as-is, or `[]` if unset. */

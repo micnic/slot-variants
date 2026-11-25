@@ -18,7 +18,6 @@ import {
 	type RuntimeVariantValue,
 	type SlotClasses,
 	type SlotEntry,
-	type SlotValue,
 	type Slots,
 	type VariantCache,
 	type VariantData,
@@ -528,12 +527,6 @@ const requireCompoundClassValue = <T>(
 
 	return classValue;
 };
-
-export const isSlotObjectValue = <T>(
-	value: SlotValue<Slots, undefined, T>,
-	targetKeys: ReadonlySet<string>
-): value is Partial<Record<string, T>> =>
-	isPlainObject(value) && keys(value).every((key) => targetKeys.has(key));
 
 /**
  * Applies a config value to the slots it targets: per slot for a slot object,

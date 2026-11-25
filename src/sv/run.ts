@@ -6,7 +6,7 @@ import {
 	getOwnOrThrow,
 	getSlotFragmentTables,
 	getTargetSlots,
-	isSlotObjectValue,
+	isPlainObject,
 	toFragment
 } from './compile.ts';
 import {
@@ -267,6 +267,14 @@ const mergeSlotObjectIntoResult = (
 
 	return result;
 };
+
+// Whether a `class`/`className` prop is a slot object: one keyed only by the
+// config's slots and groups.
+const isSlotObjectValue = (
+	value: RuntimeClassValue,
+	targetKeys: ReadonlySet<string>
+): value is Partial<Record<string, ClassValue>> =>
+	isPlainObject(value) && keys(value).every((key) => targetKeys.has(key));
 
 /**
  * Lists, per slot, the classes a `class`/`className` prop adds to it.
