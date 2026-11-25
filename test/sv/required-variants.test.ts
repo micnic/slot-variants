@@ -315,6 +315,19 @@ t.test('default variant throws for invalid value at config time', (t) => {
 		'throws at config time for invalid default variant value'
 	);
 
+	t.throws(
+		() =>
+			sv('rounded-lg', {
+				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
+				defaultVariants: {
+					// @ts-expect-error - array default, runtime check
+					size: ['sm']
+				}
+			}),
+		{ message: 'Default variant "size" has invalid value "sm"' },
+		'throws for a non-primitive default matching a value by string form'
+	);
+
 	t.end();
 });
 

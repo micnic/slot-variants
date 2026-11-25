@@ -206,6 +206,25 @@ export const NO_REDUNDANT_SPACES_INVALID = [
 		errors: 1
 	},
 	{
+		// An escape that isn't a separator would be written as a raw
+		// character, so the fix is dropped.
+		code: IMPORT_CN + "cn('a  \\u2028');",
+		output: null,
+		errors: 1
+	},
+	{
+		// The same for a NUL escape.
+		code: IMPORT_CN + "cn('a  \\0 b');",
+		output: null,
+		errors: 1
+	},
+	{
+		// An escaped character the literal already holds as written is kept.
+		code: IMPORT_CN + "cn('A  \\x41');",
+		output: IMPORT_CN + "cn('A A');",
+		errors: 1
+	},
+	{
 		// Newline whitespace inside template literal.
 		code: IMPORT + 'sv({ base: `flex\nitems-center`, variants: {} });',
 		output: IMPORT + 'sv({ base: `flex items-center`, variants: {} });',

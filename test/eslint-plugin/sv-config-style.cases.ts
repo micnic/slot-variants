@@ -16,6 +16,74 @@ export const SV_CONFIG_STYLE_ORDER_VALID = [
 
 export const SV_CONFIG_STYLE_ORDER_INVALID = [
 	{
+		// Two values with side effects would swap evaluation order, so no fix.
+		code: IMPORT + 'sv({ variants: f(), base: g() });',
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		],
+		output: null
+	},
+	{
+		// One value with side effects keeps its place among the others.
+		code: IMPORT + "sv({ variants: f(), base: 'x' });",
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		],
+		output: IMPORT + "sv({ base: 'x', variants: f() });"
+	},
+	{
+		// Objects, arrays, functions and spreads of reads have no side effects.
+		code:
+			IMPORT +
+			"sv({ variants: { size: { sm: ['a', , ...xs] }, [k]: { ...ys } }, defaultVariants: { size: () => 's' }, base: g() });",
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'defaultVariants' }
+			}
+		],
+		output:
+			IMPORT +
+			"sv({ base: g(), variants: { size: { sm: ['a', , ...xs] }, [k]: { ...ys } }, defaultVariants: { size: () => 's' } });"
+	},
+	{
+		// A call inside a computed key, a spread or an array element has.
+		code: IMPORT + 'sv({ variants: { [f()]: {} }, base: g() });',
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		],
+		output: null
+	},
+	{
+		code: IMPORT + 'sv({ variants: { ...f() }, base: g() });',
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		],
+		output: null
+	},
+	{
+		code: IMPORT + 'sv({ variants: { size: { sm: [f()] } }, base: g() });',
+		errors: [
+			{
+				messageId: 'wrongOrder',
+				data: { key: 'base', before: 'variants' }
+			}
+		],
+		output: null
+	},
+	{
 		// `extend` placed after another key moves to the front.
 		code:
 			IMPORT +

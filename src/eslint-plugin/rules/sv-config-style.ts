@@ -16,6 +16,7 @@ import {
 import { isWithinNode, resolveContainer } from '../analyzer/const-bindings.ts';
 import { removeFromList, removeSoleItem } from '../analyzer/list-fix.ts';
 import { getProperties, hasSpreadProperty } from '../analyzer/properties.ts';
+import { isSideEffectFree } from '../analyzer/side-effects.ts';
 import { isStaticStringNode } from '../analyzer/static-predicates.ts';
 import { getCallFactory, mayInheritKey } from '../analyzer/styled-values.ts';
 import { createTrackedCallListeners } from '../analyzer/call-listeners.ts';
@@ -137,6 +138,27 @@ const buildReorderFix = (
 	return (fixer) => fixer.replaceTextRange([start, end], text);
 };
 
+// Whether sorting keeps the values with side effects in their source order,
+// so the reordered config evaluates them as written. The sort is stable, so
+// it does when their canonical indexes already ascend.
+const keepsEffectOrder = (entries: ReadonlyArray<KeyEntry>): boolean => {
+	let lastIndex = -1;
+
+	for (const { prop, index } of entries) {
+		if (isSideEffectFree(prop.value)) {
+			continue;
+		}
+
+		if (index < lastIndex) {
+			return false;
+		}
+
+		lastIndex = index;
+	}
+
+	return true;
+};
+
 // Each key that comes after a key it should precede, paired with the latest
 // such key seen so far.
 const findOrderViolations = (
@@ -177,6 +199,7 @@ const checkKeyOrder = (
 	// used elsewhere in this plugin.
 	if (
 		fixable &&
+		keepsEffectOrder(entries) &&
 		context.sourceCode.getCommentsInside(configNode).length === 0
 	) {
 		fix = buildReorderFix(context.sourceCode, entries);

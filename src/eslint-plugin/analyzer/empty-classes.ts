@@ -6,6 +6,7 @@ import { resolveArray, resolveStaticValue } from './const-bindings.ts';
 import { type EmptyFix, makeListFix } from './list-fix.ts';
 import { getStaticStringText } from './literals.ts';
 import { collectSpreadKeys, getProperties } from './properties.ts';
+import { isSideEffectFree } from './side-effects.ts';
 import { mayInheritKey } from './styled-values.ts';
 import {
 	COMPOUND_NON_MATCHER_KEYS,
@@ -30,19 +31,27 @@ const resolvesToEmptyString = (context: Rule.RuleContext, node: Node) =>
 	isEmptyStringNode(resolveStaticValue(node, context.sourceCode));
 
 // The fix a cn-style branch inherits, which removes the whole enclosing
-// argument or element. An `&&` applies classes only through its right
-// operand, so it always inherits it; a ternary only when both branches are
-// empty — otherwise the removal would drop the other branch's classes.
+// argument or element. That drops the branch's condition too, so the fix is
+// kept only when the condition has no side effects. An `&&` applies classes
+// only through its right operand, so it inherits it then; a ternary only when
+// both branches are also empty — otherwise the removal would drop the other
+// branch's classes.
 const getBranchFix = (
 	context: Rule.RuleContext,
 	node: Node,
 	fix: EmptyFix | undefined
 ): EmptyFix | undefined => {
+	// Besides a ternary, the only cn-style branch is an `&&`
 	if (node.type !== 'ConditionalExpression') {
-		return fix;
+		if (node.type === 'LogicalExpression' && isSideEffectFree(node.left)) {
+			return fix;
+		}
+
+		return undefined;
 	}
 
 	if (
+		isSideEffectFree(node.test) &&
 		resolvesToEmptyString(context, node.consequent) &&
 		resolvesToEmptyString(context, node.alternate)
 	) {

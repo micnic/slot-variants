@@ -88,6 +88,13 @@ const hasVariantValue = (
 	value: RuntimeVariantValue
 ) => hasOwn(variantValues, `${value}`);
 
+// Untyped callers can pass any value, but only these can name a variant value:
+// an array or object would match by its string form alone.
+const isVariantValue = (value: unknown): value is RuntimeVariantValue =>
+	typeof value === 'string' ||
+	typeof value === 'number' ||
+	typeof value === 'boolean';
+
 // A compound matcher value's lookup key, once it is known to name one of the
 // variant's values.
 const toExpectedValue = (
@@ -95,12 +102,7 @@ const toExpectedValue = (
 	value: unknown,
 	variantValues: NormalizedVariantValues
 ) => {
-	if (
-		(typeof value !== 'string' &&
-			typeof value !== 'number' &&
-			typeof value !== 'boolean') ||
-		!hasVariantValue(variantValues, value)
-	) {
+	if (!isVariantValue(value) || !hasVariantValue(variantValues, value)) {
 		throw new Error(
 			`Compound matcher for variant "${variant}" has invalid value "${value}"`
 		);
@@ -439,11 +441,12 @@ const assertKnownDefaultVariants = (
 			`Default variant "${variant}" is not defined in variants`
 		);
 
-		if (
-			value !== undefined &&
-			typeof value !== 'function' &&
-			!hasVariantValue(variantValues, value)
-		) {
+		if (value === undefined || typeof value === 'function') {
+			continue;
+		}
+
+		// A default is emitted as a literal into the generated run function
+		if (!isVariantValue(value) || !hasVariantValue(variantValues, value)) {
 			throw new Error(
 				`Default variant "${variant}" has invalid value "${value}"`
 			);

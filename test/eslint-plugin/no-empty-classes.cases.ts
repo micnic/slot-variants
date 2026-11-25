@@ -811,6 +811,102 @@ export const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyString' }, { messageId: 'emptyString' }]
 	},
 	{
+		// A condition that only reads values goes with the removed argument.
+		code: IMPORT_CN + "cn('flex', this.a?.[b] && '');",
+		output: IMPORT_CN + "cn('flex');",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', !(a.b + 1 > c) && '');",
+		output: IMPORT_CN + "cn('flex');",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', `${a}x` && '');",
+		output: IMPORT_CN + "cn('flex');",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', (a || b ? c : d) && '');",
+		output: IMPORT_CN + "cn('flex');",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', typeof a === 'string' ? '' : '');",
+		output: IMPORT_CN + "cn('flex');",
+		errors: [{ messageId: 'emptyString' }, { messageId: 'emptyString' }]
+	},
+	{
+		// A `super` read and a private `in` check only read values too.
+		code:
+			IMPORT_CN +
+			"class A extends B { m() { cn('flex', super.a && ''); } }",
+		output: IMPORT_CN + "class A extends B { m() { cn('flex'); } }",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "class A { #x; m(o) { cn('flex', #x in o && ''); } }",
+		output: IMPORT_CN + "class A { #x; m(o) { cn('flex'); } }",
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		// Removing the argument would drop the condition's side effects, so
+		// it's reported without a fix.
+		code: IMPORT_CN + "cn('flex', f() && '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', await g() && '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', (i++, x) && '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', delete a.b && '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', a[f()] && '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', f().a && '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', `${f()}` && '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', (a || f()) && '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', (a ? f() : b) && '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', x?.() && '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }]
+	},
+	{
+		code: IMPORT_CN + "cn('flex', f() ? '' : '');",
+		output: null,
+		errors: [{ messageId: 'emptyString' }, { messageId: 'emptyString' }]
+	},
+	{
 		// A `const` empty-string alias counts as an empty branch, reported
 		// in the branch that reads it.
 		code: IMPORT_CN + "const none = '';\ncn('flex', isActive ? none : '');",

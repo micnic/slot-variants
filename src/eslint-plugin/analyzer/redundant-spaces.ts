@@ -2,6 +2,7 @@ import type { AST, Rule } from 'eslint';
 import type { Node, ObjectExpression, TemplateLiteral } from 'estree';
 import { resolveStaticValue } from './const-bindings.ts';
 import {
+	getInnerText,
 	getQuasiInnerRange,
 	getQuasiText,
 	getStaticStringText,
@@ -23,6 +24,19 @@ type SvConfigValueChecker = (context: Rule.RuleContext, node: Node) => void;
 // A quasi's text range inside its delimiters, and the text it should hold.
 type QuasiRewrite = { range: AST.Range; text: string };
 
+// Whether `text` holds only characters the literal's `raw` text already holds
+// as written. Rewritten from the cooked value, an escape that isn't a
+// separator would become a raw character (a NUL, a BOM, a line separator).
+const writesOnlyRawChars = (raw: string, text: string): boolean => {
+	for (const char of text) {
+		if (char !== ' ' && !raw.includes(char)) {
+			return false;
+		}
+	}
+
+	return true;
+};
+
 // Highlights the whole literal: span-level reports would need to chase
 // raw-text/escape-sequence mismatches.
 const reportRedundantSpaces = (
@@ -42,7 +56,13 @@ const reportRedundantSpaces = (
 		node,
 		messageId: 'redundant',
 		fix: (fixer) => {
-			if (rewrite === null) {
+			if (
+				rewrite === null ||
+				!writesOnlyRawChars(
+					getInnerText(context.sourceCode, node),
+					rewrite.nextText
+				)
+			) {
 				return null;
 			}
 
