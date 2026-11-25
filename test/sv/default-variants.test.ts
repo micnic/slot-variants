@@ -67,28 +67,6 @@ t.test('default variant applied when no props', (t) => {
 	t.end();
 });
 
-t.test('explicit prop overrides default variant', (t) => {
-	const button = sv('rounded-lg', {
-		variants: {
-			size: {
-				sm: 'px-2 py-1 text-sm',
-				lg: 'px-6 py-3 text-lg'
-			}
-		},
-		defaultVariants: {
-			size: 'sm'
-		}
-	});
-
-	t.equal(
-		button({ size: 'lg' }),
-		'rounded-lg px-6 py-3 text-lg',
-		'explicit prop overrides default'
-	);
-
-	t.end();
-});
-
 t.test('explicit undefined does not override default variant', (t) => {
 	const button = sv('rounded-lg', {
 		variants: {

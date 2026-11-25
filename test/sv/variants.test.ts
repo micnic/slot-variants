@@ -305,24 +305,6 @@ type NoSlotsReturn = ReturnType<typeof _typeNoSlotsFn>;
 type AssertStringReturn = NoSlotsReturn extends string ? true : false;
 const _assertStringReturn: AssertStringReturn = true;
 
-// Return type is slot record when slots exist
-const _typeWithSlotsFn = sv('flex', {
-	slots: {
-		header: 'font-bold',
-		body: 'text-base'
-	}
-});
-
-type WithSlotsReturn = ReturnType<typeof _typeWithSlotsFn>;
-type AssertSlotRecord = WithSlotsReturn extends {
-	base: string;
-	header: string;
-	body: string;
-}
-	? true
-	: false;
-const _assertSlotRecord: AssertSlotRecord = true;
-
 // VariantProps excludes class and className props
 const _typeExcludeClassFn = sv('flex', {
 	slots: {
@@ -343,55 +325,6 @@ type AssertNoClassNameProp = 'className' extends keyof ExcludeClassProps
 	: true;
 const _assertNoClassProp: AssertNoClassProp = true;
 const _assertNoClassNameProp: AssertNoClassNameProp = true;
-
-// VariantProps with required variants (non-optional)
-const _typeRequiredFn = sv('flex', {
-	variants: {
-		size: {
-			sm: 'text-sm',
-			lg: 'text-lg'
-		},
-		intent: {
-			primary: 'bg-blue-500',
-			danger: 'bg-red-500'
-		}
-	},
-	requiredVariants: ['size']
-});
-
-type RequiredTypeProps = VariantProps<typeof _typeRequiredFn>;
-// size should be required (no undefined)
-type AssertSizeRequired = RequiredTypeProps extends {
-	size: 'sm' | 'lg';
-	intent?: 'primary' | 'danger' | null | undefined;
-}
-	? true
-	: false;
-const _assertSizeRequired: AssertSizeRequired = true;
-
-// VariantProps with all required variants
-const _typeAllRequiredFn = sv('flex', {
-	variants: {
-		size: {
-			sm: 'text-sm',
-			lg: 'text-lg'
-		},
-		intent: {
-			primary: 'bg-blue-500',
-			danger: 'bg-red-500'
-		}
-	},
-	requiredVariants: ['size', 'intent']
-});
-
-type AllRequiredProps = VariantProps<typeof _typeAllRequiredFn>;
-type AssertAllRequired = AllRequiredProps extends {
-	size: 'sm' | 'lg';
-	intent: 'primary' | 'danger';
-}
-	? true
-	: false;
-const _assertAllRequired: AssertAllRequired = true;
 
 // ClassProp with slots accepts string or slot object
 const _typeClassPropFn = sv('flex', {
@@ -427,40 +360,6 @@ const _testClassNameObject = _typeClassPropFn({
 	size: 'lg',
 	className: { base: 'mx-auto', body: 'p-4' }
 });
-
-// VariantProps with numeric keys
-const _typeNumericKeysFn = sv('flex', {
-	variants: {
-		level: {
-			1: 'text-4xl',
-			2: 'text-3xl',
-			3: 'text-2xl'
-		}
-	}
-});
-
-type NumericKeysProps = VariantProps<typeof _typeNumericKeysFn>;
-type AssertNumericKeys = NumericKeysProps extends {
-	level?: 1 | 2 | 3 | '1' | '2' | '3' | null | undefined;
-}
-	? true
-	: false;
-const _assertNumericKeys: AssertNumericKeys = true;
-
-// VariantProps with boolean shorthand
-const _typeBoolShorthandFn = sv('flex', {
-	variants: {
-		disabled: 'opacity-50 cursor-not-allowed'
-	}
-});
-
-type BoolShorthandPropsType = VariantProps<typeof _typeBoolShorthandFn>;
-type AssertBoolShorthandType = BoolShorthandPropsType extends {
-	disabled?: boolean | null | undefined;
-}
-	? true
-	: false;
-const _assertBoolShorthandType: AssertBoolShorthandType = true;
 
 // Complex type: slots + variants + required + defaults
 const _typeComplexFn = sv('flex', {

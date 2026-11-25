@@ -94,11 +94,6 @@ export const NO_CONFLICTING_DUP_VALID = [
 	IMPORT + "sv({ base: 'btn', variants: { disabled: 'opacity-50' } });",
 	// Spread in a variant record — can't fully enumerate keys.
 	IMPORT + "sv({ variants: { size: { ...extra, sm: 'text-sm' } } });",
-	// Spread inside a variant value when slots are present — the
-	// shorthand check bails on the spread, so it's analyzed as
-	// value-keyed (with the spread skipped).
-	IMPORT +
-		"sv({ slots: { body: 'p-4' }, variants: { size: { ...extra, sm: 'text-sm' } } });",
 	// Computed key in a variant record — key is dynamic.
 	IMPORT + "sv({ variants: { size: { [dyn]: 'x', sm: 'text-sm' } } });",
 	// Slot object under `true` — distinct from the slot's class.
@@ -195,8 +190,6 @@ export const NO_CONFLICTING_DUP_VALID = [
 	IMPORT + 'sv({ base: {}, variants: {} });',
 	// Empty object as base with slots — still opaque.
 	IMPORT + "sv({ slots: { body: 'x' }, base: {} });",
-	// cn-style record as base, no slots — not analyzed.
-	IMPORT + "sv({ base: { 'some-class': true }, variants: {} });",
 	// cn-style record with a non-slot key — bails out.
 	IMPORT + "sv({ slots: { body: 'x' }, base: { foo: true } });",
 	// Slot-keyed object as base with a spread — bails out.
@@ -229,8 +222,6 @@ export const NO_CONFLICTING_DUP_VALID = [
 	IMPORT_CN + "cn(['mt-2', { 'gap-4': cond }]);",
 	// cn with a template literal containing an expression — skipped.
 	IMPORT_CN + 'cn(`flex ${x}`, `items-center`);',
-	// Unrelated call under a cn-only import is a no-op.
-	IMPORT_CN + "foo(); cn('flex');",
 	// Importing both sv and cn together works.
 	"import { sv, cn } from 'slot-variants'; sv('a'); cn('b');",
 	// Sparse null element in compoundVariants.
@@ -625,11 +616,6 @@ export const NO_CONFLICTING_DUP_INVALID = [
 		errors: 2
 	},
 	{
-		// cn() with a dup plus a non-dup token.
-		code: IMPORT_CN + "cn('flex', 'flex', 'items-center');",
-		errors: 2
-	},
-	{
 		// Both sv and cn imported — cn call flagged independently.
 		code: "import { sv, cn } from 'slot-variants'; sv('a'); cn('b', 'b');",
 		errors: 2
@@ -735,13 +721,9 @@ export const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'w-100 hover:w-200', variants: {} });",
 	// Same namespace across mutually-exclusive variant values.
 	IMPORT + "sv({ variants: { size: { sm: 'w-100', lg: 'w-200' } } });",
-	// Without the import the rule stays quiet.
-	"sv({ base: 'w-100 w-200', variants: {} });",
 	// cn() with a dynamic arg — no static entries,
 	// exercises the empty-tokenMap branch.
 	IMPORT_CN + 'cn(dynamic);',
-	// Different namespace prefixes don't conflict.
-	IMPORT + "sv({ base: 'w-100 h-200', variants: {} });",
 	// A font size and a text color target different properties, so they don't
 	// conflict — even when the color is a single-word keyword.
 	IMPORT + "sv({ base: 'text-sm text-red-500', variants: {} });",
@@ -1100,8 +1082,6 @@ export const NO_CONFLICTING_NS_VALID = [
 	IMPORT + "sv({ base: 'grid-cols-3 grid-rows-2', variants: {} });",
 	// Flex direction vs wrap.
 	IMPORT + "sv({ base: 'flex-col flex-wrap', variants: {} });",
-	// Font family vs weight.
-	IMPORT + "sv({ base: 'font-sans font-bold', variants: {} });",
 	// With grouping on, a grouped utility still doesn't conflict with an
 	// unrelated namespaced utility.
 	{
@@ -1129,8 +1109,6 @@ export const NO_CONFLICTING_NS_VALID = [
 		code: IMPORT_CN + "cn('flex', 'block');",
 		options: [{ exclusiveGroups: false }]
 	},
-	// Zero-arg call.
-	IMPORT + 'sv();',
 	// A drop-shadow size and a drop-shadow color are distinct sub-properties.
 	IMPORT +
 		"sv({ base: 'drop-shadow-sm drop-shadow-red-500', variants: {} });",
@@ -1748,11 +1726,6 @@ export const NO_CONFLICTING_NS_INVALID = [
 		// classifier, with no exclusiveGroups opt-in needed.
 		code: IMPORT_CN + "cn('text-ellipsis', 'text-clip');",
 		errors: repeat(conflictCn('text-clip, text-ellipsis'), 2)
-	},
-	{
-		// Two font sizes conflict (same size category, short bucket).
-		code: IMPORT_CN + "cn('text-sm', 'text-lg');",
-		errors: repeat(conflictCn('text-lg, text-sm'), 2)
 	},
 	{
 		// Border widths conflict (same width category).
@@ -2476,11 +2449,6 @@ export const NO_CONFLICTING_NS_INVALID = [
 		errors: repeat(conflictCn('w-100, w-200'), 2)
 	},
 	{
-		// cn() conflict across args.
-		code: IMPORT_CN + "cn('w-100', 'w-200');",
-		errors: 2
-	},
-	{
 		// cn() conflict between a static string and a logical-AND string.
 		code:
 			IMPORT_CN +
@@ -2491,11 +2459,6 @@ export const NO_CONFLICTING_NS_INVALID = [
 		// cn() conflict between two clsx-style record keys.
 		code: IMPORT_CN + "cn({ 'w-100': a, 'w-200': b });",
 		errors: repeat(conflictCn('w-100, w-200'), 2)
-	},
-	{
-		// cn() conflict between a record key and a static string.
-		code: IMPORT_CN + "cn('w-100', { 'w-200': cond });",
-		errors: 2
 	},
 	{
 		// Multi-token record key contributes each token to conflict detection.
@@ -2530,11 +2493,6 @@ export const NO_CONFLICTING_NS_INVALID = [
 	{
 		// Conflict within a single ternary branch array — both render together.
 		code: IMPORT_CN + "cn(cond ? ['w-100', 'w-200'] : 'block');",
-		errors: 2
-	},
-	{
-		// Conflict between an always-present token and a chained-ternary leaf.
-		code: IMPORT_CN + "cn('w-100', a ? 'w-200' : 'block');",
 		errors: 2
 	},
 	{

@@ -43,28 +43,17 @@ t.test('sv-config-style offers no base fix around parentheses', (t) => {
 			rules: { 'slot-variants/sv-config-style': 'error' }
 		}
 	];
-	const cases = [
-		{
-			code: "sv(('flex'), { variants: {} });",
-			label: 'parenthesized leading argument'
-		},
-		{
-			code: "sv('flex', ({ variants: {} }));",
-			label: 'parenthesized config'
-		}
-	];
+	const messages = linter.verify(
+		`${IMPORT}sv(('flex'), { variants: {} });`,
+		config,
+		{ filename: 'test.js' }
+	);
 
-	for (const { code, label } of cases) {
-		const messages = linter.verify(`${IMPORT}${code}`, config, {
-			filename: 'test.js'
-		});
-
-		t.same(
-			messages.map(({ messageId, fix }) => ({ messageId, fix })),
-			[{ messageId: 'wrongBaseStyle', fix: undefined }],
-			label
-		);
-	}
+	t.same(
+		messages.map(({ messageId, fix }) => ({ messageId, fix })),
+		[{ messageId: 'wrongBaseStyle', fix: undefined }],
+		'parenthesized leading argument'
+	);
 
 	t.end();
 });

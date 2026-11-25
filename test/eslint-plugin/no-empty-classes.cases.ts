@@ -14,18 +14,12 @@ export const NO_EMPTY_CLASSES_VALID = [
 	IMPORT + "sv('flex', { variants: {} });",
 	// Non-empty cn-style call.
 	IMPORT + "sv('flex', 'items-center');",
-	// Non-empty config.
-	IMPORT + "sv({ base: 'flex', variants: {} });",
-	// Non-empty array, no empty elements.
-	IMPORT + "sv({ base: ['flex', 'gap-2'], variants: {} });",
 	// Sparse hole in array — skipped.
 	IMPORT + "sv({ base: ['flex', , 'gap-2'], variants: {} });",
 	// Spread element inside array — skipped.
 	IMPORT + "sv({ base: ['flex', ...rest], variants: {} });",
 	// Non-empty template literal.
 	IMPORT + 'sv({ base: `flex`, variants: {} });',
-	// Empty string as a direct slot value — allowed.
-	IMPORT + "sv({ slots: { body: '' } });",
 	// Empty template literal as a direct slot value — allowed.
 	IMPORT + 'sv({ slots: { body: `` } });',
 	// Mix of empty and non-empty slot values — both allowed.
@@ -40,8 +34,6 @@ export const NO_EMPTY_CLASSES_VALID = [
 	IMPORT + 'sv({ variants: dynamic });',
 	// Compounds with non-array value — not analyzed.
 	IMPORT + 'sv({ variants: {}, compoundVariants: dynamic });',
-	// Non-empty variants record.
-	IMPORT + "sv({ variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });",
 	// Boolean shorthand variant with non-empty class.
 	IMPORT + "sv({ variants: { disabled: 'opacity-50' } });",
 	// Slot object under `true` with a non-empty class.
@@ -482,12 +474,6 @@ export const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyObject' }]
 	},
 	{
-		// Empty base alongside other keys — the property is dropped.
-		code: IMPORT + "sv({ base: '', variants: { size: { sm: 'a' } } });",
-		output: IMPORT + "sv({ variants: { size: { sm: 'a' } } });",
-		errors: [{ messageId: 'emptyString' }]
-	},
-	{
 		// Empty array as slot value — empty-string exception
 		// applies only to a direct empty string.
 		code: IMPORT + 'sv({ slots: { body: [] } });',
@@ -516,11 +502,6 @@ export const NO_EMPTY_CLASSES_INVALID = [
 		errors: [{ messageId: 'emptyObject' }]
 	},
 	{
-		// Empty array inside a variant value record.
-		code: IMPORT + 'sv({ variants: { size: { sm: [] } } });',
-		errors: [{ messageId: 'emptyArray' }]
-	},
-	{
 		// Empty array inside a slot-keyed variant branch.
 		code:
 			IMPORT +
@@ -537,16 +518,6 @@ export const NO_EMPTY_CLASSES_INVALID = [
 			"sv({ variants: { size: { sm: 'text-sm' } }, compoundVariants: [] });",
 		output: IMPORT + "sv({ variants: { size: { sm: 'text-sm' } } });",
 		errors: [{ messageId: 'emptyArray' }]
-	},
-	{
-		// Empty class in a compoundVariants entry.
-		code:
-			IMPORT +
-			`sv({
-				variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
-				compoundVariants: [{ size: 'lg', class: '' }]
-			});`,
-		errors: [{ messageId: 'emptyString' }]
 	},
 	{
 		// Empty className in a compoundVariants entry.

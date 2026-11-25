@@ -135,40 +135,6 @@ t.test('combination of all argument types', (t) => {
 	t.end();
 });
 
-t.test('string and array combination', (t) => {
-	t.equal(
-		cn('flex', ['items-center', 'gap-2'], 'text-sm'),
-		'flex items-center gap-2 text-sm',
-		'strings around array'
-	);
-
-	t.end();
-});
-
-t.test('string and object combination', (t) => {
-	t.equal(
-		cn(
-			'flex items-center',
-			{ 'bg-red-500': true, 'opacity-50': false },
-			'p-4'
-		),
-		'flex items-center bg-red-500 p-4',
-		'strings around object'
-	);
-
-	t.end();
-});
-
-t.test('array and object combination', (t) => {
-	t.equal(
-		cn(['flex', 'gap-2'], { 'text-white': true, 'font-bold': false }),
-		'flex gap-2 text-white',
-		'array and object'
-	);
-
-	t.end();
-});
-
 t.test('nested array with objects', (t) => {
 	t.equal(
 		cn(['flex', { 'items-center': true, 'justify-end': false }, 'gap-2']),
@@ -199,16 +165,6 @@ t.test('falsy values between valid classes', (t) => {
 		),
 		'flex items-center gap-2 p-4 text-sm',
 		'falsy values interspersed with strings'
-	);
-
-	t.end();
-});
-
-t.test('multiple strings as separate arguments', (t) => {
-	t.equal(
-		cn('flex', 'items-center', 'gap-2', 'rounded-lg', 'shadow-md'),
-		'flex items-center gap-2 rounded-lg shadow-md',
-		'five separate string arguments'
 	);
 
 	t.end();

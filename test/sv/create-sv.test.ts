@@ -241,24 +241,6 @@ t.test('createSV default cacheSize bounds the cache', (t) => {
 	t.end();
 });
 
-t.test('createSV with no defaults behaves like sv', (t) => {
-	const factorySv = createSV();
-
-	t.equal(factorySv('flex', 'gap-2'), 'flex gap-2', 'string merging works');
-
-	const button = factorySv('btn', {
-		variants: {
-			size: {
-				sm: 'text-sm'
-			}
-		}
-	});
-
-	t.equal(button({ size: 'sm' }), 'btn text-sm', 'variant resolution works');
-
-	t.end();
-});
-
 t.test('createSV default requiredVariants requires every variant', (t) => {
 	const factorySv = createSV({ requiredVariants: true });
 

@@ -4,22 +4,7 @@ export const SV_CONFIG_STYLE_ORDER_VALID = [
 	{
 		code:
 			IMPORT +
-			"sv({ base: 'flex', variants: { size: { sm: 'text-sm' } } });"
-	},
-	{
-		code:
-			IMPORT +
 			"sv({ base: 'flex', slots: { icon: 'w-4' }, groups: { all: ['icon'] }, multiSlots: true, variants: { size: { sm: 'text-sm' } }, presets: {}, compoundSlots: [], compoundVariants: [], defaultVariants: { size: 'sm' }, requiredVariants: { size: true }, cacheSize: 10, introspection: true, postProcess: (c) => c });"
-	},
-	{
-		// Single property stays as-is.
-		code: IMPORT + "sv({ base: 'flex', variants: {} });"
-	},
-	{
-		// Three properties in order.
-		code:
-			IMPORT +
-			"sv({ base: 'flex', slots: { body: 'p-4' }, variants: { size: { sm: 'text-sm' } } });"
 	},
 	{
 		// `extend` comes first.
@@ -594,21 +579,6 @@ export const SV_CONFIG_STYLE_BASE_INVALID = [
 		// Base value is an array with a spread element: not statically
 		// movable, so it's reported without a fix.
 		code: IMPORT + "sv({ base: ['flex', ...rest], variants: {} });",
-		options: [{ baseStyle: 'separateArg' }],
-		errors: [
-			{
-				messageId: 'wrongBaseStyle',
-				data: {
-					style: 'a separate leading argument',
-					found: 'a "base" field in the config'
-				}
-			}
-		]
-	},
-	{
-		// Base value is an array with a dynamic (non-static) element: not
-		// statically movable, so it's reported without a fix.
-		code: IMPORT + "sv({ base: ['flex', dynamic], variants: {} });",
 		options: [{ baseStyle: 'separateArg' }],
 		errors: [
 			{

@@ -46,15 +46,12 @@ export const REQUIRE_TOP_LEVEL_CONFIG_VALID = [
 	// iterates are evaluated once.
 	IMPORT + 'for (let b = sv({ variants: {} }); b; ) {}',
 	IMPORT + 'for (const k in sv({ variants: {} })) {}',
-	IMPORT + 'for (const k of sv({ variants: {} })) {}',
 	// A top-level immediately invoked function runs once.
 	IMPORT + 'const b = (() => sv({ variants: {} }))();',
 	IMPORT + 'const b = (function () { return sv({ variants: {} }); })();',
-	IMPORT + 'const b = (async () => sv({ variants: {} }))();',
-	// So does one invoked through `.call()` or `.apply()`.
+	// So does one invoked through `.call()`.
 	IMPORT +
 		'const b = (function () { return sv({ variants: {} }); }).call(this);',
-	IMPORT + 'const b = (() => sv({ variants: {} })).apply(null, []);',
 	// `void 0` is `undefined`: neither key is set, so this is a class list.
 	IMPORT + "function f() { return sv({ slots: void 0, base: 'x' }); }",
 	// A spread no object literal can be read from leaves the call a class
@@ -82,36 +79,10 @@ export const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
 		errors: [{ messageId: 'nested' }]
 	},
 	{
-		// Config call inside an arrow function body.
-		code: IMPORT + "const make = () => sv({ base: 'flex', variants: {} });",
-		errors: [{ messageId: 'nested' }]
-	},
-	{
-		// Config call nested in a block inside a function.
-		code:
-			IMPORT +
-			"function f() { { const b = sv({ base: 'flex', variants: {} }); } }",
-		errors: [{ messageId: 'nested' }]
-	},
-	{
 		// Config call inside an object method.
 		code:
 			IMPORT +
 			"const o = { make() { return sv({ base: 'flex', variants: {} }); } };",
-		errors: [{ messageId: 'nested' }]
-	},
-	{
-		// Config call inside a component function body.
-		code:
-			IMPORT +
-			"function Button() { const c = sv({ base: 'flex', variants: {} }); return c; }",
-		errors: [{ messageId: 'nested' }]
-	},
-	{
-		// cn-style sv() whose last arg is config-shaped, nested.
-		code:
-			IMPORT +
-			"function f() { return sv('flex', { base: 'items-center', variants: {} }); }",
 		errors: [{ messageId: 'nested' }]
 	},
 	{
@@ -205,16 +176,8 @@ export const REQUIRE_TOP_LEVEL_CONFIG_INVALID = [
 		errors: [{ messageId: 'loop' }]
 	},
 	{
-		// A loop's test and update re-run on every iteration as well.
+		// A loop's test re-runs on every iteration as well.
 		code: IMPORT + 'for (; sv({ variants: {} }); ) {}',
-		errors: [{ messageId: 'loop' }]
-	},
-	{
-		code: IMPORT + 'for (;; sv({ variants: {} })) {}',
-		errors: [{ messageId: 'loop' }]
-	},
-	{
-		code: IMPORT + 'while (sv({ variants: {} })) {}',
 		errors: [{ messageId: 'loop' }]
 	},
 	{

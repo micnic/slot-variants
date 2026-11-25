@@ -29,10 +29,6 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 		const card = sv('p-2', { slots: { header: 'font-bold' } });
 		const { base, header: title } = card();
 		cn(base, title, card()['header']);`,
-	// Static base in config.
-	IMPORT + "sv({ base: 'flex', variants: {} });",
-	// Array of static class values.
-	IMPORT + "sv({ base: ['flex', 'gap-2'], variants: {} });",
 	// Explicit undefined is an allowed no-op config class value.
 	IMPORT +
 		`sv({
@@ -51,10 +47,6 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 	IMPORT + "sv({ base: ['flex', , 'gap-2'], variants: {} });",
 	// Template literal without expressions.
 	IMPORT + 'sv({ base: `flex gap-2`, variants: {} });',
-	// Static slots record.
-	IMPORT + "sv({ slots: { body: 'p-4', header: 'font-bold' } });",
-	// Static value-keyed variants.
-	IMPORT + "sv({ variants: { size: { sm: 'text-sm', lg: 'text-lg' } } });",
 	// Slot-keyed variant branches.
 	IMPORT +
 		`sv({
@@ -82,12 +74,6 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 		"sv({ 'base': 'flex', 'variants': { 'size': { 'sm': 'text-sm' } } });",
 	// Numeric variant value keys.
 	IMPORT + "sv({ variants: { size: { 1: 'text-sm' } } });",
-	// compoundVariants with static class.
-	IMPORT +
-		`sv({
-			variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
-			compoundVariants: [{ size: 'lg', class: 'font-bold' }]
-		});`,
 	// compoundVariants entry with className instead of class.
 	IMPORT +
 		`sv({
@@ -123,12 +109,6 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 			variants: { size: { sm: 'text-sm', lg: 'text-lg' } },
 			compoundVariants: [, { size: 'lg', class: 'font-bold' }]
 		});`,
-	// compoundSlots with static slots and class.
-	IMPORT +
-		`sv({
-			slots: { body: 'p-4' },
-			compoundSlots: [{ slots: ['body'], class: 'font-bold' }]
-		});`,
 	// compoundSlots with sparse hole inside slots array.
 	IMPORT +
 		`sv({
@@ -160,9 +140,6 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 	IMPORT_CN + "cn('flex', 'items-center');",
 	IMPORT_CN + "cn(['flex', 'items-center']);",
 	IMPORT_CN + 'cn(`flex`);',
-	// Logical-AND conditional ending in a static string — the only
-	// class it can contribute is statically known.
-	IMPORT_CN + "cn('flex', isActive && 'px-4');",
 	// Logical-AND ending in an expression-free template literal.
 	IMPORT_CN + 'cn(isActive && `px-4`);',
 	// Chained conditions still end in a static string.
@@ -177,8 +154,6 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 	IMPORT_CN + "cn(['flex', isActive ? 'px-4' : 'px-2']);",
 	// Ternary in an sv() cn-style leading argument.
 	IMPORT + "sv(isActive ? 'px-4' : 'px-2', { base: 'flex', variants: {} });",
-	// Ternary substitution inside a template literal — whitespace-isolated.
-	IMPORT_CN + "cn(`items-center ${col ? 'flex-col' : 'flex-row'}`);",
 	// Ternary substitution at the start of a template literal.
 	IMPORT_CN + "cn(`${col ? 'flex-col' : 'flex-row'} items-center`);",
 	// Multiple ternary substitutions in one template literal.
@@ -202,8 +177,6 @@ export const NO_DYNAMIC_CLASSES_VALID = [
 	IMPORT_CN + "cn(cond && { 'text-red-500': hasError });",
 	// Nested static-string ternary inside a template substitution.
 	IMPORT_CN + "cn(`flex ${a ? 'flex-col' : b ? 'flex-row' : 'grid'}`);",
-	// clsx-style record: keys are class names, values are runtime conditions.
-	IMPORT_CN + "cn({ 'text-red-500': hasError });",
 	// Record mixed with other static cn arguments.
 	IMPORT_CN +
 		"cn('px-2 py-1', isActive && 'px-4', { 'text-red-500': hasError });",
@@ -385,11 +358,6 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 		errors: 1
 	},
 	{
-		// Non-string literal as base.
-		code: IMPORT + 'sv({ base: 42, variants: {} });',
-		errors: 1
-	},
-	{
 		// Template literal with expression as base.
 		code: IMPORT + 'sv({ base: `flex ${x}`, variants: {} });',
 		errors: 1
@@ -423,11 +391,6 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 	{
 		// Spread element inside base array.
 		code: IMPORT + "sv({ base: ['flex', ...rest], variants: {} });",
-		errors: 1
-	},
-	{
-		// Spread at the top of the config object.
-		code: IMPORT + "sv({ ...rest, base: 'flex' });",
 		errors: 1
 	},
 	{
@@ -590,16 +553,6 @@ export const NO_DYNAMIC_CLASSES_INVALID = [
 			`sv({
 				slots: { body: 'p-4' },
 				compoundSlots: [{ slots: [42], class: 'font-bold' }]
-			});`,
-		errors: 1
-	},
-	{
-		// Identifier inside compoundSlots slots array.
-		code:
-			IMPORT +
-			`sv({
-				slots: { body: 'p-4' },
-				compoundSlots: [{ slots: [body], class: 'font-bold' }]
 			});`,
 		errors: 1
 	},

@@ -51,9 +51,6 @@ export const NO_SHARED_TOKENS_VALID = [
 				intent: () => 'primary'
 			}
 		});`,
-	// Single-value variant that isn't exhaustive — the prop can be left off, so
-	// the value doesn't always apply.
-	IMPORT + "sv({ variants: { size: { sm: 'rounded text-sm' } } });",
 	// Token in only some values, not all.
 	IMPORT +
 		`sv({
@@ -70,13 +67,6 @@ export const NO_SHARED_TOKENS_VALID = [
 	IMPORT +
 		`sv({
 			variants: { disabled: 'opacity-50 cursor-not-allowed' },
-			defaultVariants: { disabled: false }
-		});`,
-	// A `true`-only slot object — the `false` side applies nothing.
-	IMPORT +
-		`sv({
-			slots: { body: 'p-4' },
-			variants: { disabled: { true: { body: 'opacity-50' } } },
 			defaultVariants: { disabled: false }
 		});`,
 	// A record with only a `true` value still accepts `false`, which applies

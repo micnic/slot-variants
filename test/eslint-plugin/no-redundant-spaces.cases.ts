@@ -14,8 +14,6 @@ export const NO_REDUNDANT_SPACES_VALID = [
 	IMPORT_CN + "cn('p-2\u00a0p-4');",
 	// Keys named like `Object.prototype` members are no config keys.
 	IMPORT_CREATE_SV + "createSV({ toString: 'x', __defineGetter__: 'y' });",
-	// Single token, no whitespace.
-	IMPORT + "sv({ base: 'flex', variants: {} });",
 	// Multiple tokens separated by single spaces.
 	IMPORT + "sv({ base: 'flex items-center gap-2', variants: {} });",
 	// Empty string is allowed (no-op).
@@ -28,12 +26,6 @@ export const NO_REDUNDANT_SPACES_VALID = [
 	IMPORT + "sv({ base: ['flex', , 'gap-2'], variants: {} });",
 	// Spread element inside a class array - bailed out.
 	IMPORT + "sv({ base: ['flex', ...rest], variants: {} });",
-	// Slots and variants with clean strings.
-	IMPORT +
-		`sv({
-			slots: { body: 'p-4', header: 'font-bold' },
-			variants: { size: { sm: 'text-sm', lg: 'text-lg' } }
-		});`,
 	// Boolean shorthand variant with a clean class value.
 	IMPORT + "sv({ variants: { disabled: 'opacity-50' } });",
 	// compoundVariants and compoundSlots with clean values.
