@@ -1,6 +1,6 @@
 import type { Rule, SourceCode } from 'eslint';
 import type { Expression, Identifier, Node } from 'estree';
-import { LEADING_SEPARATOR, TRAILING_SEPARATOR } from './literals.ts';
+import { isSeparatedText } from './literals.ts';
 import { pushBaseTokensFromText } from './token-extraction.ts';
 import type { Entry } from './token-model.ts';
 
@@ -263,7 +263,6 @@ const isIsolatedSveltePart = (
 	index: number,
 	parts: ReadonlyArray<SvelteAttributePart>
 ): boolean => {
-	const hasLeft = index > 0;
 	const next = parts[index + 1];
 
 	if (part.type === 'SvelteMustacheTag') {
@@ -271,11 +270,7 @@ const isIsolatedSveltePart = (
 		return next === undefined || next.type === 'SvelteLiteral';
 	}
 
-	if (hasLeft && !LEADING_SEPARATOR.test(part.value)) {
-		return false;
-	}
-
-	return next === undefined || TRAILING_SEPARATOR.test(part.value);
+	return isSeparatedText(part.value, index > 0, next !== undefined);
 };
 
 /**

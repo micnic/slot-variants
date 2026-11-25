@@ -79,7 +79,7 @@ export const noEmptyClasses: Rule.RuleModule = {
 				checkConfigForEmptyClasses(
 					context,
 					call.config,
-					getCallFactory(node.callee, call.imported, ctx).defaultKeys
+					getCallFactory(node, ctx).defaultKeys
 				);
 			}
 		});

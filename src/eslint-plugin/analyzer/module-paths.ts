@@ -181,14 +181,10 @@ export const resolveModulePath = (
 
 /** The `alias` option, with each target normalized against `cwd`. */
 export const buildAliasMap = (
-	option: Record<string, string> | undefined,
+	option: Record<string, string>,
 	cwd: string
 ): AliasMap => {
 	const aliases = new Map<string, string>();
-
-	if (!option) {
-		return aliases;
-	}
 
 	for (const [prefix, target] of Object.entries(option)) {
 		aliases.set(prefix, `${resolve(cwd, target)}/`);

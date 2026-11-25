@@ -5,7 +5,11 @@ import type { Linter, Rule } from 'eslint';
 import type { Node } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import type { ImportedFactory } from './call-matching.ts';
-import { type Component, resolveComponentBinding } from './components.ts';
+import {
+	type Component,
+	type ImportSource,
+	resolveComponentBinding
+} from './components.ts';
 import { findSingleBinding, getConstDefInit } from './const-bindings.ts';
 import type { ForwardedStyles, ModuleScan } from './forwarding.ts';
 import { collectExportTable, type ExportTarget } from './module-exports.ts';
@@ -28,14 +32,14 @@ import { readFactoryDefaults, type StyledContext } from './styled-values.ts';
 type ExportStep =
 	| { kind: 'styles'; styles: ForwardedStyles }
 	| { kind: 'factory'; factory: ImportedFactory }
-	| { kind: 'forward'; specifier: string; name: string };
+	| Extract<ExportTarget, { kind: 'forward' }>;
 
 // What an import is resolved to: the step of the module declaring it that
 // answers.
 type ExportReader<T> = (step: ExportStep) => T | null;
 
 // Resolves what a module names under an export of another module it imports.
-type ImportFollower<T> = (specifier: string, name: string) => T | null;
+type ImportFollower<T> = (source: ImportSource) => T | null;
 
 /**
  * What one imported module contributes, resolved while it's analyzed so the
@@ -238,16 +242,13 @@ const isSettingsRecord = (value: unknown): value is SettingsRecord =>
 
 // The string targets of the `alias` map in the plugin's shared settings
 // (`settings: { 'slot-variants': { alias } }`).
-const readAliasSetting = (
-	settings: SettingsRecord
-): Record<string, string> | undefined => {
+const readAliasSetting = (settings: SettingsRecord): Record<string, string> => {
 	const shared = settings[SETTINGS_KEY];
+	const aliases: Record<string, string> = {};
 
 	if (!isSettingsRecord(shared) || !isSettingsRecord(shared.alias)) {
-		return undefined;
+		return aliases;
 	}
-
-	const aliases: Record<string, string> = {};
 
 	for (const [prefix, target] of Object.entries(shared.alias)) {
 		if (typeof target === 'string') {
@@ -377,17 +378,16 @@ const toExportStep = (
 		return toStylesStep(binding.fn, forwarded);
 	}
 
-	return {
-		kind: 'forward',
-		specifier: binding.source.specifier,
-		name: binding.source.exportName
-	};
+	return { kind: 'forward', source: binding.source };
 };
 
 // A single-file component (Svelte, Vue) declares no export of its own: the
 // module itself is what a default import receives, after any it declares.
 const analyzeScan = (scan: ModuleScan): ModuleAnalysis => {
-	const { named, starSources } = collectExportTable(scan.ast);
+	const { named, starSources } = collectExportTable(
+		scan.ast,
+		scan.ctx.sourceCode
+	);
 	const exports = new Map<string, ExportStep[]>();
 	const self = scan.forwarded.get(scan.ast);
 
@@ -767,8 +767,7 @@ export const cacheLintedModule = (
 // module whose step `read` answers. Null when the module can't be resolved or
 // read, or when no step answers.
 const resolveImport = <T>(
-	specifier: string,
-	exportName: string,
+	{ specifier, exportName }: ImportSource,
 	fromFile: string,
 	moduleContext: ModuleContext,
 	read: ExportReader<T>,
@@ -803,16 +802,8 @@ const resolveImport = <T>(
 
 	const { analysis } = entry;
 
-	const follow = (specifier: string, name: string) =>
-		resolveImport(
-			specifier,
-			name,
-			file.path,
-			moduleContext,
-			read,
-			seen,
-			depth + 1
-		);
+	const follow = (source: ImportSource) =>
+		resolveImport(source, file.path, moduleContext, read, seen, depth + 1);
 
 	return readExport(analysis, exportName, read, follow);
 };
@@ -829,7 +820,7 @@ const readExport = <T>(
 		let found: T | null;
 
 		if (step.kind === 'forward') {
-			found = follow(step.specifier, step.name);
+			found = follow(step.source);
 		} else {
 			found = read(step);
 		}
@@ -850,7 +841,7 @@ const readExport = <T>(
 	}
 
 	for (const specifier of analysis.starSources) {
-		const found = follow(specifier, exportName);
+		const found = follow({ specifier, exportName });
 
 		if (found !== null) {
 			return found;
@@ -860,24 +851,30 @@ const readExport = <T>(
 	return null;
 };
 
+// What an import names, read with `read`, resolved once per `cache`.
+const resolveCachedImport = <T>(
+	cache: Map<string, T | null>,
+	source: ImportSource,
+	fromFile: string,
+	moduleContext: ModuleContext,
+	read: ExportReader<T>
+): T | null =>
+	getOrCreate(cache, `${source.specifier}|${source.exportName}`, () =>
+		resolveImport(source, fromFile, moduleContext, read)
+	);
+
 /**
  * The component an import names, followed through re-exports and barrel files.
  * Null when the module can't be resolved or read, when the export doesn't
  * lead to a function, or when that function forwards no class prop.
  */
 export const resolveImportedComponent = (
-	specifier: string,
-	exportName: string,
+	cache: Map<string, ForwardedStyles | null>,
+	source: ImportSource,
 	fromFile: string,
 	moduleContext: ModuleContext
 ): ForwardedStyles | null =>
-	resolveImport(
-		specifier,
-		exportName,
-		fromFile,
-		moduleContext,
-		STYLES_READER
-	);
+	resolveCachedImport(cache, source, fromFile, moduleContext, STYLES_READER);
 
 /**
  * The `createSV()` factory an import names, followed through re-exports and
@@ -885,15 +882,9 @@ export const resolveImportedComponent = (
  * export is no factory.
  */
 export const resolveImportedFactory = (
-	specifier: string,
-	exportName: string,
+	cache: Map<string, ImportedFactory | null>,
+	source: ImportSource,
 	fromFile: string,
 	moduleContext: ModuleContext
 ): ImportedFactory | null =>
-	resolveImport(
-		specifier,
-		exportName,
-		fromFile,
-		moduleContext,
-		FACTORY_READER
-	);
+	resolveCachedImport(cache, source, fromFile, moduleContext, FACTORY_READER);

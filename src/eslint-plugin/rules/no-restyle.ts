@@ -1,8 +1,5 @@
 import type { Rule } from 'eslint';
-import {
-	getOrResolveImport,
-	resolveTagBinding
-} from '../analyzer/components.ts';
+import { resolveTagBinding } from '../analyzer/components.ts';
 import { docsUrl } from '../analyzer/config-keys.ts';
 import {
 	conflictOptionProperties,
@@ -98,10 +95,7 @@ export const noRestyle: Rule.RuleModule = {
 		}
 	},
 	create(context) {
-		const options = readConflictOptions(
-			'no-restyle',
-			context.options[0]
-		);
+		const options = readConflictOptions('no-restyle', context.options[0]);
 		const alias = context.options[0]?.alias;
 		const moduleContext = getModuleContext(
 			context,
@@ -132,16 +126,11 @@ export const noRestyle: Rule.RuleModule = {
 				return scan.forwarded.get(binding.fn) ?? null;
 			}
 
-			return getOrResolveImport(
+			return resolveImportedComponent(
 				importedStyles,
 				binding.source,
-				(specifier, exportName) =>
-					resolveImportedComponent(
-						specifier,
-						exportName,
-						context.physicalFilename,
-						moduleContext
-					)
+				context.physicalFilename,
+				moduleContext
 			);
 		};
 

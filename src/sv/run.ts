@@ -886,6 +886,15 @@ const createInterpretedRun =
  * runtime code generation is not allowed, like under a strict CSP, the same
  * plan is interpreted on each call instead.
  */
+// Reads one slot's class from a variant function result.
+export const readSlot = (result: CacheValue, slotKey: string): string => {
+	if (typeof result === 'string') {
+		return result;
+	}
+
+	return cn(result[slotKey]);
+};
+
 export const createRun = (config: CompiledConfig, plan: RunPlan): RunFn => {
 	const source = getRunSource(config, plan);
 

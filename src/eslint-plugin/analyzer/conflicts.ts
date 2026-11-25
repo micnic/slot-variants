@@ -15,7 +15,6 @@ import {
 import {
 	isWithinNode,
 	resolveArray,
-	resolveContainer,
 	resolveStaticValue
 } from './const-bindings.ts';
 import { type EmptyFix, makeListFix } from './list-fix.ts';
@@ -23,6 +22,7 @@ import { getStaticStringText } from './literals.ts';
 import {
 	collectSlotKeyedProperties,
 	getConfigProperties,
+	getConfigRecord,
 	getProperties,
 	getSlotTargetOverlaps,
 	type GroupSlots
@@ -40,7 +40,7 @@ import {
 	forEachStaticItem
 } from './token-extraction.ts';
 import {
-	areEntriesExclusive,
+	areExclusiveMatchers,
 	type Entry,
 	indexEntriesBySlotAndToken,
 	reportEntryList
@@ -78,11 +78,16 @@ const CN_MESSAGES: TokenMessages = {
 	conflict: 'conflictCn'
 };
 
+// Whether two entries can render together: no key they both constrain
+// requires disjoint values. One without matchers renders with anything.
+const canCoRender = (a: Entry, b: Entry): boolean =>
+	!areExclusiveMatchers(a.source, b.source);
+
 // Whether two entries of different tokens can render together. Entries of one
 // token aren't: a repeat is a duplicate, reported on its own, and doesn't make
 // the tokens it never renders with conflict.
 const areConflicting = (a: Entry, b: Entry): boolean =>
-	a.token !== b.token && !areEntriesExclusive(a, b);
+	a.token !== b.token && canCoRender(a, b);
 
 // The entries that render with another of them, as `collides` tells.
 const pickColliding = (
@@ -168,10 +173,7 @@ const pickCollidingInComponent = (component: OverlapComponent): Entry[] => {
 				(entry) =>
 					group.entries.some((other) =>
 						areConflicting(entry, other)
-					) ||
-					neighbors.some(
-						(other) => !areEntriesExclusive(entry, other)
-					)
+					) || neighbors.some((other) => canCoRender(entry, other))
 			)
 		);
 	}
@@ -316,9 +318,9 @@ const reportConfigOverlaps = (
 	groupSlots: GroupSlots
 ) => {
 	const { sourceCode } = context;
-	const variants = resolveContainer(config.get('variants'), sourceCode);
+	const variants = getConfigRecord(config, 'variants', sourceCode);
 
-	for (const variant of getProperties(variants).values()) {
+	for (const variant of variants.values()) {
 		const values = resolveStaticValue(variant, sourceCode);
 
 		for (const value of getProperties(values).values()) {
@@ -370,9 +372,9 @@ const reportDuplicateGroupSlots = (
 	config: ReadonlyMap<string, Node>
 ) => {
 	const { sourceCode } = context;
-	const groups = resolveContainer(config.get('groups'), sourceCode);
+	const groups = getConfigRecord(config, 'groups', sourceCode);
 
-	for (const [group, value] of getProperties(groups)) {
+	for (const [group, value] of groups) {
 		const list = resolveArray(value, sourceCode);
 
 		if (list === null) {
@@ -424,10 +426,7 @@ const reportDuplicateTokens = (
 	pickReported: PickReported
 ) => {
 	for (const [token, list] of tokenMap.entries()) {
-		const repeated = pickColliding(
-			list,
-			(a, b) => !areEntriesExclusive(a, b)
-		);
+		const repeated = pickColliding(list, (a, b) => canCoRender(a, b));
 
 		if (repeated.length > 0) {
 			reportEntryList(context, pickReported(repeated), messageId, {

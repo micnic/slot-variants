@@ -30,12 +30,13 @@ import { getStaticStringText } from './literals.ts';
 import {
 	isDefinedValue,
 	isLiteralTrue,
-	isUndefinedValue,
-	type ResolveNode
+	isNullLiteral,
+	isUndefinedValue
 } from './static-predicates.ts';
 import {
 	collectSlotKeyedProperties,
 	getClassValue,
+	getConfigRecord,
 	getConfigSlotNames,
 	getConfigProperties,
 	getProperties,
@@ -53,6 +54,7 @@ import {
 	readPresetValues
 } from './token-extraction.ts';
 import {
+	EMPTY_MATCHERS,
 	EMPTY_SLOT_NAMES,
 	type Entry,
 	indexEntriesBySlotAndToken,
@@ -165,7 +167,10 @@ export type StyledClasses = CallMatchers & {
 
 // A slot read off a variant function's result, with the props the result was
 // produced with, which a call of the slot is merged with.
-type SlotRead = StyledClasses & { props: CallProps };
+type SlotRead = Invocation & { slot: string };
+
+// Reads a node through same-file `const` bindings.
+type ResolveNode = (node: Node) => Node;
 
 /** Everything the resolver needs from the rule that owns it. */
 export type StyledContext = {
@@ -187,8 +192,6 @@ export type Invocation = CallMatchers & {
 
 // A framework function, by the module and export name it's imported as.
 type FrameworkImport = { specifier: string; exportName: string };
-
-const EMPTY_MATCHERS: VariantMatchers = new Map();
 
 const EMPTY_PROPS: ReadonlyMap<string, Node> = new Map();
 
@@ -321,10 +324,9 @@ const readDefaultedVariants = (
 	}
 
 	const defaulted = new Set<string>();
-	const resolve: ResolveNode = (node) => resolveStaticValue(node, sourceCode);
 
 	for (const [key, value] of defaults) {
-		if (isDefinedValue(value, resolve)) {
+		if (isDefinedValue(value, sourceCode)) {
 			defaulted.add(key);
 		}
 	}
@@ -374,9 +376,8 @@ const buildStyles = (
 		config.get('defaultVariants'),
 		sourceCode
 	);
-	const groups = resolveContainer(config.get('groups'), sourceCode);
 	const presets = readPresets(
-		getProperties(resolveContainer(config.get('presets'), sourceCode)),
+		getConfigRecord(config, 'presets', sourceCode),
 		sourceCode
 	);
 	const defaulted = readDefaultedVariants(defaults, sourceCode);
@@ -398,7 +399,13 @@ const buildStyles = (
 		openPresets: false,
 		optional: readOptionalVariants(config, defaulted, sourceCode),
 		defaulted,
-		groupSlots: readGroups(getProperties(groups), sourceCode),
+		groupSlots: joinLists([
+			inherited.groups,
+			readGroups(
+				getConfigRecord(config, 'groups', sourceCode),
+				sourceCode
+			)
+		]),
 		// Base args are folded into `base`, so they set it too
 		setsBase: config.has('base') || args.length > 0
 	};
@@ -413,9 +420,6 @@ export const createStyledContext = (
 	variableOf: (node) => findInLookupScope(node, sourceCode, findVariable),
 	resolve: (node) => resolveStaticValue(node, sourceCode)
 });
-
-const isNullLiteral = (node: Node): boolean =>
-	node.type === 'Literal' && node.value === null;
 
 // The variant values a call's props pass, with a `null` one left unset.
 const readPropMatchers = (
@@ -559,25 +563,7 @@ const readCallProps = (
 const isPassedProp = (key: string, value: Node, ctx: StyledContext): boolean =>
 	key !== 'class' &&
 	key !== 'className' &&
-	isDefinedValue(value, ctx.resolve);
-
-// `outer` with each prop of `inner` that the runtime lets replace it: any but
-// an `undefined` one or a class, which is merged instead.
-const mergeProps = (
-	outer: ReadonlyMap<string, Node>,
-	inner: ReadonlyMap<string, Node>,
-	ctx: StyledContext
-): ReadonlyMap<string, Node> => {
-	const merged = new Map(outer);
-
-	for (const [key, value] of inner) {
-		if (isPassedProp(key, value, ctx)) {
-			merged.set(key, value);
-		}
-	}
-
-	return merged;
-};
+	isDefinedValue(value, ctx.sourceCode);
 
 // The outer call's props a slot call keeps under the preset it names, as
 // `sv()` merges them: those for the variants the preset sets give way to it,
@@ -631,13 +617,20 @@ const mergeCallProps = (
 	const outer = readOuterProps(outerProps, inner, options, ctx);
 	// Props of its own that can all be read spread nothing, so the outer
 	// call's spreads are all there is.
-	const read = mergeProps(outer.read, inner.read, ctx);
-	// A prop of its own replaces the outer call's, whatever that spreads
+	const read = new Map(outer.read);
 	const overridable = new Set(outer.overridable);
 
+	// A prop of its own replaces the outer call's, whatever that spreads,
+	// unless it's `undefined`; a class is merged instead.
 	for (const [key, value] of inner.read) {
-		if (isDefinedValue(value, ctx.resolve)) {
-			overridable.delete(key);
+		if (!isDefinedValue(value, ctx.sourceCode)) {
+			continue;
+		}
+
+		overridable.delete(key);
+
+		if (key !== 'class' && key !== 'className') {
+			read.set(key, value);
 		}
 	}
 
@@ -665,7 +658,8 @@ const readBaseMatchers = (
 
 	for (const key of optional) {
 		if (
-			(unread.has(key) || !isDefinedValue(props.get(key), ctx.resolve)) &&
+			(unread.has(key) ||
+				!isDefinedValue(props.get(key), ctx.sourceCode)) &&
 			!preset.matchers.has(key)
 		) {
 			matchers.set(key, UNSET_MATCHER);
@@ -838,57 +832,6 @@ const resolveCalleeCall = (
 	return resolved;
 };
 
-// The props a `createSV(defaults)` call's defaults set: none when it's called
-// without any, and null when they can't be read in full.
-const readFactoryDefaultProps = (
-	factory: CallExpression,
-	ctx: StyledContext
-): ReadonlyMap<string, Node> | null => {
-	const [defaults] = factory.arguments;
-
-	if (defaults === undefined) {
-		return EMPTY_PROPS;
-	}
-
-	return getStrictProperties(ctx.resolve(defaults));
-};
-
-/**
- * The keys a `createSV(defaults)` call's defaults set: none when it's called
- * without any, and null when they can't be read in full.
- */
-const getDefaultKeys = (
-	factory: CallExpression,
-	ctx: StyledContext
-): ReadonlySet<string> | null => {
-	const properties = readFactoryDefaultProps(factory, ctx);
-
-	if (properties === null) {
-		return null;
-	}
-
-	return new Set(properties.keys());
-};
-
-/**
- * Whether a `createSV(defaults)` call's defaults make every variant required:
- * false unless they can be read in full and set `requiredVariants: true`.
- */
-const getDefaultRequiresAll = (
-	factory: CallExpression,
-	ctx: StyledContext
-): boolean => {
-	const value = readFactoryDefaultProps(factory, ctx)?.get(
-		'requiredVariants'
-	);
-
-	if (value === undefined) {
-		return false;
-	}
-
-	return isLiteralTrue(ctx.resolve(value));
-};
-
 /**
  * The classes of the `base` a `createSV(defaults)` call's defaults set, null
  * when they set none.
@@ -919,11 +862,31 @@ const getDefaultBaseStyles = (
 export const readFactoryDefaults = (
 	factory: CallExpression,
 	ctx: StyledContext
-): ImportedFactory => ({
-	defaultKeys: getDefaultKeys(factory, ctx),
-	requiresAll: getDefaultRequiresAll(factory, ctx),
-	base: getDefaultBaseStyles(factory, ctx)
-});
+): ImportedFactory => {
+	const [defaults] = factory.arguments;
+	const base = getDefaultBaseStyles(factory, ctx);
+	// Called without defaults, it sets none
+	let props: ReadonlyMap<string, Node> | null = EMPTY_PROPS;
+
+	if (defaults !== undefined) {
+		props = getStrictProperties(ctx.resolve(defaults));
+	}
+
+	// Defaults that can't be read in full may set any key, and make every
+	// variant required only when they can be read to `requiredVariants: true`
+	if (props === null) {
+		return { defaultKeys: null, requiresAll: false, base };
+	}
+
+	const required = props.get('requiredVariants');
+
+	return {
+		defaultKeys: new Set(props.keys()),
+		requiresAll:
+			required !== undefined && isLiteralTrue(ctx.resolve(required)),
+		base
+	};
+};
 
 /**
  * The settings of the `createSV()` factory a call's callee came from: read
@@ -931,14 +894,13 @@ export const readFactoryDefaults = (
  * `sv()` itself has.
  */
 export const getCallFactory = (
-	callee: Node,
-	imported: ImportedFactory | undefined,
+	call: CallExpression,
 	ctx: StyledContext
 ): ImportedFactory => {
-	const factory = resolveCalleeCall(callee, ctx);
+	const factory = resolveCalleeCall(call.callee, ctx);
 
 	if (factory === null) {
-		return imported ?? NO_FACTORY;
+		return ctx.matchCall(call)?.imported ?? NO_FACTORY;
 	}
 
 	return getOrCreate(factoryCache, factory, () =>
@@ -967,7 +929,7 @@ const getFactoryBaseStyles = (
 		return null;
 	}
 
-	return getCallFactory(call.callee, ctx.matchCall(call)?.imported, ctx).base;
+	return getCallFactory(call, ctx).base;
 };
 
 // Joins `items`' lists per key, each value once, in order.
@@ -1090,13 +1052,15 @@ const mergeStyles = (
 
 	return {
 		bySlot,
-		slotNames: new Set(all.flatMap((styles) => [...styles.slotNames])),
+		// Own styles already hold every parent's slots and groups, and a
+		// factory's `base` has none.
+		slotNames: own.slotNames,
 		defaults: new Map(all.flatMap((styles) => [...styles.defaults])),
 		presets: mergePresets(all, complete),
 		openPresets: !complete || parents.some((styles) => styles.openPresets),
 		optional: mergeOptional(all, defaulted),
 		defaulted,
-		groupSlots: joinLists(all.map((styles) => styles.groupSlots)),
+		groupSlots: own.groupSlots,
 		setsBase: all.some((styles) => styles.setsBase)
 	};
 };
@@ -1527,13 +1491,15 @@ const buildLiteralStyles = (entries: ReadonlyArray<Entry>): InternalStyles => ({
  * — what a forwarded `class` prop is merged with when the list holds no
  * slot-variants part beside it.
  */
-export const literalStyles = (
-	literals: ReadonlyArray<Entry>
-): StyledClasses => ({
-	styles: buildLiteralStyles(literals),
+// Styles read as a plain class list's: their `base`, matched by no variant.
+const asBaseStyled = (styles: InternalStyles): StyledClasses => ({
+	styles,
 	slot: 'base',
 	...NO_MATCHERS
 });
+
+export const literalStyles = (literals: ReadonlyArray<Entry>): StyledClasses =>
+	asBaseStyled(buildLiteralStyles(literals));
 
 // Whether a component's result is a per-slot object rather than a string: it
 // has a slot besides `base`, or a group, which only a slot of its own reaches.
@@ -1569,15 +1535,13 @@ export const resolveStyledClasses = (
 	// A configured `sv()` call falls through: its callee is no variant
 	// function, so `resolveInvocation` yields null for it.
 	if (direct !== null && isClassListMatch(direct)) {
-		return {
-			styles: getOrCreate(stylesCache, resolved, () =>
+		return asBaseStyled(
+			getOrCreate(stylesCache, resolved, () =>
 				buildLiteralStyles(
 					collectCnEntries(direct.args, ctx.sourceCode)
 				)
-			),
-			slot: 'base',
-			...NO_MATCHERS
-		};
+			)
+		);
 	}
 
 	const invocation = resolveInvocation(resolved, ctx);

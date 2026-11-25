@@ -29,8 +29,6 @@ type KeyEntry = {
 // A key reported as out of order, and the earlier key it should precede.
 type OrderViolation = { entry: KeyEntry; before: KeyEntry };
 
-type ReorderFix = (fixer: Rule.RuleFixer) => Rule.Fix;
-
 type BaseStyle = 'field' | 'separateArg' | 'slotsBase';
 
 // A base written as a property: the config's `base`, or `slots.base`.
@@ -118,7 +116,7 @@ const collectOrderedEntries = (
 const buildReorderFix = (
 	sourceCode: SourceCode,
 	entries: ReadonlyArray<KeyEntry>
-): ReorderFix | undefined => {
+): Rule.ReportFixer | undefined => {
 	const [first, second] = entries;
 	const last = entries[entries.length - 1];
 
@@ -170,7 +168,7 @@ const checkKeyOrder = (
 		return;
 	}
 
-	let fix: ReorderFix | undefined;
+	let fix: Rule.ReportFixer | undefined;
 
 	// Any comment inside the config object (attached to a property, or
 	// floating between them) disables the reorder fixer for that call —
@@ -581,10 +579,7 @@ export const svConfigStyle: Rule.RuleModule = {
 				call,
 				baseStyle,
 				// The call's `createSV()` factory may give it a `base`.
-				mayInheritKey(
-					getCallFactory(node.callee, call.imported, ctx).defaultKeys,
-					'base'
-				)
+				mayInheritKey(getCallFactory(node, ctx).defaultKeys, 'base')
 			);
 		});
 	}

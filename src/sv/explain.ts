@@ -5,13 +5,13 @@ import {
 	getClassBySlot,
 	matchCompounds,
 	mergeClassPropIntoResult,
+	readSlot,
 	readVariantState,
 	resolvePresetValues,
 	resolveVariants,
 	type RunPlan
 } from './run.ts';
 import {
-	type CacheValue,
 	type CompiledConfig,
 	type ExplainedCompound,
 	type ExplainedSlot,
@@ -85,14 +85,6 @@ const getExplainedCompound = (
 	};
 };
 
-const toSlotRecord = (value: CacheValue): Record<string, string> => {
-	if (typeof value === 'string') {
-		return { base: value };
-	}
-
-	return value;
-};
-
 /**
  * Lists the classes of `raw` missing from `result`, each once.
  */
@@ -164,10 +156,7 @@ export const createExplain =
 			withClass = mergeClassPropIntoResult(config, raw, classProp);
 		}
 
-		const rawBySlot = toSlotRecord(withClass);
-		const resultBySlot = toSlotRecord(
-			applyPostProcess(config.postProcess, withClass)
-		);
+		const processed = applyPostProcess(config.postProcess, withClass);
 		const classBySlot = getClassBySlot(config, classProp);
 		const slots: RuntimeExplanation['slots'] = {};
 
@@ -177,8 +166,8 @@ export const createExplain =
 			variants: slotVariants,
 			compounds
 		} of sources) {
-			const slotRaw = cn(rawBySlot[key]);
-			const slotResult = cn(resultBySlot[key]);
+			const slotRaw = readSlot(withClass, key);
+			const slotResult = readSlot(processed, key);
 
 			slots[key] = {
 				base,

@@ -1,18 +1,16 @@
 import type { Scope } from 'eslint';
 import type {
-	ArrowFunctionExpression,
-	FunctionDeclaration,
-	FunctionExpression,
 	Identifier,
 	MaybeNamedClassDeclaration,
 	MaybeNamedFunctionDeclaration,
 	Node,
 	Program
 } from 'estree';
-import { getOrCreate } from '../map-utils.ts';
 import {
+	type ComponentFunction,
 	findSingleBinding,
 	getConstDefInit,
+	isComponentFunction,
 	isTransparentWrapper
 } from './const-bindings.ts';
 import {
@@ -20,11 +18,6 @@ import {
 	getExportName,
 	getModuleSpecifier
 } from './module-syntax.ts';
-
-export type ComponentFunction =
-	| FunctionDeclaration
-	| FunctionExpression
-	| ArrowFunctionExpression;
 
 // Anything that may name or wrap a component, including what `export default`
 // takes besides an expression: a function or class declaration, maybe unnamed.
@@ -43,9 +36,6 @@ export type Component = ComponentFunction | Program;
 /** The module an identifier is imported from, and under which name. */
 export type ImportSource = { specifier: string; exportName: string };
 
-// Reads what an import's export is, from its module.
-type ImportResolver<T> = (specifier: string, exportName: string) => T;
-
 type ImportDefinition = Extract<Scope.Definition, { type: 'ImportBinding' }>;
 
 /** What a component name is bound to: a same-file function, or an import. */
@@ -54,24 +44,7 @@ type ComponentBinding =
 	| { kind: 'import'; source: ImportSource }
 	| null;
 
-/** What an import's export is, resolved once per `cache`. */
-export const getOrResolveImport = <T>(
-	cache: Map<string, T>,
-	{ specifier, exportName }: ImportSource,
-	resolve: ImportResolver<T>
-): T =>
-	getOrCreate(cache, `${specifier}|${exportName}`, () =>
-		resolve(specifier, exportName)
-	);
-
 // Takes the structural minimum so framework node unions narrow through it too.
-export const isComponentFunction = (node: {
-	type: string;
-}): node is ComponentFunction =>
-	node.type === 'FunctionDeclaration' ||
-	node.type === 'FunctionExpression' ||
-	node.type === 'ArrowFunctionExpression';
-
 /**
  * The component `node` is, or wraps: a function, or the name of one, handed to
  * `forwardRef()`, `memo()` or any other call, however deeply nested

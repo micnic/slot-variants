@@ -174,6 +174,19 @@ const visitRecordForEmpty = (
 	return true;
 };
 
+// Visits a slot-keyed record's values with `visitValue`, or else the value
+// itself as a class value.
+const visitRecordOrClass = (
+	context: Rule.RuleContext,
+	rawValue: Node,
+	allowEmpty: boolean,
+	visitValue: NodeVisitor
+) => {
+	if (!visitRecordForEmpty(context, rawValue, undefined, visitValue)) {
+		visitForEmptyClasses(context, rawValue, allowEmpty);
+	}
+};
+
 // Empty strings are allowed at a direct variant-value position — a plain
 // value, a slot-keyed branch, a boolean shorthand — the same way `slots[key]`
 // allows them: a variant value that adds no classes is a meaningful
@@ -184,18 +197,9 @@ const visitVariantValueForEmpty = (
 	context: Rule.RuleContext,
 	rawValue: Node
 ) => {
-	const isRecord = visitRecordForEmpty(
-		context,
-		rawValue,
-		undefined,
-		(value) => {
-			visitVariantValueForEmpty(context, value);
-		}
-	);
-
-	if (!isRecord) {
-		visitForEmptyClasses(context, rawValue, true);
-	}
+	visitRecordOrClass(context, rawValue, true, (value) => {
+		visitVariantValueForEmpty(context, value);
+	});
 };
 
 const checkVariantsForEmpty = (
@@ -267,18 +271,9 @@ const checkCompoundsForEmpty = (
 	checkCompoundEntriesForEmpty(context, value, key);
 
 	forEachCompoundClass(value, context.sourceCode, (rawClass) => {
-		const isRecord = visitRecordForEmpty(
-			context,
-			rawClass,
-			undefined,
-			(slotClass) => {
-				visitForEmptyClasses(context, slotClass, false);
-			}
-		);
-
-		if (!isRecord) {
-			visitForEmptyClasses(context, rawClass, false);
-		}
+		visitRecordOrClass(context, rawClass, false, (slotClass) => {
+			visitForEmptyClasses(context, slotClass, false);
+		});
 	});
 };
 

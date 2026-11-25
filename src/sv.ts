@@ -18,6 +18,7 @@ import {
 	createRun,
 	createRunPlan,
 	getClassBySlot,
+	readSlot,
 	resolvePresetValues
 } from './sv/run.ts';
 import {
@@ -145,15 +146,6 @@ const mergeSlotFnProps = (
 	}
 
 	return mergedProps;
-};
-
-// Reads one slot's class from a variant function result.
-const readSlot = (result: CacheValue, slotKey: string): string => {
-	if (typeof result === 'string') {
-		return result;
-	}
-
-	return cn(result[slotKey]);
 };
 
 // `outerResult` is the outer call's result, which a slot function called

@@ -1,5 +1,5 @@
-import type { Rule, SourceCode } from 'eslint';
-import type { Node } from 'estree';
+import type { AST, Rule, SourceCode } from 'eslint';
+import type { Node, TemplateElement } from 'estree';
 
 /** A literal to re-emit with new text at its own delimiter. */
 export type LiteralRewrite = { node: Node; nextText: string; quote: string };
@@ -13,8 +13,8 @@ const CLASS_SEPARATOR = /[\t\n\f\r ]+/;
 export const CLASS_TOKEN = /[^\t\n\f\r ]+/g;
 
 // A separator at the very start or end of a text.
-export const LEADING_SEPARATOR = /^[\t\n\f\r ]/;
-export const TRAILING_SEPARATOR = /[\t\n\f\r ]$/;
+const LEADING_SEPARATOR = /^[\t\n\f\r ]/;
+const TRAILING_SEPARATOR = /[\t\n\f\r ]$/;
 
 // The literal's inner text exactly as written — not its cooked value — for
 // token extraction and the shared-tokens fixer, which diff or rewrite the raw
@@ -67,6 +67,49 @@ export const replaceLiteral = (
 	{ node, nextText, quote }: LiteralRewrite
 ): Rule.Fix => fixer.replaceText(node, `${quote}${nextText}${quote}`);
 
+/**
+ * A template quasi's text, read cooked, as a line continuation (`\` before a
+ * line break) adds no whitespace.
+ */
+export const getQuasiText = (quasi: TemplateElement): string => {
+	/* c8 ignore next -- cooked is always defined on untagged templates */
+	return quasi.value.cooked ?? quasi.value.raw;
+};
+
+/**
+ * The source range between a quasi's delimiters: the backtick or `}` it opens
+ * with, and the backtick or `${` it closes with.
+ */
+export const getQuasiInnerRange = (
+	sourceCode: SourceCode,
+	quasi: TemplateElement
+): AST.Range => {
+	const [start, end] = sourceCode.getRange(quasi);
+
+	if (quasi.tail) {
+		return [start + 1, end - 1];
+	}
+
+	return [start + 1, end - 2];
+};
+
+/**
+ * Whether `text` starts with a separator when a substitution sits on its left
+ * and ends with one when a substitution sits on its right, so none of its
+ * class names joins a substitution's.
+ */
+export const isSeparatedText = (
+	text: string,
+	hasLeft: boolean,
+	hasRight: boolean
+): boolean => {
+	if (hasLeft && !LEADING_SEPARATOR.test(text)) {
+		return false;
+	}
+
+	return !hasRight || TRAILING_SEPARATOR.test(text);
+};
+
 export const getStaticStringText = (node: Node): string | null => {
 	if (node.type === 'Literal') {
 		if (typeof node.value === 'string') {
@@ -80,15 +123,7 @@ export const getStaticStringText = (node: Node): string | null => {
 		return null;
 	}
 
-	const [quasi] = node.quasis;
-
-	/* c8 ignore next 3 -- a TemplateLiteral always has at least one quasi */
-	if (!quasi) {
-		return null;
-	}
-
-	/* c8 ignore next -- cooked is always defined on untagged templates */
-	return quasi.value.cooked ?? quasi.value.raw;
+	return node.quasis.map(getQuasiText).join('');
 };
 
 // A static literal's class tokens as written in source (see

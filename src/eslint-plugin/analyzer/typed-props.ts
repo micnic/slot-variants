@@ -217,6 +217,21 @@ const readNamedProps = (
 	return props;
 };
 
+// The props of every one of `types`, joined as an intersection's are.
+const readJoinedProps = (
+	types: ReadonlyArray<TypeNode>,
+	program: Program,
+	seen: Set<string>
+): BooleanProps => {
+	const props: BooleanProps = new Map();
+
+	for (const type of types) {
+		joinProps(props, readTypeProps(type, program, seen));
+	}
+
+	return props;
+};
+
 // The props of an object type: written inline, an intersection of object
 // types, or a same-file interface or type alias it names. None for anything
 // else.
@@ -230,13 +245,7 @@ const readTypeProps = (
 	}
 
 	if (isIntersectionType(node)) {
-		const props: BooleanProps = new Map();
-
-		for (const type of node.types) {
-			joinProps(props, readTypeProps(type, program, seen));
-		}
-
-		return props;
+		return readJoinedProps(node.types, program, seen);
 	}
 
 	if (!isTypeReference(node) || node.typeName.name === undefined) {
@@ -257,18 +266,12 @@ export const readTypedProps = (
 	program: Program
 ): ReadonlyMap<string, boolean> =>
 	getOrCreate(typedPropsByCall, call, () => {
-		const props: BooleanProps = new Map();
-
 		if (
 			!('typeArguments' in call) ||
 			!isTypeArguments(call.typeArguments)
 		) {
-			return props;
+			return new Map();
 		}
 
-		for (const type of call.typeArguments.params) {
-			joinProps(props, readTypeProps(type, program, new Set()));
-		}
-
-		return props;
+		return readJoinedProps(call.typeArguments.params, program, new Set());
 	});

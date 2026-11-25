@@ -8,12 +8,10 @@ import { getOrCreate } from '../map-utils.ts';
 // conditionals accumulate.
 export type VariantMatchers = ReadonlyMap<string, ReadonlySet<string>>;
 
-// The matchers a token renders under; none when it renders whatever the
-// variant values are.
-export type Source = VariantMatchers;
-
 export type Entry = {
-	source: Source;
+	// The matchers a token renders under; none when it renders whatever the
+	// variant values are.
+	source: VariantMatchers;
 	slot: string;
 	token: string;
 	start: number;
@@ -22,25 +20,23 @@ export type Entry = {
 
 export type TokenEntriesBySlot = Map<string, Map<string, Entry[]>>;
 
-export type EntryListFixer = (fixer: Rule.RuleFixer) => Rule.Fix[] | null;
-
 /** How a finding can be resolved: an autofix, suggestions, or neither. */
 export type EntryRemedy = Pick<Rule.ReportDescriptorOptions, 'fix' | 'suggest'>;
 
-export const baseSource: Source = new Map();
+export const EMPTY_MATCHERS: VariantMatchers = new Map();
 
 export const EMPTY_SLOT_NAMES: ReadonlySet<string> = new Set();
 
-export const variantSource = (key: string, value: string): Source =>
+export const variantSource = (key: string, value: string): VariantMatchers =>
 	new Map([[key, new Set([value])]]);
 
 // Accumulates onto an existing source so nested conditionals keep their outer
 // conditions.
 export const withMatcher = (
-	source: Source,
+	source: VariantMatchers,
 	key: string,
 	value: string
-): Source => new Map(source).set(key, new Set([value]));
+): VariantMatchers => new Map(source).set(key, new Set([value]));
 
 // Two value-sets on the same key are exclusive when they share no value —
 // `["primary", "secondary"]` and `["secondary"]` overlap (both can render at
@@ -74,11 +70,6 @@ export const areExclusiveMatchers = (
 
 	return false;
 };
-
-// An entry without matchers (base/compound) can co-occur with anything, so
-// it's never exclusive.
-export const areEntriesExclusive = (a: Entry, b: Entry): boolean =>
-	areExclusiveMatchers(a.source, b.source);
 
 export const indexEntriesBySlotAndToken = (
 	entries: Iterable<Entry>

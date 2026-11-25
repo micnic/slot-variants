@@ -1,11 +1,20 @@
 import type { AST, Scope, SourceCode } from 'eslint';
 import type {
 	ArrayExpression,
+	ArrowFunctionExpression,
+	FunctionDeclaration,
+	FunctionExpression,
 	Identifier,
 	Node,
 	VariableDeclarator
 } from 'estree';
 import { getKeyName } from './config-keys.ts';
+
+/** A function, which may be a component, and whose body runs later. */
+export type ComponentFunction =
+	| FunctionDeclaration
+	| FunctionExpression
+	| ArrowFunctionExpression;
 
 // A node that only wraps another expression without changing its value.
 type TransparentWrapper = Node & { expression: Node };
@@ -231,10 +240,12 @@ const isRangeWithin = (
 ): boolean => start >= containerStart && end <= containerEnd;
 
 // Whether `node` is a function, whose body runs later than where it's written.
-const isFunctionNode = (node: ParentedNode): boolean =>
-	node.type === 'ArrowFunctionExpression' ||
+export const isComponentFunction = (node: {
+	type: string;
+}): node is ComponentFunction =>
 	node.type === 'FunctionDeclaration' ||
-	node.type === 'FunctionExpression';
+	node.type === 'FunctionExpression' ||
+	node.type === 'ArrowFunctionExpression';
 
 const isDeclarator = (
 	node: ParentedNode
@@ -253,7 +264,7 @@ const addReaders = (
 ) => {
 	let current = node.parent;
 
-	while (current && !isFunctionNode(current)) {
+	while (current && !isComponentFunction(current)) {
 		if (
 			isDeclarator(current) &&
 			current.init &&

@@ -15,20 +15,26 @@ import {
 	resolveContainer,
 	resolveStaticValue
 } from './const-bindings.ts';
-import { CLASS_TOKEN, getInnerText, getStaticStringText } from './literals.ts';
+import {
+	CLASS_TOKEN,
+	getInnerText,
+	getQuasiInnerRange,
+	getQuasiText,
+	getStaticStringText
+} from './literals.ts';
 import {
 	collectSlotKeyedProperties,
 	getClassValue,
+	getConfigRecord,
 	getProperties,
 	getStrictProperties,
 	type GroupSlots
 } from './properties.ts';
 import { isStaticTernaryTemplate } from './static-predicates.ts';
 import {
-	baseSource,
+	EMPTY_MATCHERS,
 	EMPTY_SLOT_NAMES,
 	type Entry,
-	type Source,
 	type VariantMatchers,
 	variantSource,
 	withMatcher
@@ -36,7 +42,7 @@ import {
 
 type TokenExtractionContext = {
 	slot: string;
-	source: Source;
+	source: VariantMatchers;
 	slotNames: ReadonlySet<string>;
 	entries: Entry[];
 	sourceCode: SourceCode;
@@ -63,7 +69,7 @@ type StringKeyVisitor = (key: Literal, text: string) => void;
 type ExtractFn = (
 	node: Node,
 	slot: string,
-	source: Source,
+	source: VariantMatchers,
 	cnStyle?: boolean
 ) => void;
 
@@ -137,7 +143,7 @@ export const pushBaseTokensFromText = (
 ) => {
 	pushTokensFromText(text, base, {
 		slot: 'base',
-		source: baseSource,
+		source: EMPTY_MATCHERS,
 		entries
 	});
 };
@@ -147,13 +153,12 @@ export const pushBaseTokensFromText = (
 // tokens are pinned to the whole range instead.
 const pushLiteralTokens = (
 	raw: string,
-	cooked: string | null | undefined,
+	cooked: string,
 	range: AST.Range,
 	sink: TokenSink
 ) => {
 	if (hasEscape(raw)) {
-		/* c8 ignore next -- static literals and untagged quasis are cooked */
-		pushTokensFromText(cooked ?? raw, range, sink);
+		pushTokensFromText(cooked, range, sink);
 
 		return;
 	}
@@ -171,18 +176,12 @@ const pushQuasiTokens = (node: TemplateLiteral, sink: LiteralSink) => {
 	const { sourceCode } = sink;
 
 	for (const quasi of node.quasis) {
-		const range = sourceCode.getRange(quasi);
-		// A quasi closes with the template's backtick, or with `${`.
-		let closing = 2;
-
-		if (quasi.tail) {
-			closing = 1;
-		}
+		const [start, end] = getQuasiInnerRange(sourceCode, quasi);
 
 		pushLiteralTokens(
-			sourceCode.text.slice(range[0] + 1, range[1] - closing),
-			quasi.value.cooked,
-			range,
+			sourceCode.text.slice(start, end),
+			getQuasiText(quasi),
+			sourceCode.getRange(quasi),
 			sink
 		);
 	}
@@ -197,7 +196,7 @@ export const pushBaseQuasiTokens = (
 ) => {
 	pushQuasiTokens(node, {
 		slot: 'base',
-		source: baseSource,
+		source: EMPTY_MATCHERS,
 		entries,
 		sourceCode
 	});
@@ -237,11 +236,11 @@ const collectBranchLeaves = (node: Node, leaves: Node[]) => {
 // instead of the key, so `cond && a` and `!cond && b` land on opposite values
 // of one key.
 const withCondition = (
-	source: Source,
+	source: VariantMatchers,
 	test: Node,
 	sourceCode: SourceCode,
 	truthy = true
-): Source => {
+): VariantMatchers => {
 	let condition = test;
 	let holds = truthy;
 
@@ -470,7 +469,7 @@ export const extractCnTokens = (
 		node,
 		{
 			slot: 'base',
-			source: baseSource,
+			source: EMPTY_MATCHERS,
 			slotNames: EMPTY_SLOT_NAMES,
 			entries,
 			sourceCode
@@ -754,20 +753,20 @@ const readPresetMatchers = (
 	const node = compound.get('preset');
 
 	if (node === undefined) {
-		return baseSource;
+		return EMPTY_MATCHERS;
 	}
 
 	const name = getStaticMatcherValue(node, sourceCode);
 
 	if (name === null) {
-		return baseSource;
+		return EMPTY_MATCHERS;
 	}
 
 	const preset = presets.get(name);
 
 	// A value that can't be read may be any, so it proves nothing
 	if (preset === undefined || !preset.complete) {
-		return baseSource;
+		return EMPTY_MATCHERS;
 	}
 
 	return preset.matchers;
@@ -783,7 +782,7 @@ const getCompoundSource = (
 	compound: ReadonlyMap<string, Node>,
 	presets: ReadonlyMap<string, PresetValues>,
 	sourceCode: SourceCode
-): Source =>
+): VariantMatchers =>
 	new Map([
 		...readPresetMatchers(compound, presets, sourceCode),
 		...readMatchers(compound, sourceCode, COMPOUND_NON_MATCHER_KEYS)
@@ -833,9 +832,7 @@ const extractCompoundTokens = (
 	sourceCode: SourceCode,
 	extract: ExtractFn
 ) => {
-	const groups = getProperties(
-		resolveContainer(config.get('groups'), sourceCode)
-	);
+	const groups = getConfigRecord(config, 'groups', sourceCode);
 
 	forEachCompoundClass(
 		config.get('compoundVariants'),
@@ -887,25 +884,25 @@ export const collectConfigEntries = (
 		);
 	};
 
-	const slots = resolveContainer(config.get('slots'), sourceCode);
+	const slots = getConfigRecord(config, 'slots', sourceCode);
 
-	for (const [slotKey, slotValue] of getProperties(slots)) {
-		extract(slotValue, slotKey, baseSource);
+	for (const [slotKey, slotValue] of slots) {
+		extract(slotValue, slotKey, EMPTY_MATCHERS);
 	}
 
 	// Leading args use the cn() calling convention (slots don't apply to them).
 	for (const arg of baseArgs) {
-		extract(arg, 'base', baseSource, true);
+		extract(arg, 'base', EMPTY_MATCHERS, true);
 	}
 
 	const base = config.get('base');
 
 	if (base) {
-		extract(base, 'base', baseSource);
+		extract(base, 'base', EMPTY_MATCHERS);
 	}
 
 	extractVariantTokens(
-		getProperties(resolveContainer(config.get('variants'), sourceCode)),
+		getConfigRecord(config, 'variants', sourceCode),
 		sourceCode,
 		extract
 	);

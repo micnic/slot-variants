@@ -94,9 +94,7 @@ export const getConfigMarkers = (
 ): ConfigMarkers => {
 	const properties = getConfigProperties(node, sourceCode);
 	const defines = (key: string) =>
-		isDefinedValue(properties.get(key), (value) =>
-			resolveStaticValue(value, sourceCode)
-		);
+		isDefinedValue(properties.get(key), sourceCode);
 
 	return { slots: defines('slots'), variants: defines('variants') };
 };

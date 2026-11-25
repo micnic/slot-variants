@@ -1,13 +1,16 @@
+import type { SourceCode } from 'eslint';
 import type {
 	ExportNamedDeclaration,
 	ExportSpecifier,
 	Node,
-	Pattern,
 	Program
 } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
-import { type ComponentFunction, findWrappedComponent } from './components.ts';
-import { isTransparentWrapper } from './const-bindings.ts';
+import { findWrappedComponent, type ImportSource } from './components.ts';
+import {
+	type ComponentFunction,
+	isTransparentWrapper
+} from './const-bindings.ts';
 import {
 	DEFAULT_EXPORT,
 	getExportName,
@@ -23,7 +26,7 @@ export type ExportTarget =
 	| { kind: 'local'; name: string }
 	| { kind: 'node'; node: ComponentFunction }
 	| { kind: 'value'; node: Node }
-	| { kind: 'forward'; specifier: string; name: string };
+	| { kind: 'forward'; source: ImportSource };
 
 /** A module's export names with their targets, and its `export *` sources. */
 type ExportTable = {
@@ -93,54 +96,10 @@ const isErasedStatement = (node: Node): boolean => {
 	return !node.declaration || isErasedDeclaration(node.declaration);
 };
 
-// Every name a binding pattern declares (`{ a, b: [c] }` declares a and c).
-const forEachPatternName = (
-	pattern: Pattern,
-	visit: (name: string) => void
-): void => {
-	if (pattern.type === 'Identifier') {
-		visit(pattern.name);
-
-		return;
-	}
-
-	if (pattern.type === 'ObjectPattern') {
-		for (const prop of pattern.properties) {
-			if (prop.type === 'RestElement') {
-				forEachPatternName(prop.argument, visit);
-				continue;
-			}
-
-			forEachPatternName(prop.value, visit);
-		}
-
-		return;
-	}
-
-	if (pattern.type === 'ArrayPattern') {
-		for (const element of pattern.elements) {
-			if (element) {
-				forEachPatternName(element, visit);
-			}
-		}
-
-		return;
-	}
-
-	if (pattern.type === 'RestElement') {
-		forEachPatternName(pattern.argument, visit);
-
-		return;
-	}
-
-	if (pattern.type === 'AssignmentPattern') {
-		forEachPatternName(pattern.left, visit);
-	}
-};
-
 const collectFromDeclaration = (
 	declaration: Node | null | undefined,
-	add: AddTarget
+	add: AddTarget,
+	sourceCode: SourceCode
 ) => {
 	if (!declaration || isErasedDeclaration(declaration)) {
 		return;
@@ -151,8 +110,9 @@ const collectFromDeclaration = (
 	};
 
 	if (declaration.type === 'VariableDeclaration') {
-		for (const declarator of declaration.declarations) {
-			forEachPatternName(declarator.id, addLocal);
+		// Every name its patterns declare (`{ a, b: [c] }` declares a and c).
+		for (const variable of sourceCode.getDeclaredVariables(declaration)) {
+			addLocal(variable.name);
 		}
 
 		return;
@@ -186,7 +146,10 @@ const collectFromSpecifiers = (
 		if (source === null) {
 			add(exported, { kind: 'local', name: local });
 		} else {
-			add(exported, { kind: 'forward', specifier: source, name: local });
+			add(exported, {
+				kind: 'forward',
+				source: { specifier: source, exportName: local }
+			});
 		}
 	}
 };
@@ -242,7 +205,10 @@ const collectDefaultExport = (
  * after a module's own targets for a name, since a name declared in the module
  * itself always wins over one it re-exports.
  */
-export const collectExportTable = (ast: Program): ExportTable => {
+export const collectExportTable = (
+	ast: Program,
+	sourceCode: SourceCode
+): ExportTable => {
 	const named = new Map<string, ExportTarget[]>();
 	const starSources: string[] = [];
 	const add: AddTarget = (name, target) => {
@@ -264,7 +230,7 @@ export const collectExportTable = (ast: Program): ExportTable => {
 		collectDefaultExport(node, add);
 
 		if (node.type === 'ExportNamedDeclaration' && !isTypeOnlyExport(node)) {
-			collectFromDeclaration(node.declaration, add);
+			collectFromDeclaration(node.declaration, add, sourceCode);
 			collectFromSpecifiers(node, add);
 		}
 	}

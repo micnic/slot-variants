@@ -382,9 +382,8 @@ type UnknownSlotOrGroupName = { 'Unknown slot or group name': never };
 
 // The keys of a slot object that name no slot or group, typed as the reason
 // they're rejected.
-type UnknownTargetKeys<T, K extends string> = T extends readonly unknown[]
-	? unknown
-	: T extends Record<string, unknown>
+type UnknownTargetKeys<T, K extends string> =
+	T extends Record<string, unknown>
 		? { [X in Exclude<keyof T, K>]: UnknownSlotOrGroupName }
 		: unknown;
 
@@ -492,9 +491,6 @@ type RequiredDefaultCollision<
 		K in RequiredVariantKeys<V, R>
 	]?: 'Required variant must not have a default';
 };
-
-// Infers the keys a config's `defaultVariants` names.
-type DefaultKeys<D extends string> = { [K in D]?: unknown };
 
 // A written default must have a value: an `undefined` one is omitted, so its
 // variant would stay unset, and stay required where another layer requires
@@ -853,8 +849,7 @@ export type Config<
 				R
 		  > &
 				RequiredDefaultCollision<ExtendedVariants<E, S, G, V>, R> &
-				DefinedDefaults<D> &
-				DefaultKeys<D>)
+				DefinedDefaults<D>)
 		| undefined;
 	/** Variants the caller must always pass, so their props lose the `?`. */
 	requiredVariants?: R | undefined;
@@ -1144,7 +1139,7 @@ export type ExtendedVariantFn<
 		RequiredVariants<ExtendedVariants<E, S, G, V>>
 	>,
 	ExtendedIntrospection<E, I, B>,
-	ExtendedLayers<E, S, G, V, P, M, R, I, D, B>
+	ExtendedLayers<E, S, G, V, P, M, R, D, ExtendedIntrospection<E, I, B>>
 >;
 
 // The layers a config's variant function records: the ones it extends, then
@@ -1153,14 +1148,13 @@ export type ExtendedVariantFn<
 type ExtendedLayers<
 	E,
 	S extends MaybeSlots,
-	G extends MaybeGroups<ExtendedSlots<E, S>>,
+	G,
 	V,
 	P,
 	M,
 	R,
-	I extends MaybeIntrospection,
 	D extends string,
-	B extends MaybeIntrospection
+	I extends MaybeIntrospection
 > = [
 	...ParentLayers<E>,
 	{
@@ -1171,7 +1165,7 @@ type ExtendedLayers<
 		required: OwnRequired<E, S, G, V, R>;
 		multi: OwnMultiSlots<E, S, G, M>;
 		defaulted: D;
-		introspection: ExtendedIntrospection<E, I, B>;
+		introspection: I;
 	}
 ];
 

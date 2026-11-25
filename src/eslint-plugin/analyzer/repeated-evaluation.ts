@@ -1,7 +1,6 @@
 import type { SourceCode } from 'eslint';
 import type { CallExpression, Node } from 'estree';
-import { isComponentFunction } from './components.ts';
-import { unwrapExpression } from './const-bindings.ts';
+import { isComponentFunction, unwrapExpression } from './const-bindings.ts';
 import type { SvelteAttribute, VAttribute } from './markup.ts';
 
 // Why a call would be evaluated more than once, or null when it runs exactly

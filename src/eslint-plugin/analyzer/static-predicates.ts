@@ -1,12 +1,11 @@
+import type { SourceCode } from 'eslint';
 import type { Node, TemplateElement, TemplateLiteral } from 'estree';
+import { resolveStaticValue } from './const-bindings.ts';
 import {
+	getQuasiText,
 	getStaticStringText,
-	LEADING_SEPARATOR,
-	TRAILING_SEPARATOR
+	isSeparatedText
 } from './literals.ts';
-
-// Reads a node through same-file `const` bindings.
-export type ResolveNode = (node: Node) => Node;
 
 export const isStaticStringNode = (node: Node): boolean =>
 	getStaticStringText(node) !== null;
@@ -25,22 +24,28 @@ export const isUndefinedValue = (node: Node): boolean => {
 	return node.type === 'Identifier' && node.name === 'undefined';
 };
 
+// The literal `null`.
+export const isNullLiteral = (node: Node): boolean =>
+	node.type === 'Literal' && node.raw === 'null';
+
 // A placeholder `cn()` skips wherever it's written: `undefined`, `null` or a
 // boolean, as a condition leaves behind.
 export const isSkippedClassValue = (node: Node): boolean => {
-	if (node.type === 'Literal') {
-		return node.raw === 'null' || typeof node.value === 'boolean';
-	}
-
-	return isUndefinedValue(node);
+	return (
+		isNullLiteral(node) ||
+		isUndefinedValue(node) ||
+		(node.type === 'Literal' && typeof node.value === 'boolean')
+	);
 };
 
 // A value present and not `undefined` once read: a property left `undefined`
 // is one that isn't set.
 export const isDefinedValue = (
 	node: Node | undefined,
-	resolve: ResolveNode
-): boolean => node !== undefined && !isUndefinedValue(resolve(node));
+	sourceCode: SourceCode
+): boolean =>
+	node !== undefined &&
+	!isUndefinedValue(resolveStaticValue(node, sourceCode));
 
 // A ternary whose every (possibly nested) branch is a static string — safe as
 // a template-literal substitution, unlike a logical-AND (stringifies to
@@ -61,8 +66,7 @@ const quasiIsolatesExpression = (
 	index: number,
 	quasis: ReadonlyArray<TemplateElement>
 ): boolean => {
-	/* c8 ignore next -- cooked is always defined on untagged templates */
-	const text = quasi.value.cooked ?? quasi.value.raw;
+	const text = getQuasiText(quasi);
 	const hasLeftExpression = index > 0;
 	const hasRightExpression = index < quasis.length - 1;
 
@@ -71,15 +75,7 @@ const quasiIsolatesExpression = (
 		return !hasLeftExpression || !hasRightExpression;
 	}
 
-	if (hasLeftExpression && !LEADING_SEPARATOR.test(text)) {
-		return false;
-	}
-
-	if (hasRightExpression && !TRAILING_SEPARATOR.test(text)) {
-		return false;
-	}
-
-	return true;
+	return isSeparatedText(text, hasLeftExpression, hasRightExpression);
 };
 
 // The weaker guard `no-restyle` needs when a substitution isn't a static

@@ -3,7 +3,7 @@ import type { Node, ObjectExpression } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { getKeyName } from './config-keys.ts';
 import { resolveContainer, resolveEnteredValue } from './const-bindings.ts';
-import { isUndefinedValue } from './static-predicates.ts';
+import { isNullLiteral, isUndefinedValue } from './static-predicates.ts';
 
 export type GroupSlots = ReadonlyMap<string, ReadonlyArray<string>>;
 
@@ -59,6 +59,14 @@ export const getProperties = (
 
 	return getOrCreate(propertiesCache, obj, () => buildPropertiesMap(obj));
 };
+
+/** The properties of a config's object value at `key`, through bindings. */
+export const getConfigRecord = (
+	config: ReadonlyMap<string, Node>,
+	key: string,
+	sourceCode: SourceCode
+): ReadonlyMap<string, Node> =>
+	getProperties(resolveContainer(config.get(key), sourceCode));
 
 /** Whether `obj` spreads another object into its own properties. */
 export const hasSpreadProperty = (obj: ObjectExpression): boolean =>
@@ -218,10 +226,10 @@ export const getConfigSlotNames = (
 	sourceCode: SourceCode
 ): ReadonlySet<string> => {
 	const slots = resolveContainer(config.get('slots'), sourceCode);
-	const groups = resolveContainer(config.get('groups'), sourceCode);
+	const groups = getConfigRecord(config, 'groups', sourceCode);
 	const slotNames = new Set(getProperties(slots).keys());
 
-	for (const groupName of getProperties(groups).keys()) {
+	for (const groupName of groups.keys()) {
 		slotNames.add(groupName);
 	}
 
@@ -236,7 +244,7 @@ export const getConfigSlotNames = (
 
 // Whether a value is written as `null`, `undefined` or a `void` of a literal.
 const isNullishValue = (node: Node): boolean =>
-	isUndefinedValue(node) || (node.type === 'Literal' && node.raw === 'null');
+	isUndefinedValue(node) || isNullLiteral(node);
 
 // The class value a props or compound object carries: `class`, unless it's
 // left nullish, then `className`, exactly as `sv()` reads them at runtime.

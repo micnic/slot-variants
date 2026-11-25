@@ -9,17 +9,15 @@ import type {
 	Program,
 	VariableDeclarator
 } from 'estree';
-import {
-	type Component,
-	type ComponentFunction,
-	isComponentFunction
-} from './components.ts';
+import type { Component } from './components.ts';
 import { getKeyName } from './config-keys.ts';
 import {
+	type ComponentFunction,
 	findVariable,
 	getConstDefInit,
 	getLookupScope,
 	getModuleScope,
+	isComponentFunction,
 	isInTemplate,
 	resolveArray,
 	unwrapExpression
@@ -204,8 +202,8 @@ type PropsArgument = { source: PropsObject; index: number };
 // prop has no default.
 type VariantProps = Pick<ForwardTarget, 'variantProps' | 'optionalProps'>;
 
-// A prop read off an object by name: `props.size`.
-type MemberRead = { object: Identifier; prop: string };
+// A prop read off a props object by name: `props.size`.
+type MemberRead = { source: PropsObject; prop: string };
 
 // A position found during the walk, read once the walk is over — so an import
 // or a props declaration written below its use (a Svelte template above its
@@ -531,28 +529,10 @@ const applySitePreset = (
 };
 
 // Whether a props object holds no prop of the element's under a name: one it
-// leaves out or forces a value of its own for, or one outside those it picks.
-const lacksProp = (
-	{ omitted, picked, forced }: PropsObject,
-	prop: string
-): boolean =>
-	omitted.has(prop) ||
-	forced.has(prop) ||
-	(picked !== null && !picked.has(prop));
-
-// Adds the props a picked object holds of the element's: those it picks, less
-// the ones it lacks.
-const addPickedProps = (
-	source: PropsObject,
-	picked: ReadonlySet<string>,
-	picks: Set<string>
-) => {
-	for (const key of picked) {
-		if (!lacksProp(source, key)) {
-			picks.add(key);
-		}
-	}
-};
+// leaves out or forces a value of its own for (a forced prop is omitted too),
+// or one outside those it picks.
+const lacksProp = ({ omitted, picked }: PropsObject, prop: string): boolean =>
+	omitted.has(prop) || (picked !== null && !picked.has(prop));
 
 // The props every rest in `whole` leaves out, less those a picked object
 // holds.
@@ -726,6 +706,19 @@ export const createForwardingScan = (
 		});
 	};
 
+	// Makes the variable of `declared` named `name` refer to `object`.
+	const bindPropsObject = (
+		declared: ReadonlyArray<Scope.Variable>,
+		name: string,
+		object: PropsObject
+	) => {
+		for (const variable of declared) {
+			if (variable.name === name) {
+				propsObjects.set(variable, object);
+			}
+		}
+	};
+
 	// A pattern's own default for a prop wins over the props object's. The
 	// rest of the props (`...rest`) is a props object of its own.
 	const registerBindings = (
@@ -804,11 +797,7 @@ export const createForwardingScan = (
 			return;
 		}
 
-		for (const variable of declared) {
-			if (variable.name === param.name) {
-				propsObjects.set(variable, props);
-			}
-		}
+		bindPropsObject(declared, param.name, props);
 	};
 
 	// The props object a name refers to.
@@ -850,10 +839,7 @@ export const createForwardingScan = (
 		defaults: ReadonlyMap<string, Node>,
 		declaration: Node | undefined
 	): ReadonlyMap<string, Node> => {
-		if (
-			declaration === undefined ||
-			declaration.type !== 'CallExpression'
-		) {
+		if (declaration?.type !== 'CallExpression') {
 			return defaults;
 		}
 
@@ -921,7 +907,7 @@ export const createForwardingScan = (
 
 		for (const arg of args.slice(index + 1)) {
 			for (const [key, value] of readObjectArgument(arg)) {
-				if (isDefinedValue(value, ctx.resolve)) {
+				if (isDefinedValue(value, sourceCode)) {
 					forced.set(key, value);
 					omitted.add(key);
 				}
@@ -1096,13 +1082,8 @@ export const createForwardingScan = (
 				return;
 			}
 
-			for (const variable of declared) {
-				if (
-					element.type === 'Identifier' &&
-					element.name === variable.name
-				) {
-					propsObjects.set(variable, object);
-				}
+			if (element.type === 'Identifier') {
+				bindPropsObject(declared, element.name, object);
 			}
 		});
 	};
@@ -1150,48 +1131,6 @@ export const createForwardingScan = (
 		}
 	};
 
-	// The object and name a non-computed member read names.
-	const readMember = (node: MemberExpression): MemberRead | null => {
-		// Read through type-only wrappers: `props!.size`, `(props as P).size`
-		const object = unwrapExpression(node.object);
-
-		if (
-			node.computed ||
-			node.property.type !== 'Identifier' ||
-			object.type !== 'Identifier'
-		) {
-			return null;
-		}
-
-		return { object, prop: node.property.name };
-	};
-
-	// The value a props object forces over the element's for a prop read off
-	// it (`merge(props, { size: 'lg' }).size`), or destructured off it.
-	const readForcedValue = (node: Node): Node | null => {
-		if (node.type === 'Identifier') {
-			return lookupBinding(forcedBindings, ctx.variableOf(node));
-		}
-
-		if (node.type !== 'MemberExpression') {
-			return null;
-		}
-
-		const read = readMember(node);
-
-		if (read === null) {
-			return null;
-		}
-
-		const source = getPropsObject(read.object);
-
-		if (source === null) {
-			return null;
-		}
-
-		return source.forced.get(read.prop) ?? null;
-	};
-
 	// A name a Vue template reads that no `<script>` or template binding
 	// declares.
 	const isUnboundTemplateName = (node: Identifier): boolean => {
@@ -1218,24 +1157,60 @@ export const createForwardingScan = (
 	const getPropsOrAttrs = (node: Identifier): PropsObject | null =>
 		getPropsObject(node) ?? readTemplateAttrs(node);
 
-	// `props.className` — a prop read off a props object, or off `$attrs` in
-	// a Vue template. One the object forces a value of its own for is no
-	// prop of the element's.
-	const readMemberProp = (node: MemberExpression): PropRead | null => {
+	// The props object a non-computed member read is off, or `$attrs` in a
+	// Vue template, and the prop it names.
+	const readMember = (node: MemberExpression): MemberRead | null => {
+		// Read through type-only wrappers: `props!.size`, `(props as P).size`
+		const object = unwrapExpression(node.object);
+
+		if (
+			node.computed ||
+			node.property.type !== 'Identifier' ||
+			object.type !== 'Identifier'
+		) {
+			return null;
+		}
+
+		const source = getPropsOrAttrs(object);
+
+		if (source === null) {
+			return null;
+		}
+
+		return { source, prop: node.property.name };
+	};
+
+	// The value a props object forces over the element's for a prop read off
+	// it (`merge(props, { size: 'lg' }).size`), or destructured off it.
+	const readForcedValue = (node: Node): Node | null => {
+		if (node.type === 'Identifier') {
+			return lookupBinding(forcedBindings, ctx.variableOf(node));
+		}
+
+		if (node.type !== 'MemberExpression') {
+			return null;
+		}
+
 		const read = readMember(node);
 
 		if (read === null) {
 			return null;
 		}
 
-		const source = getPropsOrAttrs(read.object);
-		const { prop } = read;
+		return read.source.forced.get(read.prop) ?? null;
+	};
 
-		if (source === null || lacksProp(source, prop)) {
+	// `props.className` — a prop read off a props object, or off `$attrs` in
+	// a Vue template. One the object forces a value of its own for is no
+	// prop of the element's.
+	const readMemberProp = (node: MemberExpression): PropRead | null => {
+		const read = readMember(node);
+
+		if (read === null || lacksProp(read.source, read.prop)) {
 			return null;
 		}
 
-		return propReadOf(source, prop);
+		return propReadOf(read.source, read.prop);
 	};
 
 	// A name a Vue template reads that no `<script>` or template binding
@@ -1325,8 +1300,15 @@ export const createForwardingScan = (
 
 			if (source.picked === null) {
 				whole.push(source);
-			} else {
-				addPickedProps(source, source.picked, picks);
+				continue;
+			}
+
+			// The props a picked object holds of the element's: those it
+			// picks, less the ones it leaves out.
+			for (const key of source.picked) {
+				if (!source.omitted.has(key)) {
+					picks.add(key);
+				}
 			}
 		}
 

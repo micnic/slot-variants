@@ -1,4 +1,5 @@
 import type { Property } from 'estree';
+import { getExportName } from './module-syntax.ts';
 
 /**
  * Every recognized sv()/createSV() config key, in the project's canonical
@@ -27,20 +28,11 @@ export const CONFIG_KEY_ORDER: readonly string[] = [
 export const docsUrl = (rule: string): string =>
 	`https://github.com/micnic/slot-variants#slot-variants${rule}`;
 
-export const getKeyName = (prop: Property): string | null => {
-	if (prop.computed) {
+export const getKeyName = ({ computed, key }: Property): string | null => {
+	// A non-computed key is an Identifier or a Literal
+	if (computed || (key.type !== 'Identifier' && key.type !== 'Literal')) {
 		return null;
 	}
 
-	const { key } = prop;
-
-	if (key.type === 'Identifier') {
-		return key.name;
-	}
-
-	if (key.type === 'Literal') {
-		return String(key.value);
-	}
-	/* c8 ignore next 2 -- non-computed keys are an Identifier or Literal */
-	return null;
+	return getExportName(key);
 };

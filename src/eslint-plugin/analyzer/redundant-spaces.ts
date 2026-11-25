@@ -2,6 +2,8 @@ import type { AST, Rule } from 'eslint';
 import type { Node, ObjectExpression, TemplateLiteral } from 'estree';
 import { resolveStaticValue } from './const-bindings.ts';
 import {
+	getQuasiInnerRange,
+	getQuasiText,
 	getStaticStringText,
 	planLiteralRewrite,
 	replaceLiteral,
@@ -81,8 +83,7 @@ const planQuasiRewrites = (
 
 	for (const [index, quasi] of node.quasis.entries()) {
 		const { raw } = quasi.value;
-		/* c8 ignore next -- cooked is always defined on untagged templates */
-		const cooked = quasi.value.cooked ?? raw;
+		const cooked = getQuasiText(quasi);
 		const text = getCanonicalQuasi(
 			splitClassTokens(cooked),
 			index > 0,
@@ -97,16 +98,10 @@ const planQuasiRewrites = (
 			return null;
 		}
 
-		// A quasi's range holds its delimiters: the backtick or `}` it opens
-		// with, and the backtick or `${` it closes with.
-		const [start, end] = context.sourceCode.getRange(quasi);
-		let closing = 1;
-
-		if (index < last) {
-			closing = 2;
-		}
-
-		rewrites.push({ range: [start + 1, end - closing], text });
+		rewrites.push({
+			range: getQuasiInnerRange(context.sourceCode, quasi),
+			text
+		});
 	}
 
 	return rewrites;

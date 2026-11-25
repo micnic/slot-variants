@@ -12,11 +12,7 @@ import {
 	type ImportedFactory,
 	matchSvCall
 } from './call-matching.ts';
-import {
-	getImportSource,
-	getOrResolveImport,
-	type ImportSource
-} from './components.ts';
+import { getImportSource, type ImportSource } from './components.ts';
 import { getDestructuredRead } from './const-bindings.ts';
 import {
 	getModuleContext,
@@ -225,16 +221,11 @@ const matchImportedFactoryCall = (
 		return null;
 	}
 
-	const factory = getOrResolveImport(
+	const factory = resolveImportedFactory(
 		match.factories,
 		source,
-		(specifier, exportName) =>
-			resolveImportedFactory(
-				specifier,
-				exportName,
-				match.filename,
-				match.moduleContext
-			)
+		match.filename,
+		match.moduleContext
 	);
 
 	if (factory === null) {

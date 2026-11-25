@@ -25,11 +25,7 @@ const getSharedTokensCall = (
 	call: CallMatch,
 	config: ObjectExpression
 ): SharedTokensCall => {
-	const { defaultKeys, requiresAll } = getCallFactory(
-		node.callee,
-		call.imported,
-		ctx
-	);
+	const { defaultKeys, requiresAll } = getCallFactory(node, ctx);
 	let leadingArg: SharedTokensCall['leadingArg'] = null;
 
 	if (isLastArgument(node, config)) {

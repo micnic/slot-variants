@@ -16,9 +16,9 @@ import {
 import {
 	collectSlotKeyedProperties,
 	getClassValue,
+	getConfigRecord,
 	getConfigSlotNames,
 	getConfigProperties,
-	getProperties,
 	getStrictProperties
 } from './properties.ts';
 import { isLiteralTrue, isUndefinedValue } from './static-predicates.ts';
@@ -32,9 +32,8 @@ import {
 	isBooleanShorthandVariant
 } from './token-extraction.ts';
 import {
-	baseSource,
+	EMPTY_MATCHERS,
 	type Entry,
-	type EntryListFixer,
 	type EntryRemedy,
 	indexEntriesBySlotAndToken,
 	reportEntryList,
@@ -360,7 +359,7 @@ const getSharedTokensRemedy = (
 		return {};
 	}
 
-	const fix: EntryListFixer = (fixer) =>
+	const fix: Rule.ReportFixer = (fixer) =>
 		applySharedTokensFixPlan(fixer, plan);
 	const data = { variant: variantKey, slot };
 
@@ -454,21 +453,6 @@ const planSlotFix = (
 	return plan;
 };
 
-const collectDefaultVariantKeys = (
-	defaultVariants: Node | undefined,
-	sourceCode: SourceCode
-): Map<string, VariantCoverage> => {
-	const coverage = new Map<string, VariantCoverage>();
-
-	for (const [key, value] of getProperties(defaultVariants)) {
-		if (getStaticMatcherValue(value, sourceCode) !== null) {
-			coverage.set(key, 'default');
-		}
-	}
-
-	return coverage;
-};
-
 // How each covered variant is covered. A variant that's both defaulted and
 // required counts as required (sv() rejects that config anyway).
 const collectVariantCoverage = (
@@ -477,10 +461,15 @@ const collectVariantCoverage = (
 	sourceCode: SourceCode,
 	inheritsRequiresAll: boolean
 ): Map<string, VariantCoverage> => {
-	const coverage = collectDefaultVariantKeys(
-		resolveContainer(config.get('defaultVariants'), sourceCode),
-		sourceCode
-	);
+	const coverage = new Map<string, VariantCoverage>();
+	const defaults = getConfigRecord(config, 'defaultVariants', sourceCode);
+
+	for (const [key, value] of defaults) {
+		if (getStaticMatcherValue(value, sourceCode) !== null) {
+			coverage.set(key, 'default');
+		}
+	}
+
 	const requiredVariants = resolveContainer(
 		config.get('requiredVariants'),
 		sourceCode
@@ -526,7 +515,7 @@ const collectVariantTokensByValue = (
 		// never read.
 		extractTokens(valueNode, {
 			slot: 'base',
-			source: baseSource,
+			source: EMPTY_MATCHERS,
 			slotNames,
 			entries,
 			sourceCode
@@ -666,7 +655,7 @@ const planSingleKeyCompoundFix = (
 	variantValue: Node,
 	getRemoval: GetEntryRemoval,
 	canEdit: (node: Node) => boolean
-): EntryListFixer | undefined => {
+): Rule.ReportFixer | undefined => {
 	if (!canEdit(element)) {
 		return undefined;
 	}
@@ -738,7 +727,7 @@ const planSingleKeyCompoundFix = (
 // later variant's classes — so only a suggestion under a merging
 // `postProcess`.
 const getSingleKeyCompoundRemedy = (
-	fix: EntryListFixer | undefined,
+	fix: Rule.ReportFixer | undefined,
 	key: string,
 	suggestOnly: boolean
 ): EntryRemedy => {
@@ -777,7 +766,7 @@ const checkCompoundEntryForSingleKey = (
 		return;
 	}
 
-	let fix: EntryListFixer | undefined;
+	let fix: Rule.ReportFixer | undefined;
 
 	if (kind === 'compoundVariants') {
 		fix = planSingleKeyCompoundFix(
@@ -875,9 +864,7 @@ export const analyzeSharedTokens = (
 	const { sourceCode } = context;
 	const config = getConfigProperties(configNode, sourceCode);
 	const slotNames = getConfigSlotNames(config, sourceCode);
-	const variantsMap = getProperties(
-		resolveContainer(config.get('variants'), sourceCode)
-	);
+	const variantsMap = getConfigRecord(config, 'variants', sourceCode);
 	// A spread or computed key may override whatever a fix would edit or
 	// create, so such a config's findings are reported without a fix.
 	const isStrictConfig = getStrictProperties(configNode) !== null;
@@ -917,9 +904,7 @@ export const analyzeSharedTokens = (
 	}
 
 	const baseNode = config.get('base');
-	const slotProperties = getProperties(
-		resolveContainer(config.get('slots'), sourceCode)
-	);
+	const slotProperties = getConfigRecord(config, 'slots', sourceCode);
 
 	// A candidate other than the `base` field is passed over unless the tokens
 	// can go into it, leaving the next one, or a created `base`, to take them.
