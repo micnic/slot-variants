@@ -10,7 +10,7 @@ import plugin, { rules } from '../../src/eslint-plugin.ts';
 import { IMPORT, IMPORT_CN, IMPORT_SV_CN, repeat } from './helpers.ts';
 
 t.test('shared plugin run reuses cached property analysis', (t) => {
-	const linter = new Linter({ configType: 'flat' });
+	const linter = new Linter();
 	const code = `${IMPORT}const rest = { body: 'ignored' };
 		sv({ ...rest, base: 'flex' });
 		sv({
@@ -86,7 +86,7 @@ t.test('shared plugin run reuses cached property analysis', (t) => {
 });
 
 t.test('TypeScript wrappers are read through to the value they wrap', (t) => {
-	const linter = new Linter({ configType: 'flat' });
+	const linter = new Linter();
 	const config: Linter.Config[] = [
 		{
 			files: ['**/*.ts', '**/*.tsx'],
@@ -158,7 +158,7 @@ t.test('TypeScript wrappers are read through to the value they wrap', (t) => {
 // A `declare const` has no initializer, so its value is unknown, like any
 // other value that can't be read statically.
 t.test('an ambient `declare const` is not read through', (t) => {
-	const linter = new Linter({ configType: 'flat' });
+	const linter = new Linter();
 	const messages = linter.verify(
 		`${IMPORT}declare const base: string;\nsv({ base, variants: {} });`,
 		{
@@ -183,7 +183,7 @@ t.test('an ambient `declare const` is not read through', (t) => {
 });
 
 t.test('const containers are read like inline ones', (t) => {
-	const linter = new Linter({ configType: 'flat' });
+	const linter = new Linter();
 	const config: Linter.Config[] = [
 		{
 			files: ['**/*.jsx'],
@@ -278,7 +278,7 @@ t.test('const containers are read like inline ones', (t) => {
 });
 
 t.test('Svelte and Vue templates are checked like script code', (t) => {
-	const linter = new Linter({ configType: 'flat' });
+	const linter = new Linter();
 	const allRules: Linter.RulesRecord = Object.fromEntries(
 		Object.keys(rules).map((name) => [`slot-variants/${name}`, 2])
 	);
@@ -357,7 +357,7 @@ t.test('Svelte and Vue templates are checked like script code', (t) => {
 });
 
 t.test('call cycles through const bindings terminate', (t) => {
-	const linter = new Linter({ configType: 'flat' });
+	const linter = new Linter();
 	const config: Linter.Config[] = [
 		{
 			files: ['**/*.jsx'],
@@ -509,11 +509,11 @@ t.test('configs.recommended preset', (t) => {
 		);
 	}
 
-	const linter = new Linter({ configType: 'flat' });
+	const linter = new Linter();
 	const messages = linter.verify(
 		`${IMPORT}sv({ base: 'flex  flex', variants: {} });`,
 		[
-			recommended as unknown as Linter.Config,
+			recommended,
 			{
 				files: ['**/*.ts'],
 				languageOptions: { ecmaVersion: 'latest', sourceType: 'module' }

@@ -36,7 +36,7 @@ t.test('sv-config-style (base style)', (t) => {
 // ESLint discards a fix whose output fails to parse, which would hide a broken
 // fix from the rule tester, so the raw fixes are inspected instead.
 t.test('sv-config-style offers no base fix around parentheses', (t) => {
-	const linter = new Linter({ configType: 'flat' });
+	const linter = new Linter();
 	const config: Linter.Config[] = [
 		{
 			plugins: { 'slot-variants': plugin },
