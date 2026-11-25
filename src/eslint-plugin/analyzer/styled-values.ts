@@ -73,7 +73,6 @@ export type InternalStyles = {
 	// The variants given a default, null when that can't be read in full.
 	defaulted: ReadonlySet<string> | null;
 	groupSlots: GroupSlots;
-	slotGroups: ReadonlyMap<string, ReadonlyArray<string>>;
 	// Whether its config sets `base`: a field, base args, or its factory's.
 	setsBase: boolean;
 };
@@ -132,14 +131,12 @@ type CallMatchers = {
 };
 
 // A call's props: the ones that can be read, those of the object literals it
-// spreads included, all of them when every one can (null when a spread or
-// computed key may pass others), the objects it spreads that can't be read
-// (null when a computed key may pass any prop), and the props written ahead
-// of one of those, which it may replace. A slot call naming a preset also
-// keeps the outer call's preset beneath its own.
+// spreads included, the objects it spreads that can't be read (null when a
+// computed key may pass any prop), and the props written ahead of one of
+// those, which it may replace. A slot call naming a preset also keeps the
+// outer call's preset beneath its own.
 type CallProps = {
 	read: ReadonlyMap<string, Node>;
-	known: ReadonlyMap<string, Node> | null;
 	spreads: ReadonlyArray<Node> | null;
 	overridable: ReadonlySet<string>;
 	basePreset?: Node | undefined;
@@ -188,12 +185,6 @@ export type Invocation = CallMatchers & {
 	props: CallProps;
 };
 
-// Reads one of a `createSV(defaults)` call's settings from the call itself.
-type FactoryReader<K extends keyof ImportedFactory> = (
-	factory: CallExpression,
-	ctx: StyledContext
-) => ImportedFactory[K];
-
 // A framework function, by the module and export name it's imported as.
 type FrameworkImport = { specifier: string; exportName: string };
 
@@ -214,7 +205,6 @@ const NO_FACTORY: ImportedFactory = {
 
 const NO_CALL_PROPS: CallProps = {
 	read: EMPTY_PROPS,
-	known: EMPTY_PROPS,
 	spreads: NO_SPREADS,
 	overridable: NO_KEYS
 };
@@ -277,23 +267,13 @@ const NO_ENTRIES: ReadonlySet<Entry> = new Set();
 
 const NO_ARGS: ReadonlyArray<Expression | SpreadElement> = [];
 
-// The groups naming each slot, read off the slots of each group.
-const invertGroups = (groupSlots: GroupSlots): Map<string, string[]> => {
-	const slotGroups = new Map<string, string[]>();
-
-	for (const [group, slots] of groupSlots) {
-		for (const slot of slots) {
-			getOrCreate(slotGroups, slot, () => []).push(group);
-		}
-	}
-
-	return slotGroups;
-};
+// The settings of each `createSV(defaults)` call in this file, read once.
+const factoryCache = new WeakMap<CallExpression, ImportedFactory>();
 
 const readGroups = (
 	groups: ReadonlyMap<string, Node>,
 	sourceCode: SourceCode
-): Pick<InternalStyles, 'groupSlots' | 'slotGroups'> => {
+): GroupSlots => {
 	const groupSlots = new Map<string, string[]>();
 
 	for (const [group, value] of groups) {
@@ -306,7 +286,7 @@ const readGroups = (
 		groupSlots.set(group, slots);
 	}
 
-	return { groupSlots, slotGroups: invertGroups(groupSlots) };
+	return groupSlots;
 };
 
 // Each preset's variant values, by preset name.
@@ -395,7 +375,10 @@ const buildStyles = (
 		sourceCode
 	);
 	const groups = resolveContainer(config.get('groups'), sourceCode);
-	const presets = resolveContainer(config.get('presets'), sourceCode);
+	const presets = readPresets(
+		getProperties(resolveContainer(config.get('presets'), sourceCode)),
+		sourceCode
+	);
 	const defaulted = readDefaultedVariants(defaults, sourceCode);
 
 	return {
@@ -404,17 +387,18 @@ const buildStyles = (
 				config,
 				slotNames,
 				inherited.groups,
+				presets,
 				args,
 				sourceCode
 			)
 		),
 		slotNames,
 		defaults: readMatchers(getProperties(defaults), sourceCode),
-		presets: readPresets(getProperties(presets), sourceCode),
+		presets,
 		openPresets: false,
 		optional: readOptionalVariants(config, defaulted, sourceCode),
 		defaulted,
-		...readGroups(getProperties(groups), sourceCode),
+		groupSlots: readGroups(getProperties(groups), sourceCode),
 		// Base args are folded into `base`, so they set it too
 		setsBase: config.has('base') || args.length > 0
 	};
@@ -474,6 +458,10 @@ const readPresetMatchers = (
 	return presets.get(name) ?? UNKNOWN_PRESET;
 };
 
+// Whether every prop a call passes can be read: it spreads nothing that can't.
+const readsAll = ({ spreads }: CallProps): boolean =>
+	spreads !== null && spreads.length === 0;
+
 // Marks every prop read so far as one that what follows may replace.
 const markOverridable = (props: CollectedProps) => {
 	for (const key of props.read.keys()) {
@@ -532,14 +520,10 @@ const readObjectProps = (
 	const { read, spreads, overridable } = props;
 
 	if (props.hasComputedKey) {
-		return { read, known: null, spreads: null, overridable };
+		return { read, spreads: null, overridable };
 	}
 
-	if (spreads.length > 0) {
-		return { read, known: null, spreads, overridable };
-	}
-
-	return { read, known: read, spreads, overridable };
+	return { read, spreads, overridable };
 };
 
 // A call's props. A call without any passes none; a spread argument or a
@@ -567,13 +551,15 @@ const readCallProps = (
 		spread = resolved;
 	}
 
-	return {
-		read: EMPTY_PROPS,
-		known: null,
-		spreads: [spread],
-		overridable: NO_KEYS
-	};
+	return { read: EMPTY_PROPS, spreads: [spread], overridable: NO_KEYS };
 };
+
+// Whether a prop passes a value that sets something: any but an `undefined`
+// one or a class.
+const isPassedProp = (key: string, value: Node, ctx: StyledContext): boolean =>
+	key !== 'class' &&
+	key !== 'className' &&
+	isDefinedValue(value, ctx.resolve);
 
 // `outer` with each prop of `inner` that the runtime lets replace it: any but
 // an `undefined` one or a class, which is merged instead.
@@ -585,11 +571,7 @@ const mergeProps = (
 	const merged = new Map(outer);
 
 	for (const [key, value] of inner) {
-		if (
-			key !== 'class' &&
-			key !== 'className' &&
-			isDefinedValue(value, ctx.resolve)
-		) {
+		if (isPassedProp(key, value, ctx)) {
 			merged.set(key, value);
 		}
 	}
@@ -627,7 +609,6 @@ const readOuterProps = (
 
 	return {
 		read,
-		known: outer.known && read,
 		spreads: outer.spreads,
 		overridable,
 		basePreset: outer.read.get('preset')
@@ -643,7 +624,7 @@ const mergeCallProps = (
 	options: CallOptions,
 	ctx: StyledContext
 ): CallProps => {
-	if (inner.known === null) {
+	if (!readsAll(inner)) {
 		return inner;
 	}
 
@@ -662,17 +643,7 @@ const mergeCallProps = (
 
 	const { basePreset, spreads } = outer;
 
-	if (outer.known === null) {
-		return { read, known: null, spreads, overridable, basePreset };
-	}
-
-	return {
-		read,
-		known: mergeProps(outer.known, inner.known, ctx),
-		spreads,
-		overridable,
-		basePreset
-	};
+	return { read, spreads, overridable, basePreset };
 };
 
 // The values a call keeps from its `defaultVariants`, and the optional
@@ -703,19 +674,9 @@ const readBaseMatchers = (
 
 	return matchers;
 };
-// A variant prop whose value can't be read: `undefined` leaves the variant to
-// its default, anything else may select any of its values.
-const isUnreadProp = (
-	key: string,
-	value: Node,
-	read: VariantMatchers,
-	ctx: StyledContext
-): boolean =>
-	!NON_MATCHER_KEYS.has(key) &&
-	!read.has(key) &&
-	!isUndefinedValue(ctx.resolve(value));
-
-// The variant props a call passes whose values can't be read.
+// The variant props a call passes whose values can't be read: one passing
+// `undefined` leaves the variant to its default, anything else may select any
+// of its values.
 const readUnreadProps = (
 	read: ReadonlyMap<string, Node>,
 	propMatchers: VariantMatchers,
@@ -724,7 +685,11 @@ const readUnreadProps = (
 	const unread = new Map<string, Node>();
 
 	for (const [key, value] of read) {
-		if (isUnreadProp(key, value, propMatchers, ctx)) {
+		if (
+			!NON_MATCHER_KEYS.has(key) &&
+			!propMatchers.has(key) &&
+			!isUndefinedValue(ctx.resolve(value))
+		) {
 			unread.set(key, value);
 		}
 	}
@@ -741,12 +706,7 @@ const readPassedKeys = (
 	const passed = new Set<string>();
 
 	for (const [key, value] of read) {
-		if (
-			key !== 'class' &&
-			key !== 'className' &&
-			!overridable.has(key) &&
-			isDefinedValue(value, ctx.resolve)
-		) {
+		if (!overridable.has(key) && isPassedProp(key, value, ctx)) {
 			passed.add(key);
 		}
 	}
@@ -785,7 +745,14 @@ const buildCallMatchers = (
 	options: CallOptions,
 	ctx: StyledContext
 ): CallMatchers => {
-	const { read, known, spreads, overridable } = props;
+	const { read, spreads, overridable } = props;
+	// Its props are all read only when it spreads nothing that can't be.
+	let known: ReadonlyMap<string, Node> | null = null;
+
+	if (readsAll(props)) {
+		known = read;
+	}
+
 	const preset = readCallPreset(props, options, ctx);
 	const propMatchers = readPropMatchers(read, ctx);
 	const unreadProps = readUnreadProps(read, propMatchers, ctx);
@@ -871,6 +838,21 @@ const resolveCalleeCall = (
 	return resolved;
 };
 
+// The props a `createSV(defaults)` call's defaults set: none when it's called
+// without any, and null when they can't be read in full.
+const readFactoryDefaultProps = (
+	factory: CallExpression,
+	ctx: StyledContext
+): ReadonlyMap<string, Node> | null => {
+	const [defaults] = factory.arguments;
+
+	if (defaults === undefined) {
+		return EMPTY_PROPS;
+	}
+
+	return getStrictProperties(ctx.resolve(defaults));
+};
+
 /**
  * The keys a `createSV(defaults)` call's defaults set: none when it's called
  * without any, and null when they can't be read in full.
@@ -879,13 +861,7 @@ const getDefaultKeys = (
 	factory: CallExpression,
 	ctx: StyledContext
 ): ReadonlySet<string> | null => {
-	const [defaults] = factory.arguments;
-
-	if (defaults === undefined) {
-		return NO_KEYS;
-	}
-
-	const properties = getStrictProperties(ctx.resolve(defaults));
+	const properties = readFactoryDefaultProps(factory, ctx);
 
 	if (properties === null) {
 		return null;
@@ -902,14 +878,9 @@ const getDefaultRequiresAll = (
 	factory: CallExpression,
 	ctx: StyledContext
 ): boolean => {
-	const [defaults] = factory.arguments;
-
-	if (defaults === undefined) {
-		return false;
-	}
-
-	const properties = getStrictProperties(ctx.resolve(defaults));
-	const value = properties?.get('requiredVariants');
+	const value = readFactoryDefaultProps(factory, ctx)?.get(
+		'requiredVariants'
+	);
 
 	if (value === undefined) {
 		return false;
@@ -954,23 +925,25 @@ export const readFactoryDefaults = (
 	base: getDefaultBaseStyles(factory, ctx)
 });
 
-// One setting of the `createSV()` factory a callee came from: read from the
-// factory call in this file, or else from the imported one, or what `sv()`
-// itself has.
-const readFactorySetting = <K extends keyof ImportedFactory>(
+/**
+ * The settings of the `createSV()` factory a call's callee came from: read
+ * from the factory call in this file, or else from the imported one, or what
+ * `sv()` itself has.
+ */
+export const getCallFactory = (
 	callee: Node,
 	imported: ImportedFactory | undefined,
-	ctx: StyledContext,
-	key: K,
-	readLocal: FactoryReader<K>
-): ImportedFactory[K] => {
+	ctx: StyledContext
+): ImportedFactory => {
 	const factory = resolveCalleeCall(callee, ctx);
 
-	if (factory !== null) {
-		return readLocal(factory, ctx);
+	if (factory === null) {
+		return imported ?? NO_FACTORY;
 	}
 
-	return (imported ?? NO_FACTORY)[key];
+	return getOrCreate(factoryCache, factory, () =>
+		readFactoryDefaults(factory, ctx)
+	);
 };
 
 /** Whether a call whose factory defaults are `defaults` may inherit `key`. */
@@ -978,41 +951,6 @@ export const mayInheritKey = (
 	defaults: ReadonlySet<string> | null,
 	key: string
 ): boolean => defaults === null || defaults.has(key);
-
-/**
- * The keys a call inherits from the defaults of the `createSV()` factory its
- * callee came from, in this file or imported: none for `sv()` itself or a
- * factory called without any, and null when they can't be read in full.
- */
-export const getFactoryDefaults = (
-	node: CallExpression,
-	call: CallMatch,
-	ctx: StyledContext
-): ReadonlySet<string> | null =>
-	readFactorySetting(
-		node.callee,
-		call.imported,
-		ctx,
-		'defaultKeys',
-		getDefaultKeys
-	);
-
-/**
- * Whether the `createSV()` factory a call's callee came from, in this file or
- * imported, makes every variant required.
- */
-export const getFactoryRequiresAll = (
-	node: CallExpression,
-	call: CallMatch,
-	ctx: StyledContext
-): boolean =>
-	readFactorySetting(
-		node.callee,
-		call.imported,
-		ctx,
-		'requiresAll',
-		getDefaultRequiresAll
-	);
 
 // The classes of the `base` a `createSV()` factory, in this file or imported,
 // gives a call through it whose config sets none. Null for any other call, or
@@ -1029,13 +967,7 @@ const getFactoryBaseStyles = (
 		return null;
 	}
 
-	return readFactorySetting(
-		call.callee,
-		ctx.matchCall(call)?.imported,
-		ctx,
-		'base',
-		getDefaultBaseStyles
-	);
+	return getCallFactory(call.callee, ctx.matchCall(call)?.imported, ctx).base;
 };
 
 // Joins `items`' lists per key, each value once, in order.
@@ -1154,7 +1086,6 @@ const mergeStyles = (
 		}
 	}
 
-	const groupSlots = joinLists(all.map((styles) => styles.groupSlots));
 	const defaulted = mergeDefaulted(all, complete);
 
 	return {
@@ -1165,8 +1096,7 @@ const mergeStyles = (
 		openPresets: !complete || parents.some((styles) => styles.openPresets),
 		optional: mergeOptional(all, defaulted),
 		defaulted,
-		groupSlots,
-		slotGroups: invertGroups(groupSlots),
+		groupSlots: joinLists(all.map((styles) => styles.groupSlots)),
 		setsBase: all.some((styles) => styles.setsBase)
 	};
 };
@@ -1412,15 +1342,15 @@ const getArrowBody = (fn: Node | undefined): Node | null => {
 	return fn.body;
 };
 
-// Whether `value` calls the framework function `source` names, imported under
-// any name.
-const isFrameworkCall = (
+// The value a framework function computes, read through `fn`'s arrow: null
+// unless `value` calls the function `source` names, imported under any name.
+const readFrameworkCall = (
 	value: Node,
 	source: FrameworkImport,
 	ctx: StyledContext
-): value is CallExpression => {
+): Node | null => {
 	if (value.type !== 'CallExpression' || value.callee.type !== 'Identifier') {
-		return false;
+		return null;
 	}
 
 	const binding = findInLookupScope(
@@ -1430,24 +1360,15 @@ const isFrameworkCall = (
 	);
 
 	if (binding?.def.type !== 'ImportBinding') {
-		return false;
+		return null;
 	}
 
 	const imported = getImportSource(binding.def);
 
-	return (
-		imported?.specifier === source.specifier &&
-		imported.exportName === source.exportName
-	);
-};
-
-// The value a framework function computes, read through `fn`'s arrow.
-const readFrameworkCall = (
-	value: Node,
-	source: FrameworkImport,
-	ctx: StyledContext
-): Node | null => {
-	if (!isFrameworkCall(value, source, ctx)) {
+	if (
+		imported?.specifier !== source.specifier ||
+		imported.exportName !== source.exportName
+	) {
 		return null;
 	}
 
@@ -1455,7 +1376,7 @@ const readFrameworkCall = (
 };
 
 // The value a Svelte `$derived(x)` or `$derived.by(() => x)` rune holds.
-const readDerived = (value: Node): Node | null => {
+const readDerived = (value: Node, ctx: StyledContext): Node | null => {
 	if (value.type !== 'CallExpression') {
 		return null;
 	}
@@ -1471,21 +1392,12 @@ const readDerived = (value: Node): Node | null => {
 		callee.type === 'MemberExpression' &&
 		callee.object.type === 'Identifier' &&
 		callee.object.name === '$derived' &&
-		getMemberName(callee) === 'by'
+		getMemberKey(callee, ctx) === 'by'
 	) {
 		return getArrowBody(argument);
 	}
 
 	return null;
-};
-
-// A non-computed member read's name, null for any other.
-const getMemberName = (node: MemberExpression): string | null => {
-	if (node.computed || node.property.type !== 'Identifier') {
-		return null;
-	}
-
-	return node.property.name;
 };
 
 /**
@@ -1494,7 +1406,10 @@ const getMemberName = (node: MemberExpression): string | null => {
  * `.value`, or a Solid `createMemo` accessor's call. Null for any other read.
  */
 const getReactiveSource = (node: Node, ctx: StyledContext): Node | null => {
-	if (node.type === 'MemberExpression' && getMemberName(node) === 'value') {
+	if (
+		node.type === 'MemberExpression' &&
+		getMemberKey(node, ctx) === 'value'
+	) {
 		return readFrameworkCall(ctx.resolve(node.object), VUE_COMPUTED, ctx);
 	}
 
@@ -1516,7 +1431,7 @@ const getReactiveSource = (node: Node, ctx: StyledContext): Node | null => {
 		return readFrameworkCall(value, VUE_COMPUTED, ctx);
 	}
 
-	return readDerived(value);
+	return readDerived(value, ctx);
 };
 
 /**
@@ -1604,7 +1519,6 @@ const buildLiteralStyles = (entries: ReadonlyArray<Entry>): InternalStyles => ({
 	optional: NO_KEYS,
 	defaulted: NO_KEYS,
 	groupSlots: EMPTY_GROUPS,
-	slotGroups: EMPTY_GROUPS,
 	setsBase: false
 });
 
@@ -1747,18 +1661,30 @@ export const resolveTargetSlots = (
 ): ReadonlyArray<string> => styles.groupSlots.get(slot) ?? [slot];
 
 /**
- * Every bucket a slot's internal classes can sit in: its own, plus each group
- * that names it.
+ * The token maps a slot's internal classes can sit in: its own, plus that of
+ * each group naming it.
  */
-export const getSlotBuckets = (
-	styles: InternalStyles,
+export const getSlotTokenMaps = (
+	{ bySlot, groupSlots }: InternalStyles,
 	slot: string
-): ReadonlyArray<string> => {
-	const groups = styles.slotGroups.get(slot);
+): ReadonlyArray<ReadonlyMap<string, Entry[]>> => {
+	const buckets = [slot];
 
-	if (groups === undefined) {
-		return [slot];
+	for (const [group, slots] of groupSlots) {
+		if (slots.includes(slot)) {
+			buckets.push(group);
+		}
 	}
 
-	return [slot, ...groups];
+	const tokenMaps: ReadonlyMap<string, Entry[]>[] = [];
+
+	for (const bucket of buckets) {
+		const tokenMap = bySlot.get(bucket);
+
+		if (tokenMap !== undefined) {
+			tokenMaps.push(tokenMap);
+		}
+	}
+
+	return tokenMaps;
 };

@@ -748,32 +748,29 @@ export const readPresetValues = (
 // config's own or can't be read in full, which can only under-suppress.
 const readPresetMatchers = (
 	compound: ReadonlyMap<string, Node>,
-	presets: ReadonlyMap<string, Node>,
+	presets: ReadonlyMap<string, PresetValues>,
 	sourceCode: SourceCode
 ): VariantMatchers => {
-	const preset = compound.get('preset');
+	const node = compound.get('preset');
 
-	if (preset === undefined) {
+	if (node === undefined) {
 		return baseSource;
 	}
 
-	const name = getStaticMatcherValue(preset, sourceCode);
+	const name = getStaticMatcherValue(node, sourceCode);
 
 	if (name === null) {
 		return baseSource;
 	}
 
-	const { matchers, complete } = readPresetValues(
-		presets.get(name),
-		sourceCode
-	);
+	const preset = presets.get(name);
 
 	// A value that can't be read may be any, so it proves nothing
-	if (!complete) {
+	if (preset === undefined || !preset.complete) {
 		return baseSource;
 	}
 
-	return matchers;
+	return preset.matchers;
 };
 
 // Derives an exclusivity source from a compound's matcher properties, so two
@@ -784,7 +781,7 @@ const readPresetMatchers = (
 // readable matcher left, it is never exclusive, like the base.
 const getCompoundSource = (
 	compound: ReadonlyMap<string, Node>,
-	presets: ReadonlyMap<string, Node>,
+	presets: ReadonlyMap<string, PresetValues>,
 	sourceCode: SourceCode
 ): Source =>
 	new Map([
@@ -832,14 +829,12 @@ const getCompoundSlotTargets = (
 const extractCompoundTokens = (
 	config: ReadonlyMap<string, Node>,
 	inheritedGroups: GroupSlots,
+	presets: ReadonlyMap<string, PresetValues>,
 	sourceCode: SourceCode,
 	extract: ExtractFn
 ) => {
 	const groups = getProperties(
 		resolveContainer(config.get('groups'), sourceCode)
-	);
-	const presets = getProperties(
-		resolveContainer(config.get('presets'), sourceCode)
 	);
 
 	forEachCompoundClass(
@@ -873,11 +868,13 @@ const extractCompoundTokens = (
 	);
 };
 
-// `inheritedGroups` holds the groups of the parents in `extend`.
+// `inheritedGroups` holds the groups of the parents in `extend`, `presets` the
+// values of the config's own presets.
 export const collectConfigEntries = (
 	config: ReadonlyMap<string, Node>,
 	slotNames: ReadonlySet<string>,
 	inheritedGroups: GroupSlots,
+	presets: ReadonlyMap<string, PresetValues>,
 	baseArgs: ReadonlyArray<Expression | SpreadElement>,
 	sourceCode: SourceCode
 ): Entry[] => {
@@ -912,7 +909,13 @@ export const collectConfigEntries = (
 		sourceCode,
 		extract
 	);
-	extractCompoundTokens(config, inheritedGroups, sourceCode, extract);
+	extractCompoundTokens(
+		config,
+		inheritedGroups,
+		presets,
+		sourceCode,
+		extract
+	);
 
 	return entries;
 };

@@ -512,11 +512,7 @@ export const createSV = <
 		G extends MaybeGroups<ExtendedSlots<E, S>> = undefined,
 		V extends MaybeVariants<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>> =
 			undefined,
-		P extends MaybePresets<
-			ExtendedSlots<E, S>,
-			ExtendedGroups<E, S, G>,
-			ExtendedVariants<E, S, G, V>
-		> = undefined,
+		P extends MaybePresets<ExtendedVariants<E, S, G, V>> = undefined,
 		M extends MultiSlots<ExtendedSlots<E, S>, ExtendedGroups<E, S, G>> = DM,
 		R extends RequiredVariants<ExtendedVariants<E, S, G, V>> = DR,
 		J extends MaybeIntrospection = undefined,

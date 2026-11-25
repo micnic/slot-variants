@@ -7,6 +7,7 @@ import type {
 } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import { type ComponentFunction, findWrappedComponent } from './components.ts';
+import { isTransparentWrapper } from './const-bindings.ts';
 import {
 	DEFAULT_EXPORT,
 	getExportName,
@@ -15,11 +16,13 @@ import {
 
 /**
  * Where an export name leads: a binding in the same module, a function node
- * exported without a name of its own, or another module to look in.
+ * exported without a name of its own, an anonymous value that may be a
+ * factory (`export default createSV()`), or another module to look in.
  */
 export type ExportTarget =
 	| { kind: 'local'; name: string }
 	| { kind: 'node'; node: ComponentFunction }
+	| { kind: 'value'; node: Node }
 	| { kind: 'forward'; specifier: string; name: string };
 
 /** A module's export names with their targets, and its `export *` sources. */
@@ -197,6 +200,15 @@ const collectDefaultExport = (
 	}
 
 	const { declaration } = node;
+
+	// A call, read through type-only wrappers, may be a `createSV()` factory,
+	// tried before any component it wraps.
+	if (
+		declaration.type === 'CallExpression' ||
+		isTransparentWrapper(declaration)
+	) {
+		add(DEFAULT_EXPORT, { kind: 'value', node: declaration });
+	}
 
 	// A named function or a re-exported binding is reached through the module
 	// scope, as is a named component handed to a wrapper (`memo(Impl)`); an

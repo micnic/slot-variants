@@ -30,7 +30,7 @@ import {
 import {
 	getCallStyles,
 	readOverride,
-	getSlotBuckets,
+	getSlotTokenMaps,
 	resolveInvocation,
 	type StyledContext
 } from './styled-values.ts';
@@ -40,13 +40,9 @@ import {
 	forEachStaticItem
 } from './token-extraction.ts';
 import {
-	areConflicting,
 	areEntriesExclusive,
 	type Entry,
 	indexEntriesBySlotAndToken,
-	type PickReported,
-	pickColliding,
-	reportDuplicateTokens,
 	reportEntryList
 } from './token-model.ts';
 
@@ -59,9 +55,43 @@ type ConflictGroup = {
 // Overlap node -> that node's own group, for every node in one component.
 type OverlapComponent = Map<string, ConflictGroup>;
 
+// The entries of a finding the current pass reports, none to leave it to
+// another.
+type PickReported = (entries: ReadonlyArray<Entry>) => ReadonlyArray<Entry>;
+
+type EntryPredicate = (a: Entry, b: Entry) => boolean;
+
+// The message ids repeated and conflicting tokens are reported with.
+type TokenMessages = { duplicate: string; conflict: string };
+
 const REPORT_ALL: PickReported = (entries) => entries;
 
 const REPORT_NONE: ReadonlyArray<Entry> = [];
+
+const CONFIG_MESSAGES: TokenMessages = {
+	duplicate: 'duplicate',
+	conflict: 'conflict'
+};
+
+const CN_MESSAGES: TokenMessages = {
+	duplicate: 'duplicateCn',
+	conflict: 'conflictCn'
+};
+
+// Whether two entries of different tokens can render together. Entries of one
+// token aren't: a repeat is a duplicate, reported on its own, and doesn't make
+// the tokens it never renders with conflict.
+const areConflicting = (a: Entry, b: Entry): boolean =>
+	a.token !== b.token && !areEntriesExclusive(a, b);
+
+// The entries that render with another of them, as `collides` tells.
+const pickColliding = (
+	entries: ReadonlyArray<Entry>,
+	collides: EntryPredicate
+): Entry[] =>
+	entries.filter((entry) =>
+		entries.some((other) => other !== entry && collides(entry, other))
+	);
 
 const groupEntriesByConflictKey = (
 	tokenMap: Map<string, Entry[]>,
@@ -162,9 +192,7 @@ const collectCollisions = (groups: Map<string, ConflictGroup>): Entry[][] => {
 
 	for (const group of groups.values()) {
 		if (group.overlap === null) {
-			result.push(
-				pickColliding(group.entries, group.entries, areConflicting)
-			);
+			result.push(pickColliding(group.entries, areConflicting));
 			continue;
 		}
 
@@ -236,12 +264,12 @@ const reportConflicts = (
 
 // The token entries of several slot buckets, as one.
 const mergeTokenMaps = (
-	tokenMaps: ReadonlyArray<ReadonlyMap<string, Entry[]> | undefined>
+	tokenMaps: ReadonlyArray<ReadonlyMap<string, Entry[]>>
 ): Map<string, Entry[]> => {
 	const merged = new Map<string, Entry[]>();
 
 	for (const tokenMap of tokenMaps) {
-		for (const [token, entries] of tokenMap ?? []) {
+		for (const [token, entries] of tokenMap) {
 			getOrCreate(merged, token, () => []).push(...entries);
 		}
 	}
@@ -384,6 +412,58 @@ const reportDuplicateGroupSlots = (
 	}
 };
 
+// Only the entries of a token that render with another of its entries are
+// reported: one disagreeing with all of them on a shared matcher key can't
+// co-occur with any. Safe for cn() too: non-variant entries are never
+// exclusive, so base-only token lists are always reported.
+const reportDuplicateTokens = (
+	context: Rule.RuleContext,
+	tokenMap: Map<string, Entry[]>,
+	messageId: string,
+	data: Record<string, string>,
+	pickReported: PickReported
+) => {
+	for (const [token, list] of tokenMap.entries()) {
+		const repeated = pickColliding(
+			list,
+			(a, b) => !areEntriesExclusive(a, b)
+		);
+
+		if (repeated.length > 0) {
+			reportEntryList(context, pickReported(repeated), messageId, {
+				token,
+				...data
+			});
+		}
+	}
+};
+
+// Reports the repeated and the conflicting tokens of one token map.
+const reportTokenCollisions = (
+	context: Rule.RuleContext,
+	tokenMap: Map<string, Entry[]>,
+	messages: TokenMessages,
+	data: Record<string, string>,
+	options: ConflictOptions,
+	pickReported: PickReported
+) => {
+	reportDuplicateTokens(
+		context,
+		tokenMap,
+		messages.duplicate,
+		data,
+		pickReported
+	);
+	reportConflicts(
+		context,
+		tokenMap,
+		messages.conflict,
+		data,
+		options,
+		pickReported
+	);
+};
+
 /**
  * Checks the classes a config's call applies, its inherited ones included:
  * those of the components it extends and its `createSV()` factory's `base`.
@@ -411,17 +491,10 @@ export const analyzeConfigForRule = (
 		slot: string,
 		pickReported: PickReported
 	) => {
-		reportDuplicateTokens(
+		reportTokenCollisions(
 			context,
 			tokenMap,
-			'duplicate',
-			{ slot },
-			pickReported
-		);
-		reportConflicts(
-			context,
-			tokenMap,
-			'conflict',
+			CONFIG_MESSAGES,
 			{ slot },
 			options,
 			pickReported
@@ -463,9 +536,7 @@ export const analyzeConfigForRule = (
 	// A slot's classes are its own plus those of every group naming it.
 	for (const slot of slots) {
 		report(
-			mergeTokenMaps(
-				getSlotBuckets(styles, slot).map((bucket) => bySlot.get(bucket))
-			),
+			mergeTokenMaps(getSlotTokenMaps(styles, slot)),
 			slot,
 			pickOutsideGroups
 		);
@@ -485,11 +556,10 @@ export const analyzeCnForRule = (
 	).get('base');
 
 	if (tokenMap) {
-		reportDuplicateTokens(context, tokenMap, 'duplicateCn', {}, REPORT_ALL);
-		reportConflicts(
+		reportTokenCollisions(
 			context,
 			tokenMap,
-			'conflictCn',
+			CN_MESSAGES,
 			{},
 			options,
 			REPORT_ALL

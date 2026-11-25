@@ -6,7 +6,7 @@ import {
 	visitForEmptyClasses
 } from '../analyzer/empty-classes.ts';
 import { type EmptyFix, makeListFix } from '../analyzer/list-fix.ts';
-import { getFactoryDefaults } from '../analyzer/styled-values.ts';
+import { getCallFactory } from '../analyzer/styled-values.ts';
 import { forEachStaticItem } from '../analyzer/token-extraction.ts';
 import { createTrackedCallListeners } from '../analyzer/call-listeners.ts';
 
@@ -79,7 +79,7 @@ export const noEmptyClasses: Rule.RuleModule = {
 				checkConfigForEmptyClasses(
 					context,
 					call.config,
-					getFactoryDefaults(node, call, ctx)
+					getCallFactory(node.callee, call.imported, ctx).defaultKeys
 				);
 			}
 		});

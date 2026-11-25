@@ -7,8 +7,7 @@ import {
 	type SharedTokensCall
 } from '../analyzer/shared-tokens.ts';
 import {
-	getFactoryDefaults,
-	getFactoryRequiresAll,
+	getCallFactory,
 	mayInheritKey,
 	type StyledContext
 } from '../analyzer/styled-values.ts';
@@ -17,35 +16,32 @@ import { createTrackedCallListeners } from '../analyzer/call-listeners.ts';
 // A call through a `createSV()`-derived function takes the factory's `base`
 // unless it passes its own, so one is only created where the factory's
 // defaults are known to have none; any other default may hold a `postProcess`.
-// `sv()` itself, or a factory called without defaults, inherits nothing.
-const getInheritedCall = (
+// `sv()` itself, or a factory called without defaults, inherits nothing. Only
+// a config written as the call's own last argument shares its base with that
+// call's leading arguments; a hoisted one may be passed to other calls.
+const getSharedTokensCall = (
 	ctx: StyledContext,
-	node: CallExpression,
-	call: CallMatch
-): Omit<SharedTokensCall, 'leadingArg'> => {
-	const defaults = getFactoryDefaults(node, call, ctx);
-
-	return {
-		canCreateBase: !mayInheritKey(defaults, 'base'),
-		inheritsPostProcess: mayInheritKey(defaults, 'postProcess'),
-		inheritsRequiresAll: getFactoryRequiresAll(node, call, ctx)
-	};
-};
-
-// Only a config written as the call's own last argument shares its base with
-// that call's leading arguments; a hoisted one may be passed to other calls.
-const getLeadingArg = (
 	node: CallExpression,
 	call: CallMatch,
 	config: ObjectExpression
-): SharedTokensCall['leadingArg'] => {
-	const lastLeadingArg = call.args[call.args.length - 1];
+): SharedTokensCall => {
+	const { defaultKeys, requiresAll } = getCallFactory(
+		node.callee,
+		call.imported,
+		ctx
+	);
+	let leadingArg: SharedTokensCall['leadingArg'] = null;
 
-	if (lastLeadingArg === undefined || !isLastArgument(node, config)) {
-		return null;
+	if (isLastArgument(node, config)) {
+		leadingArg = call.args.at(-1) ?? null;
 	}
 
-	return lastLeadingArg;
+	return {
+		canCreateBase: !mayInheritKey(defaultKeys, 'base'),
+		leadingArg,
+		inheritsPostProcess: mayInheritKey(defaultKeys, 'postProcess'),
+		inheritsRequiresAll: requiresAll
+	};
 };
 
 /**
@@ -128,10 +124,11 @@ export const noSharedTokens: Rule.RuleModule = {
 				return;
 			}
 
-			analyzeSharedTokens(context, call.config, {
-				...getInheritedCall(ctx, node, call),
-				leadingArg: getLeadingArg(node, call, call.config)
-			});
+			analyzeSharedTokens(
+				context,
+				call.config,
+				getSharedTokensCall(ctx, node, call, call.config)
+			);
 		});
 	}
 };

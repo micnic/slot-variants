@@ -7,7 +7,7 @@ import type {
 	Property,
 	SpreadElement
 } from 'estree';
-import { isLastArgument } from '../analyzer/call-matching.ts';
+import { type CallMatch, isLastArgument } from '../analyzer/call-matching.ts';
 import {
 	CONFIG_KEY_ORDER,
 	docsUrl,
@@ -17,10 +17,7 @@ import { isWithinNode, resolveContainer } from '../analyzer/const-bindings.ts';
 import { removeFromList, removeSoleItem } from '../analyzer/list-fix.ts';
 import { getProperties, hasSpreadProperty } from '../analyzer/properties.ts';
 import { isStaticStringNode } from '../analyzer/static-predicates.ts';
-import {
-	getFactoryDefaults,
-	mayInheritKey
-} from '../analyzer/styled-values.ts';
+import { getCallFactory, mayInheritKey } from '../analyzer/styled-values.ts';
 import { createTrackedCallListeners } from '../analyzer/call-listeners.ts';
 
 type KeyEntry = {
@@ -197,16 +194,6 @@ const checkKeyOrder = (
 	}
 };
 
-const findBaseProperty = (obj: ObjectExpression): Property | null => {
-	for (const prop of obj.properties) {
-		if (prop.type === 'Property' && getKeyName(prop) === 'base') {
-			return prop;
-		}
-	}
-
-	return null;
-};
-
 // The `slots` record, read through a `const` binding like other containers.
 const getSlotsObject = (
 	configNode: ObjectExpression,
@@ -224,30 +211,13 @@ const getSlotsObject = (
 	return null;
 };
 
-// Whether a base-style fix would edit a `slots` record declared outside the
-// config — one other configs may share.
-const touchesHoistedSlots = (
+// Whether a base-style fix would move a base into or out of a `slots` record
+// that is unsafe to edit: one with a spread, whose own `base` may override the
+// moved one or join it, or one declared outside the config, which other
+// configs may share.
+const touchesUnsafeSlots = (
 	sourceCode: SourceCode,
 	configNode: ObjectExpression,
-	source: BaseSource,
-	insertInto: ObjectExpression | null
-): boolean => {
-	if (
-		insertInto !== null &&
-		!isWithinNode(sourceCode, insertInto, configNode)
-	) {
-		return true;
-	}
-
-	return (
-		'container' in source &&
-		!isWithinNode(sourceCode, source.container, configNode)
-	);
-};
-
-// Whether a base-style fix would move a base into or out of a `slots` record
-// with a spread, whose own `base` may override the moved one or join it.
-const touchesSpreadSlots = (
 	slotsObj: ObjectExpression | null,
 	source: BaseSource,
 	insertInto: ObjectExpression | null
@@ -256,9 +226,14 @@ const touchesSpreadSlots = (
 		return false;
 	}
 
-	const isTouched = insertInto === slotsObj || source.style === 'slotsBase';
+	if (insertInto !== slotsObj && source.style !== 'slotsBase') {
+		return false;
+	}
 
-	return isTouched && hasSpreadProperty(slotsObj);
+	return (
+		hasSpreadProperty(slotsObj) ||
+		!isWithinNode(sourceCode, slotsObj, configNode)
+	);
 };
 
 // Adds the `base` property of `container`, if it has one, as a base source.
@@ -271,10 +246,12 @@ const addBaseProperty = (
 		return;
 	}
 
-	const node = findBaseProperty(container);
+	for (const node of container.properties) {
+		if (node.type === 'Property' && getKeyName(node) === 'base') {
+			sources.push({ style, node, value: node.value, container });
 
-	if (node !== null) {
-		sources.push({ style, node, value: node.value, container });
+			return;
+		}
 	}
 };
 
@@ -444,7 +421,7 @@ const canFixBaseStyle = (
 	sourceCode: SourceCode,
 	call: CallExpression,
 	configNode: ObjectExpression,
-	args: ReadonlyArray<Expression | SpreadElement>,
+	argCount: number,
 	source: BaseSource,
 	target: BaseStyle
 ): boolean => {
@@ -454,7 +431,7 @@ const canFixBaseStyle = (
 
 	// Several leading class arguments can't be folded into one base value
 	// without dropping the extras, and merging them isn't attempted.
-	if (source.style === 'separateArg' && args.length > 1) {
+	if (source.style === 'separateArg' && argCount > 1) {
 		return false;
 	}
 
@@ -480,14 +457,13 @@ const checkBaseStyle = (
 	context: Rule.RuleContext,
 	call: CallExpression,
 	configNode: ObjectExpression,
-	args: ReadonlyArray<Expression | SpreadElement>,
+	match: CallMatch,
 	baseStyle: BaseStyle,
-	isFactoryConfig: boolean,
 	inheritsBase: boolean
 ) => {
 	// `createSV(defaults)` takes exactly one argument and ignores any extra, so
 	// a leading class argument there is unsatisfiable, not merely un-fixable.
-	if (baseStyle === 'separateArg' && isFactoryConfig) {
+	if (baseStyle === 'separateArg' && match.isFactoryConfig) {
 		return;
 	}
 
@@ -505,7 +481,7 @@ const checkBaseStyle = (
 		insertInto = slotsObj;
 	}
 
-	const sources = detectBaseSources(configNode, slotsObj, args);
+	const sources = detectBaseSources(configNode, slotsObj, match.args);
 	const mismatched = sources.filter((source) => source.style !== baseStyle);
 
 	if (mismatched.length === 0) {
@@ -528,17 +504,17 @@ const checkBaseStyle = (
 			context.sourceCode,
 			call,
 			configNode,
-			args,
+			match.args.length,
 			onlySource,
 			baseStyle
 		) &&
-		!touchesHoistedSlots(
+		!touchesUnsafeSlots(
 			context.sourceCode,
 			configNode,
+			slotsObj,
 			onlySource,
 			insertInto
-		) &&
-		!touchesSpreadSlots(slotsObj, onlySource, insertInto)
+		)
 	) {
 		fix = buildBaseStyleFix(
 			context.sourceCode,
@@ -602,11 +578,13 @@ export const svConfigStyle: Rule.RuleModule = {
 				context,
 				node,
 				call.config,
-				call.args,
+				call,
 				baseStyle,
-				call.isFactoryConfig,
 				// The call's `createSV()` factory may give it a `base`.
-				mayInheritKey(getFactoryDefaults(node, call, ctx), 'base')
+				mayInheritKey(
+					getCallFactory(node.callee, call.imported, ctx).defaultKeys,
+					'base'
+				)
 			);
 		});
 	}

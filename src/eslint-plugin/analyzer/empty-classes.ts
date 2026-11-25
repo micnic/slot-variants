@@ -6,6 +6,7 @@ import { resolveArray, resolveStaticValue } from './const-bindings.ts';
 import { type EmptyFix, makeListFix } from './list-fix.ts';
 import { getStaticStringText } from './literals.ts';
 import { collectSpreadKeys, getProperties } from './properties.ts';
+import { mayInheritKey } from './styled-values.ts';
 import {
 	COMPOUND_NON_MATCHER_KEYS,
 	forEachCnBranch,
@@ -397,19 +398,6 @@ const isWhollyEmpty = (context: Rule.RuleContext, value: Node): boolean => {
 	return isEmptyStringNode(node) || isEmptyContainer(node);
 };
 
-// Whether a config key may also be set by a spread before it or by the call's
-// `createSV()` defaults (either null when it can't be read in full), so an
-// empty value there clears that one rather than having no effect.
-const mayOverride = (
-	key: string,
-	spreadKeys: ReadonlySet<string> | null,
-	inherited: ReadonlySet<string> | null
-): boolean =>
-	spreadKeys === null ||
-	spreadKeys.has(key) ||
-	inherited === null ||
-	inherited.has(key);
-
 // A `createSV()` factory config may carry a spread or computed key (reported
 // as dynamic by no-dynamic-classes); those aren't class-bearing, so they're
 // skipped here. Each checker gets the value as written and resolves it, so an
@@ -452,8 +440,11 @@ export const checkConfigForEmptyClasses = (
 		if (
 			checker === undefined ||
 			key === keptMarker ||
+			// A key a spread before it or the call's `createSV()` defaults may
+			// also set: an empty value clears that one, so it has an effect.
 			(isWhollyEmpty(context, prop.value) &&
-				mayOverride(key, spreadKeys, inherited))
+				(mayInheritKey(spreadKeys, key) ||
+					mayInheritKey(inherited, key)))
 		) {
 			continue;
 		}

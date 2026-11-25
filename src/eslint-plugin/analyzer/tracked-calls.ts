@@ -31,13 +31,11 @@ import {
 	type StyledContext
 } from './styled-values.ts';
 
-// The tracked export each named-import local stands for, the locals bound to
-// a whole-module namespace import, and whether the file imports anything
-// else, which may be a `createSV()` factory.
+// The tracked export each named-import local stands for, and the locals bound
+// to a whole-module namespace import.
 type TrackedNames = {
 	exportByLocal: Map<string, string>;
 	namespaceNames: Set<string>;
-	hasOtherImports: boolean;
 };
 
 // Everything the classifier needs from the rule that owns it, with the
@@ -306,16 +304,16 @@ const collectImportDeclarations = (
 
 // The local names the file's `slot-variants` imports give `sv`, `cn` and
 // `createSV`, and the namespaces they can be reached through.
-const collectTrackedNames = (program: AST.Program): TrackedNames => {
+const collectTrackedNames = (
+	imports: ReadonlyArray<ImportDeclaration>
+): TrackedNames => {
 	const names: TrackedNames = {
 		exportByLocal: new Map<string, string>(),
-		namespaceNames: new Set<string>(),
-		hasOtherImports: false
+		namespaceNames: new Set<string>()
 	};
 
-	for (const node of collectImportDeclarations(program)) {
+	for (const node of imports) {
 		if (node.source.value !== 'slot-variants') {
-			names.hasOtherImports = true;
 			continue;
 		}
 
@@ -345,26 +343,25 @@ const collectTrackedNames = (program: AST.Program): TrackedNames => {
 // An on-demand classifier, for rules that need to ask whether an arbitrary call
 // is a tracked sv/cn call outside a CallExpression visitor (`no-restyle`
 // resolves callees and class-list parts that way). The file's imports are read
-// before any call is classified. `alias` replaces the shared setting's aliases
-// for following imported factories (a rule's own option).
+// before any call is classified: a file importing nothing has no tracked call,
+// as even a `createSV()` factory comes from an import. `alias` replaces the
+// shared setting's aliases for following imported factories (a rule's own
+// option).
 export const createTrackedCallResolver = (
 	context: Rule.RuleContext,
 	scan: ModuleScanner,
 	alias?: Record<string, string>
 ): StyledContext => {
-	const names = collectTrackedNames(context.sourceCode.ast);
+	const imports = collectImportDeclarations(context.sourceCode.ast);
+	const names = collectTrackedNames(imports);
 	let cache = matchedCalls;
 
 	if (alias !== undefined) {
 		cache = new WeakMap();
 	}
 
-	const hasTrackedImports =
-		names.exportByLocal.size > 0 ||
-		names.namespaceNames.size > 0 ||
-		names.hasOtherImports;
 	const ctx = createStyledContext(context.sourceCode, (node) => {
-		if (!hasTrackedImports) {
+		if (imports.length === 0) {
 			return null;
 		}
 

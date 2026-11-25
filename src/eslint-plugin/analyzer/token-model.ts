@@ -22,12 +22,6 @@ export type Entry = {
 
 export type TokenEntriesBySlot = Map<string, Map<string, Entry[]>>;
 
-// The entries of a finding the current pass reports, none to leave it to
-// another.
-export type PickReported = (
-	entries: ReadonlyArray<Entry>
-) => ReadonlyArray<Entry>;
-
 export type EntryListFixer = (fixer: Rule.RuleFixer) => Rule.Fix[] | null;
 
 /** How a finding can be resolved: an autofix, suggestions, or neither. */
@@ -86,22 +80,6 @@ export const areExclusiveMatchers = (
 export const areEntriesExclusive = (a: Entry, b: Entry): boolean =>
 	areExclusiveMatchers(a.source, b.source);
 
-// Whether two entries of different tokens can render together. Entries of one
-// token aren't: a repeat is a duplicate, reported on its own, and doesn't make
-// the tokens it never renders with conflict.
-export const areConflicting = (a: Entry, b: Entry): boolean =>
-	a.token !== b.token && !areEntriesExclusive(a, b);
-
-// The entries `others` holds one that renders with, as `collides` tells.
-export const pickColliding = (
-	entries: ReadonlyArray<Entry>,
-	others: ReadonlyArray<Entry>,
-	collides: (a: Entry, b: Entry) => boolean
-): Entry[] =>
-	entries.filter((entry) =>
-		others.some((other) => other !== entry && collides(entry, other))
-	);
-
 export const indexEntriesBySlotAndToken = (
 	entries: Iterable<Entry>
 ): TokenEntriesBySlot => {
@@ -140,32 +118,5 @@ export const reportEntryList = (
 			data,
 			...remedy
 		});
-	}
-};
-
-// Only the entries of a token that render with another of its entries are
-// reported: one disagreeing with all of them on a shared matcher key can't
-// co-occur with any. Safe for cn() too: non-variant entries are never
-// exclusive, so base-only token lists are always reported.
-export const reportDuplicateTokens = (
-	context: Rule.RuleContext,
-	tokenMap: Map<string, Entry[]>,
-	messageId: string,
-	data: Record<string, string>,
-	pickReported: PickReported
-) => {
-	for (const [token, list] of tokenMap.entries()) {
-		const repeated = pickColliding(
-			list,
-			list,
-			(a, b) => !areEntriesExclusive(a, b)
-		);
-
-		if (repeated.length > 0) {
-			reportEntryList(context, pickReported(repeated), messageId, {
-				token,
-				...data
-			});
-		}
 	}
 };

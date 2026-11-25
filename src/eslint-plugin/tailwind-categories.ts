@@ -1,5 +1,64 @@
 import { getOrCreate } from './map-utils.ts';
 
+// `true` enables the built-in Tailwind groups; an array supplies custom groups
+// (replacing the built-ins); anything else (including the default `undefined`)
+// leaves single-word grouping off.
+export type ExclusiveGroupsOption =
+	| boolean
+	| ReadonlyArray<ReadonlyArray<string>>
+	| undefined;
+
+// --- Property classification for overloaded prefixes ------------------------
+//
+// A dash count alone can't separate utilities that share a first segment and
+// dash count but set different CSS properties (`bg-white` color vs `bg-cover`
+// size, `text-white` color vs `text-sm` size). For a curated set of such
+// prefixes we classify the value into a coarse property category and key on
+// that instead. Unlisted prefixes keep the plain dash-count category, and an
+// unmatched value falls back to a `short` (single value segment) or `long`
+// (multi-segment) bucket — so a custom color like `text-brand-500` still groups
+// with the built-in colors via `long: 'color'`, without any color palette.
+
+type PrefixSpec = {
+	keywords: ReadonlyMap<string, string>;
+	nested?: ReadonlyMap<string, PrefixSpec>;
+	flattensIntoParent?: boolean;
+	short?: string;
+	long?: string;
+	variable?: string;
+	reverseComposes?: boolean;
+	arbitraryImage?: boolean;
+	namedColors?: boolean;
+	fallback: string;
+};
+
+// The pieces of a split, never empty: text with no separator is one segment.
+type Segments = [string, ...string[]];
+
+// A value's declared type, or null when it's arbitrary but untyped; `variable`
+// tells the two arbitrary spellings apart, since only the CSS-variable
+// shorthand carries a meaning of its own when untyped (see `baseCategory`).
+type ArbitraryValue = {
+	hint: string | null;
+	variable: boolean;
+};
+
+// The conflict key plus the pieces an overlap merge needs: the variant prefix
+// and the overlap node the token belongs to (null for tokens outside every
+// overlap family, including exclusive-group keys).
+export type ConflictKeyInfo = {
+	key: string;
+	variantPrefix: string;
+	overlap: string | null;
+};
+
+// The parts of the rule's options that shape a token's conflict key.
+export type ConflictOptions = {
+	exclusiveGroups: ReadonlyMap<string, string>;
+	prefix: string;
+	conflictKeys: Map<string, ConflictKeyInfo | null>;
+};
+
 // Curated sets of Tailwind utilities that set the same CSS property but which
 // the dash-namespace heuristic can't group — single words (`flex`, `absolute`)
 // or hyphenated siblings that don't share a first segment (`inline-block` vs
@@ -66,98 +125,395 @@ const TAILWIND_EXCLUSIVE_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
 	// in `SINGLE_WORD_OVERLAP_NODES`, which is default-on instead).
 ];
 
-// `true` enables the built-in Tailwind groups; an array supplies custom groups
-// (replacing the built-ins); anything else (including the default `undefined`)
-// leaves single-word grouping off.
-export type ExclusiveGroupsOption =
-	| boolean
-	| ReadonlyArray<ReadonlyArray<string>>
-	| undefined;
+// Variants that pick another element than the one before them: their place
+// in a stack decides what's styled (`hover:*:` vs `*:hover:`), so they aren't
+// reordered. Any arbitrary `[...]` variant counts too. Mirrors tailwind-merge's
+// default `orderSensitiveModifiers`.
+const ORDER_SENSITIVE_VARIANTS: ReadonlySet<string> = new Set([
+	'*',
+	'**',
+	'after',
+	'backdrop',
+	'before',
+	'details-content',
+	'file',
+	'first-letter',
+	'first-line',
+	'marker',
+	'placeholder',
+	'selection'
+]);
 
-const resolveExclusiveGroups = (
-	option: ExclusiveGroupsOption
-): ReadonlyArray<ReadonlyArray<string>> => {
-	if (option === true) {
-		return TAILWIND_EXCLUSIVE_GROUPS;
-	}
+const COLOR_KEYWORDS = ['inherit', 'current', 'transparent', 'black', 'white'];
 
-	if (Array.isArray(option)) {
-		return option;
-	}
+// The one-word named sizes; the digit-led ones (`2xl`, `2xs`) aren't words, so
+// they never read as a named color and reach the `short` bucket on their own.
+const SIZE_KEYWORDS = ['xs', 'sm', 'md', 'lg', 'xl'];
 
-	return [];
-};
+const SIDES = ['t', 'r', 'b', 'l', 'x', 'y', 's', 'e', 'bs', 'be'];
 
-// A group config listing the same utility in two different groups has no
-// coherent meaning — which group's id should the token's conflict key use? —
-// so it's rejected outright rather than silently resolved (last group wins).
-const createOverlappingExclusiveGroupError = (
-	ruleName: string,
-	token: string,
-	firstGroupId: string,
-	secondGroupId: string
-): Error =>
-	new Error(
-		`slot-variants/${ruleName}: "exclusiveGroups" lists "${token}" in more than one group (groups ${firstGroupId} and ${secondGroupId}) — remove it from all but one.`
-	);
+// The sides an `x`/`y` axis utility sets, physical and logical alike.
+const INLINE_SIDES = ['r', 'l', 's', 'e'];
 
-// A lookup from each grouped utility to a stable per-group id, so tokens in the
-// same exclusive group share a conflict key. Empty when grouping is disabled,
-// in which case getConflictKey behaves exactly as before.
-export const buildExclusiveGroupMap = (
-	ruleName: string,
-	option: ExclusiveGroupsOption
-): ReadonlyMap<string, string> => {
-	const map = new Map<string, string>();
+const BLOCK_SIDES = ['t', 'b', 'bs', 'be'];
 
-	for (const [index, group] of resolveExclusiveGroups(option).entries()) {
-		const groupId = String(index);
+const CORNERS = [
+	't',
+	'r',
+	'b',
+	'l',
+	's',
+	'e',
+	'tl',
+	'tr',
+	'bl',
+	'br',
+	'ss',
+	'se',
+	'es',
+	'ee'
+];
 
-		for (const token of group) {
-			const firstGroupId = map.get(token);
+// Tailwind's other hyphenated utility families, whose values aren't classified
+// per property: any two values of one family set the same property, so they're
+// grouped by dash count alone (`w-4`/`w-8`, `mt-2`/`mt-safe-bottom`). Any other
+// first segment names a project class (`btn-primary`, `card-body`), which says
+// nothing about the property it sets.
+const DASH_COUNT_PREFIXES: ReadonlySet<string> = new Set([
+	'animate',
+	'appearance',
+	'aspect',
+	'backface',
+	'basis',
+	'blur',
+	'bottom',
+	'box',
+	'brightness',
+	'caption',
+	'clear',
+	'columns',
+	'contrast',
+	'delay',
+	'diagonal',
+	'duration',
+	'end',
+	'field',
+	'filter',
+	'float',
+	'flow',
+	'forced',
+	'grayscale',
+	'grow',
+	'h',
+	'hue',
+	'hyphens',
+	'indent',
+	'invert',
+	'isolation',
+	'leading',
+	'left',
+	'lining',
+	'm',
+	'mb',
+	'mbe',
+	'mbs',
+	'me',
+	'ml',
+	'mr',
+	'ms',
+	'mt',
+	'mx',
+	'my',
+	'no',
+	'normal',
+	'not',
+	'oldstyle',
+	'opacity',
+	'order',
+	'p',
+	'pb',
+	'pbe',
+	'pbs',
+	'pe',
+	'pl',
+	'pointer',
+	'pr',
+	'proportional',
+	'ps',
+	'pt',
+	'px',
+	'py',
+	'resize',
+	'right',
+	'saturate',
+	'select',
+	'sepia',
+	'shrink',
+	'size',
+	'slashed',
+	'sr',
+	'stacked',
+	'start',
+	'subpixel',
+	'tab',
+	'tabular',
+	'top',
+	'tracking',
+	'underline',
+	'w',
+	'will',
+	'z',
+	'zoom'
+]);
 
-			if (firstGroupId !== undefined) {
-				throw createOverlappingExclusiveGroupError(
-					ruleName,
-					token,
-					firstGroupId,
-					groupId
-				);
-			}
+const COLOR_FUNCTIONS = [
+	'rgb',
+	'rgba',
+	'hsl',
+	'hsla',
+	'hwb',
+	'lab',
+	'lch',
+	'oklab',
+	'oklch',
+	'color'
+];
 
-			map.set(token, groupId);
-		}
-	}
-
-	return map;
-};
-
-// --- Property classification for overloaded prefixes ------------------------
+// --- Typed arbitrary values --------------------------------------------------
 //
-// A dash count alone can't separate utilities that share a first segment and
-// dash count but set different CSS properties (`bg-white` color vs `bg-cover`
-// size, `text-white` color vs `text-sm` size). For a curated set of such
-// prefixes we classify the value into a coarse property category and key on
-// that instead. Unlisted prefixes keep the plain dash-count category, and an
-// unmatched value falls back to a `short` (single value segment) or `long`
-// (multi-segment) bucket — so a custom color like `text-brand-500` still groups
-// with the built-in colors via `long: 'color'`, without any color palette.
+// A Tailwind arbitrary value can name its own CSS data type, either bracketed
+// (`text-[color:var(--x)]`) or as the v4 CSS-variable shorthand
+// (`text-(color:--x)`). The hint says which of the prefix's properties the
+// value sets, which is exactly what the dash-count heuristic can't see: a
+// one-segment `text-(color:--x)` would otherwise land in the `size` bucket.
+// Each hint maps to the candidate category names it can stand for, and only a
+// category the prefix actually declares is used — so `gap-(color:--x)`, whose
+// prefix has no color property, falls back to the plain heuristic.
+const HINT_CATEGORIES: ReadonlyMap<string, ReadonlyArray<string>> = new Map([
+	['color', ['color']],
+	['image', ['image']],
+	['position', ['position', 'pos']],
+	['size', ['size']],
+	['length', ['width', 'size', 'length', 'pos', 'position']],
+	['percentage', ['pos', 'position', 'size']],
+	['number', ['weight', 'width', 'size']],
+	['family-name', ['family']],
+	['generic-name', ['family']],
+	['shadow', ['box', 'size', 'shadow']],
+	['angle', ['angle']]
+]);
 
-type PrefixSpec = {
-	keywords: ReadonlyMap<string, string>;
-	nested?: ReadonlyMap<string, PrefixSpec>;
-	flattensIntoParent?: boolean;
-	short?: string;
-	long?: string;
-	variable?: string;
-	reverseComposes?: boolean;
-	arbitraryImage?: boolean;
-	namedColors?: boolean;
-	fallback: string;
-};
+// A bracketed value that is nothing but one `var()` (`[var(--x)]`,
+// `[var(--x,red)]`).
+const BRACKETED_VARIABLE = /^\[var\(--[\w-]+(?:,.*)?\)\]$/;
 
-// The pieces of a split, never empty: text with no separator is one segment.
-type Segments = [string, ...string[]];
+// Every category name a spec can produce. Cached per spec — the specs are
+// module-level constants, and a hinted value would otherwise rebuild the set on
+// every token.
+const specCategoryCache = new Map<PrefixSpec, ReadonlySet<string>>();
+
+// Bare single-word utilities that are the unsuffixed default of a wider family
+// (`rounded` is `rounded-DEFAULT`, `border` is `border-1`, `transition` is
+// `transition-DEFAULT`, …). Each maps to a representative dashed value so it
+// resolves to the very same conflict key as its sibling — `rounded` collides
+// with `rounded-lg`, `transition` with `transition-none` — while `border` still
+// stays clear of `border-gray-200` (a color, not a width).
+const BARE_UTILITIES: ReadonlyMap<string, ReadonlyArray<string>> = new Map(
+	Object.entries({
+		rounded: ['lg'],
+		border: ['2'],
+		ring: ['2'],
+		outline: ['2'],
+		shadow: ['md'],
+		blur: ['sm'],
+		grow: ['0'],
+		shrink: ['0'],
+		transition: ['all'],
+		transform: ['none'],
+		filter: ['none'],
+		resize: ['none'],
+		grayscale: ['0'],
+		invert: ['0'],
+		sepia: ['0']
+	})
+);
+
+const EMPTY_NODE_LIST: ReadonlyArray<string> = [];
+
+// The margin and padding nodes, shared by the plain spacing utilities and the
+// scroll-margin/scroll-padding categories of the `scroll` prefix.
+const SPACING_OVERLAP_NODES: ReadonlyArray<string> = [
+	'm',
+	...SIDES.map((side) => `m${side}`),
+	'p',
+	...SIDES.map((side) => `p${side}`)
+];
+
+// Segments that are an overlap node by themselves: every value of these
+// prefixes sets the same property regardless of value shape (`w-4`, `w-[…]`,
+// `mt-2`, `top-1/2`), so the value category is irrelevant to the node.
+const SEGMENT_OVERLAP_NODES: ReadonlySet<string> = new Set([
+	'size',
+	'w',
+	'h',
+	'top',
+	'right',
+	'bottom',
+	'left',
+	'start',
+	'end',
+	'grow',
+	'shrink',
+	'basis',
+	'whitespace',
+	'leading',
+	...SPACING_OVERLAP_NODES
+]);
+
+// Prefixes classified by axisSpec whose bare form sets all axes: the category
+// picks between the whole-property node and a per-axis node.
+// `scale`/`skew` are deliberately excluded: unlike `gap`/`overflow`/
+// `overscroll`/`translate`/`inset`, tailwind-merge does not treat the bare
+// form as conflicting with its `-x`/`-y` siblings (they compose as
+// independent per-axis overrides). `translate` and `inset` have extra nodes
+// of their own in `CATEGORY_OVERLAP_NODES`, consulted first.
+const AXIS_OVERLAP_PREFIXES: ReadonlySet<string> = new Set([
+	'gap',
+	'overflow',
+	'overscroll',
+	'translate',
+	'inset'
+]);
+
+// Segment -> category -> overlap node, for the families whose node is a
+// plain lookup of the value category. A category missing here falls through
+// to the per-axis naming for an `AXIS_OVERLAP_PREFIXES` family, and to no node
+// otherwise.
+const CATEGORY_OVERLAP_NODES: ReadonlyMap<
+	string,
+	ReadonlyMap<string, string>
+> = new Map([
+	// `translate-none` resets every axis including `z`, unlike the bare form
+	// (which only reaches `x`/`y` through the generic axis handling) — see
+	// `translateSpec` and the `translate-none` entry in `OVERLAP_COVERS`.
+	[
+		'translate',
+		new Map([
+			['none', 'translate-none'],
+			['z', 'translate-z']
+		])
+	],
+	// `inset-s`/`inset-e` are tailwind-merge's own aliases for the standalone
+	// `start`/`end` utilities (the very same classGroup), so they resolve to
+	// those nodes directly rather than the generic per-axis naming.
+	[
+		'inset',
+		new Map([
+			['s', 'start'],
+			['e', 'end']
+		])
+	],
+	// The scroll-margin/scroll-padding categories of the `scroll` prefix spec
+	// — the only `scroll-*` utilities with a shorthand overlap.
+	[
+		'scroll',
+		new Map(
+			SPACING_OVERLAP_NODES.map((category) => [
+				category,
+				`scroll-${category}`
+			])
+		)
+	],
+	// The `flex` sizing values (`flex-1`, `flex-auto`, `flex-none`) overlap
+	// grow/shrink/basis; the direction and wrap categories don't. A v3
+	// longhand (`flex-grow-0`) resolves to the same node as its standalone
+	// spelling (`grow-0`), so the two are one conflict group.
+	[
+		'flex',
+		new Map([
+			['flex', 'flex-sizing'],
+			['grow-value', 'grow'],
+			['shrink-value', 'shrink'],
+			['basis-value', 'basis']
+		])
+	],
+	// A font-size utility always overlaps its sibling sizes, and — only when
+	// it carries a `/leading` postfix modifier (see `getConflictKey`) — the
+	// separate `leading-*` utility too, since the modifier sets line-height
+	// directly.
+	[
+		'text',
+		new Map([
+			['overflow', 'text-overflow'],
+			['size', 'text-size']
+		])
+	],
+	// `line-clamp-*` sets display and overflow as a side effect (see
+	// `OVERLAP_COVERS['line-clamp']`); `line-through` and other `line-*`
+	// categories take no part in the overlap graph.
+	['line', new Map([['clamp-value', 'line-clamp']])],
+	// `touch-none`/`touch-auto`/`touch-manipulation` overlap the `pan`/`pinch`
+	// sub-utilities; the other pan directions (`left`/`right`/`up`/`down`)
+	// compose instead of conflicting, so they're left unconnected.
+	[
+		'touch',
+		new Map([
+			['base', 'touch'],
+			['pan-x', 'touch-x'],
+			['pan-y', 'touch-y'],
+			['pinch', 'touch-pz']
+		])
+	]
+]);
+
+// Single-word utilities that set the properties of several other namespaces
+// (`truncate` is overflow + text-overflow + white-space at once), so they get
+// a conflict key of their own despite having no dashed family — no
+// exclusive-groups opt-in needed.
+//
+// Every single-word `display` value gets its own node too (`display-flex`,
+// `display-block`, …, never one shared across keywords), so `line-clamp`
+// (which always sets `display`) can reach any of them without making the
+// keywords conflict with *each other* by default (that stays behind
+// `exclusiveGroups: true`). The hyphenated keywords get the same kind of node
+// from `DISPLAY_OVERLAP_NODES`, but not a key from here.
+//
+// Font-variant-numeric is a star, not a flat set: `lining-nums`/`oldstyle-nums`
+// share a node and conflict directly, but a figure style doesn't conflict with
+// a spacing (`tabular-nums`) or fraction (`diagonal-fractions`) style — only
+// `normal-nums` reaches every value, via the `fvn-normal` bridge in
+// `OVERLAP_COVERS`. Default-on (unlike `display`) since these words are
+// unlikely to collide with a project's own class names.
+const SINGLE_WORD_OVERLAP_NODES: ReadonlyMap<string, string> = new Map([
+	['truncate', 'truncate'],
+	...SINGLE_WORD_DISPLAY_KEYWORDS.map(
+		(word) => [word, `display-${word}`] as const
+	),
+	['normal-nums', 'fvn-normal'],
+	['ordinal', 'fvn-ordinal'],
+	['slashed-zero', 'fvn-slashed-zero'],
+	['lining-nums', 'fvn-figure'],
+	['oldstyle-nums', 'fvn-figure'],
+	['proportional-nums', 'fvn-spacing'],
+	['tabular-nums', 'fvn-spacing'],
+	['diagonal-fractions', 'fvn-fraction'],
+	['stacked-fractions', 'fvn-fraction']
+]);
+
+// A node for every display keyword, so `line-clamp-*` reaches the hyphenated
+// ones (`inline-flex`, `table-cell`, `flow-root`, `list-item`) as well
+// as the single words above. Only the node comes from here — a hyphenated
+// keyword keeps whatever conflict key its dashed family gives it, so
+// `table-cell` stays grouped with `table-row`.
+const DISPLAY_OVERLAP_NODES: ReadonlyMap<string, string> = new Map(
+	DISPLAY_KEYWORDS.map((word) => [word, `display-${word}`])
+);
+
+const CONTAINER_TYPE_PREFIX = '@container';
+
+// The property name of an arbitrary property: a CSS property, vendor-prefixed
+// or not, or a custom property (`color`, `-webkit-line-clamp`, `--x`).
+const ARBITRARY_PROPERTY_NAME = /^-{0,2}[a-z][\w-]*$/i;
 
 const categoryMap = (
 	groups: ReadonlyArray<readonly [string, ReadonlyArray<string>]>
@@ -179,49 +535,113 @@ const categoryMap = (
 const selfMap = (tokens: ReadonlyArray<string>): ReadonlyMap<string, string> =>
 	categoryMap(tokens.map((token) => [token, [token]] as const));
 
-// Variants that pick another element than the one before them: their place
-// in a stack decides what's styled (`hover:*:` vs `*:hover:`), so they aren't
-// reordered. Any arbitrary `[...]` variant counts too. Mirrors tailwind-merge's
-// default `orderSensitiveModifiers`.
-const ORDER_SENSITIVE_VARIANTS: ReadonlySet<string> = new Set([
-	'*',
-	'**',
-	'after',
-	'backdrop',
-	'before',
-	'details-content',
-	'file',
-	'first-letter',
-	'first-line',
-	'marker',
-	'placeholder',
-	'selection'
-]);
+// --- Shorthand/longhand overlap nodes ----------------------------------------
+//
+// A shorthand utility overrides several longhand utilities at once: `size-*`
+// sets width and height, `m-*` sets every margin side, `inset-x-*` sets left
+// and right, `rounded-t-*` sets both top corners. Related utilities can't
+// simply share a conflict key — that would also make the longhand siblings
+// conflict with each other (`w-4`/`h-4`, `mt-2`/`mb-2`) — so each conflict
+// group is instead tagged with an overlap node, and groups whose nodes are
+// connected through the covers relation below (under the same variant prefix)
+// are merged before reporting. Siblings never touch without their shorthand.
 
-const COLOR_KEYWORDS = ['inherit', 'current', 'transparent', 'black', 'white'];
-// The one-word named sizes; the digit-led ones (`2xl`, `2xs`) aren't words, so
-// they never read as a named color and reach the `short` bucket on their own.
-const SIZE_KEYWORDS = ['xs', 'sm', 'md', 'lg', 'xl'];
-const SIDES = ['t', 'r', 'b', 'l', 'x', 'y', 's', 'e', 'bs', 'be'];
-// The sides an `x`/`y` axis utility sets, physical and logical alike.
-const INLINE_SIDES = ['r', 'l', 's', 'e'];
-const BLOCK_SIDES = ['t', 'b', 'bs', 'be'];
-const CORNERS = [
-	't',
-	'r',
-	'b',
-	'l',
-	's',
-	'e',
-	'tl',
-	'tr',
-	'bl',
-	'br',
-	'ss',
-	'se',
-	'es',
-	'ee'
+// The side nodes of a spacing-style family (`m`, `p`, `scroll-m`, `scroll-p`):
+// the bare prefix covers every side, and each axis covers both its physical
+// and its logical sides — `px-*` sets `padding-inline`, which `ps-*`/`pe-*`
+// are the longhands of, and `py-*` likewise covers `pbs-*`/`pbe-*`.
+const sideOverlapCovers = (
+	prefix: string
+): ReadonlyArray<readonly [string, ReadonlyArray<string>]> => [
+	[prefix, SIDES.map((side) => `${prefix}${side}`)],
+	[`${prefix}x`, INLINE_SIDES.map((side) => `${prefix}${side}`)],
+	[`${prefix}y`, BLOCK_SIDES.map((side) => `${prefix}${side}`)]
 ];
+
+// An axis family (`gap`, `overflow`, `translate`, …): the bare form sets all
+// axes, so it covers the per-axis forms; the axes stay independent otherwise.
+const axisOverlapCovers = (
+	prefix: string
+): readonly [string, ReadonlyArray<string>] => [
+	prefix,
+	[`${prefix}-x`, `${prefix}-y`]
+];
+
+// The undirected adjacency of the covers relation, so component merging can
+// walk from a shorthand down to its longhands and from a longhand back up.
+const buildOverlapNeighborsMap = (): ReadonlyMap<
+	string,
+	ReadonlyArray<string>
+> => {
+	const map = new Map<string, string[]>();
+
+	for (const [node, covered] of OVERLAP_COVERS) {
+		for (const target of covered) {
+			getOrCreate(map, node, () => []).push(target);
+			getOrCreate(map, target, () => []).push(node);
+		}
+	}
+
+	return map;
+};
+
+const getAxisOverlapNode = (
+	segment: string,
+	category: string
+): string | null => {
+	if (category === 'all') {
+		return segment;
+	}
+
+	if (
+		category === 'x' ||
+		category === 'y' ||
+		category === 'bs' ||
+		category === 'be'
+	) {
+		return `${segment}-${category}`;
+	}
+
+	return null;
+};
+
+const getRoundedOverlapNode = (category: string): string => {
+	if (category === 'all') {
+		return 'rounded';
+	}
+
+	// The remaining rounded categories are the corner names themselves.
+	return `rounded-${category}`;
+};
+
+const getBorderOverlapNode = (category: string): string | null => {
+	if (category === 'width') {
+		return 'border-w';
+	}
+
+	if (category === 'color') {
+		return 'border-color';
+	}
+
+	// A per-side width category is `${side}-width` (see `borderSideSpec`).
+	if (category.endsWith('-width')) {
+		return `border-w-${category.slice(0, -'-width'.length)}`;
+	}
+
+	// A per-side color category is `${side}-color` (see `borderSideSpec`).
+	if (category.endsWith('-color')) {
+		return `border-color-${category.slice(0, -'-color'.length)}`;
+	}
+
+	if (category.startsWith('spacing-')) {
+		return getAxisOverlapNode(
+			'border-spacing',
+			category.slice('spacing-'.length)
+		);
+	}
+
+	return null;
+};
 
 // x/y/z axis utilities (`gap-x`, `translate-y`, …); a bare value sets all axes.
 const axisSpec: PrefixSpec = {
@@ -937,110 +1357,169 @@ const PREFIX_SPECS: ReadonlyMap<string, PrefixSpec> = new Map(
 	})
 );
 
-// Tailwind's other hyphenated utility families, whose values aren't classified
-// per property: any two values of one family set the same property, so they're
-// grouped by dash count alone (`w-4`/`w-8`, `mt-2`/`mt-safe-bottom`). Any other
-// first segment names a project class (`btn-primary`, `card-body`), which says
-// nothing about the property it sets.
-const DASH_COUNT_PREFIXES: ReadonlySet<string> = new Set([
-	'animate',
-	'appearance',
-	'aspect',
-	'backface',
-	'basis',
-	'blur',
-	'bottom',
-	'box',
-	'brightness',
-	'caption',
-	'clear',
-	'columns',
-	'contrast',
-	'delay',
-	'diagonal',
-	'duration',
-	'end',
-	'field',
-	'filter',
-	'float',
-	'flow',
-	'forced',
-	'grayscale',
-	'grow',
-	'h',
-	'hue',
-	'hyphens',
-	'indent',
-	'invert',
-	'isolation',
-	'leading',
-	'left',
-	'lining',
-	'm',
-	'mb',
-	'mbe',
-	'mbs',
-	'me',
-	'ml',
-	'mr',
-	'ms',
-	'mt',
-	'mx',
-	'my',
-	'no',
-	'normal',
-	'not',
-	'oldstyle',
-	'opacity',
-	'order',
-	'p',
-	'pb',
-	'pbe',
-	'pbs',
-	'pe',
-	'pl',
-	'pointer',
-	'pr',
-	'proportional',
-	'ps',
-	'pt',
-	'px',
-	'py',
-	'resize',
-	'right',
-	'saturate',
-	'select',
-	'sepia',
-	'shrink',
-	'size',
-	'slashed',
-	'sr',
-	'stacked',
-	'start',
-	'subpixel',
-	'tab',
-	'tabular',
-	'top',
-	'tracking',
-	'underline',
-	'w',
-	'will',
-	'z',
-	'zoom'
+const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
+	string,
+	ReadonlyArray<string>
+>([
+	['size', ['w', 'h']],
+	...sideOverlapCovers('m'),
+	...sideOverlapCovers('p'),
+	...sideOverlapCovers('scroll-m'),
+	...sideOverlapCovers('scroll-p'),
+	[
+		'inset',
+		[
+			'inset-x',
+			'inset-y',
+			'inset-bs',
+			'inset-be',
+			'top',
+			'right',
+			'bottom',
+			'left',
+			'start',
+			'end'
+		]
+	],
+	['inset-x', ['right', 'left', 'start', 'end']],
+	['inset-y', ['top', 'bottom', 'inset-bs', 'inset-be']],
+	axisOverlapCovers('gap'),
+	axisOverlapCovers('overflow'),
+	axisOverlapCovers('overscroll'),
+	axisOverlapCovers('translate'),
+	// `translate-none` resets every axis, including `z` — which the bare
+	// `translate` shorthand above does not reach.
+	[
+		'translate-none',
+		['translate', 'translate-x', 'translate-y', 'translate-z']
+	],
+	axisOverlapCovers('border-spacing'),
+	['rounded', CORNERS.map((corner) => `rounded-${corner}`)],
+	['rounded-t', ['rounded-tl', 'rounded-tr']],
+	['rounded-r', ['rounded-tr', 'rounded-br']],
+	['rounded-b', ['rounded-bl', 'rounded-br']],
+	['rounded-l', ['rounded-tl', 'rounded-bl']],
+	['rounded-s', ['rounded-ss', 'rounded-es']],
+	['rounded-e', ['rounded-se', 'rounded-ee']],
+	['border-w', SIDES.map((side) => `border-w-${side}`)],
+	['border-w-x', INLINE_SIDES.map((side) => `border-w-${side}`)],
+	['border-w-y', BLOCK_SIDES.map((side) => `border-w-${side}`)],
+	['border-color', SIDES.map((side) => `border-color-${side}`)],
+	['border-color-x', INLINE_SIDES.map((side) => `border-color-${side}`)],
+	['border-color-y', BLOCK_SIDES.map((side) => `border-color-${side}`)],
+	['touch', ['touch-x', 'touch-y', 'touch-pz']],
+	// Only a modifier-bearing font size reaches `leading` — a plain one reads
+	// its line-height through `--tw-leading`, which `leading-*` sets, so the
+	// two compose (`text-sm leading-6`), while a `/leading` modifier sets the
+	// line-height directly (see `getConflictKey`).
+	['text-size', ['text-size-leading']],
+	['text-size-leading', ['leading']],
+	// `flex-1`/`flex-auto`/`flex-none` set flex-grow, flex-shrink, and
+	// flex-basis at once.
+	['flex-sizing', ['grow', 'shrink', 'basis']],
+	// `truncate` sets overflow (both axes), text-overflow, and white-space.
+	[
+		'truncate',
+		['overflow', 'overflow-x', 'overflow-y', 'text-overflow', 'whitespace']
+	],
+	// `line-clamp-*` sets `display` (to `-webkit-box`) and `overflow` (to
+	// `hidden`) unconditionally — unlike `truncate`, it doesn't set
+	// `text-overflow`/`white-space`, and it reaches every display keyword, the
+	// hyphenated ones included (see `DISPLAY_OVERLAP_NODES`).
+	[
+		'line-clamp',
+		[
+			...DISPLAY_KEYWORDS.map((word) => `display-${word}`),
+			'overflow',
+			'overflow-x',
+			'overflow-y'
+		]
+	],
+	// Naming a container also sets its type, so it conflicts with a plain,
+	// unnamed `container-type` utility too.
+	['container-named', ['container-type']],
+	// `normal-nums` resets the whole font-variant-numeric property, so it
+	// conflicts with every other value — but a figure/spacing/fraction style
+	// doesn't conflict with a style from a different one of those three.
+	[
+		'fvn-normal',
+		[
+			'fvn-ordinal',
+			'fvn-slashed-zero',
+			'fvn-figure',
+			'fvn-spacing',
+			'fvn-fraction'
+		]
+	]
 ]);
 
-const COLOR_FUNCTIONS = [
-	'rgb',
-	'rgba',
-	'hsl',
-	'hsla',
-	'hwb',
-	'lab',
-	'lch',
-	'oklab',
-	'oklch',
-	'color'
-];
+const OVERLAP_NEIGHBORS = buildOverlapNeighborsMap();
+
+const SEGMENT_OVERLAP_HANDLERS: ReadonlyMap<
+	string,
+	(category: string) => string | null
+> = new Map([
+	['rounded', getRoundedOverlapNode],
+	['border', getBorderOverlapNode]
+]);
+
+const resolveExclusiveGroups = (
+	option: ExclusiveGroupsOption
+): ReadonlyArray<ReadonlyArray<string>> => {
+	if (option === true) {
+		return TAILWIND_EXCLUSIVE_GROUPS;
+	}
+
+	if (Array.isArray(option)) {
+		return option;
+	}
+
+	return [];
+};
+
+// A group config listing the same utility in two different groups has no
+// coherent meaning — which group's id should the token's conflict key use? —
+// so it's rejected outright rather than silently resolved (last group wins).
+const createOverlappingExclusiveGroupError = (
+	ruleName: string,
+	token: string,
+	firstGroupId: string,
+	secondGroupId: string
+): Error =>
+	new Error(
+		`slot-variants/${ruleName}: "exclusiveGroups" lists "${token}" in more than one group (groups ${firstGroupId} and ${secondGroupId}) — remove it from all but one.`
+	);
+
+// A lookup from each grouped utility to a stable per-group id, so tokens in the
+// same exclusive group share a conflict key. Empty when grouping is disabled,
+// in which case getConflictKey behaves exactly as before.
+export const buildExclusiveGroupMap = (
+	ruleName: string,
+	option: ExclusiveGroupsOption
+): ReadonlyMap<string, string> => {
+	const map = new Map<string, string>();
+
+	for (const [index, group] of resolveExclusiveGroups(option).entries()) {
+		const groupId = String(index);
+
+		for (const token of group) {
+			const firstGroupId = map.get(token);
+
+			if (firstGroupId !== undefined) {
+				throw createOverlappingExclusiveGroupError(
+					ruleName,
+					token,
+					firstGroupId,
+					groupId
+				);
+			}
+
+			map.set(token, groupId);
+		}
+	}
+
+	return map;
+};
 
 // Detects an arbitrary color value (`text-[#f00]`, `bg-[rgb(0,0,0)]`,
 // `text-[color:var(--x)]`) so it classifies as a color rather than falling
@@ -1068,39 +1547,6 @@ const isArbitraryImageValue = (segment: string): boolean =>
 	segment.startsWith('[image:') ||
 	/^\[(?:repeating-)?(?:linear|radial|conic)-gradient\(/.test(segment);
 
-// --- Typed arbitrary values --------------------------------------------------
-//
-// A Tailwind arbitrary value can name its own CSS data type, either bracketed
-// (`text-[color:var(--x)]`) or as the v4 CSS-variable shorthand
-// (`text-(color:--x)`). The hint says which of the prefix's properties the
-// value sets, which is exactly what the dash-count heuristic can't see: a
-// one-segment `text-(color:--x)` would otherwise land in the `size` bucket.
-// Each hint maps to the candidate category names it can stand for, and only a
-// category the prefix actually declares is used — so `gap-(color:--x)`, whose
-// prefix has no color property, falls back to the plain heuristic.
-const HINT_CATEGORIES: ReadonlyMap<string, ReadonlyArray<string>> = new Map([
-	['color', ['color']],
-	['image', ['image']],
-	['position', ['position', 'pos']],
-	['size', ['size']],
-	['length', ['width', 'size', 'length', 'pos', 'position']],
-	['percentage', ['pos', 'position', 'size']],
-	['number', ['weight', 'width', 'size']],
-	['family-name', ['family']],
-	['generic-name', ['family']],
-	['shadow', ['box', 'size', 'shadow']],
-	['angle', ['angle']]
-]);
-
-// A bracketed value that is nothing but one `var()` (`[var(--x)]`,
-// `[var(--x,red)]`).
-const BRACKETED_VARIABLE = /^\[var\(--[\w-]+(?:,.*)?\)\]$/;
-
-// Every category name a spec can produce. Cached per spec — the specs are
-// module-level constants, and a hinted value would otherwise rebuild the set on
-// every token.
-const specCategoryCache = new Map<PrefixSpec, ReadonlySet<string>>();
-
 const specCategories = (spec: PrefixSpec): ReadonlySet<string> =>
 	getOrCreate(specCategoryCache, spec, () => {
 		const categories = new Set<string>(spec.keywords.values());
@@ -1117,14 +1563,6 @@ const specCategories = (spec: PrefixSpec): ReadonlySet<string> =>
 
 		return categories;
 	});
-
-// A value's declared type, or null when it's arbitrary but untyped; `variable`
-// tells the two arbitrary spellings apart, since only the CSS-variable
-// shorthand carries a meaning of its own when untyped (see `baseCategory`).
-type ArbitraryValue = {
-	hint: string | null;
-	variable: boolean;
-};
 
 // Parses `[type:value]`, `(type:--var)`, `[value]` and `(--var)`, returning
 // undefined for a value that isn't arbitrary at all. A colon that isn't a type
@@ -1314,182 +1752,6 @@ const categorize = (
 	return categorizeWithSpec(spec, value);
 };
 
-// Bare single-word utilities that are the unsuffixed default of a wider family
-// (`rounded` is `rounded-DEFAULT`, `border` is `border-1`, `transition` is
-// `transition-DEFAULT`, …). Each maps to a representative dashed value so it
-// resolves to the very same conflict key as its sibling — `rounded` collides
-// with `rounded-lg`, `transition` with `transition-none` — while `border` still
-// stays clear of `border-gray-200` (a color, not a width).
-const BARE_UTILITIES: ReadonlyMap<string, ReadonlyArray<string>> = new Map(
-	Object.entries({
-		rounded: ['lg'],
-		border: ['2'],
-		ring: ['2'],
-		outline: ['2'],
-		shadow: ['md'],
-		blur: ['sm'],
-		grow: ['0'],
-		shrink: ['0'],
-		transition: ['all'],
-		transform: ['none'],
-		filter: ['none'],
-		resize: ['none'],
-		grayscale: ['0'],
-		invert: ['0'],
-		sepia: ['0']
-	})
-);
-
-// --- Shorthand/longhand overlap nodes ----------------------------------------
-//
-// A shorthand utility overrides several longhand utilities at once: `size-*`
-// sets width and height, `m-*` sets every margin side, `inset-x-*` sets left
-// and right, `rounded-t-*` sets both top corners. Related utilities can't
-// simply share a conflict key — that would also make the longhand siblings
-// conflict with each other (`w-4`/`h-4`, `mt-2`/`mb-2`) — so each conflict
-// group is instead tagged with an overlap node, and groups whose nodes are
-// connected through the covers relation below (under the same variant prefix)
-// are merged before reporting. Siblings never touch without their shorthand.
-
-// The side nodes of a spacing-style family (`m`, `p`, `scroll-m`, `scroll-p`):
-// the bare prefix covers every side, and each axis covers both its physical
-// and its logical sides — `px-*` sets `padding-inline`, which `ps-*`/`pe-*`
-// are the longhands of, and `py-*` likewise covers `pbs-*`/`pbe-*`.
-const sideOverlapCovers = (
-	prefix: string
-): ReadonlyArray<readonly [string, ReadonlyArray<string>]> => [
-	[prefix, SIDES.map((side) => `${prefix}${side}`)],
-	[`${prefix}x`, INLINE_SIDES.map((side) => `${prefix}${side}`)],
-	[`${prefix}y`, BLOCK_SIDES.map((side) => `${prefix}${side}`)]
-];
-
-// An axis family (`gap`, `overflow`, `translate`, …): the bare form sets all
-// axes, so it covers the per-axis forms; the axes stay independent otherwise.
-const axisOverlapCovers = (
-	prefix: string
-): readonly [string, ReadonlyArray<string>] => [
-	prefix,
-	[`${prefix}-x`, `${prefix}-y`]
-];
-
-const OVERLAP_COVERS: ReadonlyMap<string, ReadonlyArray<string>> = new Map<
-	string,
-	ReadonlyArray<string>
->([
-	['size', ['w', 'h']],
-	...sideOverlapCovers('m'),
-	...sideOverlapCovers('p'),
-	...sideOverlapCovers('scroll-m'),
-	...sideOverlapCovers('scroll-p'),
-	[
-		'inset',
-		[
-			'inset-x',
-			'inset-y',
-			'inset-bs',
-			'inset-be',
-			'top',
-			'right',
-			'bottom',
-			'left',
-			'start',
-			'end'
-		]
-	],
-	['inset-x', ['right', 'left', 'start', 'end']],
-	['inset-y', ['top', 'bottom', 'inset-bs', 'inset-be']],
-	axisOverlapCovers('gap'),
-	axisOverlapCovers('overflow'),
-	axisOverlapCovers('overscroll'),
-	axisOverlapCovers('translate'),
-	// `translate-none` resets every axis, including `z` — which the bare
-	// `translate` shorthand above does not reach.
-	[
-		'translate-none',
-		['translate', 'translate-x', 'translate-y', 'translate-z']
-	],
-	axisOverlapCovers('border-spacing'),
-	['rounded', CORNERS.map((corner) => `rounded-${corner}`)],
-	['rounded-t', ['rounded-tl', 'rounded-tr']],
-	['rounded-r', ['rounded-tr', 'rounded-br']],
-	['rounded-b', ['rounded-bl', 'rounded-br']],
-	['rounded-l', ['rounded-tl', 'rounded-bl']],
-	['rounded-s', ['rounded-ss', 'rounded-es']],
-	['rounded-e', ['rounded-se', 'rounded-ee']],
-	['border-w', SIDES.map((side) => `border-w-${side}`)],
-	['border-w-x', INLINE_SIDES.map((side) => `border-w-${side}`)],
-	['border-w-y', BLOCK_SIDES.map((side) => `border-w-${side}`)],
-	['border-color', SIDES.map((side) => `border-color-${side}`)],
-	['border-color-x', INLINE_SIDES.map((side) => `border-color-${side}`)],
-	['border-color-y', BLOCK_SIDES.map((side) => `border-color-${side}`)],
-	['touch', ['touch-x', 'touch-y', 'touch-pz']],
-	// Only a modifier-bearing font size reaches `leading` — a plain one reads
-	// its line-height through `--tw-leading`, which `leading-*` sets, so the
-	// two compose (`text-sm leading-6`), while a `/leading` modifier sets the
-	// line-height directly (see `getConflictKey`).
-	['text-size', ['text-size-leading']],
-	['text-size-leading', ['leading']],
-	// `flex-1`/`flex-auto`/`flex-none` set flex-grow, flex-shrink, and
-	// flex-basis at once.
-	['flex-sizing', ['grow', 'shrink', 'basis']],
-	// `truncate` sets overflow (both axes), text-overflow, and white-space.
-	[
-		'truncate',
-		['overflow', 'overflow-x', 'overflow-y', 'text-overflow', 'whitespace']
-	],
-	// `line-clamp-*` sets `display` (to `-webkit-box`) and `overflow` (to
-	// `hidden`) unconditionally — unlike `truncate`, it doesn't set
-	// `text-overflow`/`white-space`, and it reaches every display keyword, the
-	// hyphenated ones included (see `DISPLAY_OVERLAP_NODES`).
-	[
-		'line-clamp',
-		[
-			...DISPLAY_KEYWORDS.map((word) => `display-${word}`),
-			'overflow',
-			'overflow-x',
-			'overflow-y'
-		]
-	],
-	// Naming a container also sets its type, so it conflicts with a plain,
-	// unnamed `container-type` utility too.
-	['container-named', ['container-type']],
-	// `normal-nums` resets the whole font-variant-numeric property, so it
-	// conflicts with every other value — but a figure/spacing/fraction style
-	// doesn't conflict with a style from a different one of those three.
-	[
-		'fvn-normal',
-		[
-			'fvn-ordinal',
-			'fvn-slashed-zero',
-			'fvn-figure',
-			'fvn-spacing',
-			'fvn-fraction'
-		]
-	]
-]);
-
-// The undirected adjacency of the covers relation, so component merging can
-// walk from a shorthand down to its longhands and from a longhand back up.
-const buildOverlapNeighborsMap = (): ReadonlyMap<
-	string,
-	ReadonlyArray<string>
-> => {
-	const map = new Map<string, string[]>();
-
-	for (const [node, covered] of OVERLAP_COVERS) {
-		for (const target of covered) {
-			getOrCreate(map, node, () => []).push(target);
-			getOrCreate(map, target, () => []).push(node);
-		}
-	}
-
-	return map;
-};
-
-const OVERLAP_NEIGHBORS = buildOverlapNeighborsMap();
-
-const EMPTY_NODE_LIST: ReadonlyArray<string> = [];
-
 export const overlapNeighbors = (node: string): ReadonlyArray<string> => {
 	const neighbors = OVERLAP_NEIGHBORS.get(node);
 
@@ -1500,198 +1762,6 @@ export const overlapNeighbors = (node: string): ReadonlyArray<string> => {
 
 	return neighbors;
 };
-
-// The margin and padding nodes, shared by the plain spacing utilities and the
-// scroll-margin/scroll-padding categories of the `scroll` prefix.
-const SPACING_OVERLAP_NODES: ReadonlyArray<string> = [
-	'm',
-	...SIDES.map((side) => `m${side}`),
-	'p',
-	...SIDES.map((side) => `p${side}`)
-];
-
-// Segments that are an overlap node by themselves: every value of these
-// prefixes sets the same property regardless of value shape (`w-4`, `w-[…]`,
-// `mt-2`, `top-1/2`), so the value category is irrelevant to the node.
-const SEGMENT_OVERLAP_NODES: ReadonlySet<string> = new Set([
-	'size',
-	'w',
-	'h',
-	'top',
-	'right',
-	'bottom',
-	'left',
-	'start',
-	'end',
-	'grow',
-	'shrink',
-	'basis',
-	'whitespace',
-	'leading',
-	...SPACING_OVERLAP_NODES
-]);
-
-// Prefixes classified by axisSpec whose bare form sets all axes: the category
-// picks between the whole-property node and a per-axis node.
-// `scale`/`skew` are deliberately excluded: unlike `gap`/`overflow`/
-// `overscroll`/`translate`/`inset`, tailwind-merge does not treat the bare
-// form as conflicting with its `-x`/`-y` siblings (they compose as
-// independent per-axis overrides). `translate` and `inset` have extra nodes
-// of their own in `CATEGORY_OVERLAP_NODES`, consulted first.
-const AXIS_OVERLAP_PREFIXES: ReadonlySet<string> = new Set([
-	'gap',
-	'overflow',
-	'overscroll',
-	'translate',
-	'inset'
-]);
-
-// Segment -> category -> overlap node, for the families whose node is a
-// plain lookup of the value category. A category missing here falls through
-// to the per-axis naming for an `AXIS_OVERLAP_PREFIXES` family, and to no node
-// otherwise.
-const CATEGORY_OVERLAP_NODES: ReadonlyMap<
-	string,
-	ReadonlyMap<string, string>
-> = new Map([
-	// `translate-none` resets every axis including `z`, unlike the bare form
-	// (which only reaches `x`/`y` through the generic axis handling) — see
-	// `translateSpec` and the `translate-none` entry in `OVERLAP_COVERS`.
-	[
-		'translate',
-		new Map([
-			['none', 'translate-none'],
-			['z', 'translate-z']
-		])
-	],
-	// `inset-s`/`inset-e` are tailwind-merge's own aliases for the standalone
-	// `start`/`end` utilities (the very same classGroup), so they resolve to
-	// those nodes directly rather than the generic per-axis naming.
-	[
-		'inset',
-		new Map([
-			['s', 'start'],
-			['e', 'end']
-		])
-	],
-	// The scroll-margin/scroll-padding categories of the `scroll` prefix spec
-	// — the only `scroll-*` utilities with a shorthand overlap.
-	[
-		'scroll',
-		new Map(
-			SPACING_OVERLAP_NODES.map((category) => [
-				category,
-				`scroll-${category}`
-			])
-		)
-	],
-	// The `flex` sizing values (`flex-1`, `flex-auto`, `flex-none`) overlap
-	// grow/shrink/basis; the direction and wrap categories don't. A v3
-	// longhand (`flex-grow-0`) resolves to the same node as its standalone
-	// spelling (`grow-0`), so the two are one conflict group.
-	[
-		'flex',
-		new Map([
-			['flex', 'flex-sizing'],
-			['grow-value', 'grow'],
-			['shrink-value', 'shrink'],
-			['basis-value', 'basis']
-		])
-	],
-	// A font-size utility always overlaps its sibling sizes, and — only when
-	// it carries a `/leading` postfix modifier (see `getConflictKey`) — the
-	// separate `leading-*` utility too, since the modifier sets line-height
-	// directly.
-	[
-		'text',
-		new Map([
-			['overflow', 'text-overflow'],
-			['size', 'text-size']
-		])
-	],
-	// `line-clamp-*` sets display and overflow as a side effect (see
-	// `OVERLAP_COVERS['line-clamp']`); `line-through` and other `line-*`
-	// categories take no part in the overlap graph.
-	['line', new Map([['clamp-value', 'line-clamp']])],
-	// `touch-none`/`touch-auto`/`touch-manipulation` overlap the `pan`/`pinch`
-	// sub-utilities; the other pan directions (`left`/`right`/`up`/`down`)
-	// compose instead of conflicting, so they're left unconnected.
-	[
-		'touch',
-		new Map([
-			['base', 'touch'],
-			['pan-x', 'touch-x'],
-			['pan-y', 'touch-y'],
-			['pinch', 'touch-pz']
-		])
-	]
-]);
-
-const getAxisOverlapNode = (
-	segment: string,
-	category: string
-): string | null => {
-	if (category === 'all') {
-		return segment;
-	}
-
-	if (
-		category === 'x' ||
-		category === 'y' ||
-		category === 'bs' ||
-		category === 'be'
-	) {
-		return `${segment}-${category}`;
-	}
-
-	return null;
-};
-
-const getRoundedOverlapNode = (category: string): string => {
-	if (category === 'all') {
-		return 'rounded';
-	}
-
-	// The remaining rounded categories are the corner names themselves.
-	return `rounded-${category}`;
-};
-
-const getBorderOverlapNode = (category: string): string | null => {
-	if (category === 'width') {
-		return 'border-w';
-	}
-
-	if (category === 'color') {
-		return 'border-color';
-	}
-
-	// A per-side width category is `${side}-width` (see `borderSideSpec`).
-	if (category.endsWith('-width')) {
-		return `border-w-${category.slice(0, -'-width'.length)}`;
-	}
-
-	// A per-side color category is `${side}-color` (see `borderSideSpec`).
-	if (category.endsWith('-color')) {
-		return `border-color-${category.slice(0, -'-color'.length)}`;
-	}
-
-	if (category.startsWith('spacing-')) {
-		return getAxisOverlapNode(
-			'border-spacing',
-			category.slice('spacing-'.length)
-		);
-	}
-
-	return null;
-};
-
-const SEGMENT_OVERLAP_HANDLERS: ReadonlyMap<
-	string,
-	(category: string) => string | null
-> = new Map([
-	['rounded', getRoundedOverlapNode],
-	['border', getBorderOverlapNode]
-]);
 
 // The overlap node for a token's conflict group, or null when the token takes
 // part in no shorthand/longhand relation.
@@ -1717,70 +1787,6 @@ const getOverlapNode = (segment: string, category: string): string | null => {
 	}
 
 	return null;
-};
-
-// Single-word utilities that set the properties of several other namespaces
-// (`truncate` is overflow + text-overflow + white-space at once), so they get
-// a conflict key of their own despite having no dashed family — no
-// exclusive-groups opt-in needed.
-//
-// Every single-word `display` value gets its own node too (`display-flex`,
-// `display-block`, …, never one shared across keywords), so `line-clamp`
-// (which always sets `display`) can reach any of them without making the
-// keywords conflict with *each other* by default (that stays behind
-// `exclusiveGroups: true`). The hyphenated keywords get the same kind of node
-// from `DISPLAY_OVERLAP_NODES`, but not a key from here.
-//
-// Font-variant-numeric is a star, not a flat set: `lining-nums`/`oldstyle-nums`
-// share a node and conflict directly, but a figure style doesn't conflict with
-// a spacing (`tabular-nums`) or fraction (`diagonal-fractions`) style — only
-// `normal-nums` reaches every value, via the `fvn-normal` bridge in
-// `OVERLAP_COVERS`. Default-on (unlike `display`) since these words are
-// unlikely to collide with a project's own class names.
-const SINGLE_WORD_OVERLAP_NODES: ReadonlyMap<string, string> = new Map(
-	Object.entries({
-		truncate: 'truncate',
-		...Object.fromEntries(
-			SINGLE_WORD_DISPLAY_KEYWORDS.map((word) => [
-				word,
-				`display-${word}`
-			])
-		),
-		'normal-nums': 'fvn-normal',
-		ordinal: 'fvn-ordinal',
-		'slashed-zero': 'fvn-slashed-zero',
-		'lining-nums': 'fvn-figure',
-		'oldstyle-nums': 'fvn-figure',
-		'proportional-nums': 'fvn-spacing',
-		'tabular-nums': 'fvn-spacing',
-		'diagonal-fractions': 'fvn-fraction',
-		'stacked-fractions': 'fvn-fraction'
-	})
-);
-
-// A node for every display keyword, so `line-clamp-*` reaches the hyphenated
-// ones (`inline-flex`, `table-cell`, `flow-root`, `list-item`) as well
-// as the single words above. Only the node comes from here — a hyphenated
-// keyword keeps whatever conflict key its dashed family gives it, so
-// `table-cell` stays grouped with `table-row`.
-const DISPLAY_OVERLAP_NODES: ReadonlyMap<string, string> = new Map(
-	DISPLAY_KEYWORDS.map((word) => [word, `display-${word}`])
-);
-
-// The conflict key plus the pieces an overlap merge needs: the variant prefix
-// and the overlap node the token belongs to (null for tokens outside every
-// overlap family, including exclusive-group keys).
-export type ConflictKeyInfo = {
-	key: string;
-	variantPrefix: string;
-	overlap: string | null;
-};
-
-// The parts of the rule's options that shape a token's conflict key.
-export type ConflictOptions = {
-	exclusiveGroups: ReadonlyMap<string, string>;
-	prefix: string;
-	conflictKeys: Map<string, ConflictKeyInfo | null>;
 };
 
 // The `prefix` option in the form `getConflictKey` wants it. Tailwind v3 writes
@@ -1867,12 +1873,6 @@ const splitVariantPrefix = (
 
 	return { variantPrefix: sortVariants([first, ...rest]).join(':'), utility };
 };
-
-const CONTAINER_TYPE_PREFIX = '@container';
-
-// The property name of an arbitrary property: a CSS property, vendor-prefixed
-// or not, or a custom property (`color`, `-webkit-line-clamp`, `--x`).
-const ARBITRARY_PROPERTY_NAME = /^-{0,2}[a-z][\w-]*$/i;
 
 // `@container`/`@container-normal`/`@container-size` all set one property
 // (`container-type`), so they conflict directly regardless of keyword — unlike

@@ -1,4 +1,4 @@
-import type { Rule, SourceCode } from 'eslint';
+import type { SourceCode } from 'eslint';
 import type { CallExpression, Node } from 'estree';
 import { isComponentFunction } from './components.ts';
 import { unwrapExpression } from './const-bindings.ts';
@@ -242,10 +242,9 @@ const getAncestorReason = (
 // wins, so the report names what the author can see around the call: the walk
 // goes outwards and stops at the first one.
 export const findRepeatedEvaluation = (
-	context: Rule.RuleContext,
+	sourceCode: SourceCode,
 	node: CallExpression
 ): RepeatedEvaluation => {
-	const { sourceCode } = context;
 	// `getAncestors` returns a fresh array, so reversing it in place is safe.
 	const outward = sourceCode.getAncestors(node).reverse();
 	const isInvoked = createInvokedCheck(outward);

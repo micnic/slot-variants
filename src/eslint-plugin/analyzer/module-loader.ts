@@ -6,11 +6,7 @@ import type { Node } from 'estree';
 import { getOrCreate } from '../map-utils.ts';
 import type { ImportedFactory } from './call-matching.ts';
 import { type Component, resolveComponentBinding } from './components.ts';
-import {
-	findSingleBinding,
-	getConstDefInit,
-	isTransparentWrapper
-} from './const-bindings.ts';
+import { findSingleBinding, getConstDefInit } from './const-bindings.ts';
 import type { ForwardedStyles, ModuleScan } from './forwarding.ts';
 import { collectExportTable, type ExportTarget } from './module-exports.ts';
 import {
@@ -35,25 +31,20 @@ type ExportStep =
 	| { kind: 'forward'; specifier: string; name: string };
 
 // What an import is resolved to: the step of the module declaring it that
-// answers, or the module itself as a single-file component.
-type ExportReader<T> = {
-	step: (step: ExportStep) => T | null;
-	self: (analysis: ModuleAnalysis) => T | null;
-};
+// answers.
+type ExportReader<T> = (step: ExportStep) => T | null;
 
 // Resolves what a module names under an export of another module it imports.
 type ImportFollower<T> = (specifier: string, name: string) => T | null;
 
 /**
  * What one imported module contributes, resolved while it's analyzed so the
- * cache holds no AST: each export name's steps, most direct first, the
- * `export * from` sources tried after them, and the classes a single-file
- * component forwards as the module itself.
+ * cache holds no AST: each export name's steps, most direct first, and the
+ * `export * from` sources tried after them.
  */
 type ModuleAnalysis = {
 	exports: ReadonlyMap<string, ReadonlyArray<ExportStep>>;
 	starSources: ReadonlyArray<string>;
-	self: ForwardedStyles | null;
 };
 
 type DiskModule = { mtimeMs: number; text: string };
@@ -175,26 +166,20 @@ let nextLanguageOptionsId = 0;
 // one barrel are the same depth, however many it has.
 const MAX_MODULE_HOPS = 10;
 
-const STYLES_READER: ExportReader<ForwardedStyles> = {
-	step(step) {
-		if (step.kind !== 'styles') {
-			return null;
-		}
+const STYLES_READER: ExportReader<ForwardedStyles> = (step) => {
+	if (step.kind !== 'styles') {
+		return null;
+	}
 
-		return step.styles;
-	},
-	self: (analysis) => analysis.self
+	return step.styles;
 };
 
-const FACTORY_READER: ExportReader<ImportedFactory> = {
-	step(step) {
-		if (step.kind !== 'factory') {
-			return null;
-		}
+const FACTORY_READER: ExportReader<ImportedFactory> = (step) => {
+	if (step.kind !== 'factory') {
+		return null;
+	}
 
-		return step.factory;
-	},
-	self: () => null
+	return step.factory;
 };
 
 const loadLinterFrom = (base: string): LinterConstructor | null => {
@@ -372,6 +357,10 @@ const toExportStep = (
 		return toStylesStep(target.node, forwarded);
 	}
 
+	if (target.kind === 'value') {
+		return readFactoryStep(target.node, scan.ctx);
+	}
+
 	const factory = readFactoryBinding(target.name, scan);
 
 	if (factory !== null) {
@@ -395,37 +384,12 @@ const toExportStep = (
 	};
 };
 
-// The factory an anonymous default export is (`export default createSV()`),
-// which names no binding to look up.
-const readDefaultFactory = ({ ast, ctx }: ModuleScan): ExportStep | null => {
-	for (const node of ast.body) {
-		if (node.type !== 'ExportDefaultDeclaration') {
-			continue;
-		}
-
-		const { declaration } = node;
-
-		if (
-			declaration.type !== 'CallExpression' &&
-			!isTransparentWrapper(declaration)
-		) {
-			return null;
-		}
-
-		return readFactoryStep(declaration, ctx);
-	}
-
-	return null;
-};
-
+// A single-file component (Svelte, Vue) declares no export of its own: the
+// module itself is what a default import receives, after any it declares.
 const analyzeScan = (scan: ModuleScan): ModuleAnalysis => {
 	const { named, starSources } = collectExportTable(scan.ast);
 	const exports = new Map<string, ExportStep[]>();
-	const defaultFactory = readDefaultFactory(scan);
-
-	if (defaultFactory !== null) {
-		exports.set(DEFAULT_EXPORT, [defaultFactory]);
-	}
+	const self = scan.forwarded.get(scan.ast);
 
 	for (const [name, targets] of named) {
 		const steps = getOrCreate(exports, name, () => []);
@@ -439,11 +403,14 @@ const analyzeScan = (scan: ModuleScan): ModuleAnalysis => {
 		}
 	}
 
-	return {
-		exports,
-		starSources,
-		self: scan.forwarded.get(scan.ast) ?? null
-	};
+	if (self !== undefined) {
+		getOrCreate(exports, DEFAULT_EXPORT, () => []).push({
+			kind: 'styles',
+			styles: self
+		});
+	}
+
+	return { exports, starSources };
 };
 
 const createCollector = (
@@ -565,9 +532,9 @@ const collectModule = (
 };
 
 // Whether a module leads an import anywhere: a component forwarding its class
-// prop, a re-export, or itself as a single-file component.
+// prop, a factory, or a re-export.
 const leadsAnywhere = (analysis: ModuleAnalysis) => {
-	if (analysis.self !== null || analysis.starSources.length > 0) {
+	if (analysis.starSources.length > 0) {
 		return true;
 	}
 
@@ -864,7 +831,7 @@ const readExport = <T>(
 		if (step.kind === 'forward') {
 			found = follow(step.specifier, step.name);
 		} else {
-			found = read.step(step);
+			found = read(step);
 		}
 
 		if (found !== null) {
@@ -872,11 +839,9 @@ const readExport = <T>(
 		}
 	}
 
-	// A single-file component (Svelte, Vue) declares no export of its own: the
-	// module itself is what a default import receives. `export *` never
-	// re-exports a default.
+	// `export *` never re-exports a default.
 	if (exportName === DEFAULT_EXPORT) {
-		return read.self(analysis);
+		return null;
 	}
 
 	// A name the module exports itself shadows every `export *` of it.

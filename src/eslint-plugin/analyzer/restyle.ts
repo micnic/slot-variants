@@ -18,7 +18,7 @@ import { isClassListMatch } from './call-matching.ts';
 import { hasIsolatedQuasis } from './static-predicates.ts';
 import {
 	forEachOverrideTarget,
-	getSlotBuckets,
+	getSlotTokenMaps,
 	type Invocation,
 	resolveStyledClasses,
 	resolveTargetSlots,
@@ -403,13 +403,7 @@ const canRender = (list: ReadonlyArray<Entry>, matchers: VariantMatchers) =>
 const collectInternalTokens = (styled: StyledClasses): Set<string> => {
 	const tokens = new Set<string>();
 
-	for (const bucket of getSlotBuckets(styled.styles, styled.slot)) {
-		const tokenMap = styled.styles.bySlot.get(bucket);
-
-		if (tokenMap === undefined) {
-			continue;
-		}
-
+	for (const tokenMap of getSlotTokenMaps(styled.styles, styled.slot)) {
 		for (const [token, list] of tokenMap) {
 			if (canRender(list, styled.matchers)) {
 				tokens.add(token);

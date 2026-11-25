@@ -469,17 +469,10 @@ const resolveOwnNames = (names: NameList, all: readonly string[]) => {
 
 // Multi slot names as the slots they cover: a group stands for its slots as
 // they are now, so the slots a later config adds to it aren't covered.
-const resolveMultiSlots = (names: NameList, resolved: RawConfig) => {
-	if (names === undefined) {
-		return undefined;
-	}
-
-	const groups = resolved.groups ?? {};
-
-	return resolveNames(names, getSlotNames(resolved.slots)).flatMap((name) =>
-		getTargets(groups, name)
+const resolveMultiSlots = (names: NameList, resolved: RawConfig) =>
+	resolveOwnNames(names, getSlotNames(resolved.slots))?.flatMap((name) =>
+		getTargets(resolved.groups ?? {}, name)
 	);
-};
 
 /**
  * A config as a layer other configs merge, without the parents it names, as

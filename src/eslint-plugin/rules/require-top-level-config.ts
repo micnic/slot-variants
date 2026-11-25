@@ -46,7 +46,7 @@ export const requireTopLevelConfig: Rule.RuleModule = {
 				return;
 			}
 
-			const reason = findRepeatedEvaluation(context, node);
+			const reason = findRepeatedEvaluation(context.sourceCode, node);
 
 			if (reason !== null) {
 				context.report({ node, messageId: reason });
